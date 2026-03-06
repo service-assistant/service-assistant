@@ -1,1 +1,1 @@
-AI Assistant
+AI Service Assistant
