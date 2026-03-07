@@ -9,16 +9,16 @@ on:
       - "**"
 
 jobs:
-  client-format:
-    name: Check format (client)
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node
-      - name: Install dependencies
-        run: npm --prefix ./client ci
-      - name: Run format check
-        run: npm --prefix ./client run format:check
+#   client-format:
+#     name: Check format (client)
+#     runs-on: ubuntu-24.04
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: ./.github/actions/setup-node
+#       - name: Install dependencies
+#         run: npm --prefix ./client ci
+#       - name: Run format check
+#         run: npm --prefix ./client run format:check
 
   client-lint:
     name: Lint (client)

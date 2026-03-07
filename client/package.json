@@ -9,7 +9,6 @@
 		"ios": "expo start --ios",
 		"web": "expo start --web",
 		"format": "prettier --write .",
-		"format:check": "prettier --check .",
 		"lint": "expo lint"
 	},
 	"dependencies": {
@@ -43,6 +42,8 @@
 		"@types/react": "~19.1.0",
 		"eslint": "^9.25.0",
 		"eslint-config-expo": "~10.0.0",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-plugin-prettier": "^5.5.5",
 		"prettier": "^3.8.1",
 		"prettier-plugin-organize-imports": "^4.3.0",
 		"typescript": "~5.9.2"
