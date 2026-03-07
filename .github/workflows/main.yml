@@ -1,0 +1,43 @@
+name: Main workflow
+
+on:
+  push:
+    branches:
+      - "main"
+  pull_request:
+    branches:
+      - "**"
+
+jobs:
+  client-format:
+    name: Check format (client)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - name: Install dependencies
+        run: npm --prefix ./client ci
+      - name: Run format check
+        run: npm --prefix ./client run format:check
+
+  client-lint:
+    name: Lint (client)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - name: Install dependencies
+        run: npm --prefix ./client ci
+      - name: Run lint check
+        run: npm --prefix ./client run lint
+
+#   client-test:
+#     name: Run tests (client)
+#     runs-on: ubuntu-24.04
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: ./.github/actions/setup-node
+#       - name: Install dependencies
+#         run: npm --prefix ./client ci
+#       - name: Run tests
+#         run: npm --prefix ./client test
