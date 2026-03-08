@@ -30,3 +30,18 @@ jobs:
         run: npm --prefix ./client ci
       - name: Run tests
         run: npm --prefix ./client test
+
+  server-lint:
+    name: Lint (server)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: 3.14.3
+      - uses: abatilo/actions-poetry@v3
+        with:
+          poetry-version: 2.3.2
+      - name: View poetry --help
+        run: poetry --help
+        
