@@ -39,3 +39,6 @@ Both client and server apps have `Makefile` files. They should make it easier fo
 - [React Native Documentation](https://reactnative.dev/docs/getting-started)
 - [Expo Documentation](https://docs.expo.dev/)
 
+## Deployment
+
+Backend app is configured for automatical deployment to [https://service-assistant.fly.dev](https://service-assistant.fly.dev).

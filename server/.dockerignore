@@ -1,0 +1,78 @@
+# flyctl launch added from .gitignore
+# Environment Variables
+**/.env
+**/.env.local
+**/.env.production
+
+# Python
+**/__pycache__
+**/*.py[cod]
+**/*$py.class
+**/*.so
+**/.Python
+**/build
+**/develop-eggs
+**/dist
+**/downloads
+**/eggs
+**/.eggs
+**/lib
+**/lib64
+**/parts
+**/sdist
+**/var
+**/wheels
+**/*.egg-info
+**/.installed.cfg
+**/*.egg
+
+# Virtual Environment
+**/venv
+**/env
+**/ENV
+**/.venv
+**/.env
+
+# IDE
+**/.vscode
+**/.idea
+**/*.swp
+**/*.swo
+**/*~
+
+# Database
+**/*.db
+**/*.sqlite3
+**/*.sqlite
+
+# Logs
+**/*.log
+**/logs
+
+# Testing
+**/.pytest_cache
+**/.coverage
+**/htmlcov
+**/.tox
+
+# OS
+**/.DS_Store
+**/Thumbs.db
+
+# FastAPI specific
+**/*.pid
+**/instance
+**/.webassets-cache
+
+# flyctl launch added from .pytest_cache/.gitignore
+# Created by pytest automatically.
+.pytest_cache/**/*
+
+# flyctl launch added from .ruff_cache/.gitignore
+# Automatically created by ruff.
+.ruff_cache/**/*
+
+# flyctl launch added from .venv/.gitignore
+# created by virtualenv automatically
+.venv/**/*
+fly.toml
