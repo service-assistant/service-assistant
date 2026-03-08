@@ -21,7 +21,7 @@ test:
 	poetry run pytest
 
 lint:
-	@echo "TODO"
+	poetry run ruff check
 
 format:
 	@echo "TODO"

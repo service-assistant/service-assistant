@@ -9,12 +9,15 @@ readme = "README.md"
 requires-python = ">=3.14"
 
 dependencies = [
-    "fastapi[standard] (>=0.135.1,<0.136.0)"
+    "fastapi[standard] (>=0.135.1,<0.136.0)",
 ]
 
 [dependency-groups]
 test = [
     "pytest (>=9.0.2,<10.0.0)"
+]
+dev = [
+    "ruff (>=0.15.5,<0.16.0)"
 ]
 
 [tool.poetry]
