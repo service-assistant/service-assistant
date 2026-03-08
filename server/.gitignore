@@ -62,3 +62,5 @@ Thumbs.db
 *.pid
 instance/
 .webassets-cache
+
+.ruff_cache

@@ -76,3 +76,5 @@
 # created by virtualenv automatically
 .venv/**/*
 fly.toml
+
+.ruff_cache
