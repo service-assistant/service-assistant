@@ -36,14 +36,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14.3"
-      - uses: abatilo/actions-poetry@v3
-        with:
-          poetry-version: 2.3.2
+      - uses: ./.github/actions/setup-python-poetry
       - name: Install dependencies
-        run: poetry --directory ./server install
+        run: poetry --directory ./server install --all-groups
       - name: Run lint check
         run: poetry --directory ./server run ruff check app tests
 
@@ -52,14 +47,9 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14.3"
-      - uses: abatilo/actions-poetry@v3
-        with:
-          poetry-version: 2.3.2
+      - uses: ./.github/actions/setup-python-poetry
       - name: Install dependencies
-        run: poetry --directory ./server install
+        run: poetry --directory ./server install --all-groups
       - name: Run format check
         run: poetry --directory ./server run ruff format --check app tests
 
@@ -68,13 +58,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14.3"
-      - uses: abatilo/actions-poetry@v3
-        with:
-          poetry-version: 2.3.2
+      - uses: ./.github/actions/setup-python-poetry
       - name: Install dependencies
-        run: poetry --directory ./server install
+        run: poetry --directory ./server install --all-groups
       - name: Run tests
         run: poetry --directory ./server run pytest

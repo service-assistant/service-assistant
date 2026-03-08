@@ -1,0 +1,23 @@
+name: "Setup Python and Poetry"
+description: "Install Python and Poetry and cache them"
+runs:
+  using: "composite"
+  steps:
+    - name: "Set up Python"
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.14.3"
+    - name: "Set up Poetry"
+      uses: abatilo/actions-poetry@v3
+      with:
+        poetry-version: 2.3.2
+    - name: Setup a local virtual environment (needed for caching)
+      shell: bash
+      run: |
+        poetry config virtualenvs.create true --local
+        poetry config virtualenvs.in-project true --local
+    - uses: actions/cache@v3
+      name: Define a cache for the virtual environment based on the dependencies lock file
+      with:
+        path: ./.venv
+        key: venv-${{ hashFiles('poetry.lock') }}
