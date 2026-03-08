@@ -21,3 +21,21 @@ With all that ready, run:
 ```
 asdf install
 ```
+
+## Makefile
+
+Both client and server apps have `Makefile` files. They should make it easier for Frontend people to run backend app and vice versa.
+
+## Recommended learning resources
+
+### Backend:
+
+- [Python Documentation](https://docs.python.org/3/)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/learn/)
+- [Poetry Documentation](https://python-poetry.org/docs/)
+
+### Frontend:
+
+- [React Native Documentation](https://reactnative.dev/docs/getting-started)
+- [Expo Documentation](https://docs.expo.dev/)
+
