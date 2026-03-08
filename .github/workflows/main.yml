@@ -42,6 +42,40 @@ jobs:
       - uses: abatilo/actions-poetry@v3
         with:
           poetry-version: 2.3.2
-      - name: View poetry --help
-        run: poetry --help
+      - name: Install dependencies
+        run: poetry install
+      - name: Run lint check
+        run: poetry run ruff check app tests
+
+  server-format-check:
+    name: Check formatting (server)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: 3.14.3
+      - uses: abatilo/actions-poetry@v3
+        with:
+          poetry-version: 2.3.2
+      - name: Install dependencies
+        run: poetry install
+      - name: Run format check
+        run: poetry run ruff format --check app tests
+
+  server-test:
+    name: Run tests (server)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: 3.14.3
+      - uses: abatilo/actions-poetry@v3
+        with:
+          poetry-version: 2.3.2
+      - name: Install dependencies
+        run: poetry install
+      - name: Run tests
+        run: poetry run pytest
         
