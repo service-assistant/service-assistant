@@ -4,32 +4,8 @@ This part assumes that you've gone though main `README.md` file of the repositor
 
 ## Getting started
 
-Install required dependencies:
+Most important commands are listed in `Makefile`. To learn about their usage just run:
 
 ```
-npm install
-```
-
-## Linting / formatting
-
-To format code you can use:
-
-```
-npm run format
-```
-
-To verify all code formatting and linting is fine run (single command):
-
-```
-npm run lint
-```
-
-## Testing
-
-All tests should be put inside `__tests__` directory.
-
-To run all tests you can use:
-
-```
-npm run test
+make help
 ```
