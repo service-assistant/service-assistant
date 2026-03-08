@@ -65,6 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [client-lint, client-test, server-lint, server-format-check, server-test]
     concurrency: deploy-group
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
