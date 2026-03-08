@@ -8,9 +8,9 @@ Server app is made using [FastAPI](https://fastapi.tiangolo.com/) in `server` di
 
 ## Tool versions
 
-This project uses [asdf](https://asdf-vm.com/) to keep tool versions consistent. 
+This project uses [asdf](https://asdf-vm.com/) to keep tool versions consistent. I recommend installing it now.
 
-For backend/Python dependency management we use [poetry](https://python-poetry.org/). To make sure `asdf` works with it correctly run:
+For backend/Python dependency management we use [poetry](https://python-poetry.org/). Don't install it directly but through `asdf`. To make sure `asdf` works with it correctly run:
 
 ```
 asdf plugin add poetry https://github.com/asdf-community/asdf-poetry.git
@@ -24,7 +24,7 @@ asdf install
 
 ## Makefile
 
-Both client and server apps have `Makefile` files. They should make it easier for Frontend people to run backend app and vice versa.
+Both client and server apps have `Makefile` files. They should make it easier for frontend people to run backend app and vice versa.
 
 ## Recommended learning resources
 
@@ -36,9 +36,11 @@ Both client and server apps have `Makefile` files. They should make it easier fo
 
 ### Frontend:
 
+- [TypeScript for JS Programmers](https://www.typescriptlang.org/docs/handbook/typescript-in-5-minutes.html)
 - [React Native Documentation](https://reactnative.dev/docs/getting-started)
 - [Expo Documentation](https://docs.expo.dev/)
 
+
 ## Deployment
 
-Backend app is configured for automatical deployment to [https://service-assistant.fly.dev](https://service-assistant.fly.dev).
+Backend app is configured for automatical deployment from `main` branch to [https://service-assistant.fly.dev](https://service-assistant.fly.dev).
