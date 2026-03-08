@@ -1,8 +1,8 @@
-.PHONY: android test lint format install help
+.PHONY: help install android test lint format 
 
 help:
 	@echo "Available commands:"
-	@echo "  make android      - Start android app"
+	@echo "  make android  - Start android app"
 	@echo "  make test     - Run tests"
 	@echo "  make lint     - Check code style"
 	@echo "  make format   - Format code"
