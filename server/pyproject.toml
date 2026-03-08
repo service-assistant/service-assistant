@@ -1,0 +1,31 @@
+[project]
+name = "app"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Mateusz Mańczak",email = "mateuszmanczak@icloud.com"}
+]
+readme = "README.md"
+requires-python = ">=3.14"
+
+dependencies = [
+    "fastapi[standard] (>=0.135.1,<0.136.0)",
+]
+
+[dependency-groups]
+test = [
+    "pytest (>=9.0.2,<10.0.0)"
+]
+dev = [
+    "ruff (>=0.15.5,<0.16.0)"
+]
+
+[tool.poetry]
+package-mode = false
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.fastapi]
+entrypoint = "app.main:app"
