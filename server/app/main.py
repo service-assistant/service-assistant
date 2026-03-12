@@ -1,6 +1,6 @@
 from fastapi import FastAPI
-from app.routers import hello
+from app.routers import ai
 
 app = FastAPI()
 
-app.include_router(hello.router)
+app.include_router(ai.router)
