@@ -14,6 +14,10 @@ App should work on [http://localhost:8000](http://localhost:8000)
 
 OpenAPI on [http://localhost:8000/docs](http://localhost:8000/docs)
 
+## Environment variables
+
+`.env.example` contains all environment variables that our app needs. Just copy it as `.env` and fill in with all data/secrets.
+
 ## Docker
 
 For now we don't run any Docker services yet but there is `docker-compose.yml` file, just in case. To run it in the background, use:
