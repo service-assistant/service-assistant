@@ -4,10 +4,7 @@ from typing import Annotated
 
 router = APIRouter(prefix="/ai")
 
-client = OpenAI(
-    api_key="TODO"
-)
-
+client = OpenAI()
 
 @router.get("/")
 def demo(
