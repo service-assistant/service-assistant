@@ -16,8 +16,6 @@ OpenAPI on [http://localhost:8000/docs](http://localhost:8000/docs)
 
 ## Docker
 
-For now we don't run any Docker services yet but there is `docker-compose.yml` file, just in case. To run it in the background, use:
-
 ```
 docker-compose up -d
 ```
