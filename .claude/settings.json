@@ -14,7 +14,19 @@
             "Bash(rm -rf *)"
         ]
     },
-    "hooks": {},
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Edit|Write",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": ".claude/hooks/format.sh"
+                    }
+                ]
+            }
+        ]
+    },
     "model": "",
     "env": {},
     "outputStyle": ""
