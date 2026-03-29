@@ -1,0 +1,21 @@
+{
+    "permissions": {
+        "allow": [
+            "Bash(make *)",
+            "Bash(npm *)",
+            "Bash(poetry *)",
+            "Bash(ls *)",
+            "Bash(find *)",
+            "Bash(cat *)",
+            "Bash(docker-compose *)",
+            "Bash(docker compose *)"
+        ],
+        "ask": [
+            "Bash(rm -rf *)"
+        ]
+    },
+    "hooks": {},
+    "model": "",
+    "env": {},
+    "outputStyle": ""
+}
