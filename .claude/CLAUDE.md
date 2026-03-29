@@ -37,11 +37,13 @@ make format    # prettier --write .
 ### Client
 - Prettier: 100-char print width, tabs, 4-space indent, single quotes (see `client/.prettierrc`)
 - TypeScript strict mode; use `@/` path alias for imports
+- Use `npm`, not any of `bun`, `pnpm` or `yarn`
 
 ### Server
 - Ruff for both linting and formatting (no other formatters)
 - Routers go in `app/routers/`, business logic in `app/services/`, Pydantic models in `app/models/`
 - Python type checking mode is set to Standard
+- Project uses `Poetry` to manage Python dependencies
 
 ## Key Configuration
 
