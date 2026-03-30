@@ -3,4 +3,4 @@ from app.routers import hello
 
 app = FastAPI()
 
-app.include_router(hello.router)
+app.include_router(hello.router, prefix="/api")
