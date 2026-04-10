@@ -13,6 +13,7 @@ dependencies = [
     "httpx (>=0.28.1,<0.29.0)",
     "sqlmodel (>=0.0.38,<0.0.39)",
     "asyncpg (>=0.31.0,<0.32.0)",
+    "alembic (>=1.18.4,<2.0.0)",
 ]
 
 [dependency-groups]
