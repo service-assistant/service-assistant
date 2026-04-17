@@ -23,7 +23,8 @@ def hello_world() -> dict:
 
 # Normally, create models in separate directory
 # It's here just for a code demo
-class Hero(SQLModel, table=True):
+# table=False to not mess up in the real database
+class Hero(SQLModel, table=False):
     """Example model — not for production use."""
 
     id: int | None = Field(default=None, primary_key=True)
