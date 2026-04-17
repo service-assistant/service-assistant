@@ -341,25 +341,7 @@ export default function SelectVehicleScreen() {
 							/>
 							<Text className='text-white text-4xl font-bold'>Wybierz Pojazd</Text>
 						</View>
-						<View className='flex-row items-center'>
-							<TouchableOpacity className='bg-[#18181b] p-3 rounded-full mr-3 justify-center items-center'>
-								<Image
-									source={require('../../assets/images/camera.png')}
-									style={{ width: 24, height: 24 }}
-									resizeMode='contain'
-								/>
-							</TouchableOpacity>
-							<View className='flex-row items-center bg-[#18181b] px-4 py-3 rounded-full w-72'>
-								<Ionicons name='search' size={20} color='#9ca3af' />
-								<TextInput
-									value={searchQuery}
-									onChangeText={setSearchQuery}
-									placeholder='Wyszukaj pojazd...'
-									placeholderTextColor='#9ca3af'
-									className='text-white ml-3 flex-1 text-base outline-none'
-								/>
-							</View>
-						</View>
+
 					</View>
 
 					{/* Filtry Marek */}
@@ -438,39 +420,113 @@ export default function SelectVehicleScreen() {
 				/>
 			</View>
 
-			{/* ASYSTENT GŁOSOWY... */}
+			{/* ASYSTENT GŁOSOWY - POPRAWIONE CIENIE I TEKST */}
 			<View
 				pointerEvents='box-none'
-				className='absolute bottom-12 left-0 right-0 items-center justify-end z-50'>
-				<View className='items-center justify-center mb-4 relative'>
-					<View
-						className='absolute w-[76px] h-[76px] rounded-[24px]'
-						style={{
-							backgroundColor: ACCENT_COLOR,
-							shadowColor: ACCENT_COLOR,
-							shadowOffset: { width: 0, height: 0 },
-							shadowOpacity: 1,
-							shadowRadius: 20,
-							elevation: 24,
-						}}
-					/>
-					<TouchableOpacity
-						activeOpacity={0.8}
-						className='w-[84px] h-[84px] rounded-[24px] border-[1.5px] items-center justify-center z-10'
-						style={{ backgroundColor: '#09090b', borderColor: ACCENT_COLOR }}>
-						<Ionicons name='mic' size={44} color={ACCENT_COLOR} />
-					</TouchableOpacity>
-				</View>
-				<Text
-					className='text-[15px] font-bold tracking-[0.08em]'
+				className='absolute bottom-12 left-0 right-0 items-center justify-end z-50 px-6'>
+				{/* Główny kontener - "Glassmorphism" stabilny na tablecie */}
+				<View
 					style={{
-						color: ACCENT_COLOR,
-						textShadowColor: 'rgba(59, 130, 246, 0.5)',
-						textShadowOffset: { width: 0, height: 0 },
-						textShadowRadius: 10,
+						// Tło ciemne, lekko przezroczyste (odpowiednik szkła w Figmie)
+						backgroundColor: 'rgba(23, 23, 23, 0.95)',
+						borderRadius: 56,
+						paddingVertical: 28,
+						paddingHorizontal: 32,
+						minWidth: 360,
+						// Drop shadow (Cień spodu kontenera)
+						shadowColor: '#000',
+						shadowOffset: { width: 0, height: 32 },
+						shadowOpacity: 0.7,
+						shadowRadius: 64,
+						elevation: 24, // Android shadow
+						// Imitacja Inner Shadow (ramka)
+						borderWidth: 1,
+						borderColor: 'rgba(255, 255, 255, 0.05)',
 					}}>
-					ASYSTENT SŁUCHA
-				</Text>
+					{/* Grupa przycisków wewnątrz kontenera */}
+					<View className='flex-row items-center justify-center mb-6' style={{ gap: 32 }}>
+						{/* Lewy: Aparat */}
+						<TouchableOpacity
+							activeOpacity={0.7}
+							className='w-20 h-20 rounded-2xl items-center justify-center'
+							style={{
+								backgroundColor: 'rgba(255, 255, 255, 0.05)',
+								borderColor: 'rgba(255, 255, 255, 0.1)',
+								borderWidth: 1,
+							}}>
+							<Image
+								source={require('../../assets/images/camera.png')}
+								style={{ width: 32, height: 32, tintColor: 'white' }}
+								resizeMode='contain'
+							/>
+						</TouchableOpacity>
+
+						{/* Środkowy: Mikrofon z poświatą (Glow) */}
+						<View className='relative items-center justify-center w-28 h-28'>
+							{/* Glow za mikrofonem */}
+							<View
+								className='absolute w-[100px] h-[100px] rounded-[32px]'
+								style={{
+									backgroundColor: 'rgba(59, 130, 246, 0.25)', // Jaśniejsza niebieska poświata
+									shadowColor: '#3B82F6',
+									shadowOffset: { width: 0, height: 0 },
+									shadowOpacity: 1,
+									shadowRadius: 24,
+									elevation: 10,
+								}}
+							/>
+							<TouchableOpacity
+								activeOpacity={0.8}
+								className='absolute w-28 h-28 rounded-3xl border-2 items-center justify-center z-10'
+								style={{
+									backgroundColor: '#171717', // Pełny kolor tła przycisku
+									borderColor: '#3B82F6', // Niebieska obwódka
+								}}>
+								<Ionicons
+									name='mic'
+									size={54}
+									color='#3B82F6'
+									style={{
+										textShadowColor: 'rgba(59, 130, 246, 0.8)',
+										textShadowRadius: 15,
+									}}
+								/>
+							</TouchableOpacity>
+						</View>
+
+						{/* Prawy: Szukaj */}
+						<TouchableOpacity
+							activeOpacity={0.7}
+							className='w-20 h-20 rounded-2xl items-center justify-center'
+							style={{
+								backgroundColor: 'rgba(255, 255, 255, 0.05)',
+								borderColor: 'rgba(255, 255, 255, 0.1)',
+								borderWidth: 1,
+							}}>
+							<Image
+								source={require('../../assets/images/search.png')}
+								style={{ width: 32, height: 32, tintColor: 'white' }}
+								resizeMode='contain'
+							/>
+						</TouchableOpacity>
+					</View>
+
+					{/* Tekst pod przyciskami */}
+					<View className='items-center'>
+						<Text
+							className='font-black text-2xl uppercase tracking-[4px]'
+							style={{
+								color: '#3B82F6', // Niebieski tekst
+								textShadowColor: 'rgba(0, 0, 0, 0.8)',
+								textShadowOffset: { width: 0, height: 2 },
+								textShadowRadius: 4,
+							}}>
+							ASYSTENT SŁUCHA
+						</Text>
+						{/* Podpis z obrazka z instrukcją dla użytkownika */}
+
+					</View>
+				</View>
 			</View>
 		</SafeAreaView>
 	);
