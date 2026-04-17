@@ -10,6 +10,8 @@ EMBEDDING_DIMENSIONS = 1024
 
 
 class AttachmentChunk(SQLModel, table=True):
+    __tablename__ = "attachment_chunks"  # type: ignore[assignment]
+
     id: int | None = Field(default=None, primary_key=True)
     content: str
     embedding: Any = Field(
