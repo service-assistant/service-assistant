@@ -47,6 +47,6 @@ make format    # prettier --write .
 
 ## Key Configuration
 
-- Tool versions pinned via asdf in `.tool-versions` (Node 24.14.0, Python 3.14.3, Poetry 2.3.2)
+- Tool versions pinned via asdf in `.tool-versions` (Node 24.14.0, Python 3.12.13, Poetry 2.3.2)
 - Server env vars (OpenAI key, Postgres, Qdrant URL) live in `server/.env`
 - Expo new architecture and React Compiler are enabled (`client/app.json`)
