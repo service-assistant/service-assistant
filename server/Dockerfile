@@ -1,4 +1,4 @@
-FROM python:3.14.3-slim
+FROM python:3.12.13-slim
 
 ENV POETRY_VERSION=2.3.2 \
     POETRY_VIRTUALENVS_CREATE=false \
