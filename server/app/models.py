@@ -6,7 +6,7 @@ from sqlalchemy import Column
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
-EMBEDDING_DIMENSIONS = 1024
+EMBEDDING_DIMENSIONS = 1536
 
 
 class AttachmentChunk(SQLModel, table=True):
