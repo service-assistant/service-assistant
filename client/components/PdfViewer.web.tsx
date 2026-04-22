@@ -12,7 +12,7 @@ export default function PdfViewer({ source }: { source: any }) {
 					marginLeft: '-2%',
 					marginTop: '-2%',
 					border: 'none',
-					filter: 'grayscale(100%) invert(96.5%) brightness(0.9)',
+					filter: 'grayscale(100%) invert(100%) brightness(0.9)',
 				}}
 				title='Instrukcja PDF'
 			/>

@@ -4,25 +4,22 @@ import {
 	Image,
 	Platform,
 	ScrollView,
-	Switch,
 	Text,
 	TouchableOpacity,
 	View,
 } from 'react-native';
 
-// 1. Importujemy rozpoznawanie mowy
-import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
-// 2. Importujemy syntezator mowy (Text-to-Speech)
-import * as Speech from 'expo-speech';
-// 3. Importujemy moduł do odtwarzania audio
+// Odtwarzanie i nagrywanie audio
 import { Audio, AVPlaybackStatus } from 'expo-av';
-// 4. Importujemy system plików, żeby zapisać plik z OpenAI
 import * as FileSystem from 'expo-file-system/legacy';
-import PdfViewer from '@/components/PdfViewer'; // ✅ Let Expo do the magic!
-// 5. IMPORTUJEMY NASZ INTELIGENTNY CZYTNIK PDF (Automatycznie wybierze .web.tsx lub .native.tsx)
+import { Feather } from '@expo/vector-icons';
 
-const SERVER_URL = 'http://localhost:8000';
-// WPISZ TUTAJ SWÓJ KLUCZ API OPENAI
+import RightPanel from "@/components/RightPanel";
+import {useRouter} from "expo-router";
+
+const SERVER_URL = 'http://10.0.2.2:8000';
+// EXPO_PUBLIC_OPENAI_API_KEY
+// EXPO_PUBLIC_DEEPGRAM_API_KEY
 
 interface Message {
 	id: number;
@@ -31,40 +28,28 @@ interface Message {
 }
 
 export default function HomeScreen() {
+	const router = useRouter();
+	const [showSchema, setShowSchema] = useState<boolean>(true);
+	const [selectedPdf, setSelectedPdf] = useState<any>(null);
 	const [isListening, setIsListening] = useState<boolean>(false);
-	const [recognizedText, setRecognizedText] = useState<string>('');
 	const [isLoading, setIsLoading] = useState<boolean>(false);
 
-	// Przełączniki systemów
-	const [useChatGPT, setUseChatGPT] = useState<boolean>(false);
-	const [useDeepgram, setUseDeepgram] = useState<boolean>(false);
-
-	// Nagrywanie audio dla Deepgram
 	const recordingRef = useRef<Audio.Recording | null>(null);
 
-	// REFY DLA CISZY (Deepgram VAD)
 	const lastLoudTime = useRef<number>(0);
 	const hasSpoken = useRef<boolean>(false);
-	const silenceThreshold = -50; // Próg głośności (decybele, np. -40 to cisza)
-	const silenceDuration = 2500; // Ile ms ciszy przed wysłaniem?
+	const silenceThreshold = -50;
+	const silenceDuration = 2500;
 	const initialSilenceDuration = 5000;
 
-	// Typujemy Refy
-	const silenceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-	const currentTranscript = useRef<string>('');
-
-	// Otypowane stany prawego panelu
 	const [currentImage, setCurrentImage] = useState<string | null>(null);
-	const [currentSource, setCurrentSource] = useState<string>('Oczekiwanie na zapytanie...');
+	const [currentSource, setCurrentSource] = useState<string>('02-8FGF15');
 
 	const initialMessage = 'Cześć. Jestem gotowy. Wybierz maszynę lub zadaj pytanie o naprawę.';
 	const [messages, setMessages] = useState<Message[]>([
 		{ id: 1, sender: 'ai', text: initialMessage },
 	]);
 
-	const hasAskedQuestion = messages.length > 1;
-
-	// --- LOGIKA CHATGPT TTS ---
 	const playChatGptAudio = async (text: string) => {
 		try {
 			const response = await fetch('https://api.openai.com/v1/audio/speech', {
@@ -98,8 +83,7 @@ export default function HomeScreen() {
 				reader.onload = async () => {
 					if (typeof reader.result === 'string') {
 						const base64data = reader.result.split(',')[1];
-						const fileUri =
-							(FileSystem.documentDirectory || '') + 'chatgpt_response.mp3';
+						const fileUri = (FileSystem.documentDirectory || '') + 'chatgpt_response.mp3';
 						await FileSystem.writeAsStringAsync(fileUri, base64data, {
 							encoding: 'base64',
 						});
@@ -119,11 +103,9 @@ export default function HomeScreen() {
 			}
 		} catch (error) {
 			console.error('Błąd odtwarzania ChatGPT TTS:', error);
-			Speech.speak(text, { language: 'pl-PL' });
 		}
 	};
 
-	// --- EFEKTY ---
 	useEffect(() => {
 		Audio.setAudioModeAsync({
 			playsInSilentModeIOS: true,
@@ -131,19 +113,14 @@ export default function HomeScreen() {
 			shouldDuckAndroid: true,
 			allowsRecordingIOS: true,
 		});
-
-		return () => {
-			Speech.stop();
-		};
 	}, []);
 
-	// --- LOGIKA POŁĄCZENIA Z TWOIM API ---
+	useEffect(() => {
+		if (currentImage) setShowSchema(true);
+	}, [currentImage]);
+
 	const askAPI = async (question: string) => {
 		setIsLoading(true);
-
-		if (!useChatGPT) {
-			Speech.speak('Szukam w instrukcji...', { language: 'pl-PL', rate: 1.1 });
-		}
 
 		try {
 			const response = await fetch(`${SERVER_URL}/ask`, {
@@ -158,42 +135,30 @@ export default function HomeScreen() {
 
 			setMessages((prev) => [
 				...prev,
-				{
-					id: Date.now(),
-					sender: 'ai',
-					text: data.odpowiedz,
-				},
+				{ id: Date.now(), sender: 'ai', text: data.odpowiedz },
 			]);
 
-			setCurrentSource(data.zrodlo !== 'Nieznany' ? data.zrodlo : 'Brak przypisanego działu');
+			setCurrentSource(data.zrodlo !== 'Nieznany' ? data.zrodlo : '02-8FGF15');
 			if (data.obrazki && data.obrazki.length > 0) {
 				setCurrentImage(`${SERVER_URL}${data.obrazki[0]}`);
 			} else {
 				setCurrentImage(null);
 			}
 
-			if (useChatGPT) {
-				playChatGptAudio(data.odpowiedz);
-			} else {
-				Speech.speak(data.odpowiedz, { language: 'pl-PL', pitch: 0.9, rate: 0.9 });
-			}
+			playChatGptAudio(data.odpowiedz);
 		} catch (error) {
 			console.error('Błąd API:', error);
+			const errorMsg = 'Przepraszam, nie mogłem połączyć się z serwerem.';
 			setMessages((prev) => [
 				...prev,
-				{
-					id: Date.now(),
-					sender: 'ai',
-					text: 'Przepraszam, nie mogłem połączyć się z serwerem.',
-				},
+				{ id: Date.now(), sender: 'ai', text: errorMsg },
 			]);
-			if (!useChatGPT) Speech.speak('Błąd połączenia z bazą danych.', { language: 'pl-PL' });
+			playChatGptAudio(errorMsg);
 		} finally {
 			setIsLoading(false);
 		}
 	};
 
-	// --- POPRAWIONA WYSYŁKA DO DEEPGRAM ---
 	const sendToDeepgram = async (uri: string) => {
 		setIsLoading(true);
 		try {
@@ -234,7 +199,6 @@ export default function HomeScreen() {
 		}
 	};
 
-	// --- FUNKCJA ZATRZYMUJĄCA I WYSYŁAJĄCA ---
 	const stopRecordingAndSend = async () => {
 		const recObj = recordingRef.current;
 		if (!recObj) return;
@@ -251,10 +215,8 @@ export default function HomeScreen() {
 		}
 	};
 
-	// --- MONITOROWANIE CISZY ---
 	const onRecordingStatusUpdate = (status: Audio.RecordingStatus) => {
 		if (!status.canRecord || !status.isRecording) return;
-
 		const now = Date.now();
 
 		if (status.metering !== undefined) {
@@ -264,12 +226,10 @@ export default function HomeScreen() {
 			} else {
 				if (hasSpoken.current) {
 					if (now - lastLoudTime.current > silenceDuration) {
-						console.log('Koniec mowy, wysyłam do Deepgram...');
 						stopRecordingAndSend();
 					}
 				} else {
 					if (now - lastLoudTime.current > initialSilenceDuration) {
-						console.log('Zbyt długa cisza na start, wyłączam...');
 						stopRecordingAndSend();
 					}
 				}
@@ -277,73 +237,28 @@ export default function HomeScreen() {
 		}
 	};
 
-	// --- HOOKI DO OBSŁUGI GŁOSU (ANDROID STT) ---
-	useSpeechRecognitionEvent('start', () => setIsListening(true));
-
-	useSpeechRecognitionEvent('end', () => {
-		if (!useDeepgram) setIsListening(false);
-		if (silenceTimer.current) clearTimeout(silenceTimer.current);
-	});
-
-	useSpeechRecognitionEvent('result', (event) => {
-		if (useDeepgram) return;
-
-		if (event.results.length > 0) {
-			let fullTranscript = '';
-			for (const result of event.results) {
-				fullTranscript += result.transcript + ' ';
-			}
-			fullTranscript = fullTranscript.trim();
-
-			setRecognizedText(fullTranscript);
-			currentTranscript.current = fullTranscript;
-
-			if (silenceTimer.current) clearTimeout(silenceTimer.current);
-
-			silenceTimer.current = setTimeout(() => {
-				if (currentTranscript.current.trim().length > 0) {
-					const textToSend = currentTranscript.current;
-
-					setRecognizedText('');
-					currentTranscript.current = '';
-					ExpoSpeechRecognitionModule.stop();
-
-					setMessages((prev) => [
-						...prev,
-						{ id: Date.now(), sender: 'user', text: textToSend },
-					]);
-					askAPI(textToSend);
-				}
-			}, 2500);
-		}
-	});
-
-	useSpeechRecognitionEvent('error', (event) => {
-		console.log('Błąd rozpoznawania:', event.error);
-		if (!useDeepgram) setIsListening(false);
-		setRecognizedText('');
-		if (silenceTimer.current) clearTimeout(silenceTimer.current);
-	});
-
-	// --- LOGIKA PRZYCISKU ---
 	const handleMicPress = async () => {
-		Speech.stop();
+		if (isListening) {
+			// Zgaszenie guzika natychmiast przy wyłączaniu
+			setIsListening(false);
+			await stopRecordingAndSend();
+		} else {
+			// 1. NATYCHMIASTOWA REAKCJA UI
+			setIsListening(true);
 
-		if (useDeepgram) {
-			if (isListening && recordingRef.current) {
-				await stopRecordingAndSend();
-			} else {
+			// 2. WYMUSZAMY RENDEROWANIE EKRANU
+			setTimeout(async () => {
 				try {
+					// Sprawdzenie uprawnień
 					const { granted } = await Audio.requestPermissionsAsync();
-					if (!granted) return;
-
-					await Audio.setAudioModeAsync({
-						allowsRecordingIOS: true,
-						playsInSilentModeIOS: true,
-					});
+					if (!granted) {
+						setIsListening(false);
+						return;
+					}
 
 					hasSpoken.current = false;
 
+					// Włączanie sprzętu zaczyna się DOPIERO gdy guzik już świeci
 					const { recording: newRecording } = await Audio.Recording.createAsync(
 						{
 							...Audio.RecordingOptionsPresets.HIGH_QUALITY,
@@ -363,221 +278,147 @@ export default function HomeScreen() {
 
 					lastLoudTime.current = Date.now();
 					recordingRef.current = newRecording;
-					setIsListening(true);
+
 				} catch (err) {
 					console.error('Błąd startu nagrywania:', err);
+					setIsListening(false);
 				}
-			}
-		} else {
-			if (isListening) {
-				ExpoSpeechRecognitionModule.stop();
-				if (silenceTimer.current) clearTimeout(silenceTimer.current);
-				if (currentTranscript.current.trim().length > 0) {
-					const textToSend = currentTranscript.current;
-					setRecognizedText('');
-					currentTranscript.current = '';
-					setMessages((prev) => [
-						...prev,
-						{ id: Date.now(), sender: 'user', text: textToSend },
-					]);
-					askAPI(textToSend);
-				}
-			} else {
-				setRecognizedText('');
-				currentTranscript.current = '';
-
-				const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-				if (!permission.granted) {
-					console.warn('Brak uprawnień do mikrofonu lub rozpoznawania mowy!');
-					return;
-				}
-
-				ExpoSpeechRecognitionModule.start({
-					lang: 'pl-PL',
-					interimResults: true,
-					continuous: true,
-				});
-			}
+			}, 50);
 		}
 	};
 
-	// --- UI ---
 	return (
-		<View className='flex-1 flex-row bg-black'>
-			{/* Lewy panel */}
-			<View className='w-[35%] bg-[#0f172a] border-r border-[#3B3C3E]'>
-				<View className='h-[60px] bg-[#18181B] justify-between items-center px-4 flex-row border-b border-[#334E68]'>
-					<View>
-						<Text className='text-slate-300 font-bold tracking-widest text-xs'>
-							FLT ASYSTENT
-						</Text>
-						<View className='flex-row items-center mt-0.5'>
-							<View className='w-2 h-2 rounded-full bg-green-500 mr-1.5' />
-							<Text className='text-green-500 font-bold tracking-widest text-[10px]'>
-								System Online
-							</Text>
-						</View>
-					</View>
+		<View className='flex-1 flex-row bg-black p-4'>
 
-					{/* PRZEŁĄCZNIKI */}
-					<View className='flex-col gap-1 items-end'>
-						<View className='flex-row items-center gap-2'>
-							<Text className='text-slate-400 text-[9px] font-bold tracking-wider'>
-								{useDeepgram ? 'DEEPGRAM STT' : 'ANDROID STT'}
-							</Text>
-							<Switch
-								value={useDeepgram}
-								onValueChange={setUseDeepgram}
-								trackColor={{ false: '#3E3E42', true: '#1A4E8A' }}
-								thumbColor={useDeepgram ? '#60A5FA' : '#a3a3a3'}
-								style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-							/>
-						</View>
-						<View className='flex-row items-center gap-2'>
-							<Text className='text-slate-400 text-[9px] font-bold tracking-wider'>
-								{useChatGPT ? 'CHATGPT TTS' : 'ANDROID TTS'}
-							</Text>
-							<Switch
-								value={useChatGPT}
-								onValueChange={setUseChatGPT}
-								trackColor={{ false: '#3E3E42', true: '#1A4E8A' }}
-								thumbColor={useChatGPT ? '#60A5FA' : '#a3a3a3'}
-								style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
-							/>
-						</View>
-					</View>
+			{/* LEWY PANEL (Pływający Chat) */}
+			<View className='w-[32%] h-full flex flex-col'>
+
+				{/* ZMIANA: Przycisk WSTECZ, separator, logo i model */}
+				<View className='w-full h-14 mb-4 flex-row items-center'>
+					<TouchableOpacity className='flex-row items-center border border-[#CC5500] px-4 py-3 rounded-md bg-[#0a0a0a]' onPress={() => router.push('/home')}>
+						<Feather name="arrow-left" size={18} color="#CC5500" />
+						<Text className='text-[#CC5500] font-bold ml-2 tracking-widest text-[11px] uppercase'>WSTECZ</Text>
+					</TouchableOpacity>
+
+					{/* Separator */}
+					<Text className='text-neutral-600 mx-4 text-xl'>|</Text>
+
+					{/* Logo Toyota */}
+					<Image
+						source={require('../../assets/images/toyota.png')}
+						style={{ width: 70, height: 20 }}
+						resizeMode="contain"
+					/>
+
+					{/* Numer modelu */}
+					<Text className='text-slate-200 font-bold ml-4 tracking-widest text-sm uppercase'>
+						02-8FGF15
+					</Text>
 				</View>
 
-				<View className='flex-1'>
-					<ScrollView className='h-[70%] w-full bg-[#0B1120] p-4'>
-						<View className='flex flex-col gap-5 pb-8'>
+				<View className='flex-1 border border-[#CC5500] rounded-2xl bg-[#09090B] flex-col overflow-hidden'>
+					<View className='p-4 border-b border-neutral-800 flex-row items-center'>
+						<View className='w-15 h-15 rounded-md border border-[#CC5500] items-center justify-center mr-3'>
+							{/* ZMIANA: Zastąpienie wektorowej ikony robota obrazkiem */}
+							<Image
+								source={require('../../assets/images/robot.png')}
+								style={{ width: 40, height: 40, tintColor: '#CC5500' }}
+								resizeMode="contain"
+							/>
+						</View>
+						<View>
+							<Text className='text-slate-200 font-bold tracking-widest text-xs'>FLT ASYSTENT</Text>
+							<View className='flex-row items-center mt-1'>
+								<View className='w-2 h-2 rounded-full bg-green-500 mr-1.5' />
+								<Text className='text-green-500 font-bold tracking-widest text-[10px]'>System Online</Text>
+							</View>
+						</View>
+					</View>
+
+					<ScrollView className='flex-1 p-4'>
+						<View className='flex flex-col gap-4 pb-4'>
 							{messages.map((msg) =>
 								msg.sender === 'ai' ? (
-									<View
-										key={msg.id}
-										className='flex-row w-full gap-3 justify-start'>
-										<View className='w-8 h-8 rounded-full bg-[#E2E8F0] items-center justify-center mt-1'>
-											<Text className='text-slate-800 text-xs font-bold'>
-												AI
-											</Text>
-										</View>
-										<View className='border border-slate-700/80 bg-[#0F172A] rounded-2xl px-4 py-3 max-w-[85%]'>
-											<Text className='text-slate-200 text-[15px] leading-6'>
-												{msg.text}
-											</Text>
-										</View>
+									<View key={msg.id} className='bg-[#1E1E22] rounded-2xl rounded-tl-sm px-4 py-3 self-start max-w-[90%]'>
+										<Text className='text-slate-300 text-[14px] leading-5'>{msg.text}</Text>
 									</View>
 								) : (
-									<View
-										key={msg.id}
-										className='flex-row w-full gap-3 justify-end'>
-										<View className='bg-[#24548E] rounded-2xl px-4 py-3 max-w-[85%]'>
-											<Text className='text-white text-[15px] leading-6'>
-												{msg.text}
-											</Text>
-										</View>
-										<View className='w-8 h-8 rounded-full border border-slate-500 bg-[#1E293B] items-center justify-center mt-1'>
-											<Text className='text-slate-300 text-xs font-bold'>
-												TY
-											</Text>
-										</View>
+									<View key={msg.id} className='bg-[#A64D00] rounded-2xl rounded-tr-sm px-4 py-3 self-end max-w-[90%]'>
+										<Text className='text-white text-[14px] leading-5'>{msg.text}</Text>
 									</View>
 								),
 							)}
 
 							{isLoading && (
-								<View className='flex-row w-full gap-3 justify-start opacity-70 mt-2'>
-									<View className='w-8 h-8 rounded-full bg-[#E2E8F0] items-center justify-center'>
-										<ActivityIndicator size='small' color='#0F172A' />
-									</View>
-									<Text className='text-slate-400 text-xs self-center'>
-										Analiza danych...
-									</Text>
-								</View>
-							)}
-
-							{(isListening || recognizedText.length > 0) && (
-								<View className='flex-row w-full gap-3 justify-end opacity-80'>
-									<View className='bg-[#1A4E8A] border border-[#3b82f6] rounded-2xl px-4 py-3 max-w-[85%]'>
-										<Text className='text-white text-[15px] leading-6 italic'>
-											{recognizedText ||
-												(useDeepgram ? 'Nagrywam...' : 'Słucham...')}
-										</Text>
-									</View>
-									<View className='w-8 h-8 rounded-full border border-slate-500 bg-[#1E293B] items-center justify-center mt-1'>
-										<Text className='text-slate-300 text-xs font-bold'>TY</Text>
-									</View>
+								<View className='bg-[#1E1E22] rounded-2xl px-4 py-3 self-start flex-row items-center'>
+									<ActivityIndicator size='small' color='#CC5500' />
+									<Text className='text-slate-400 text-xs ml-3'>Przetwarzanie...</Text>
 								</View>
 							)}
 						</View>
 					</ScrollView>
 
-					<View className='h-[30%] w-full justify-center items-center bg-[#18181B] border-t border-[#334E68] z-10'>
-						<Text className='text-[#8C8989] text-xs font-semibold tracking-widest mb-4'>
-							{isListening
-								? useDeepgram
-									? 'NAGRYWANIE (MÓW LUB TAPNIJ BY WYSŁAĆ)'
-									: 'NASŁUCHIWANIE...'
-								: 'NACIŚNIJ, ABY ZADAĆ PYTANIE'}
-						</Text>
+					{/* --- 3 GUZIKI + TEKST --- */}
+					<View className='w-full px-4 py-6 flex-row justify-center items-center gap-6 border-t border-neutral-900'>
 
-						<TouchableOpacity
-							onPress={handleMicPress}
-							activeOpacity={0.6}
-							disabled={isLoading}
-							className={`w-[84px] h-[84px] rounded-full border-[3px] justify-center items-center ${
-								isListening
-									? 'bg-red-600 border-red-400'
-									: 'bg-[#1A4E8A] border-slate-200'
-							} ${isLoading ? 'opacity-50' : ''}`}>
+						{/* Aparat (72px) */}
+						<TouchableOpacity className='w-[72px] h-[72px] bg-[#121212] border border-black rounded-[12px] items-center justify-center'>
 							<Image
-								source={require('../../assets/images/micro.png')}
-								style={{ width: 50, height: 50 }}
-								resizeMode='contain'
+								source={require('../../assets/images/camera.png')}
+								style={{ width: 32, height: 32, tintColor: '#A3A3A3' }}
+								resizeMode="contain"
 							/>
 						</TouchableOpacity>
 
-						{!isListening && (
-							<Text className='text-[#8C8989] text-xs font-medium tracking-wider mt-4 uppercase'>
-								lub powiedz "start"
+						{/* Mikrofon (112px) + Tekst informacyjny */}
+						<View className='items-center flex-col gap-3'>
+							<TouchableOpacity
+								onPressIn={handleMicPress}
+								className={`w-[112px] h-[112px] rounded-[12px] items-center justify-center ${
+									isListening ? 'bg-[#2A1100] border-2 border-[#FF6600]' : 'bg-[#121212] border border-black'
+								}`}
+							>
+								<Image
+									source={require('../../assets/images/micro.png')}
+									style={{ width: 56, height: 56, tintColor: isListening ? '#FF6600' : '#A3A3A3' }}
+									resizeMode="contain"
+								/>
+							</TouchableOpacity>
+							<Text className={`text-[10px] font-bold tracking-widest ${isListening ? 'text-[#FF6600]' : 'text-[#A3A3A3]'}`}>
+								{isListening ? 'SŁUCHAM...' : 'NACIŚNIJ ŻEBY MÓWIĆ'}
 							</Text>
-						)}
-					</View>
-				</View>
-			</View>
-
-			{/* Prawy panel - dokumentacja */}
-			<View className='w-[65%] bg-[#0a0a0a]'>
-				<View className='h-[60px] bg-[#18181B] flex-row items-center justify-center px-6 border-b border-neutral-800'>
-					<View className='bg-orange-600 px-2 py-0.5 rounded mr-3'>
-						<Text className='text-white text-xs font-bold tracking-wider'>ŹRÓDŁO</Text>
-					</View>
-					<Text className='text-neutral-300 font-medium mr-3'>
-						{!hasAskedQuestion ? 'Dokumentacja PDF' : currentSource}
-					</Text>
-				</View>
-
-				<View className='flex-1 items-center justify-center p-4'>
-					{!hasAskedQuestion ? (
-						<View className='w-full h-full overflow-hidden bg-[#09090B] rounded-lg'>
-							{/* NASZ NOWY INTELIGENTNY KOMPONENT PDF */}
-							<PdfViewer source={require('../../assets/instrukcje.pdf')} />
 						</View>
-					) : currentImage ? (
-						<Image
-							source={{ uri: currentImage }}
-							style={{ width: '100%', height: '100%' }}
-							resizeMode='contain'
-						/>
-					) : (
-						<Text className='text-neutral-600'>
-							{isLoading
-								? 'Wyszukiwanie schematu...'
-								: 'Brak schematu do wyświetlenia dla tego zapytania.'}
-						</Text>
-					)}
+
+						{/* Lupa (72px) */}
+						<TouchableOpacity className='w-[72px] h-[72px] bg-[#121212] border border-black rounded-[12px] items-center justify-center'>
+							<Image
+								source={require('../../assets/images/search.png')}
+								style={{ width: 32, height: 32, tintColor: '#A3A3A3' }}
+								resizeMode="contain"
+							/>
+						</TouchableOpacity>
+
+					</View>
 				</View>
 			</View>
+
+			{/* PRAWY PANEL */}
+			<RightPanel
+				currentSource={currentSource}
+				hasAskedQuestion={messages.length > 1}
+				currentImage={currentImage}
+				isLoading={isLoading}
+				isListening={isListening}
+				onMicPress={handleMicPress}
+				selectedPdf={selectedPdf}
+				showSchema={showSchema}
+				setShowSchema={setShowSchema}
+				onSelectPdf={(pdf: any) => {
+					setSelectedPdf(pdf);
+					setShowSchema(false);
+				}}
+				setCurrentImage={setCurrentImage}
+			/>
 		</View>
 	);
 }
