@@ -12,7 +12,6 @@ import {
 	SafeAreaView,
 	ScrollView,
 	Text,
-	TextInput,
 	TouchableOpacity,
 	View,
 } from 'react-native';
@@ -85,8 +84,7 @@ const BRAND_FILTERS = [
 ];
 const TYPE_FILTERS = ['WSZYSTKIE', 'PALETOWY', 'PALETOWY Z MASZTEM', 'CZOŁOWY'];
 
-const PRIMARY_BLUE = '#215A92';
-const ACCENT_COLOR = '#3B82F6';
+const PRIMARY_ORANGE = '#FF6B00';
 
 const FILTER_LOGO_SIZES: Record<string, { width: number; height: number }> = {
 	TOYOTA: { width: 96, height: 26 },
@@ -98,17 +96,14 @@ const FILTER_LOGO_SIZES: Record<string, { width: number; height: number }> = {
 	DEFAULT: { width: 84, height: 26 },
 };
 
-const INLINE_LOGO_SIZES: Record<
-	string,
-	{ width: number; height: number; offsetWeb: number; offsetNative: number }
-> = {
-	TOYOTA: { width: 84, height: 24, offsetWeb: 4, offsetNative: 5 },
-	DIECI: { width: 60, height: 24, offsetWeb: 4, offsetNative: 5 },
-	UNICARRIERS: { width: 108, height: 24, offsetWeb: 5, offsetNative: 6 },
-	TCM: { width: 54, height: 24, offsetWeb: 4, offsetNative: 5 },
-	STILL: { width: 54, height: 24, offsetWeb: 4, offsetNative: 5 },
-	JUNGHEINRICH: { width: 108, height: 24, offsetWeb: 5, offsetNative: 6 },
-	DEFAULT: { width: 72, height: 24, offsetWeb: 4, offsetNative: 5 },
+const INLINE_LOGO_SIZES: Record<string, { width: number; height: number }> = {
+	TOYOTA: { width: 84, height: 24 },
+	DIECI: { width: 60, height: 24 },
+	UNICARRIERS: { width: 108, height: 24 },
+	TCM: { width: 54, height: 24 },
+	STILL: { width: 54, height: 24 },
+	JUNGHEINRICH: { width: 108, height: 24 },
+	DEFAULT: { width: 72, height: 24 },
 };
 
 const getBrandLogo = (brand: string): ImageSourcePropType | null => {
@@ -131,6 +126,10 @@ const getBrandLogo = (brand: string): ImageSourcePropType | null => {
 };
 
 // --- KOMPONENTY POMOCNICZE ---
+
+const ListeningPulse = () => (
+	<View className="absolute top-0 bottom-0 left-0 right-0 bg-[#FF6600]/20 rounded-[12px]" />
+);
 
 const BrandLogoOrText: React.FC<{ brand: string; active: boolean }> = ({ brand, active }) => {
 	const [imageError, setImageError] = useState(false);
@@ -176,7 +175,6 @@ const InlineBrandAsset: React.FC<{ brand: string }> = ({ brand }) => {
 
 	if (logoSource && !imageError) {
 		const config = INLINE_LOGO_SIZES[brand.toUpperCase()] || INLINE_LOGO_SIZES.DEFAULT;
-		const verticalOffset = Platform.OS === 'web' ? config.offsetWeb : config.offsetNative;
 
 		return (
 			<Image
@@ -184,7 +182,6 @@ const InlineBrandAsset: React.FC<{ brand: string }> = ({ brand }) => {
 				style={{
 					width: config.width,
 					height: config.height,
-					transform: [{ translateY: verticalOffset }],
 					marginHorizontal: 6,
 				}}
 				resizeMode='contain'
@@ -192,7 +189,7 @@ const InlineBrandAsset: React.FC<{ brand: string }> = ({ brand }) => {
 			/>
 		);
 	}
-	return <Text>{brand.toUpperCase()}</Text>;
+	return <Text className='text-white text-xl font-semibold mx-1'>{brand.toUpperCase()}</Text>;
 };
 
 // --- GŁÓWNY EKRAN ---
@@ -204,25 +201,23 @@ export default function SelectVehicleScreen() {
 	const [searchQuery, setSearchQuery] = useState<string>('');
 	const [selectedImage, setSelectedImage] = useState<ImageSourcePropType | null>(null);
 
-	// Dynamiczna wysokość nagłówka
-	const [headerHeight, setHeaderHeight] = useState(0);
+	const [isListening, setIsListening] = useState(false);
 
-	// Animacje
+	const onMicPress = () => {
+		setIsListening(!isListening);
+	};
+
+	const [headerHeight, setHeaderHeight] = useState(0);
 	const scrollY = useRef(new Animated.Value(0)).current;
 
-	// --- POPRAWKI ANIMACJI ---
-	// Zamiast sztywnego zakresu (np. `100`), używamy dynamicznego `headerHeight`.
-	// Nagłówek zacznie znikać w tym samym momencie i z tą samą prędkością,
-	// co lista wjeżdżająca pod niego. To zapobiega nagłemu przeskokowi i czarnemu ekranowi.
-
 	const headerTranslateY = scrollY.interpolate({
-		inputRange: [0, headerHeight || 1], // Unikamy dzielenia przez 0 przed zmierzeniem
-		outputRange: [0, -(headerHeight || 1)], // Chowa panel dokładnie o jego wysokość
+		inputRange: [0, headerHeight || 1],
+		outputRange: [0, -(headerHeight || 1)],
 		extrapolate: 'clamp',
 	});
 
 	const headerOpacity = scrollY.interpolate({
-		inputRange: [0, headerHeight || 1], // Synchronizacja ze znikaniem
+		inputRange: [0, headerHeight || 1],
 		outputRange: [1, 0],
 		extrapolate: 'clamp',
 	});
@@ -251,10 +246,18 @@ export default function SelectVehicleScreen() {
 			elements = next;
 		});
 		return (
-			<Text className='text-white text-xl font-semibold text-center mb-6' numberOfLines={1}>
-				{elements}
-			</Text>
-		);
+		<View className='flex-row flex-wrap justify-center items-center mb-3 min-h-[32px]'>
+			{elements.map((el, index) =>
+				typeof el === 'string' ? (
+					<Text key={index} className='text-white text-xl font-semibold'>
+						{el}
+					</Text>
+				) : (
+					el
+				)
+			)}
+		</View>
+	);
 	};
 
 	const renderVehicleCard = ({ item }: { item: Vehicle }) => (
@@ -276,7 +279,7 @@ export default function SelectVehicleScreen() {
 				{renderVehicleName(item.name)}
 				<TouchableOpacity
 					onPress={() => router.push('/inside')}
-					style={{ backgroundColor: PRIMARY_BLUE }}
+					style={{ backgroundColor: PRIMARY_ORANGE }}
 					className='w-full py-4 rounded-xl flex-row justify-center items-center'>
 					<Text className='text-white font-bold text-base'>WYBIERZ ➔</Text>
 				</TouchableOpacity>
@@ -286,7 +289,6 @@ export default function SelectVehicleScreen() {
 
 	return (
 		<SafeAreaView className='flex-1 bg-[#09090b]'>
-			{/* PODGLĄD MODALNY */}
 			<Modal
 				visible={!!selectedImage}
 				transparent
@@ -313,10 +315,6 @@ export default function SelectVehicleScreen() {
 			</Modal>
 
 			<View className='flex-1'>
-				{/* 1. PANEL GÓRNY (ABSOLUTNY)
-                Musi mieć tło, żeby lista pod nim znikała, a nie prześwitywała.
-                DODANO `onLayout` do zmierzenia dokładnej wysokości.
-             */}
 				<Animated.View
 					onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
 					style={{
@@ -341,10 +339,8 @@ export default function SelectVehicleScreen() {
 							/>
 							<Text className='text-white text-4xl font-bold'>Wybierz Pojazd</Text>
 						</View>
-
 					</View>
 
-					{/* Filtry Marek */}
 					<View className='mb-4'>
 						<Text className='text-gray-400 text-sm font-bold uppercase tracking-widest ml-2 mb-2'>
 							Marka
@@ -356,7 +352,7 @@ export default function SelectVehicleScreen() {
 									onPress={() => setActiveBrandFilter(f)}
 									style={{
 										backgroundColor:
-											activeBrandFilter === f ? PRIMARY_BLUE : '#27272a',
+											activeBrandFilter === f ? PRIMARY_ORANGE : '#27272a',
 									}}
 									className='px-6 py-3 rounded-full mr-4 min-h-[48px] justify-center items-center flex-row'>
 									<BrandLogoOrText brand={f} active={activeBrandFilter === f} />
@@ -365,7 +361,6 @@ export default function SelectVehicleScreen() {
 						</ScrollView>
 					</View>
 
-					{/* Filtry Typu */}
 					<View className='mb-6'>
 						<Text className='text-gray-400 text-sm font-bold uppercase tracking-widest ml-2 mb-2'>
 							Typ
@@ -377,7 +372,7 @@ export default function SelectVehicleScreen() {
 									onPress={() => setActiveTypeFilter(f)}
 									style={{
 										backgroundColor:
-											activeTypeFilter === f ? PRIMARY_BLUE : '#27272a',
+											activeTypeFilter === f ? PRIMARY_ORANGE : '#27272a',
 									}}
 									className='px-6 py-3 rounded-full mr-4 min-h-[48px] justify-center items-center flex-row'>
 									<Text
@@ -385,9 +380,9 @@ export default function SelectVehicleScreen() {
 										style={
 											Platform.OS === 'android'
 												? {
-														includeFontPadding: false,
-														textAlignVertical: 'center',
-													}
+													includeFontPadding: false,
+													textAlignVertical: 'center',
+												}
 												: {}
 										}>
 										{f}
@@ -398,10 +393,6 @@ export default function SelectVehicleScreen() {
 					</View>
 				</Animated.View>
 
-				{/* 2. LISTA WÓZKÓW
-                POPRAWKA: Dynamiczny `paddingTop` używa zmierzonej wysokości nagłówka.
-                Dzięki temu lista zaczyna się idealnie pod filtrami, bez pustej przerwy.
-             */}
 				<Animated.FlatList
 					data={filteredVehicles}
 					keyExtractor={(item) => item.id}
@@ -409,8 +400,8 @@ export default function SelectVehicleScreen() {
 					numColumns={3}
 					showsVerticalScrollIndicator={false}
 					contentContainerStyle={{
-						paddingTop: headerHeight, // Dynamiczny padding równy wysokości nagłówka
-						paddingBottom: 200,
+						paddingTop: headerHeight,
+						paddingBottom: 180,
 						alignItems: 'center',
 					}}
 					onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
@@ -420,112 +411,52 @@ export default function SelectVehicleScreen() {
 				/>
 			</View>
 
-			{/* ASYSTENT GŁOSOWY - POPRAWIONE CIENIE I TEKST */}
+			{/* ASYSTENT GŁOSOWY LEWITUJĄCY NAD LISTĄ */}
 			<View
 				pointerEvents='box-none'
-				className='absolute bottom-12 left-0 right-0 items-center justify-end z-50 px-6'>
-				{/* Główny kontener - "Glassmorphism" stabilny na tablecie */}
+				className='absolute bottom-8 left-0 right-0 w-full items-center z-50'
+			>
 				<View
+					className='flex-row items-start justify-center gap-6 px-10 py-6'
 					style={{
-						// Tło ciemne, lekko przezroczyste (odpowiednik szkła w Figmie)
-						backgroundColor: 'rgba(23, 23, 23, 0.95)',
-						borderRadius: 56,
-						paddingVertical: 28,
-						paddingHorizontal: 32,
-						minWidth: 360,
-						// Drop shadow (Cień spodu kontenera)
-						shadowColor: '#000',
-						shadowOffset: { width: 0, height: 32 },
-						shadowOpacity: 0.7,
-						shadowRadius: 64,
-						elevation: 24, // Android shadow
-						// Imitacja Inner Shadow (ramka)
+						backgroundColor: 'rgba(20, 20, 22, 0.85)',
+						borderRadius: 100,
 						borderWidth: 1,
 						borderColor: 'rgba(255, 255, 255, 0.05)',
-					}}>
-					{/* Grupa przycisków wewnątrz kontenera */}
-					<View className='flex-row items-center justify-center mb-6' style={{ gap: 32 }}>
-						{/* Lewy: Aparat */}
+					}}
+				>
+					<TouchableOpacity className='w-[72px] h-[72px] bg-[#121212] border border-black rounded-[12px] items-center justify-center mt-[20px]'>
+						<Image
+							source={require('../../assets/images/camera.png')}
+							style={{ width: 32, height: 32, tintColor: '#A3A3A3' }}
+						/>
+					</TouchableOpacity>
+
+					<View className='items-center flex-col gap-3 min-w-[140px]'>
 						<TouchableOpacity
-							activeOpacity={0.7}
-							className='w-20 h-20 rounded-2xl items-center justify-center'
-							style={{
-								backgroundColor: 'rgba(255, 255, 255, 0.05)',
-								borderColor: 'rgba(255, 255, 255, 0.1)',
-								borderWidth: 1,
-							}}>
+							onPressIn={onMicPress}
+							className={`w-[112px] h-[112px] rounded-[12px] items-center justify-center ${
+								isListening ? 'bg-[#2A1100] border-2 border-[#FF6600]' : 'bg-[#121212] border border-black'
+							}`}
+						>
+							{isListening && <ListeningPulse />}
 							<Image
-								source={require('../../assets/images/camera.png')}
-								style={{ width: 32, height: 32, tintColor: 'white' }}
-								resizeMode='contain'
+								source={require('../../assets/images/micro.png')}
+								style={{ width: 56, height: 56, tintColor: isListening ? '#FF6600' : '#A3A3A3' }}
+								resizeMode="contain"
 							/>
 						</TouchableOpacity>
-
-						{/* Środkowy: Mikrofon z poświatą (Glow) */}
-						<View className='relative items-center justify-center w-28 h-28'>
-							{/* Glow za mikrofonem */}
-							<View
-								className='absolute w-[100px] h-[100px] rounded-[32px]'
-								style={{
-									backgroundColor: 'rgba(59, 130, 246, 0.25)', // Jaśniejsza niebieska poświata
-									shadowColor: '#3B82F6',
-									shadowOffset: { width: 0, height: 0 },
-									shadowOpacity: 1,
-									shadowRadius: 24,
-									elevation: 10,
-								}}
-							/>
-							<TouchableOpacity
-								activeOpacity={0.8}
-								className='absolute w-28 h-28 rounded-3xl border-2 items-center justify-center z-10'
-								style={{
-									backgroundColor: '#171717', // Pełny kolor tła przycisku
-									borderColor: '#3B82F6', // Niebieska obwódka
-								}}>
-								<Ionicons
-									name='mic'
-									size={54}
-									color='#3B82F6'
-									style={{
-										textShadowColor: 'rgba(59, 130, 246, 0.8)',
-										textShadowRadius: 15,
-									}}
-								/>
-							</TouchableOpacity>
-						</View>
-
-						{/* Prawy: Szukaj */}
-						<TouchableOpacity
-							activeOpacity={0.7}
-							className='w-20 h-20 rounded-2xl items-center justify-center'
-							style={{
-								backgroundColor: 'rgba(255, 255, 255, 0.05)',
-								borderColor: 'rgba(255, 255, 255, 0.1)',
-								borderWidth: 1,
-							}}>
-							<Image
-								source={require('../../assets/images/search.png')}
-								style={{ width: 32, height: 32, tintColor: 'white' }}
-								resizeMode='contain'
-							/>
-						</TouchableOpacity>
-					</View>
-
-					{/* Tekst pod przyciskami */}
-					<View className='items-center'>
-						<Text
-							className='font-black text-2xl uppercase tracking-[4px]'
-							style={{
-								color: '#3B82F6', // Niebieski tekst
-								textShadowColor: 'rgba(0, 0, 0, 0.8)',
-								textShadowOffset: { width: 0, height: 2 },
-								textShadowRadius: 4,
-							}}>
-							ASYSTENT SŁUCHA
+						<Text className={`text-center text-[10px] font-bold tracking-widest ${isListening ? 'text-[#FF6600]' : 'text-[#A3A3A3]'}`}>
+							{isListening ? 'SŁUCHAM...' : 'NACIŚNIJ ŻEBY MÓWIĆ'}
 						</Text>
-						{/* Podpis z obrazka z instrukcją dla użytkownika */}
-
 					</View>
+
+					<TouchableOpacity className='w-[72px] h-[72px] bg-[#121212] border border-black rounded-[12px] items-center justify-center mt-[20px]'>
+						<Image
+							source={require('../../assets/images/search.png')}
+							style={{ width: 32, height: 32, tintColor: '#A3A3A3' }}
+						/>
+					</TouchableOpacity>
 				</View>
 			</View>
 		</SafeAreaView>
