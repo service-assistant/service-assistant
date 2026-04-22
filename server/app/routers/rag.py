@@ -1,21 +1,67 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
-from ..services import llm, embedding
+from collections.abc import AsyncGenerator
+from textwrap import dedent
+
+from fastapi import APIRouter, Depends, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from ..database import get_session
+from ..services import embedding, llm
 
 router = APIRouter(prefix="", tags=["RAG"])
 
 
 class AskQuestionRequest(BaseModel):
-    question: str
+    question: str = Field(
+        min_length=1,
+        max_length=4096,
+        description="The question to ask the assistant.",
+        examples=["What is the maintenance procedure for the mast assembly?"],
+    )
 
 
-class AskQuestionResponse(BaseModel):
-    answer: str
+@router.post(
+    "/questions",
+    response_class=StreamingResponse,
+    responses={
+        status.HTTP_200_OK: {
+            "description": "Streams LLM response tokens as plain text chunks.",
+        },
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {
+            "description": "Request body validation failed"
+        },
+    },
+    summary="Ask a question to the RAG assistant",
+    description=dedent("""
+Embeds the question, retrieves semantically close document chunks,
+and streams the LLM answer token by token as plain text.
 
+To consume the stream on the client side:
 
-@router.post("/questions", response_model=AskQuestionResponse)
-def ask_question(body: AskQuestionRequest):
+```
+const response = await fetch("<url>", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question: "<question>" })
+});
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const token = decoder.decode(value);
+    appendToUI(token);
+}
+```
+"""),
+)
+async def ask_question(
+    *, session: AsyncSession = Depends(get_session), body: AskQuestionRequest
+) -> AsyncGenerator[str, None]:
     embedded_question = embedding.embed_question(body.question)
-    close_chunks = embedding.get_close_chunks(embedded_question)
-    llm_response = llm.query(body.question, close_chunks)
-    return {"answer": llm_response}
+    close_chunks = await embedding.get_close_chunks(session, embedded_question)
+
+    async for token in llm.query(body.question, close_chunks):
+        yield token
