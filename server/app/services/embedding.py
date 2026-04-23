@@ -1,4 +1,5 @@
 from openai import AzureOpenAI
+from sqlalchemy.ext.asyncio import AsyncSession
 import os
 
 
@@ -20,5 +21,8 @@ def embed_question(question: str) -> list[float]:
     return response.data[0].embedding
 
 
-def get_close_chunks(embedded_vector: list[float]) -> list[str]:
-    return ["a", "b", "c"]
+async def get_close_chunks(
+    session: AsyncSession, embedded_vector: list[float]
+) -> list[str]:
+    # TODO: use session for postgres database access
+    return ["Close chunk 1", "Close chunk 2", "Close chunk 3"]
