@@ -1,11 +1,13 @@
 from collections.abc import AsyncGenerator
 from textwrap import dedent
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..config import Settings, get_settings
 from ..database import get_session
 from ..services import embedding, llm
 
@@ -58,9 +60,12 @@ while (true) {
 """),
 )
 async def ask_question(
-    *, session: AsyncSession = Depends(get_session), body: AskQuestionRequest
+    *,
+    session: AsyncSession = Depends(get_session),
+    settings: Annotated[Settings, Depends(get_settings)],
+    body: AskQuestionRequest,
 ) -> AsyncGenerator[str, None]:
-    embedded_question = embedding.embed_question(body.question)
+    embedded_question = embedding.embed_question(body.question, settings)
     close_chunks = await embedding.get_close_chunks(session, embedded_question)
 
     async for token in llm.query(body.question, close_chunks):

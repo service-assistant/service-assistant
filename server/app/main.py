@@ -1,16 +1,15 @@
-from dotenv import load_dotenv
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-load_dotenv()
+from app.routers import example, rag
 
-from fastapi import FastAPI  # noqa: E402
-from app.routers import example, rag  # noqa: E402
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-import os  # noqa: E402
-
+from .config import get_settings
 
 app = FastAPI()
 
-if os.getenv("ENV") == "development":
+settings = get_settings()
+
+if settings.env == "development":
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],

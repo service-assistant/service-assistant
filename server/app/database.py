@@ -1,15 +1,20 @@
-import os
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from functools import lru_cache
+from typing import Annotated
 
-database_url = os.environ.get("DATABASE_URL")
-if not database_url:
-    raise RuntimeError("DATABASE_URL environment variable is not set")
-engine = create_async_engine(database_url)
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+from .config import Settings, get_settings
 
 
-async def get_session():
+@lru_cache
+def get_engine(database_url: str):
+    return create_async_engine(database_url)
+
+
+async def get_session(settings: Annotated[Settings, Depends(get_settings)]):
     """
     FastAPI route dependency to work on the database
     """
-    async with AsyncSession(engine) as session:
+    async with AsyncSession(get_engine(settings.database_url)) as session:
         yield session
