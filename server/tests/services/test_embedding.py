@@ -1,7 +1,9 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, Mock, patch
+from sqlalchemy.ext.asyncio import AsyncSession
+import pytest
 
 from app.config import Settings
-from app.services.embedding import embed_question
+from app.services.embedding import embed_question, get_close_chunks
 
 
 def test_embed_question_returns_first_embedding():
@@ -21,3 +23,27 @@ def test_embed_question_returns_first_embedding():
 
     with patch("app.services.embedding.AzureOpenAI", return_value=client):
         assert embed_question("hello", settings) == [0.0, 1.0, 0.45]
+
+
+@pytest.mark.asyncio
+async def test_get_close_chunks():
+    session = AsyncMock(spec=AsyncSession)
+
+    fake_rows = [
+        ("chunk 1",),
+        ("chunk 2",),
+        ("chunk 3",),
+    ]
+
+    mock_result = Mock()
+    mock_result.fetchall.return_value = fake_rows
+
+    session.execute.return_value = mock_result
+
+    vector = [0.1, 0.2, 0.3]
+
+    result = await get_close_chunks(session, vector)
+
+    assert result == ["chunk 1", "chunk 2", "chunk 3"]
+
+    session.execute.assert_called_once()
