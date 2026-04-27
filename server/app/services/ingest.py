@@ -2,8 +2,7 @@ import fitz # pymupdf
 from openai import AzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .chunking import chunk_text
-from .models import AttachmentChunk
+from ..models import AttachmentChunk
 from ..config import Settings
 
 
@@ -13,7 +12,7 @@ def batch_list(items, batch_size):
 
 
 async def ingest_pdf_to_base(
-    session: AsyncSession, pdf_path: str):
+    session: AsyncSession, pdf_path: str, settings: Settings):
 
     client = AzureOpenAI(
         api_version=settings.azure_openai_api_version,

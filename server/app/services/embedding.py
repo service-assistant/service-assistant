@@ -1,5 +1,6 @@
 from openai import AzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
 from ..config import Settings
 
@@ -24,5 +25,23 @@ def embed_question(question: str, settings: Settings) -> list[float]:
 async def get_close_chunks(
     session: AsyncSession, embedded_vector: list[float]
 ) -> list[str]:
-    # TODO: use session for postgres database access
-    return ["Close chunk 1", "Close chunk 2", "Close chunk 3"]
+    '''
+    Return 5 chunks closest to the embedded_vector
+    '''
+
+    query = text("""
+        SELECT content
+        FROM attachment_chunks
+        ORDER BY embedding <-> :vector
+        LIMIT 5
+    """)
+
+    result = await session.execute(
+        query,
+        {"vector": embedded_vector}
+    )
+
+    rows = result.fetchall()
+
+    return [row[0] for row in rows]
+
