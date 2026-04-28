@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import example, rag
+from app.routers import example, rag, add_doc
 
 from .config import get_settings
 
@@ -20,3 +20,4 @@ if settings.env == "development":
 
 app.include_router(example.router, prefix="/api")
 app.include_router(rag.router, prefix="/api")
+app.include_router(add_doc.router, prefix="/api")
