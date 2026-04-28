@@ -69,7 +69,7 @@ async def insert_chunks(
             id=None,
             content=chunk,
             embedding=embedding,
-            document_name=source,
+            document_name=document_name,
             page=page,
             created_at=None,
             extra_metadata=None,
