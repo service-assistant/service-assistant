@@ -1,5 +1,4 @@
 import json
-from collections.abc import AsyncGenerator
 from textwrap import dedent
 from typing import Annotated
 
@@ -75,11 +74,11 @@ async def ask_question(
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(
-        event_generator(), 
+        event_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"
-        }
+            "X-Accel-Buffering": "no",
+        },
     )
