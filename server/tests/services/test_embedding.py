@@ -6,7 +6,8 @@ from app.config import Settings
 from app.services.embedding import embed_question, get_close_chunks
 
 
-def test_embed_question_returns_first_embedding():
+@pytest.mark.asyncio
+async def test_embed_question_returns_first_embedding():
     settings = Settings(
         env="test",
         database_url="postgresql://localhost/test",
@@ -17,12 +18,12 @@ def test_embed_question_returns_first_embedding():
     )
 
     client = MagicMock()
-    client.embeddings.create.return_value = MagicMock(
-        data=[MagicMock(embedding=[0.0, 1.0, 0.45])]
+    client.embeddings.create = AsyncMock(
+        return_value=MagicMock(data=[MagicMock(embedding=[0.0, 1.0, 0.45])])
     )
 
-    with patch("app.services.embedding.AzureOpenAI", return_value=client):
-        assert embed_question("hello", settings) == [0.0, 1.0, 0.45]
+    with patch("app.services.embedding.AsyncAzureOpenAI", return_value=client):
+        assert await embed_question("hello", settings) == [0.0, 1.0, 0.45]
 
 
 @pytest.mark.asyncio
