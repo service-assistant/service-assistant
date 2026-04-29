@@ -1,3 +1,4 @@
+import json
 from collections.abc import AsyncGenerator
 from textwrap import dedent
 from typing import Annotated
@@ -37,7 +38,7 @@ class AskQuestionRequest(BaseModel):
     summary="Ask a question to the RAG assistant",
     description=dedent("""
 Embeds the question, retrieves semantically close document chunks,
-and streams the LLM answer token by token as plain text.
+and streams the LLM answer token by token using Server-Sent Events (SSE).
 
 To consume the stream on the client side:
 
@@ -64,9 +65,21 @@ async def ask_question(
     session: AsyncSession = Depends(get_session),
     settings: Annotated[Settings, Depends(get_settings)],
     body: AskQuestionRequest,
-) -> AsyncGenerator[str, None]:
+):
     embedded_question = embedding.embed_question(body.question, settings)
     close_chunks = await embedding.get_close_chunks(session, embedded_question)
 
-    async for token in llm.query(body.question, close_chunks):
-        yield token
+    async def event_generator():
+        async for token in llm.query(body.question, close_chunks):
+            yield f"data: {json.dumps(token)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(
+        event_generator(), 
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )

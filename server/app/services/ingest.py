@@ -1,4 +1,4 @@
-import fitz # pymupdf
+import fitz  # pymupdf
 from openai import AzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,34 +8,32 @@ from ..config import Settings
 
 def batch_list(items, batch_size):
     for i in range(0, len(items), batch_size):
-        yield items[i:i + batch_size]
+        yield items[i : i + batch_size]
 
 
-async def ingest_pdf_to_base(
-    session: AsyncSession, pdf_path: str, settings: Settings):
+async def ingest_pdf_to_base(session: AsyncSession, pdf_path: str, settings: Settings):
 
     client = AzureOpenAI(
         api_version=settings.azure_openai_api_version,
         azure_endpoint=settings.azure_openai_endpoint,
         api_key=settings.azure_openai_api_key,
     )
-    
+
     doc = fitz.open(pdf_path)
 
     rows = []
 
     for page_num, page in enumerate(doc):
-
         text = page.get_text()
 
         if not text or not text.strip():
             continue
 
         text = " ".join(text.split())
-        
+
         chunk_size = 1000
         overlap = 200
-        
+
         chunks = []
         start = 0
 
@@ -45,24 +43,21 @@ async def ingest_pdf_to_base(
             start += chunk_size - overlap
 
         for batch in batch_list(chunks, 32):
-
             response = client.embeddings.create(
-                model=settings.azure_openai_embeddings_deployment,
-                input=batch
+                model=settings.azure_openai_embeddings_deployment, input=batch
             )
 
             embeddings = [d.embedding for d in response.data]
 
             for chunk, embedding in zip(batch, embeddings):
                 rows.append((chunk, embedding, pdf_path, page_num))
-            
+
     await insert_chunks(session, rows)
 
     print("File ingested to base:", pdf_path)
 
 
-async def insert_chunks(
-    session: AsyncSession, rows):
+async def insert_chunks(session: AsyncSession, rows):
 
     objects = [
         AttachmentChunk(
@@ -79,4 +74,3 @@ async def insert_chunks(
 
     session.add_all(objects)
     await session.commit()
-    
