@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import fitz  # pymupdf
 from openai import AzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,12 +63,11 @@ async def insert_chunks(session: AsyncSession, rows):
 
     objects = [
         AttachmentChunk(
-            id=None,
             content=chunk,
             embedding=embedding,
             document_name=document_name,
             page=page,
-            created_at=None,
+            created_at=datetime.utcnow(),
             extra_metadata=None,
         )
         for chunk, embedding, document_name, page in rows
