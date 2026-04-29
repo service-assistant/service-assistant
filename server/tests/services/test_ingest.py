@@ -21,7 +21,6 @@ async def test_ingest_pdf_to_base():
     mock_doc = [mock_page, mock_page]
 
     with patch("fitz.open", return_value=mock_doc):
-
         fake_embedding = [0.1] * 1536
 
         mock_client = Mock()
@@ -30,9 +29,9 @@ async def test_ingest_pdf_to_base():
         )
 
         with patch("app.services.ingest.AzureOpenAI", return_value=mock_client):
-
-            with patch("app.services.ingest.insert_chunks", new_callable=AsyncMock) as mock_insert:
-
+            with patch(
+                "app.services.ingest.insert_chunks", new_callable=AsyncMock
+            ) as mock_insert:
                 await ingest_pdf_to_base(session, "test.pdf", settings)
 
                 assert mock_insert.called
