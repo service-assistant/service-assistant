@@ -65,11 +65,11 @@ async def ask_question(
     settings: Annotated[Settings, Depends(get_settings)],
     body: AskQuestionRequest,
 ):
-    embedded_question = embedding.embed_question(body.question, settings)
+    embedded_question = await embedding.embed_question(body.question, settings)
     close_chunks = await embedding.get_close_chunks(session, embedded_question)
 
     async def event_generator():
-        async for token in llm.query(body.question, close_chunks):
+        async for token in llm.query(body.question, close_chunks, settings):
             yield f"data: {json.dumps(token)}\n\n"
         yield "data: [DONE]\n\n"
 

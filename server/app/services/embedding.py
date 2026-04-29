@@ -1,21 +1,21 @@
-from openai import AzureOpenAI
+from openai import AsyncAzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from ..config import Settings
 
 
-def embed_question(question: str, settings: Settings) -> list[float]:
+async def embed_question(question: str, settings: Settings) -> list[float]:
     """
     Return embeddings for question
     """
-    client = AzureOpenAI(
+    client = AsyncAzureOpenAI(
         api_version=settings.azure_openai_api_version,
         azure_endpoint=settings.azure_openai_endpoint,
         api_key=settings.azure_openai_api_key,
     )
 
-    response = client.embeddings.create(
+    response = await client.embeddings.create(
         input=question, model=settings.azure_openai_embeddings_deployment
     )
 
