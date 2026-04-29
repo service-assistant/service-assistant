@@ -5,9 +5,7 @@ from openai import AsyncOpenAI
 
 from ..config import Settings
 
-SYSTEM_PROMPT: Final[str] = (
-    "Jesteś pomocnym asystentem"
-)
+SYSTEM_PROMPT: Final[str] = "Jesteś pomocnym asystentem"
 
 
 def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
@@ -25,12 +23,14 @@ def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
     return "\n".join(parts) if parts else "No relevant context found."
 
 
-async def query(question: str, chunks: list[str], settings: Settings) -> AsyncIterator[str]:
+async def query(
+    question: str, chunks: list[str], settings: Settings
+) -> AsyncIterator[str]:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     context_text = _build_context(chunks)
 
     stream = await client.chat.completions.create(
-        model=settings.openai_chat_model, 
+        model=settings.openai_chat_model,
         stream=True,
         temperature=0.2,
         messages=[
