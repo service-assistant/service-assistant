@@ -1,10 +1,48 @@
-from collections.abc import AsyncGenerator
-# TODO: construct query to LLM and use correct Pydantic types
+from collections.abc import AsyncIterator
+from typing import Final
+
+from openai import AsyncOpenAI
+
+from ..config import Settings
+
+SYSTEM_PROMPT: Final[str] = (
+    "Jesteś pomocnym asystentem"
+)
 
 
-async def query(question: str, chunks: list[str]) -> AsyncGenerator[str, None]:
-    tokens = "Lorem ipsum dolor sit amet consectetur adipisicing elit. Neque deleniti accusantium aliquid dolores soluta nisi, corporis unde sit quaerat? Aut voluptatum mollitia possimus rem. Dolore sint facilis animi assumenda accusamus quasi officiis in, similique aperiam mollitia voluptates quia non enim provident, amet delectus minima odit nisi sequi voluptatibus. Beatae mollitia odit debitis deserunt, minus possimus? Suscipit fugit pariatur beatae quisquam voluptates alias enim ad aliquid porro dolor, rerum consequuntur excepturi! Placeat voluptates necessitatibus maxime dolorum, culpa quibusdam? Maiores fuga sit veritatis. Earum veritatis quo quas sequi non? Mollitia libero quasi sint aut corporis iure vel dicta ipsa et nam suscipit, asperiores quas vitae magni rem necessitatibus doloremque repellat quaerat? Recusandae omnis illo rem? Quidem ad blanditiis veniam eligendi natus, ut alias deserunt? Quod, minus doloremque doloribus quas vitae iusto suscipit autem adipisci ullam aut. Est deleniti dolor temporibus modi, quidem fugiat, eveniet asperiores perspiciatis iste eius suscipit corrupti aspernatur deserunt facere pariatur! Repudiandae perspiciatis eum omnis, aliquam possimus ratione, ut magni mollitia totam, assumenda a corporis corrupti vero dolor excepturi impedit harum tenetur tempora non ipsa rerum? Sit dolores iure nesciunt numquam libero magnam debitis minima aut ab optio possimus harum, velit, ipsum animi, consequatur error mollitia soluta cumque? Voluptatum.".split(
-        " "
+def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
+    parts: list[str] = []
+    total = 0
+    for i, chunk in enumerate(chunks, start=1):
+        text = chunk.strip()
+        if not text:
+            continue
+        item = f"[Fragment {i}]\n{text}\n"
+        if total + len(item) > max_chars:
+            break
+        parts.append(item)
+        total += len(item)
+    return "\n".join(parts) if parts else "No relevant context found."
+
+
+async def query(question: str, chunks: list[str], settings: Settings) -> AsyncIterator[str]:
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+    context_text = _build_context(chunks)
+
+    stream = await client.chat.completions.create(
+        model=settings.openai_chat_model, 
+        stream=True,
+        temperature=0.2,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": f"Context:\n{context_text}\n\nQuestion:\n{question}\n\nAnswer in Polish.",
+            },
+        ],
     )
-    for token in tokens:
-        yield token
+
+    async for event in stream:
+        delta = event.choices[0].delta.content if event.choices else None
+        if delta:
+            yield delta
