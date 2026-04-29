@@ -25,9 +25,9 @@ def embed_question(question: str, settings: Settings) -> list[float]:
 async def get_close_chunks(
     session: AsyncSession, embedded_vector: list[float]
 ) -> list[str]:
-    '''
+    """
     Return 5 chunks closest to the embedded_vector
-    '''
+    """
 
     query = text("""
         SELECT content
@@ -36,12 +36,8 @@ async def get_close_chunks(
         LIMIT 5
     """)
 
-    result = await session.execute(
-        query,
-        {"vector": embedded_vector}
-    )
+    result = await session.execute(query, {"vector": embedded_vector})
 
     rows = result.fetchall()
 
     return [row[0] for row in rows]
-

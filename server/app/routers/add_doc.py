@@ -51,5 +51,5 @@ async def upload_pdf(
     return {
         "status": "ok",
         "filename": file.filename,
-        "message": "PDF ingested into vector database"
+        "message": "PDF ingested into vector database",
     }
