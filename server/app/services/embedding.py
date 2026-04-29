@@ -36,7 +36,7 @@ async def get_close_chunks(
         LIMIT 5
     """)
 
-    result = await session.execute(query, {"vector": embedded_vector})
+    result = await session.execute(query, {"vector": str(embedded_vector)})
 
     rows = result.fetchall()
 
