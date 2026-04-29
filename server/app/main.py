@@ -21,3 +21,8 @@ if settings.env == "development":
 app.include_router(example.router, prefix="/api")
 app.include_router(rag.router, prefix="/api")
 app.include_router(add_doc.router, prefix="/api")
+
+
+@app.get("/health", include_in_schema=False)
+def health() -> dict:
+    return {"status": "ok"}
