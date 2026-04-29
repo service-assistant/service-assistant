@@ -1,4 +1,4 @@
-.PHONY: help install dev start test lint format format-check
+.PHONY: help install dev start test lint format format-check migrate
 
 help:
 	@echo "Available commands:"
@@ -22,10 +22,13 @@ test:
 	poetry run pytest
 
 lint:
-	poetry run ruff check app tests
+	poetry run ruff check app tests alembic
 
 format:
 	poetry run ruff format app tests
 
 format-check:
 	poetry run ruff format --check app tests
+
+migrate:
+	poetry run alembic upgrade head

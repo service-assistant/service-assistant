@@ -1,6 +1,23 @@
 from fastapi import FastAPI
-from app.routers import hello
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.routers import example, rag, add_doc
+
+from .config import get_settings
 
 app = FastAPI()
 
-app.include_router(hello.router, prefix="/api")
+settings = get_settings()
+
+if settings.env == "development":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+app.include_router(example.router, prefix="/api")
+app.include_router(rag.router, prefix="/api")
+app.include_router(add_doc.router, prefix="/api")
