@@ -26,7 +26,6 @@ async def get_close_chunks(
     session: AsyncSession, embedded_vector: list[float]
 ) -> list[str]:
     """
-    """
     Return 5 chunks closest to the embedded_vector
     """
 
