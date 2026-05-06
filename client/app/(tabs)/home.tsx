@@ -9,12 +9,12 @@ import {
 	Modal,
 	Platform,
 	Pressable,
-	SafeAreaView,
 	ScrollView,
 	Text,
 	TouchableOpacity,
 	View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -413,7 +413,7 @@ export default function SelectVehicleScreen() {
 
 			{/* ASYSTENT GŁOSOWY LEWITUJĄCY NAD LISTĄ */}
 			<View
-				pointerEvents='box-none'
+				style={{ pointerEvents: 'box-none' }}
 				className='absolute bottom-8 left-0 right-0 w-full items-center z-50'
 			>
 				<View

@@ -10,18 +10,26 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { Buffer } from 'buffer'; // Dodaj ten import na górze pliku
+// --- NOWE IMPORTY EXPO-AUDIO (Zastępują expo-av) ---
+import { 
+    useAudioPlayer, 
+    useAudioRecorder, 
+    AudioModule, 
+    RecordingPresets 
+} from 'expo-audio';
 
-// Odtwarzanie i nagrywanie audio
-import { Audio, AVPlaybackStatus } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Feather } from '@expo/vector-icons';
 
 import RightPanel from "@/components/RightPanel";
 import { useRouter } from "expo-router";
 
-// --- 1. NOWY KOMPONENT DYNAMICZNEGO WYKRESU DŹWIĘKU ---
-// Komponent renderuje serię pionowych pasków, których wysokość jest 
-// bezpośrednio kontrolowana przez natywną animację.
+
+const SERVER_URL = 'http://10.0.2.2:8000'; // Android emulator
+// const SERVER_URL = 'http://127.0.0.1:8000'; // Web
+
+
 const SoundWaveformIndicator = ({ soundLevel }: { soundLevel: Animated.Value }) => {
     const bars = Array.from({ length: 8 }, (_, i) => i); // 8 pasków
 
@@ -33,16 +41,12 @@ const SoundWaveformIndicator = ({ soundLevel }: { soundLevel: Animated.Value }) 
                     style={[
                         styles.waveformBar,
                         {
-                            // transform: scaleY zapewnia najlepszą wydajność na Androidzie
-                            // i daje płynny efekt rozszerzania/kurczenia pasków.
                             transform: [{ scaleY: soundLevel }],
-                            // Dodajemy małe opóźnienia wizualne dla każdego paska
                             opacity: soundLevel.interpolate({
                                 inputRange: [0.2, 1.5],
                                 outputRange: [0.4, 1],
                                 extrapolate: 'clamp'
                             }),
-                            // Paski na zewnątrz są mniejsze
                             height: 16 - Math.abs(i - 3.5) * 2,
                         },
                     ]}
@@ -52,29 +56,12 @@ const SoundWaveformIndicator = ({ soundLevel }: { soundLevel: Animated.Value }) 
     );
 };
 
-const styles = StyleSheet.create({
-    waveformContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 20,
-        gap: 3, // Przestrzeń między paskami
-    },
-    waveformBar: {
-        width: 3,
-        backgroundColor: 'white',
-        borderRadius: 1.5,
-    },
-});
-
-// Konfiguracja adresu serwera
-const SERVER_URL = 'http://10.0.2.2:8000'; // Używamy 10.0.2.2 dla emulatora Androida
 
 interface Message {
     id: number;
     sender: 'ai' | 'user';
     text: string;
-    isSpeaking?: boolean; // Nowa właściwość dla wykresu dźwięku
+    isSpeaking?: boolean; 
 }
 
 export default function HomeScreen() {
@@ -84,16 +71,18 @@ export default function HomeScreen() {
     const [isListening, setIsListening] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(false);
 
-    const recordingRef = useRef<Audio.Recording | null>(null);
+    const ttsPlayer = useAudioPlayer(null);
+    const audioRecorder = useAudioRecorder({
+        ...RecordingPresets.HIGH_QUALITY,
+        isMeteringEnabled: true,
+    });
+    
     const userSpeakingMessageIdRef = useRef<number>(0);
-
-    // --- 2. ANIMOWANA WARTOŚĆ DLA GŁOŚNOŚCI (NATYWNA) ---
-    // soundLevelAnim jest 'refem' aby utrzymać obiekt Animated.Value 
-    // stabilnym przez cały cykl życia komponentu.
-    const soundLevelAnim = useRef(new Animated.Value(0.2)).current; // Startujemy z minimum (cisza)
-
+    const meteringIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const soundLevelAnim = useRef(new Animated.Value(0.2)).current; 
     const lastLoudTime = useRef<number>(0);
     const hasSpoken = useRef<boolean>(false);
+    
     const silenceThreshold = -50;
     const silenceDuration = 2500;
     const initialSilenceDuration = 5000;
@@ -106,80 +95,78 @@ export default function HomeScreen() {
         { id: 1, sender: 'ai', text: initialMessage },
     ]);
 
-    const playChatGptAudio = async (text: string) => {
-        try {
-            const response = await fetch('https://api.openai.com/v1/audio/speech', {
-                method: 'POST',
-                headers: {
-                    Authorization: `Bearer ${process.env.EXPO_PUBLIC_OPENAI_API_KEY}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    model: 'tts-1',
-                    input: text,
-                    voice: 'alloy',
-                }),
-            });
-
-            if (!response.ok) throw new Error('Błąd połączenia z API OpenAI');
-
-            const blob = await response.blob();
-
-            if (Platform.OS === 'web') {
-                const url = URL.createObjectURL(blob);
-                const { sound } = await Audio.Sound.createAsync({ uri: url }, { shouldPlay: true });
-                sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
-                    if (status.isLoaded && status.didJustFinish) {
-                        sound.unloadAsync();
-                        URL.revokeObjectURL(url);
-                    }
-                });
-            } else {
-                const reader = new FileReader();
-                reader.onload = async () => {
-                    if (typeof reader.result === 'string') {
-                        const base64data = reader.result.split(',')[1];
-                        const fileUri = (FileSystem.documentDirectory || '') + 'chatgpt_response.mp3';
-                        await FileSystem.writeAsStringAsync(fileUri, base64data, {
-                            encoding: 'base64',
-                        });
-
-                        const { sound } = await Audio.Sound.createAsync(
-                            { uri: fileUri },
-                            { shouldPlay: true },
-                        );
-                        sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
-                            if (status.isLoaded && status.didJustFinish) {
-                                sound.unloadAsync();
-                            }
-                        });
-                    }
-                };
-                reader.readAsDataURL(blob);
-            }
-        } catch (error) {
-            console.error('Błąd odtwarzania ChatGPT TTS:', error);
-        }
-    };
-
+    // Ustawienia Audio na start aplikacji
     useEffect(() => {
-        Audio.setAudioModeAsync({
-            playsInSilentModeIOS: true,
-            staysActiveInBackground: false,
-            shouldDuckAndroid: true,
-            allowsRecordingIOS: true,
+        AudioModule.setAudioModeAsync({
+            playsInSilentMode: true,
+            allowsRecording: true,
         });
+
+        // Cleanup interwału wykresu w razie wyjścia z ekranu
+        return () => {
+            if (meteringIntervalRef.current) clearInterval(meteringIntervalRef.current);
+        };
     }, []);
 
     useEffect(() => {
         if (currentImage) setShowSchema(true);
     }, [currentImage]);
 
-    // askAPI - BEZ ZMIAN W STOSUNKU DO POPRZEDNIEJ WERSJI
+    const playChatGptAudio = async (text: string) => {
+        try {
+            setIsLoading(true);
+
+        const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+
+        if (!apiKey) {
+            alert("Brak klucza! Zrestartuj Expo komendą: npx expo start -c");
+            setIsLoading(false);
+            return;
+        }
+        
+        const response = await fetch('https://api.openai.com/v1/audio/speech', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${apiKey.trim()}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                model: 'tts-1',
+                input: text,
+                voice: 'alloy',
+            }),
+        });
+
+            if (!response.ok) throw new Error(`Błąd połączenia z API OpenAI: ${response.status}`);
+
+            if (Platform.OS === 'web') {
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                
+                ttsPlayer.replace(url);
+                ttsPlayer.play();
+            } else {
+                const arrayBuffer = await response.arrayBuffer();
+                const base64data = Buffer.from(arrayBuffer).toString('base64');
+                
+                const fileUri = (FileSystem.documentDirectory || '') + 'chatgpt_response.mp3';
+                await FileSystem.writeAsStringAsync(fileUri, base64data, {
+                    encoding: FileSystem.EncodingType.Base64,
+                });
+
+                ttsPlayer.replace(fileUri);
+                ttsPlayer.play();
+            }
+        } catch (error) {
+            console.error('Błąd odtwarzania ChatGPT TTS:', error);
+            alert('Nie udało się wygenerować dźwięku.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const askAPI = async (question: string) => {
         setIsLoading(true);
-        console.log(`[RAG API] Otwieram strumień do ${SERVER_URL}/api/questions`);
-
         const aiMessageId = Date.now() + Math.random(); 
         
         setMessages((prev) => [
@@ -198,7 +185,6 @@ export default function HomeScreen() {
         xhr.onreadystatechange = () => {
             if (xhr.readyState === 3 || xhr.readyState === 4) {
                 const rawResponse = xhr.responseText;
-                
                 const chunks = rawResponse.split("data: ").filter(Boolean);
                 let combinedText = "";
 
@@ -206,9 +192,7 @@ export default function HomeScreen() {
                     try {
                         const token = JSON.parse(chunk.trim());
                         combinedText += token;
-                    } catch (e) {
-                        // Ignorujemy błędy parsowania
-                    }
+                    } catch (e) {}
                 }
 
                 fullText = combinedText;
@@ -227,9 +211,7 @@ export default function HomeScreen() {
         };
 
         xhr.onload = () => {
-            console.log(`[RAG API] Strumień zakończony. Status: ${xhr.status}`);
             setIsLoading(false);
-            
             if (xhr.status >= 200 && xhr.status < 300) {
                 setCurrentSource('02-8FGF15'); 
                 setCurrentImage(null);
@@ -255,7 +237,6 @@ export default function HomeScreen() {
         xhr.send(JSON.stringify({ question: question }));
     };
 
-    // ZAKTUALIZOWANA FUNKCJA sendToDeepgram - NATYCHMIASTOWY TRANSKRYPT
     const sendToDeepgram = async (uri: string) => {
         setIsLoading(true);
         try {
@@ -274,75 +255,73 @@ export default function HomeScreen() {
                 },
             );
 
-            if (!response.ok) {
-                const errorData = await response.text();
-                throw new Error(`Deepgram Error ${response.status}: ${errorData}`);
-            }
+            if (!response.ok) throw new Error(`Deepgram Error ${response.status}`);
 
             const data = await response.json();
             const transcript = data.results?.channels[0]?.alternatives[0]?.transcript || '';
 
             if (transcript.trim().length > 0) {
-                // Wyświetlenie transkryptu usera i zamiana dymka z wykresu na tekst
                 setMessages((prev) => prev.map(msg => 
                     msg.id === userSpeakingMessageIdRef.current 
                     ? { ...msg, text: transcript, isSpeaking: false }
                     : msg
                 ));
-
                 askAPI(transcript);
             } else {
-                // Jeśli cisza, usuwamy dymek z wykresem
                 setMessages((prev) => prev.filter(msg => msg.id !== userSpeakingMessageIdRef.current));
                 setIsLoading(false);
             }
         } catch (error) {
             console.error('Błąd Deepgram:', error);
-            // W razie błędu usuwamy wykres
             setMessages((prev) => prev.filter(msg => msg.id !== userSpeakingMessageIdRef.current));
             setIsLoading(false);
         }
     };
 
     const stopRecordingAndSend = async () => {
-        const recObj = recordingRef.current;
-        if (!recObj) return;
-
-        recordingRef.current = null;
+        if (meteringIntervalRef.current) {
+            clearInterval(meteringIntervalRef.current);
+            meteringIntervalRef.current = null;
+        }
+        
         setIsListening(false);
 
-        try {
-            await recObj.stopAndUnloadAsync();
-            const uri = recObj.getURI();
-            if (uri) sendToDeepgram(uri);
-        } catch (error) {
-            console.error('Błąd podczas zatrzymywania:', error);
+        if (audioRecorder.isRecording) {
+            try {
+                await audioRecorder.stop();
+                const uri = audioRecorder.uri;
+                if (uri) sendToDeepgram(uri);
+            } catch (error) {
+                console.error('Błąd podczas zatrzymywania:', error);
+            }
         }
     };
 
-    const onRecordingStatusUpdate = (status: Audio.RecordingStatus) => {
-        if (!status.canRecord || !status.isRecording) return;
-        const now = Date.now();
+    const startMetering = () => {
+        lastLoudTime.current = Date.now();
+        hasSpoken.current = false;
 
-        if (status.metering !== undefined) {
-            // --- 3. DRIVE'OWANIE WYKRESU DŹWIĘKU W CZASIE RZECZYWISTYM ---
-            // Mapujemy logarithmiczną wartość meteringu (dB) na liniową wysokość (scale)
-            // Range map: [-50, 0] dB -> [0.2, 1.5] scale
+        meteringIntervalRef.current = setInterval(() => {
+            const status = audioRecorder.getStatus();
+            
+            if (!status.isRecording) return;
+            
+            const metering = status.metering ?? -160; 
+            const now = Date.now();
+
             let newScale = 0.2;
-            if (status.metering > -50) {
-                newScale = ((status.metering + 50) / 50) * (1.5 - 0.2) + 0.2;
+            if (metering > -50) {
+                newScale = ((metering + 50) / 50) * (1.5 - 0.2) + 0.2;
             }
-            newScale = Math.max(0.2, Math.min(1.5, newScale)); // Clamping
+            newScale = Math.max(0.2, Math.min(1.5, newScale));
 
-            // Natychmiastowa natywna animacja
             Animated.timing(soundLevelAnim, {
                 toValue: newScale,
-                duration: 0, // Natychmiastowy update
+                duration: 100, 
                 useNativeDriver: true,
             }).start();
 
-
-            if (status.metering > silenceThreshold) {
+            if (metering > silenceThreshold) {
                 lastLoudTime.current = now;
                 hasSpoken.current = true;
             } else {
@@ -356,74 +335,52 @@ export default function HomeScreen() {
                     }
                 }
             }
-        }
+        }, 100);
     };
 
     const handleMicPress = async () => {
+        if (ttsPlayer.playing) {
+            ttsPlayer.pause();
+        }
+
         if (isListening) {
-            setIsListening(false);
             await stopRecordingAndSend();
         } else {
             setIsListening(true);
 
-            // === 1. ZMIANA: DYMEK USERA Z WYKRESEM DŹWIĘKU ===
             const userTempId = Date.now();
             userSpeakingMessageIdRef.current = userTempId;
-            // Resetujemy animację do ciszy przy starcie
             soundLevelAnim.setValue(0.2); 
+            
             setMessages((prev) => [
                 ...prev,
-                { id: userTempId, sender: 'user', text: '', isSpeaking: true }, // Placeholder
+                { id: userTempId, sender: 'user', text: '', isSpeaking: true },
             ]);
 
-            setTimeout(async () => {
-                try {
-                    const { granted } = await Audio.requestPermissionsAsync();
-                    if (!granted) {
-                        setIsListening(false);
-                        // Usuwamy dymek jeśli brak uprawnień
-                        setMessages((prev) => prev.filter(msg => msg.id !== userTempId));
-                        return;
-                    }
-
-                    hasSpoken.current = false;
-
-                    const { recording: newRecording } = await Audio.Recording.createAsync(
-                        {
-                            ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-                            android: {
-                                ...Audio.RecordingOptionsPresets.HIGH_QUALITY.android,
-                                // @ts-ignore
-                                isMeteringEnabled: true,
-                            },
-                            ios: {
-                                ...Audio.RecordingOptionsPresets.HIGH_QUALITY.ios,
-                                isMeteringEnabled: true,
-                            },
-                        },
-                        onRecordingStatusUpdate,
-                        100,
-                    );
-
-                    lastLoudTime.current = Date.now();
-                    recordingRef.current = newRecording;
-
-                } catch (err) {
-                    console.error('Błąd startu nagrywania:', err);
+            try {
+                const permission = await AudioModule.requestRecordingPermissionsAsync();
+                if (!permission.granted) {
                     setIsListening(false);
-                    // Usuwamy dymek w razie błędu
                     setMessages((prev) => prev.filter(msg => msg.id !== userTempId));
+                    return;
                 }
-            }, 50);
+
+                await audioRecorder.prepareToRecordAsync();
+                audioRecorder.record();
+                startMetering();
+
+            } catch (err) {
+                console.error('Błąd startu nagrywania:', err);
+                setIsListening(false);
+                setMessages((prev) => prev.filter(msg => msg.id !== userTempId));
+            }
         }
     };
 
     return (
         <View className='flex-1 flex-row bg-black p-4'>
-
-            {/* LEWY PANEL (Pływający Chat) */}
+            {/* LEWY PANEL */}
             <View className='w-[32%] h-full flex flex-col'>
-
                 <View className='w-full h-14 mb-4 flex-row items-center'>
                     <TouchableOpacity className='flex-row items-center border border-[#CC5500] px-4 py-3 rounded-md bg-[#0a0a0a]' onPress={() => router.push('/home')}>
                         <Feather name="arrow-left" size={18} color="#CC5500" />
@@ -470,7 +427,6 @@ export default function HomeScreen() {
                                     </View>
                                 ) : (
                                     <View key={msg.id} className='bg-[#A64D00] rounded-2xl rounded-tr-sm px-4 py-3 self-end max-w-[90%]'>
-                                        {/* === 4. WYŚWIETLANIE WYKRESU DŹWIĘKU LUB TEKSTU === */}
                                         {msg.isSpeaking ? (
                                             <SoundWaveformIndicator soundLevel={soundLevelAnim} />
                                         ) : (
@@ -480,7 +436,6 @@ export default function HomeScreen() {
                                 ),
                             )}
 
-                            {/* --- NAPRAWA PUSTEGO DYMKA --- */}
                             {isLoading && !messages.some(m => m.sender === 'ai' && m.text === '') && (
                                 <View className='bg-[#1E1E22] rounded-2xl px-4 py-3 self-start flex-row items-center'>
                                     <ActivityIndicator size='small' color='#CC5500' />
@@ -491,7 +446,6 @@ export default function HomeScreen() {
                     </ScrollView>
 
                     <View className='w-full px-4 py-6 flex-row justify-center items-center gap-6 border-t border-neutral-900'>
-
                         <TouchableOpacity className='w-[72px] h-[72px] bg-[#121212] border border-black rounded-[12px] items-center justify-center'>
                             <Image
                                 source={require('../../assets/images/camera.png')}
@@ -525,7 +479,6 @@ export default function HomeScreen() {
                                 resizeMode="contain"
                             />
                         </TouchableOpacity>
-
                     </View>
                 </View>
             </View>
@@ -550,3 +503,18 @@ export default function HomeScreen() {
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    waveformContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: 20,
+        gap: 3,
+    },
+    waveformBar: {
+        width: 3,
+        backgroundColor: 'white',
+        borderRadius: 1.5,
+    },
+});
