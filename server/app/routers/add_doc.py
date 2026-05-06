@@ -1,8 +1,9 @@
+import shutil
+from pathlib import Path
+
 from typing_extensions import Annotated
 from fastapi import APIRouter, UploadFile, File, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-import tempfile
-import shutil
 
 from app.database import get_session
 from app.services.ingest import ingest_pdf_to_base
@@ -10,18 +11,39 @@ from app.config import Settings, get_settings
 
 router = APIRouter(prefix="", tags=["ADD_DOC"])
 
+ATTACHMENTS_DIR = Path(Settings().attachments_dir)
 
 description = """
 Upload a PDF file and ingest it into the vector database.
 
 Pipeline:
 1. Upload PDF
-2. Save temporarily
+2. Save in attachments directory
 3. Extract text
 4. Chunk
 5. Generate embeddings (Azure OpenAI)
 6. Store in pgvector database
 """
+
+
+def get_unique_filepath(base_path: Path) -> Path:
+    if not base_path.exists():
+        return base_path
+
+    stem = base_path.stem
+    suffix = base_path.suffix
+    parent = base_path.parent
+
+    counter = 1
+
+    while True:
+        new_name = f"{stem}__{counter}{suffix}"
+        new_path = parent / new_name
+
+        if not new_path.exists():
+            return new_path
+
+        counter += 1
 
 
 @router.post(
@@ -36,13 +58,16 @@ async def upload_pdf(
     file: UploadFile = File(...),
     settings: Annotated[Settings, Depends(get_settings)],
 ):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        shutil.copyfileobj(file.file, tmp)
-        tmp_path = tmp.name
+    saved_path = get_unique_filepath(ATTACHMENTS_DIR / file.filename)
+    with open(saved_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    pdf_path = str(saved_path)
 
     await ingest_pdf_to_base(
         session=session,
-        pdf_path=tmp_path,
+        pdf_path=pdf_path,
+        pdf_original_name=file.filename,
         settings=settings,
     )
 
@@ -50,6 +75,7 @@ async def upload_pdf(
 
     return {
         "status": "ok",
-        "filename": file.filename,
+        "filename": pdf_path,
+        "original name": file.filename,
         "message": "PDF ingested into vector database",
     }

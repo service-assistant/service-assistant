@@ -18,6 +18,7 @@ class AttachmentChunk(SQLModel, table=True):
         sa_column=Column(Vector(EMBEDDING_DIMENSIONS), nullable=False)
     )
     document_name: str
+    document_original_name: str
     page: int
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     extra_metadata: dict | None = Field(
