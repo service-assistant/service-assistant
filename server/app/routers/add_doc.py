@@ -11,8 +11,6 @@ from app.config import Settings, get_settings
 
 router = APIRouter(prefix="", tags=["ADD_DOC"])
 
-ATTACHMENTS_DIR = Path(get_settings().attachments_dir)
-
 description = """
 Upload a PDF file and ingest it into the vector database.
 
@@ -58,7 +56,7 @@ async def upload_pdf(
     file: UploadFile = File(...),
     settings: Annotated[Settings, Depends(get_settings)],
 ):
-    saved_path = get_unique_filepath(ATTACHMENTS_DIR / file.filename)
+    saved_path = get_unique_filepath(settings.attachments_dir / file.filename)
     with open(saved_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
