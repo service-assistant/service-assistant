@@ -7,11 +7,11 @@ import {
     ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
 import { Buffer } from 'buffer'; // Dodaj ten import na górze pliku
-// --- NOWE IMPORTY EXPO-AUDIO (Zastępują expo-av) ---
 import { 
     useAudioPlayer, 
     useAudioRecorder, 
@@ -21,17 +21,15 @@ import {
 
 import * as FileSystem from 'expo-file-system/legacy';
 import { Feather } from '@expo/vector-icons';
-
 import RightPanel from "@/components/RightPanel";
 import { useRouter } from "expo-router";
 
-
-const SERVER_URL = 'http://10.0.2.2:8000'; // Android emulator
-// const SERVER_URL = 'http://127.0.0.1:8000'; // Web
-
+const SERVER_URL = Platform.OS === 'android' 
+  ? 'http://10.0.2.2:8000' 
+  : 'http://127.0.0.1:8000';
 
 const SoundWaveformIndicator = ({ soundLevel }: { soundLevel: Animated.Value }) => {
-    const bars = Array.from({ length: 8 }, (_, i) => i); // 8 pasków
+    const bars = Array.from({ length: 8 }, (_, i) => i);
 
     return (
         <View style={styles.waveformContainer}>
@@ -56,7 +54,6 @@ const SoundWaveformIndicator = ({ soundLevel }: { soundLevel: Animated.Value }) 
     );
 };
 
-
 interface Message {
     id: number;
     sender: 'ai' | 'user';
@@ -70,6 +67,9 @@ export default function HomeScreen() {
     const [selectedPdf, setSelectedPdf] = useState<any>(null);
     const [isListening, setIsListening] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(false);
+
+    const [showTextInput, setShowTextInput] = useState<boolean>(false);
+    const [inputText, setInputText] = useState<string>('');
 
     const ttsPlayer = useAudioPlayer(null);
     const audioRecorder = useAudioRecorder({
@@ -95,14 +95,12 @@ export default function HomeScreen() {
         { id: 1, sender: 'ai', text: initialMessage },
     ]);
 
-    // Ustawienia Audio na start aplikacji
     useEffect(() => {
         AudioModule.setAudioModeAsync({
             playsInSilentMode: true,
             allowsRecording: true,
         });
 
-        // Cleanup interwału wykresu w razie wyjścia z ekranu
         return () => {
             if (meteringIntervalRef.current) clearInterval(meteringIntervalRef.current);
         };
@@ -116,26 +114,26 @@ export default function HomeScreen() {
         try {
             setIsLoading(true);
 
-        const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+            const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 
-        if (!apiKey) {
-            alert("Brak klucza! Zrestartuj Expo komendą: npx expo start -c");
-            setIsLoading(false);
-            return;
-        }
+            if (!apiKey) {
+                alert("Brak klucza! Zrestartuj Expo komendą: npx expo start -c");
+                setIsLoading(false);
+                return;
+            }
         
-        const response = await fetch('https://api.openai.com/v1/audio/speech', {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${apiKey.trim()}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: 'tts-1',
-                input: text,
-                voice: 'alloy',
-            }),
-        });
+            const response = await fetch('https://api.openai.com/v1/audio/speech', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${apiKey.trim()}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: 'tts-1',
+                    input: text,
+                    voice: 'alloy',
+                }),
+            });
 
             if (!response.ok) throw new Error(`Błąd połączenia z API OpenAI: ${response.status}`);
 
@@ -235,6 +233,21 @@ export default function HomeScreen() {
         };
 
         xhr.send(JSON.stringify({ question: question }));
+    };
+
+    const handleSendText = () => {
+        if (inputText.trim().length === 0) return;
+
+        const userTempId = Date.now();
+        setMessages((prev) => [
+            ...prev,
+            { id: userTempId, sender: 'user', text: inputText.trim(), isSpeaking: false },
+        ]);
+
+        askAPI(inputText.trim());
+
+        setInputText('');
+        setShowTextInput(false);
     };
 
     const sendToDeepgram = async (uri: string) => {
@@ -343,6 +356,8 @@ export default function HomeScreen() {
             ttsPlayer.pause();
         }
 
+        if (showTextInput) setShowTextInput(false);
+
         if (isListening) {
             await stopRecordingAndSend();
         } else {
@@ -400,7 +415,7 @@ export default function HomeScreen() {
                     </Text>
                 </View>
 
-                <View className='flex-1 border border-[#CC5500] rounded-2xl bg-[#09090B] flex-col overflow-hidden'>
+                <View className='flex-1 border border-[#CC5500] rounded-2xl bg-[#0D0D0D] flex-col overflow-hidden'>
                     <View className='p-4 border-b border-neutral-800 flex-row items-center'>
                         <View className='w-15 h-15 rounded-md border border-[#CC5500] items-center justify-center mr-3'>
                             <Image
@@ -445,40 +460,69 @@ export default function HomeScreen() {
                         </View>
                     </ScrollView>
 
-                    <View className='w-full px-4 py-6 flex-row justify-center items-center gap-6 border-t border-neutral-900'>
-                        <TouchableOpacity className='w-[72px] h-[72px] bg-[#121212] border border-black rounded-[12px] items-center justify-center'>
-                            <Image
-                                source={require('../../assets/images/camera.png')}
-                                style={{ width: 32, height: 32, tintColor: '#A3A3A3' }}
-                                resizeMode="contain"
-                            />
-                        </TouchableOpacity>
-
-                        <View className='items-center flex-col gap-3'>
-                            <TouchableOpacity
-                                onPressIn={handleMicPress}
-                                className={`w-[112px] h-[112px] rounded-[12px] items-center justify-center ${
-                                    isListening ? 'bg-[#2A1100] border-2 border-[#FF6600]' : 'bg-[#121212] border border-black'
-                                }`}
-                            >
+                    {/* ZMODYFIKOWANA SEKCJA KONTROLEK */}
+                    <View className='w-full px-4 py-6 flex-col border-t border-neutral-900'>
+                        <View className='flex-row justify-center items-center gap-6'>
+                            <TouchableOpacity className='w-[72px] h-[72px] bg-[#121212] border border-black rounded-[12px] items-center justify-center'>
                                 <Image
-                                    source={require('../../assets/images/micro.png')}
-                                    style={{ width: 56, height: 56, tintColor: isListening ? '#FF6600' : '#A3A3A3' }}
+                                    source={require('../../assets/images/camera.png')}
+                                    style={{ width: 32, height: 32, tintColor: '#A3A3A3' }}
                                     resizeMode="contain"
                                 />
                             </TouchableOpacity>
-                            <Text className={`text-[10px] font-bold tracking-widest ${isListening ? 'text-[#FF6600]' : 'text-[#A3A3A3]'}`}>
-                                {isListening ? 'SŁUCHAM...' : 'NACIŚNIJ ŻEBY MÓWIĆ'}
-                            </Text>
+
+                            <View className='items-center flex-col gap-3'>
+                                <TouchableOpacity
+                                    onPressIn={handleMicPress}
+                                    className={`w-[112px] h-[112px] rounded-[12px] items-center justify-center ${
+                                        isListening ? 'bg-[#2A1100] border-2 border-[#FF6600]' : 'bg-[#121212] border border-black'
+                                    }`}
+                                >
+                                    <Image
+                                        source={require('../../assets/images/micro.png')}
+                                        style={{ width: 56, height: 56, tintColor: isListening ? '#FF6600' : '#A3A3A3' }}
+                                        resizeMode="contain"
+                                    />
+                                </TouchableOpacity>
+                                <Text className={`text-[10px] font-bold tracking-widest ${isListening ? 'text-[#FF6600]' : 'text-[#A3A3A3]'}`}>
+                                    {isListening ? 'SŁUCHAM...' : 'NACIŚNIJ ŻEBY MÓWIĆ'}
+                                </Text>
+                            </View>
+
+                            <TouchableOpacity 
+                                onPress={() => setShowTextInput(!showTextInput)}
+                                className={`w-[72px] h-[72px] border rounded-[12px] items-center justify-center ${
+                                    showTextInput ? 'bg-[#2A1100] border-[#FF6600]' : 'bg-[#121212] border-black'
+                                }`}
+                            >
+                                <Image
+                                    source={require('../../assets/images/writing.png')}
+                                    style={{ width: 32, height: 32, tintColor: showTextInput ? '#FF6600' : '#A3A3A3' }}
+                                    resizeMode="contain"
+                                />
+                            </TouchableOpacity>
                         </View>
 
-                        <TouchableOpacity className='w-[72px] h-[72px] bg-[#121212] border border-black rounded-[12px] items-center justify-center'>
-                            <Image
-                                source={require('../../assets/images/search.png')}
-                                style={{ width: 32, height: 32, tintColor: '#A3A3A3' }}
-                                resizeMode="contain"
-                            />
-                        </TouchableOpacity>
+                        {/* POLE TEKSTOWE I PRZYCISK WYŚLIJ WIDOCZNE PO KLIKNIĘCIU IKONY PISANIA */}
+                        {showTextInput && (
+                            <View className='flex-row w-full mt-6 items-center gap-2'>
+                                <TextInput
+                                    className='flex-1 bg-[#1A1A1D] border border-neutral-800 text-slate-200 px-4 py-3 rounded-xl text-sm'
+                                    placeholder="Wpisz swoje pytanie..."
+                                    placeholderTextColor="#666"
+                                    value={inputText}
+                                    onChangeText={setInputText}
+                                    onSubmitEditing={handleSendText}
+                                    autoFocus
+                                />
+                                <TouchableOpacity 
+                                    className='bg-[#CC5500] w-[46px] h-[46px] rounded-xl items-center justify-center'
+                                    onPress={handleSendText}
+                                >
+                                    <Feather name="send" size={18} color="white" />
+                                </TouchableOpacity>
+                            </View>
+                        )}
                     </View>
                 </View>
             </View>
