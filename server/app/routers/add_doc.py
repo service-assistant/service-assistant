@@ -11,7 +11,7 @@ from app.config import Settings, get_settings
 
 router = APIRouter(prefix="", tags=["ADD_DOC"])
 
-ATTACHMENTS_DIR = Path(Settings().attachments_dir)
+ATTACHMENTS_DIR = Path(get_settings().attachments_dir)
 
 description = """
 Upload a PDF file and ingest it into the vector database.
