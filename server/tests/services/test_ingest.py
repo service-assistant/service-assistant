@@ -14,6 +14,7 @@ async def test_ingest_pdf_to_base():
     settings.azure_openai_endpoint = "test"
     settings.azure_openai_api_key = "test"
     settings.azure_openai_embeddings_deployment = "test-model"
+    settings.attachments_dir = "../attachments"
 
     mock_page = Mock()
     mock_page.get_text.return_value = "This is a test page content " * 50
@@ -32,7 +33,7 @@ async def test_ingest_pdf_to_base():
             with patch(
                 "app.services.ingest.insert_chunks", new_callable=AsyncMock
             ) as mock_insert:
-                await ingest_pdf_to_base(session, "test.pdf", settings)
+                await ingest_pdf_to_base(session, "test.pdf", "test.pdf", settings)
 
                 assert mock_insert.called
 
@@ -41,9 +42,10 @@ async def test_ingest_pdf_to_base():
 
                 assert len(rows) > 0
 
-                chunk, embedding, source, page = rows[0]
+                chunk, embedding, source, original_name, page = rows[0]
 
                 assert isinstance(chunk, str)
                 assert isinstance(embedding, list)
                 assert source == "test.pdf"
+                assert original_name == "test.pdf"
                 assert isinstance(page, int)
