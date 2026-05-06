@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     openai_api_key: str
     openai_chat_model: str
     azure_openai_api_version: str
+    attachments_dir: str
 
     model_config = SettingsConfigDict(env_file=".env")
 
