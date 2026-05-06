@@ -4,6 +4,16 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import PdfViewer from './PdfViewer';
 
+// Definiujemy tablicę z naszymi plikami dla przejrzystości
+const AVAILABLE_FILES = [
+    { id: 1, name: 'Instrukcja_Obslugi_Toyota.pdf', icon: 'forklift', color: '#06B6D4', source: require('../assets/instrukcje.pdf') },
+    { id: 2, name: 'Schematy_Elektryczne.pdf', icon: 'lightning-bolt', color: '#EAB308', source: require('../assets/instrukcje.pdf') },
+    { id: 3, name: 'Katalog_Czesci_2024.pdf', icon: 'cogs', color: '#A855F7', source: require('../assets/instrukcje.pdf') },
+    { id: 4, name: 'Biuletyn_Serwisowy.pdf', icon: 'wrench-outline', color: '#3B82F6', source: require('../assets/instrukcje.pdf') },
+    { id: 5, name: 'Kody_Bledow_Silnika.pdf', icon: 'engine-outline', color: '#EF4444', source: require('../assets/instrukcje.pdf') },
+    { id: 6, name: 'Instrukcja_BHP_Wozki.pdf', icon: 'shield-check-outline', color: '#22C55E', source: require('../assets/instrukcje.pdf') },
+];
+
 export default function RightPanel({
                                        currentSource,
                                        hasAskedQuestion,
@@ -11,7 +21,7 @@ export default function RightPanel({
                                        isLoading,
                                        isListening,
                                        onMicPress,
-                                       selectedPdf,
+                                       selectedPdf, 
                                        onSelectPdf,
                                        showSchema,
                                        setShowSchema,
@@ -41,11 +51,9 @@ export default function RightPanel({
                 {/* LEWA STRONA: Pusta dla balansu */}
                 <View className='flex-1' />
 
-
-
                 {/* PRAWA STRONA: Grupa przycisków akcji */}
                 <View className='flex-1 flex-row justify-end gap-3'>
-                    {/* Przycisk PLIKI (Powiększony) */}
+                    {/* Przycisk PLIKI */}
                     <TouchableOpacity
                         onPress={() => {
                             onSelectPdf(null);
@@ -58,7 +66,7 @@ export default function RightPanel({
                         <Text className='text-[#CC5500] font-bold ml-2 tracking-widest text-[11px] uppercase'>POKAŻ PLIKI</Text>
                     </TouchableOpacity>
 
-                    {/* Przycisk przełączania SCHEMAT / ŹRÓDŁO (Powiększony) */}
+                    {/* Przycisk przełączania SCHEMAT / ŹRÓDŁO */}
                     {currentImage && (
                         <TouchableOpacity
                             onPress={() => setShowSchema(!showSchema)}
@@ -82,30 +90,45 @@ export default function RightPanel({
                         scrollEnabled={false}
                     />
                 ) : (currentImage && !showSchema) || selectedPdf ? (
-                    <PdfViewer source={require('../assets/instrukcje.pdf')} />
+                    
+                    <View className="flex-1 relative">
+                        <PdfViewer source={selectedPdf?.source || require('../assets/instrukcje.pdf')} />
+                        
+                        {/* TABLICZKA Z DYNAMICZNĄ NAZWĄ I IKONĄ PLIKU */}
+                        <View className="absolute top-0 left-0 bg-[#121212] border border-neutral-800 px-3 py-2 rounded-br-lg flex-row items-center shadow-lg opacity-90 z-10">
+                            <MaterialCommunityIcons 
+                                name={(selectedPdf?.icon as any) || "file-pdf-box"} 
+                                size={18} 
+                                color={selectedPdf?.color || "#EF4444"} 
+                            />
+                            <Text className="text-slate-200 text-[11px] font-bold ml-2 tracking-widest uppercase">
+                                {selectedPdf?.name || 'Dokument.pdf'}
+                            </Text>
+                        </View>
+                    </View>
+
                 ) : (
-                    // WIDOK DOMYŚLNY: Dashboard plików (3 W RZĘDZIE)
                     <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
                         <View className='flex-row flex-wrap justify-center gap-4 px-4'>
-                            {[1, 2, 3, 4, 5, 6].map((i) => (
+                            {AVAILABLE_FILES.map((file) => (
                                 <TouchableOpacity
-                                    key={i}
+                                    key={file.id}
                                     onPress={() => {
-                                        onSelectPdf(require('../assets/instrukcje.pdf'));
+                                        onSelectPdf(file);
                                         setShowSchema(false);
                                     }}
                                     className='w-[30%] bg-[#121212] border border-neutral-800 rounded-2xl items-center justify-center py-6 px-3'
                                 >
                                     <MaterialCommunityIcons
-                                        name={i % 3 === 0 ? "forklift" : i % 2 === 0 ? "database-search-outline" : "alert-circle-outline"}
+                                        name={file.icon as any}
                                         size={56}
-                                        color={i % 3 === 0 ? "#06B6D4" : i % 2 === 0 ? "#94A3B8" : "#EF4444"}
+                                        color={file.color}
                                     />
                                     <Text
                                         className='text-white font-bold mt-4 text-[13px] text-center leading-4'
                                         numberOfLines={2}
                                     >
-                                        instrukcja_instrukcja_instrukcja_instrukcja_instrukcja_{i}.pdf
+                                        {file.name}
                                     </Text>
                                 </TouchableOpacity>
                             ))}
