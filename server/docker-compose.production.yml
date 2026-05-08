@@ -28,6 +28,9 @@ services:
       sh -c "alembic upgrade head && fastapi run --host 0.0.0.0 --port 8000"
     ports:
       - "127.0.0.1:8002:8000"
+    volumes:
+      - attachments:/attachments
 
 volumes:
   pgdata_production:
+  attachments:

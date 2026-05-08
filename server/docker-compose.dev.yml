@@ -31,6 +31,8 @@ services:
     volumes:
       - ./app:/app/app
       - ./alembic:/app/alembic
+      - attachments:/attachments
 
 volumes:
   pgdata_dev:
+  attachments:

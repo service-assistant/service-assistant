@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -12,9 +13,9 @@ class Settings(BaseSettings):
     openai_api_key: str
     openai_chat_model: str
     azure_openai_api_version: str
-    attachments_dir: str
+    attachments_dir: Path
 
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 @lru_cache
