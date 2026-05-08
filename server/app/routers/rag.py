@@ -38,25 +38,6 @@ class AskQuestionRequest(BaseModel):
     description=dedent("""
 Embeds the question, retrieves semantically close document chunks,
 and streams the LLM answer token by token using Server-Sent Events (SSE).
-
-To consume the stream on the client side:
-
-```
-const response = await fetch("<url>", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question: "<question>" })
-});
-const reader = response.body.getReader();
-const decoder = new TextDecoder();
-
-while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    const token = decoder.decode(value);
-    appendToUI(token);
-}
-```
 """),
 )
 async def ask_question(
