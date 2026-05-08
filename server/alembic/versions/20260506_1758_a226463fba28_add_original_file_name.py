@@ -21,8 +21,10 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     op.add_column(
         "attachment_chunks",
-        sa.Column("document_original_name", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+        sa.Column("document_original_name", sqlmodel.sql.sqltypes.AutoString(), nullable=True),
     )
+    op.execute("UPDATE attachment_chunks SET document_original_name = '' WHERE document_original_name IS NULL")
+    op.alter_column("attachment_chunks", "document_original_name", nullable=False)
 
 
 def downgrade() -> None:
