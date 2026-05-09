@@ -1,9 +1,12 @@
-from fastapi import FastAPI
+from app.routers import add_doc, example, rag
+from fastapi import FastAPI, Depends, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-
-from app.routers import example, rag, add_doc
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import text
 
 from .config import get_settings
+from .database import get_session
 
 app = FastAPI()
 
@@ -23,5 +26,12 @@ app.include_router(add_doc.router, prefix="/api")
 
 
 @app.get("/health", include_in_schema=False)
-def health() -> dict:
-    return {"status": "ok"}
+async def health(db: AsyncSession = Depends(get_session)):
+    try:
+        await db.execute(text("SELECT 1"))
+        return {"status": "healthy"}
+    except Exception:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "unhealthy", "reason": "database unreachable"},
+        )
