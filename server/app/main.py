@@ -1,4 +1,4 @@
-from app.routers import add_doc, example, rag
+from app.routers import add_doc, example, get_doc, rag
 from fastapi import FastAPI, Depends, status
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,6 +23,7 @@ app.add_middleware(
 app.include_router(example.router, prefix="/api")
 app.include_router(rag.router, prefix="/api")
 app.include_router(add_doc.router, prefix="/api")
+app.include_router(get_doc.router, prefix="/api")
 
 
 @app.get("/health", include_in_schema=False)

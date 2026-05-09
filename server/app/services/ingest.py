@@ -30,7 +30,7 @@ async def ingest_pdf_to_base(
     page_num = -1
     for page in doc:
         page_num += 1
-        text = page.get_text()
+        text = str(page.get_text())
 
         if not text or not text.strip():
             continue

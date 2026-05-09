@@ -56,7 +56,8 @@ async def upload_pdf(
     file: UploadFile = File(...),
     settings: Annotated[Settings, Depends(get_settings)],
 ):
-    saved_path = get_unique_filepath(settings.attachments_dir / file.filename)
+    original_file_path = Path(str(file.filename))
+    saved_path = get_unique_filepath(settings.attachments_dir / original_file_path.name)
     with open(saved_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
@@ -65,7 +66,7 @@ async def upload_pdf(
     await ingest_pdf_to_base(
         session=session,
         pdf_path=pdf_path,
-        pdf_original_name=file.filename,
+        pdf_original_name=original_file_path.name,
         settings=settings,
     )
 
@@ -74,6 +75,6 @@ async def upload_pdf(
     return {
         "status": "ok",
         "filename": pdf_path,
-        "original name": file.filename,
+        "original name": original_file_path.name,
         "message": "PDF ingested into vector database",
     }
