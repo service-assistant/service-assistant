@@ -4,7 +4,6 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import PdfViewer from './PdfViewer';
 
-// Definiujemy tablicę z naszymi plikami dla przejrzystości
 const AVAILABLE_FILES = [
     { id: 1, name: 'Instrukcja_Obslugi_Toyota.pdf', icon: 'forklift', color: '#06B6D4', source: require('../assets/instrukcje.pdf') },
     { id: 2, name: 'Schematy_Elektryczne.pdf', icon: 'lightning-bolt', color: '#EAB308', source: require('../assets/instrukcje.pdf') },
@@ -14,6 +13,10 @@ const AVAILABLE_FILES = [
     { id: 6, name: 'Instrukcja_BHP_Wozki.pdf', icon: 'shield-check-outline', color: '#22C55E', source: require('../assets/instrukcje.pdf') },
 ];
 
+/**
+ * RightPanel Component
+ * Handles the display of the file grid, the PDF Viewer, and image schematics.
+ */
 export default function RightPanel({
                                        currentSource,
                                        hasAskedQuestion,
@@ -42,18 +45,16 @@ export default function RightPanel({
       </html>
     `;
 
+    // RENDER LOGIC:
+    // 1. WebView (Schema) - Shown if there is an active image AND schema mode is toggled on.
+    // 2. PdfViewer - Shown if there is an active image (but schema mode is off) OR a specific PDF is selected from the grid.
+    // 3. Grid (Fallback) - Renders the grid of AVAILABLE_FILES if neither of the above conditions are met.
+    
     return (
         <View className='flex-1 h-full flex-col pl-6'>
-
-            {/* --- GÓRNE PRZYCISKI NAWIGACJI --- */}
             <View className='w-full flex-row items-center mb-4 h-14'>
-
-                {/* LEWA STRONA: Pusta dla balansu */}
                 <View className='flex-1' />
-
-                {/* PRAWA STRONA: Grupa przycisków akcji */}
                 <View className='flex-1 flex-row justify-end gap-3'>
-                    {/* Przycisk PLIKI */}
                     <TouchableOpacity
                         onPress={() => {
                             onSelectPdf(null);
@@ -66,7 +67,6 @@ export default function RightPanel({
                         <Text className='text-[#CC5500] font-bold ml-2 tracking-widest text-[11px] uppercase'>POKAŻ PLIKI</Text>
                     </TouchableOpacity>
 
-                    {/* Przycisk przełączania SCHEMAT / ŹRÓDŁO */}
                     {currentImage && (
                         <TouchableOpacity
                             onPress={() => setShowSchema(!showSchema)}
@@ -81,7 +81,6 @@ export default function RightPanel({
                 </View>
             </View>
 
-            {/* --- GŁÓWNY KONTENT --- */}
             <View className='flex-1 rounded-xl overflow-hidden bg-black'>
                 {currentImage && showSchema ? (
                     <WebView
@@ -90,11 +89,8 @@ export default function RightPanel({
                         scrollEnabled={false}
                     />
                 ) : (currentImage && !showSchema) || selectedPdf ? (
-                    
                     <View className="flex-1 relative">
                         <PdfViewer source={selectedPdf?.source || require('../assets/instrukcje.pdf')} />
-                        
-                        {/* TABLICZKA Z DYNAMICZNĄ NAZWĄ I IKONĄ PLIKU */}
                         <View className="absolute top-0 left-0 bg-[#121212] border border-neutral-800 px-3 py-2 rounded-br-lg flex-row items-center shadow-lg opacity-90 z-10">
                             <MaterialCommunityIcons 
                                 name={(selectedPdf?.icon as any) || "file-pdf-box"} 
@@ -106,7 +102,6 @@ export default function RightPanel({
                             </Text>
                         </View>
                     </View>
-
                 ) : (
                     <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
                         <View className='flex-row flex-wrap justify-center gap-4 px-4'>
