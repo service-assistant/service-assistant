@@ -48,7 +48,6 @@ async def test_get_pdf_chunk_not_found():
     session.execute.return_value = mock_result
 
     with pytest.raises(HTTPException) as exc:
-
         await get_pdf(
             session=session,
             chunk_id=999,
@@ -72,7 +71,6 @@ async def test_get_pdf_file_not_found():
     session.execute.return_value = mock_result
 
     with pytest.raises(HTTPException) as exc:
-
         await get_pdf(
             session=session,
             chunk_id=1,
