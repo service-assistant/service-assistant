@@ -45,7 +45,7 @@ def get_unique_filepath(base_path: Path) -> Path:
 
 
 @router.post(
-    "/upload-pdf",
+    "/attachments/add",
     summary="Upload PDF to vector database",
     description=description,
     status_code=201,

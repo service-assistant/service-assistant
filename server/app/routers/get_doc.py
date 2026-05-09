@@ -14,7 +14,7 @@ router = APIRouter(prefix="", tags=["GET_DOC"])
 
 
 @router.get(
-    "/get-pdf/{chunk_id}",
+    "/attachments/get/{chunk_id}",
     summary="Download PDF from database",
     description="""Download PDF from database by providing the chunk ID""",
 )
