@@ -1,12 +1,13 @@
 import { Redirect } from 'expo-router';
 import { useEffect } from 'react';
-import * as ScreenOrientation from 'expo-screen-orientation'; // <-- Add this missing import!
+import * as ScreenOrientation from 'expo-screen-orientation';
 
 export default function Index() {
-	useEffect(() => {
-		// This forces the app to immediately check the physical sensor and stretch the UI
-		ScreenOrientation.unlockAsync();
-	}, []);
-    // Zmień "/home" na nazwę pliku, który chcesz odpalić (bez .tsx)
+    useEffect(() => {
+        // Enable free screen rotation based on device sensors
+        ScreenOrientation.unlockAsync();
+    }, []);
+
+    // Redirect to the main application route
     return <Redirect href="/home" />;
 }

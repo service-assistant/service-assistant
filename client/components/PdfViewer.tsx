@@ -1,10 +1,19 @@
 import React from 'react';
-import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 import Pdf from 'react-native-pdf';
 
+/**
+ * PDF Viewer Component.
+ * NOTE: This component/view is primarily targeted and tested for Android.
+ */
 export default function PdfViewer({ source }: { source: any }) {
     return (
-        <View style={styles.container}>
+        <View className="flex-1 bg-black overflow-hidden justify-center items-center">
+            {/* 
+              Android-specific configuration:
+              - trustAllCerts: false prevents loading errors from certain sources
+              - fitPolicy: 0 fits the document width to the screen
+            */}
             <Pdf
                 source={source}
                 trustAllCerts={false}
@@ -19,26 +28,15 @@ export default function PdfViewer({ source }: { source: any }) {
                 onError={(error) => {
                     console.log('PDF failed to load:', error);
                 }}
-                style={styles.pdf}
+                style={{
+                    flex: 1,
+                    width: '100%',
+                    height: '100%',
+                    backgroundColor: '#000000',
+                    // Scale 1.06 is used to eliminate extra margins/borders on Android
+                    transform: [{ scale: 1.06 }, { translateX: 0 }]
+                }}
             />
         </View>
     );
 }
-
-const styles = StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: '#000000', 
-        overflow: 'hidden',
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    pdf: {
-        flex: 1,
-        width: '100%', // Zwracamy na 100%
-        height: '100%',
-        backgroundColor: '#000000', 
-        
-        transform: [{ scale: 1.06 }, { translateX: 0 }], 
-    }
-});
