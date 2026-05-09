@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, AsyncMock, Mock, patch
 from sqlalchemy.ext.asyncio import AsyncSession
 import pytest
+from pathlib import Path
 
 from app.config import Settings
 from app.services.embedding import embed_question, get_close_chunks
@@ -15,6 +16,9 @@ async def test_embed_question_returns_first_embedding():
         azure_openai_api_key="key",
         azure_openai_embeddings_deployment="dep",
         azure_openai_api_version="2024-01-01",
+        openai_chat_model="gpt",
+        openai_api_key="key",
+        attachments_dir=Path("../attachments"),
     )
 
     client = MagicMock()
