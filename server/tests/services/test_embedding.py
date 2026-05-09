@@ -18,7 +18,7 @@ async def test_embed_question_returns_first_embedding():
         azure_openai_api_version="2024-01-01",
         openai_chat_model="gpt",
         openai_api_key="key",
-        attachments_dir=Path("../attachments")
+        attachments_dir=Path("../attachments"),
     )
 
     client = MagicMock()

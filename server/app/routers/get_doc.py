@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi.responses import FileResponse
+
 # from typing_extensions import Annotated
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy import text
@@ -23,7 +24,7 @@ async def get_pdf(
     chunk_id: int,
     # settings: Annotated[Settings, Depends(get_settings)],
 ):
-    
+
     query = text("""
         SELECT document_name
         FROM attachment_chunks
@@ -36,21 +37,13 @@ async def get_pdf(
     row = result.fetchone()
 
     if not row:
-        raise HTTPException(
-            status_code=404,
-            detail="Chunk not found"
-        )
+        raise HTTPException(status_code=404, detail="Chunk not found")
 
     document_path = Path(row[0])
 
     if not document_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail="PDF file not found on disk"
-        )
+        raise HTTPException(status_code=404, detail="PDF file not found on disk")
 
     return FileResponse(
-        path=document_path,
-        filename=document_path.name,
-        media_type="application/pdf"
+        path=document_path, filename=document_path.name, media_type="application/pdf"
     )
