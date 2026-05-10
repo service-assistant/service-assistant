@@ -1,8 +1,16 @@
 from openai import AsyncAzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
+from typing import TypedDict
 
 from ..config import Settings
+
+
+class RetrivedChunk(TypedDict):
+    id: int
+    content: str
+    document_name: str
+    page: int
 
 
 async def embed_question(question: str, settings: Settings) -> list[float]:
@@ -24,20 +32,27 @@ async def embed_question(question: str, settings: Settings) -> list[float]:
 
 async def get_close_chunks(
     session: AsyncSession, embedded_vector: list[float]
-) -> list[str]:
+) -> list[RetrivedChunk]:
     """
-    Return 5 chunks closest to the embedded_vector
+    Return 5 chunks closest to the embedded_vector with metadata
     """
 
     query = text("""
-        SELECT content
+        SELECT id, content, document_name, page 
         FROM attachment_chunks
         ORDER BY embedding <-> :vector
         LIMIT 5
     """)
 
     result = await session.execute(query, {"vector": str(embedded_vector)})
-
     rows = result.fetchall()
 
-    return [row[0] for row in rows]
+    return [
+        {
+            "id": row[0],
+            "content": row[1],
+            "document_name": row[2],
+            "page": row[3],
+        }
+        for row in rows
+    ]
