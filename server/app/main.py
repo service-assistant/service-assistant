@@ -12,6 +12,7 @@ app = FastAPI()
 
 settings = get_settings()
 
+
 @app.middleware("http")
 async def bearer_auth_middleware(request: Request, call_next):
     auth_header = request.headers.get("Authorization")
@@ -22,8 +23,9 @@ async def bearer_auth_middleware(request: Request, call_next):
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={"detail": "Unauthorized"},
         )
-    
+
     return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,
