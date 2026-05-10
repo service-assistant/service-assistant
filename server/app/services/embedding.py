@@ -6,7 +6,7 @@ from typing import TypedDict
 from ..config import Settings
 
 
-class RetrivedChunk(TypedDict):
+class RetrievedChunk(TypedDict):
     id: int
     content: str
     document_name: str
