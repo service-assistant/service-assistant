@@ -32,7 +32,7 @@ async def embed_question(question: str, settings: Settings) -> list[float]:
 
 async def get_close_chunks(
     session: AsyncSession, embedded_vector: list[float]
-) -> list[RetrivedChunk]:
+) -> list[RetrievedChunk]:
     """
     Return 5 chunks closest to the embedded_vector with metadata
     """
