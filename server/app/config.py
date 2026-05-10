@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     env: str
     database_url: str
+    auth_token: str
     azure_openai_endpoint: str
     azure_openai_api_key: str
     azure_openai_embeddings_deployment: str
