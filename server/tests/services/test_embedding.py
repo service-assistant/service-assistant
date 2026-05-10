@@ -35,20 +35,37 @@ async def test_get_close_chunks():
     session = AsyncMock(spec=AsyncSession)
 
     fake_rows = [
-        ("chunk 1",),
-        ("chunk 2",),
-        ("chunk 3",),
+        (1, "chunk 1", "/attachments/sample.pdf", 0),
+        (2, "chunk 2", "/attachments/sample.pdf", 1),
+        (3, "chunk 3", "/attachments/sample.pdf", 2),
     ]
 
     mock_result = Mock()
     mock_result.fetchall.return_value = fake_rows
-
     session.execute.return_value = mock_result
 
     vector = [0.1, 0.2, 0.3]
-
     result = await get_close_chunks(session, vector)
 
-    assert result == ["chunk 1", "chunk 2", "chunk 3"]
+    assert result == [
+        {
+            "id": 1,
+            "content": "chunk 1",
+            "document_name": "/attachments/sample.pdf",
+            "page": 0,
+        },
+        {
+            "id": 2,
+            "content": "chunk 2",
+            "document_name": "/attachments/sample.pdf",
+            "page": 1,
+        },
+        {
+            "id": 3,
+            "content": "chunk 3",
+            "document_name": "/attachments/sample.pdf",
+            "page": 2,
+        },
+    ]
 
     session.execute.assert_called_once()

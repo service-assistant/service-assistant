@@ -28,7 +28,7 @@ class AskQuestionRequest(BaseModel):
     response_class=StreamingResponse,
     responses={
         status.HTTP_200_OK: {
-            "description": "Streams LLM response tokens as plain text chunks.",
+            "description": "Streams LLM response tokens and metadata",
         },
         status.HTTP_422_UNPROCESSABLE_CONTENT: {
             "description": "Request body validation failed"
@@ -48,11 +48,21 @@ async def ask_question(
 ):
     embedded_question = await embedding.embed_question(body.question, settings)
     close_chunks = await embedding.get_close_chunks(session, embedded_question)
+    context_chunks = [chunk["content"] for chunk in close_chunks]
 
     async def event_generator():
-        async for token in llm.query(body.question, close_chunks, settings):
-            yield f"data: {json.dumps(token)}\n\n"
-        yield "data: [DONE]\n\n"
+        for chunk in close_chunks:
+            source_payload = {
+                "attachment_id": chunk["id"],
+                "file_name": chunk["document_name"],
+                "page": chunk["page"],
+            }
+            yield f"event: source\ndata: {json.dumps(source_payload)}\n\n"
+
+        async for token in llm.query(body.question, context_chunks, settings):
+            yield f"event: token\ndata: {json.dumps(token)}\n\n"
+
+        yield "event: [DONE]\n\n"
 
     return StreamingResponse(
         event_generator(),
