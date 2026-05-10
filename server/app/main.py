@@ -1,5 +1,5 @@
 from app.routers import add_doc, example, get_doc, rag
-from fastapi import FastAPI, Depends, status
+from fastapi import FastAPI, Depends, status, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +11,19 @@ from .database import get_session
 app = FastAPI()
 
 settings = get_settings()
+
+@app.middleware("http")
+async def bearer_auth_middleware(request: Request, call_next):
+    auth_header = request.headers.get("Authorization")
+    expected = f"Bearer {settings.auth_token}"
+
+    if auth_header != expected:
+        return JSONResponse(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            content={"detail": "Unauthorized"},
+        )
+    
+    return await call_next(request)
 
 app.add_middleware(
     CORSMiddleware,
