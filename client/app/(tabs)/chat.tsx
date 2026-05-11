@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform, View, Animated } from 'react-native';
+import { Platform, View, Animated, Image } from 'react-native';
 import { Buffer } from 'buffer';
 import { 
     useAudioPlayer, 
@@ -7,6 +7,7 @@ import {
     AudioModule, 
     RecordingPresets 
 } from 'expo-audio';
+import { Asset } from 'expo-asset';
 
 import * as FileSystem from 'expo-file-system/legacy';
 import RightPanel from "@/components/RightPanel";
@@ -32,6 +33,7 @@ export default function ChatScreen() {
     const [inputText, setInputText] = useState<string>('');
     const [currentImage, setCurrentImage] = useState<string | null>(null);
     const [currentSource, setCurrentSource] = useState<string>('02-8FGF15');
+    
 
     // --- CHAT STATE ---
     const initialMessage = 'Cześć. Jestem gotowy. Wybierz maszynę lub zadaj pytanie o naprawę.';
@@ -182,11 +184,34 @@ export default function ChatScreen() {
             }
         };
 
-        xhr.onload = () => {
+       xhr.onload = () => {
             setIsLoading(false);
             if (xhr.status >= 200 && xhr.status < 300) {
                 setCurrentSource('02-8FGF15'); 
-                setCurrentImage(null);
+                
+                const rawAsset = require('@/assets/schemas/schemat1.png');
+                let schemaAsset;
+
+                if (Platform.OS === 'web') {
+                    // Bezpieczne sprawdzanie wszystkich formatów na Webie
+                    if (typeof rawAsset === 'string') {
+                        schemaAsset = rawAsset;
+                    } else if (rawAsset?.uri) {
+                        schemaAsset = rawAsset.uri; // Expo Web z Metro (najbardziej prawdopodobne)
+                    } else if (rawAsset?.default) {
+                        schemaAsset = rawAsset.default; // Starsze konfiguracje (Webpack)
+                    } else {
+                        schemaAsset = rawAsset; // Fallback
+                    }
+                } else {
+                    // Dla Android / iOS
+                    schemaAsset = Image.resolveAssetSource(rawAsset).uri;
+                }
+
+
+                setCurrentImage(schemaAsset);
+                setShowSchema(true); 
+
                 playChatGptAudio(fullText);
             } else {
                 handleError(`HTTP Error: ${xhr.status}`);
