@@ -134,14 +134,17 @@ export default function ChatScreen() {
     };
 
     /**
-     * Sends the user's query to the custom backend,
-     * receives a streamed response (SSE) and updates the chat.
-     * Generates speech (TTS) upon completion.
-     * @param question User's question.
-     */
-    const askAPI = async (question: string) => {
+ * Sends a user query to the RAG backend, streams the SSE response token by token,
+ * updates the chat UI, and plays the TTS audio upon completion.
+ * Also extracts source metadata if provided by the backend.
+ *
+ * @param {string} question - The input text from the user to send to the API.
+ */
+const askAPI = async (question: string) => {
         setIsLoading(true);
         const aiMessageId = Date.now() + Math.random(); 
+        
+        const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || "";
         
         setMessages((prev) => [
             ...prev,
@@ -153,38 +156,102 @@ export default function ChatScreen() {
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.setRequestHeader('Accept', 'text/plain');
 
+        if (AUTH_TOKEN) {
+            xhr.setRequestHeader('Authorization', `Bearer ${AUTH_TOKEN}`);
+        }
+
         let fullText = '';
         let spinnerRemoved = false;
+        let lastResponse = '';
+        let buffer = '';
+        let currentEventType = 'message'; 
 
         xhr.onreadystatechange = () => {
             if (xhr.readyState === 3 || xhr.readyState === 4) {
-                const rawResponse = xhr.responseText;
-                const chunks = rawResponse.split("data: ").filter(Boolean);
-                let combinedText = "";
+                const currentResponse = xhr.responseText;
+                if (!currentResponse) return;
 
-                for (const chunk of chunks) {
-                    try {
-                        const token = JSON.parse(chunk.trim());
-                        combinedText += token;
-                    } catch (e) {}
+                let newData = '';
+
+                if (lastResponse.length > 0 && currentResponse.startsWith(lastResponse)) {
+                    newData = currentResponse.substring(lastResponse.length);
+                } else {
+                    newData = currentResponse; 
+                }
+                lastResponse = currentResponse;
+
+                buffer += newData;
+                const lines = buffer.split('\n');
+                
+                if (xhr.readyState === 3) {
+                    buffer = lines.pop() || '';
+                } else {
+                    buffer = '';
                 }
 
-                fullText = combinedText;
+                let textUpdated = false;
 
-                if (!spinnerRemoved && fullText.length > 0) {
-                    setIsLoading(false);
-                    spinnerRemoved = true;
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    
+                    if (!trimmedLine) {
+                        currentEventType = 'message';
+                        continue;
+                    }
+
+                    if (trimmedLine.startsWith('event:')) {
+                        const eventName = trimmedLine.substring(6).trim();
+                        if (eventName === '[DONE]') continue; 
+                        currentEventType = eventName;
+                        continue;
+                    }
+
+                    if (trimmedLine.startsWith('data:')) {
+                        const chunk = trimmedLine.substring(5).trim();
+                        if (!chunk) continue;
+
+                        if (currentEventType === 'source') {
+                            try {
+                                const sourceData = JSON.parse(chunk);
+                                // TODO: Handle source data (e.g., setCurrentSource(sourceData.file_name))
+                            } catch (e) {
+                                console.error("Source parsing error:", e);
+                            }
+                        } 
+                        else if (currentEventType === 'token') {
+                            try {
+                                const token = JSON.parse(chunk);
+                                if (typeof token === 'string') {
+                                    fullText += token;
+                                    textUpdated = true;
+                                } else if (token && typeof token.text === 'string') {
+                                    fullText += token.text;
+                                    textUpdated = true;
+                                }
+                            } catch (e) {
+                                fullText += chunk;
+                                textUpdated = true;
+                            }
+                        }
+                    }
                 }
 
-                setMessages((prev) =>
-                    prev.map((msg) =>
-                        msg.id === aiMessageId ? { ...msg, text: fullText } : msg
-                    )
-                );
+                if (textUpdated || xhr.readyState === 4) {
+                    if (!spinnerRemoved && fullText.length > 0) {
+                        setIsLoading(false);
+                        spinnerRemoved = true;
+                    }
+
+                    setMessages((prev) =>
+                        prev.map((msg) =>
+                            msg.id === aiMessageId ? { ...msg, text: fullText } : msg
+                        )
+                    );
+                }
             }
         };
 
-       xhr.onload = () => {
+        xhr.onload = () => {
             setIsLoading(false);
             if (xhr.status >= 200 && xhr.status < 300) {
                 setCurrentSource('02-8FGF15'); 
@@ -193,26 +260,25 @@ export default function ChatScreen() {
                 let schemaAsset;
 
                 if (Platform.OS === 'web') {
-                    // Bezpieczne sprawdzanie wszystkich formatów na Webie
                     if (typeof rawAsset === 'string') {
                         schemaAsset = rawAsset;
                     } else if (rawAsset?.uri) {
-                        schemaAsset = rawAsset.uri; // Expo Web z Metro (najbardziej prawdopodobne)
+                        schemaAsset = rawAsset.uri; 
                     } else if (rawAsset?.default) {
-                        schemaAsset = rawAsset.default; // Starsze konfiguracje (Webpack)
+                        schemaAsset = rawAsset.default; 
                     } else {
-                        schemaAsset = rawAsset; // Fallback
+                        schemaAsset = rawAsset; 
                     }
                 } else {
-                    // Dla Android / iOS
                     schemaAsset = Image.resolveAssetSource(rawAsset).uri;
                 }
-
 
                 setCurrentImage(schemaAsset);
                 setShowSchema(true); 
 
-                playChatGptAudio(fullText);
+                if (fullText.length > 0) {
+                    playChatGptAudio(fullText);
+                }
             } else {
                 handleError(`HTTP Error: ${xhr.status}`);
             }
