@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useRef, useState } from 'react';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import PdfViewer from './PdfViewer';
+import * as FileSystem from 'expo-file-system/legacy'; // Using legacy according to ChatScreen
+import { View, Text, TouchableOpacity, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
 
 const AVAILABLE_FILES = [
     { id: 1, name: 'Instrukcja_Obslugi_Toyota.pdf', icon: 'forklift', color: '#06B6D4', source: require('../assets/instrukcje.pdf') },
@@ -13,6 +14,9 @@ const AVAILABLE_FILES = [
     { id: 6, name: 'Instrukcja_BHP_Wozki.pdf', icon: 'shield-check-outline', color: '#22C55E', source: require('../assets/instrukcje.pdf') },
 ];
 
+const REMOTE_PDF_URL = 'https://staging.asystent-serwisanta.pl/api/attachments/get/55';
+const DOWNLOADED_FILENAME = 'instrukcja_serwisowa.pdf'; // Hardcoded filename for the downloaded PDF (can be dynamic if needed)
+
 /**
  * RightPanel Component
  * Handles the display of the file grid, the PDF Viewer, and image schematics.
@@ -21,7 +25,7 @@ export default function RightPanel({
                                        currentSource,
                                        hasAskedQuestion,
                                        currentImage,
-                                       isLoading,
+                                       isLoading: isApiLoading,
                                        isListening,
                                        onMicPress,
                                        selectedPdf, 
@@ -31,6 +35,10 @@ export default function RightPanel({
                                        setCurrentImage
                                    }: any) {
 
+    const [isDownloading, setIsDownloading] = useState(false);
+    const downloadResumableRef = useRef<FileSystem.DownloadResumable | null>(null);
+    const [downloadingFileId, setDownloadingFileId] = useState<number | null>(null);
+    
     const getInvertedImageHtml = (imageUrl: string) => `
       <!DOCTYPE html>
       <html>
@@ -45,6 +53,140 @@ export default function RightPanel({
       </html>
     `;
 
+    // --- DOWNLOAD LOGIC (WITH ARTIFICIAL DELAY) ---
+    const handleDownloadAndOpenPdf = async () => {
+        if (isDownloading) return;
+
+        setIsDownloading(true);
+        // Removed setDownloadProgress, using the default ActivityIndicator
+
+        const fileUri = FileSystem.documentDirectory + DOWNLOADED_FILENAME;
+
+        // Real download
+        downloadResumableRef.current = FileSystem.createDownloadResumable(
+            REMOTE_PDF_URL,
+            fileUri,
+            {}
+        );
+
+        try {
+            // ARTIFICIAL DELAY - 5 SECONDS
+            // This will pause execution so you can see the spinning indicator
+            await new Promise(resolve => setTimeout(resolve, 5000));
+
+            const result = await downloadResumableRef.current.downloadAsync();
+            
+            if (result && result.uri) {
+                console.log('Finished downloading to ', result.uri);
+                
+                setIsDownloading(false);
+                setShowSchema(false); 
+
+                onSelectPdf({
+                    name: 'Instrukcja_Serwisowa.pdf',
+                    icon: 'file-download',
+                    color: '#22C55E',
+                    source: { uri: result.uri } 
+                });
+            } else {
+                throw new Error("Download failed - no URI");
+            }
+
+        } catch (e) {
+            console.error('Download error:', e);
+            setIsDownloading(false);
+            Alert.alert("Błąd", "Nie udało się pobrać pliku PDF.");
+        } finally {
+            downloadResumableRef.current = null;
+        }
+    };
+
+    const renderSourceButton = () => {
+        if (!currentImage) return null;
+
+        return (
+            <TouchableOpacity
+                onPress={() => {
+                    if (showSchema) {
+                        handleDownloadAndOpenPdf();
+                    } else {
+                        setShowSchema(true);
+                    }
+                }}
+                disabled={isDownloading}
+                className={`flex-row items-center border ${isDownloading ? 'border-neutral-700 bg-neutral-900' : 'border-[#CC5500] bg-[#0a0a0a]'} px-4 py-3 rounded-md min-w-[170px] justify-center`}
+            >
+                {isDownloading ? (
+                    <View className="flex-row items-center">
+                        <ActivityIndicator size="small" color="#fff" />
+                        <Text className='text-white font-bold ml-3 tracking-widest text-[11px] uppercase'>
+                            POBIERANIE...
+                        </Text>
+                    </View>
+                ) : (
+                    <View className="flex-row items-center">
+                        <Feather name={showSchema ? "image" : "layers"} size={18} color="#CC5500" />
+                        <Text className='text-[#CC5500] font-bold ml-2 tracking-widest text-[11px] uppercase'>
+                            {showSchema ? 'POKAŻ ŹRÓDŁO' : 'POKAŻ SCHEMAT'}
+                        </Text>
+                    </View>
+                )}
+            </TouchableOpacity>
+        );
+    };
+
+    const performDownload = async (remoteUrl: string, localFilename: string, displayName: string, fileIdForGrid: number | null = null) => {
+    if (isDownloading) return;
+
+    setIsDownloading(true);
+    setDownloadingFileId(fileIdForGrid);
+
+    try {
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        if (Platform.OS === 'web') {
+            console.log(`Web: Opening remote PDF: ${remoteUrl}`);
+            
+            setShowSchema(false);
+            onSelectPdf({
+                name: displayName,
+                icon: 'file-download',
+                color: '#22C55E',
+                source: { uri: remoteUrl }
+            });
+        } else {
+            const fileUri = FileSystem.documentDirectory + localFilename;
+            downloadResumableRef.current = FileSystem.createDownloadResumable(remoteUrl, fileUri, {});
+            
+            const result = await downloadResumableRef.current.downloadAsync();
+            
+            if (result && result.uri) {
+                setShowSchema(false); 
+                onSelectPdf({
+                    name: displayName,
+                    icon: 'file-download',
+                    color: '#22C55E',
+                    source: { uri: result.uri } 
+                });
+            } else {
+                throw new Error("Download failed - no URI");
+            }
+        }
+    } catch (e) {
+        console.error('Download error:', e);
+        Alert.alert("Błąd", `Nie udało się otworzyć pliku: ${displayName}`);
+    } finally {
+        setIsDownloading(false);
+        setDownloadingFileId(null);
+        downloadResumableRef.current = null;
+    }
+};
+
+    const handleFileGridPress = async (file: typeof AVAILABLE_FILES[0]) => {
+        // Passing hardcoded constants REMOTE_PDF_URL and DOWNLOADED_FILENAME
+        await performDownload(REMOTE_PDF_URL, DOWNLOADED_FILENAME, file.name, file.id);
+    };
+
     // RENDER LOGIC:
     // 1. WebView (Schema) - Shown if there is an active image AND schema mode is toggled on.
     // 2. PdfViewer - Shown if there is an active image (but schema mode is off) OR a specific PDF is selected from the grid.
@@ -57,37 +199,49 @@ export default function RightPanel({
                 <View className='flex-1 flex-row justify-end gap-3'>
                     <TouchableOpacity
                         onPress={() => {
+                            if (downloadResumableRef.current) {
+                                downloadResumableRef.current.cancelAsync();
+                            }
                             onSelectPdf(null);
                             setShowSchema(false);
                             setCurrentImage(null);
+                            setIsDownloading(false);
                         }}
-                        className='flex-row items-center border border-[#CC5500] px-4 py-3 rounded-md bg-[#0a0a0a]'
+                        disabled={isDownloading}
+                        className={`flex-row items-center border ${isDownloading ? 'border-neutral-700' : 'border-[#CC5500]'} px-4 py-3 rounded-md bg-[#0a0a0a]`}
                     >
-                        <MaterialCommunityIcons name="file-tree" size={18} color="#CC5500" />
-                        <Text className='text-[#CC5500] font-bold ml-2 tracking-widest text-[11px] uppercase'>POKAŻ PLIKI</Text>
+                        <MaterialCommunityIcons name="file-tree" size={18} color={isDownloading ? "#555" : "#CC5500"} />
+                        <Text className={`${isDownloading ? 'text-neutral-600' : 'text-[#CC5500]'} font-bold ml-2 tracking-widest text-[11px] uppercase`}>POKAŻ PLIKI</Text>
                     </TouchableOpacity>
 
-                    {currentImage && (
-                        <TouchableOpacity
-                            onPress={() => setShowSchema(!showSchema)}
-                            className='flex-row items-center border border-[#CC5500] px-4 py-3 rounded-md bg-[#0a0a0a]'
-                        >
-                            <Feather name={showSchema ? "layers" : "image"} size={18} color="#CC5500" />
-                            <Text className='text-[#CC5500] font-bold ml-2 tracking-widest text-[11px] uppercase'>
-                                {showSchema ? 'POKAŻ ŹRÓDŁO' : 'POKAŻ SCHEMAT'}
-                            </Text>
-                        </TouchableOpacity>
-                    )}
+                    {renderSourceButton()}
                 </View>
             </View>
 
             <View className='flex-1 rounded-xl overflow-hidden bg-black'>
                 {currentImage && showSchema ? (
-                    <WebView
-                        source={{ html: getInvertedImageHtml(currentImage) }}
-                        style={{ flex: 1, backgroundColor: 'transparent' }}
-                        scrollEnabled={false}
-                    />
+                    Platform.OS === 'web' ? (
+        // Renderowanie specjalnie dla Weba
+        <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+            <img 
+                src={currentImage} 
+                style={{ 
+                    width: '100%', 
+                    height: '100%', 
+                    objectFit: 'contain', 
+                    filter: 'invert(100%)' // Zwykły CSS załatwia sprawę
+                }} 
+                alt="Schemat"
+            />
+        </View>
+    ) : (
+        // Renderowanie dla iOS / Android
+        <WebView
+            source={{ html: getInvertedImageHtml(currentImage) }}
+            style={{ flex: 1, backgroundColor: 'transparent' }}
+            scrollEnabled={false}
+        />
+    )
                 ) : (currentImage && !showSchema) || selectedPdf ? (
                     <View className="flex-1 relative">
                         <PdfViewer source={selectedPdf?.source || require('../assets/instrukcje.pdf')} />
@@ -105,28 +259,48 @@ export default function RightPanel({
                 ) : (
                     <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
                         <View className='flex-row flex-wrap justify-center gap-4 px-4'>
-                            {AVAILABLE_FILES.map((file) => (
-                                <TouchableOpacity
-                                    key={file.id}
-                                    onPress={() => {
-                                        onSelectPdf(file);
-                                        setShowSchema(false);
-                                    }}
-                                    className='w-[30%] bg-[#121212] border border-neutral-800 rounded-2xl items-center justify-center py-6 px-3'
-                                >
-                                    <MaterialCommunityIcons
-                                        name={file.icon as any}
-                                        size={56}
-                                        color={file.color}
-                                    />
-                                    <Text
-                                        className='text-white font-bold mt-4 text-[13px] text-center leading-4'
-                                        numberOfLines={2}
+                            {AVAILABLE_FILES.map((file) => {
+                                const isThisFileDownloading = isDownloading && downloadingFileId === file.id;
+
+                                return (
+                                    <TouchableOpacity
+                                        key={file.id}
+                                        onPress={() => handleFileGridPress(file)}
+                                        disabled={isDownloading}
+                                        className="w-[30%] border rounded-2xl items-center justify-center py-6 px-3 bg-[#121212] border-neutral-800 relative"
                                     >
-                                        {file.name}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
+                                        {isThisFileDownloading && (
+                                            <Text className="absolute top-2 text-[#CC5500] font-bold text-[9px] tracking-widest uppercase">
+                                                POBIERANIE...
+                                            </Text>
+                                        )}
+
+                                        <View className="w-24 h-24 items-center justify-center relative">
+                                            <MaterialCommunityIcons
+                                                name={file.icon as any}
+                                                size={64}
+                                                color={file.color}
+                                                style={{ opacity: 0.2 }}
+                                            />
+                                            
+                                            <View className="absolute inset-0 items-center justify-center">
+                                                {isThisFileDownloading ? (
+                                                    <ActivityIndicator size="large" color="#fff" /> 
+                                                ) : (
+                                                    <Feather name="download-cloud" size={32} color="#fff" />
+                                                )}
+                                            </View>
+                                        </View>
+
+                                        <Text
+                                            className="font-bold mt-4 text-[13px] text-center leading-4 text-neutral-500"
+                                            numberOfLines={2}
+                                        >
+                                            {file.name}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
                         </View>
                     </ScrollView>
                 )}
