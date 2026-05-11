@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import PdfViewer from './PdfViewer';
-import * as FileSystem from 'expo-file-system/legacy'; // Using legacy according to ChatScreen
+import * as FileSystem from 'expo-file-system/legacy';
 import { View, Text, TouchableOpacity, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
 
 const AVAILABLE_FILES = [
@@ -15,7 +15,9 @@ const AVAILABLE_FILES = [
 ];
 
 const REMOTE_PDF_URL = 'https://staging.asystent-serwisanta.pl/api/attachments/get/55';
-const DOWNLOADED_FILENAME = 'instrukcja_serwisowa.pdf'; // Hardcoded filename for the downloaded PDF (can be dynamic if needed)
+const DOWNLOADED_FILENAME = 'instrukcja_serwisowa.pdf';
+
+const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || "";
 
 /**
  * RightPanel Component
@@ -53,52 +55,67 @@ export default function RightPanel({
       </html>
     `;
 
-    // --- DOWNLOAD LOGIC (WITH ARTIFICIAL DELAY) ---
-    const handleDownloadAndOpenPdf = async () => {
+    // --- UNIFIED DOWNLOAD LOGIC ---
+    const performDownload = async (remoteUrl: string, localFilename: string, displayName: string, fileIdForGrid: number | null = null) => {
         if (isDownloading) return;
 
         setIsDownloading(true);
-        // Removed setDownloadProgress, using the default ActivityIndicator
-
-        const fileUri = FileSystem.documentDirectory + DOWNLOADED_FILENAME;
-
-        // Real download
-        downloadResumableRef.current = FileSystem.createDownloadResumable(
-            REMOTE_PDF_URL,
-            fileUri,
-            {}
-        );
+        setDownloadingFileId(fileIdForGrid);
 
         try {
             // ARTIFICIAL DELAY - 5 SECONDS
-            // This will pause execution so you can see the spinning indicator
             await new Promise(resolve => setTimeout(resolve, 5000));
 
-            const result = await downloadResumableRef.current.downloadAsync();
-            
-            if (result && result.uri) {
-                console.log('Finished downloading to ', result.uri);
-                
-                setIsDownloading(false);
-                setShowSchema(false); 
-
+            if (Platform.OS === 'web') {
+                setShowSchema(false);
                 onSelectPdf({
-                    name: 'Instrukcja_Serwisowa.pdf',
+                    name: displayName,
                     icon: 'file-download',
                     color: '#22C55E',
-                    source: { uri: result.uri } 
+                    source: { 
+                        uri: remoteUrl,
+                        headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` }
+                    }
                 });
             } else {
-                throw new Error("Download failed - no URI");
+                const fileUri = FileSystem.documentDirectory + localFilename;
+                
+                downloadResumableRef.current = FileSystem.createDownloadResumable(
+                    remoteUrl, 
+                    fileUri, 
+                    {
+                        headers: {
+                            'Authorization': `Bearer ${AUTH_TOKEN}`
+                        }
+                    }
+                );
+                
+                const result = await downloadResumableRef.current.downloadAsync();
+                
+                if (result && result.uri) {
+                    setShowSchema(false); 
+                    onSelectPdf({
+                        name: displayName,
+                        icon: 'file-download',
+                        color: '#22C55E',
+                        source: { uri: result.uri } 
+                    });
+                } else {
+                    throw new Error("Download failed - no URI");
+                }
             }
-
         } catch (e) {
             console.error('Download error:', e);
-            setIsDownloading(false);
-            Alert.alert("Błąd", "Nie udało się pobrać pliku PDF.");
+            Alert.alert("Błąd", `Nie udało się pobrać pliku: ${displayName}`);
         } finally {
+            setIsDownloading(false);
+            setDownloadingFileId(null);
             downloadResumableRef.current = null;
         }
+    };
+
+    const handleFileGridPress = async (file: typeof AVAILABLE_FILES[0]) => {
+        await performDownload(REMOTE_PDF_URL, DOWNLOADED_FILENAME, file.name, file.id);
     };
 
     const renderSourceButton = () => {
@@ -108,7 +125,7 @@ export default function RightPanel({
             <TouchableOpacity
                 onPress={() => {
                     if (showSchema) {
-                        handleDownloadAndOpenPdf();
+                        performDownload(REMOTE_PDF_URL, DOWNLOADED_FILENAME, 'Instrukcja_Serwisowa.pdf', null);
                     } else {
                         setShowSchema(true);
                     }
@@ -116,7 +133,7 @@ export default function RightPanel({
                 disabled={isDownloading}
                 className={`flex-row items-center border ${isDownloading ? 'border-neutral-700 bg-neutral-900' : 'border-[#CC5500] bg-[#0a0a0a]'} px-4 py-3 rounded-md min-w-[170px] justify-center`}
             >
-                {isDownloading ? (
+                {isDownloading && downloadingFileId === null ? (
                     <View className="flex-row items-center">
                         <ActivityIndicator size="small" color="#fff" />
                         <Text className='text-white font-bold ml-3 tracking-widest text-[11px] uppercase'>
@@ -135,63 +152,6 @@ export default function RightPanel({
         );
     };
 
-    const performDownload = async (remoteUrl: string, localFilename: string, displayName: string, fileIdForGrid: number | null = null) => {
-    if (isDownloading) return;
-
-    setIsDownloading(true);
-    setDownloadingFileId(fileIdForGrid);
-
-    try {
-        await new Promise(resolve => setTimeout(resolve, 5000));
-
-        if (Platform.OS === 'web') {
-            console.log(`Web: Opening remote PDF: ${remoteUrl}`);
-            
-            setShowSchema(false);
-            onSelectPdf({
-                name: displayName,
-                icon: 'file-download',
-                color: '#22C55E',
-                source: { uri: remoteUrl }
-            });
-        } else {
-            const fileUri = FileSystem.documentDirectory + localFilename;
-            downloadResumableRef.current = FileSystem.createDownloadResumable(remoteUrl, fileUri, {});
-            
-            const result = await downloadResumableRef.current.downloadAsync();
-            
-            if (result && result.uri) {
-                setShowSchema(false); 
-                onSelectPdf({
-                    name: displayName,
-                    icon: 'file-download',
-                    color: '#22C55E',
-                    source: { uri: result.uri } 
-                });
-            } else {
-                throw new Error("Download failed - no URI");
-            }
-        }
-    } catch (e) {
-        console.error('Download error:', e);
-        Alert.alert("Błąd", `Nie udało się otworzyć pliku: ${displayName}`);
-    } finally {
-        setIsDownloading(false);
-        setDownloadingFileId(null);
-        downloadResumableRef.current = null;
-    }
-};
-
-    const handleFileGridPress = async (file: typeof AVAILABLE_FILES[0]) => {
-        // Passing hardcoded constants REMOTE_PDF_URL and DOWNLOADED_FILENAME
-        await performDownload(REMOTE_PDF_URL, DOWNLOADED_FILENAME, file.name, file.id);
-    };
-
-    // RENDER LOGIC:
-    // 1. WebView (Schema) - Shown if there is an active image AND schema mode is toggled on.
-    // 2. PdfViewer - Shown if there is an active image (but schema mode is off) OR a specific PDF is selected from the grid.
-    // 3. Grid (Fallback) - Renders the grid of AVAILABLE_FILES if neither of the above conditions are met.
-    
     return (
         <View className='flex-1 h-full flex-col pl-6'>
             <View className='w-full flex-row items-center mb-4 h-14'>
@@ -206,6 +166,7 @@ export default function RightPanel({
                             setShowSchema(false);
                             setCurrentImage(null);
                             setIsDownloading(false);
+                            setDownloadingFileId(null);
                         }}
                         disabled={isDownloading}
                         className={`flex-row items-center border ${isDownloading ? 'border-neutral-700' : 'border-[#CC5500]'} px-4 py-3 rounded-md bg-[#0a0a0a]`}
@@ -221,27 +182,25 @@ export default function RightPanel({
             <View className='flex-1 rounded-xl overflow-hidden bg-black'>
                 {currentImage && showSchema ? (
                     Platform.OS === 'web' ? (
-        // Renderowanie specjalnie dla Weba
-        <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
-            <img 
-                src={currentImage} 
-                style={{ 
-                    width: '100%', 
-                    height: '100%', 
-                    objectFit: 'contain', 
-                    filter: 'invert(100%)' // Zwykły CSS załatwia sprawę
-                }} 
-                alt="Schemat"
-            />
-        </View>
-    ) : (
-        // Renderowanie dla iOS / Android
-        <WebView
-            source={{ html: getInvertedImageHtml(currentImage) }}
-            style={{ flex: 1, backgroundColor: 'transparent' }}
-            scrollEnabled={false}
-        />
-    )
+                        <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+                            <img 
+                                src={currentImage} 
+                                style={{ 
+                                    width: '100%', 
+                                    height: '100%', 
+                                    objectFit: 'contain', 
+                                    filter: 'invert(100%)'
+                                }} 
+                                alt="Schemat"
+                            />
+                        </View>
+                    ) : (
+                        <WebView
+                            source={{ html: getInvertedImageHtml(currentImage) }}
+                            style={{ flex: 1, backgroundColor: 'transparent' }}
+                            scrollEnabled={false}
+                        />
+                    )
                 ) : (currentImage && !showSchema) || selectedPdf ? (
                     <View className="flex-1 relative">
                         <PdfViewer source={selectedPdf?.source || require('../assets/instrukcje.pdf')} />

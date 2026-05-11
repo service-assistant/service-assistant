@@ -185,39 +185,38 @@ export default function ChatScreen() {
         };
 
        xhr.onload = () => {
-    setIsLoading(false);
-    if (xhr.status >= 200 && xhr.status < 300) {
-        setCurrentSource('02-8FGF15'); 
-        
-        const rawAsset = require('@/assets/schemas/schemat1.png');
-        let schemaAsset;
+            setIsLoading(false);
+            if (xhr.status >= 200 && xhr.status < 300) {
+                setCurrentSource('02-8FGF15'); 
+                
+                const rawAsset = require('@/assets/schemas/schemat1.png');
+                let schemaAsset;
 
-        if (Platform.OS === 'web') {
-            // Bezpieczne sprawdzanie wszystkich formatów na Webie
-            if (typeof rawAsset === 'string') {
-                schemaAsset = rawAsset;
-            } else if (rawAsset?.uri) {
-                schemaAsset = rawAsset.uri; // Expo Web z Metro (najbardziej prawdopodobne)
-            } else if (rawAsset?.default) {
-                schemaAsset = rawAsset.default; // Starsze konfiguracje (Webpack)
+                if (Platform.OS === 'web') {
+                    // Bezpieczne sprawdzanie wszystkich formatów na Webie
+                    if (typeof rawAsset === 'string') {
+                        schemaAsset = rawAsset;
+                    } else if (rawAsset?.uri) {
+                        schemaAsset = rawAsset.uri; // Expo Web z Metro (najbardziej prawdopodobne)
+                    } else if (rawAsset?.default) {
+                        schemaAsset = rawAsset.default; // Starsze konfiguracje (Webpack)
+                    } else {
+                        schemaAsset = rawAsset; // Fallback
+                    }
+                } else {
+                    // Dla Android / iOS
+                    schemaAsset = Image.resolveAssetSource(rawAsset).uri;
+                }
+
+
+                setCurrentImage(schemaAsset);
+                setShowSchema(true); 
+
+                playChatGptAudio(fullText);
             } else {
-                schemaAsset = rawAsset; // Fallback
+                handleError(`HTTP Error: ${xhr.status}`);
             }
-        } else {
-            // Dla Android / iOS
-            schemaAsset = Image.resolveAssetSource(rawAsset).uri;
-        }
-
-        console.log("Wyciągnięty URL obrazka:", schemaAsset);
-
-        setCurrentImage(schemaAsset);
-        setShowSchema(true); 
-
-        playChatGptAudio(fullText);
-    } else {
-        handleError(`HTTP Error: ${xhr.status}`);
-    }
-};
+        };
 
         xhr.onerror = () => handleError('Server connection error.');
         xhr.ontimeout = () => handleError('Response timeout exceeded.');
