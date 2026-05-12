@@ -14,10 +14,11 @@ import RightPanel from "@/components/RightPanel";
 import LeftPanel, { Message } from "@/components/LeftPanel";
 
 /** Server URL depending on the platform (Android emulator vs others) */
-const SERVER_URL = Platform.OS === 'android' 
-  ? 'http://10.0.2.2:8000' 
-  : 'http://127.0.0.1:8000';
+// const SERVER_URL = Platform.OS === 'android' 
+//   ? 'http://10.0.2.2:8000' 
+//   : 'http://127.0.0.1:8000';
 
+const SERVER_URL = 'https://staging.asystent-serwisanta.pl'
 /**
  * Main application screen.
  * Manages chat state, voice communication (STT Deepgram, TTS OpenAI),
@@ -33,7 +34,10 @@ export default function ChatScreen() {
     const [inputText, setInputText] = useState<string>('');
     const [currentImage, setCurrentImage] = useState<string | null>(null);
     const [currentSource, setCurrentSource] = useState<string>('02-8FGF15');
+    const [attachmentPage, setAttachmentPage] = useState<number>(1); // domyślnie strona 1
     
+    const [attachmentId, setAttachmentId] = useState<number | null>(null);
+    const [attachmentName, setAttachmentName] = useState<string>('');
 
     // --- CHAT STATE ---
     const initialMessage = 'Cześć. Jestem gotowy. Wybierz maszynę lub zadaj pytanie o naprawę.';
@@ -140,166 +144,190 @@ export default function ChatScreen() {
  *
  * @param {string} question - The input text from the user to send to the API.
  */
-const askAPI = async (question: string) => {
-        setIsLoading(true);
-        const aiMessageId = Date.now() + Math.random(); 
-        
-        const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || "";
-        
-        setMessages((prev) => [
-            ...prev,
-            { id: aiMessageId, sender: 'ai', text: '' },
-        ]);
+    const askAPI = async (question: string) => {
+    setIsLoading(true);
+    const aiMessageId = Date.now() + Math.random(); 
+    
+    const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || "";
+    
+    setMessages((prev) => [
+        ...prev,
+        { id: aiMessageId, sender: 'ai', text: '' },
+    ]);
 
-        const xhr = new XMLHttpRequest();
-        xhr.open('POST', `${SERVER_URL}/api/questions`, true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.setRequestHeader('Accept', 'text/plain');
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${SERVER_URL}/api/questions`, true);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    xhr.setRequestHeader('Accept', 'text/plain');
 
-        if (AUTH_TOKEN) {
-            xhr.setRequestHeader('Authorization', `Bearer ${AUTH_TOKEN}`);
-        }
+    if (AUTH_TOKEN) {
+        xhr.setRequestHeader('Authorization', `Bearer ${AUTH_TOKEN}`);
+    }
 
-        let fullText = '';
-        let spinnerRemoved = false;
-        let lastResponse = '';
-        let buffer = '';
-        let currentEventType = 'message'; 
+    let fullText = '';
+    let spinnerRemoved = false;
+    let lastResponse = '';
+    let buffer = '';
+    let currentEventType = 'message'; 
+    
+    // Flaga do przechwycenia tylko pierwszego źródła
+    let firstSourceFound = false;
 
-        xhr.onreadystatechange = () => {
-            if (xhr.readyState === 3 || xhr.readyState === 4) {
-                const currentResponse = xhr.responseText;
-                if (!currentResponse) return;
+    xhr.onreadystatechange = () => {
+        if (xhr.readyState === 3 || xhr.readyState === 4) {
+            const currentResponse = xhr.responseText;
+            if (!currentResponse) return;
 
-                let newData = '';
+            let newData = '';
+            // Obsługa narastającego responseText w XHR
+            if (lastResponse.length > 0 && currentResponse.startsWith(lastResponse)) {
+                newData = currentResponse.substring(lastResponse.length);
+            } else {
+                newData = currentResponse; 
+            }
+            lastResponse = currentResponse;
 
-                if (lastResponse.length > 0 && currentResponse.startsWith(lastResponse)) {
-                    newData = currentResponse.substring(lastResponse.length);
-                } else {
-                    newData = currentResponse; 
-                }
-                lastResponse = currentResponse;
+            buffer += newData;
+            const lines = buffer.split('\n');
+            
+            // Jeśli stream trwa, zachowaj ostatnią (niepełną) linię w buforze
+            if (xhr.readyState === 3) {
+                buffer = lines.pop() || '';
+            } else {
+                buffer = '';
+            }
 
-                buffer += newData;
-                const lines = buffer.split('\n');
+            let textUpdated = false;
+
+            for (const line of lines) {
+                const trimmedLine = line.trim();
                 
-                if (xhr.readyState === 3) {
-                    buffer = lines.pop() || '';
-                } else {
-                    buffer = '';
+                if (!trimmedLine) {
+                    currentEventType = 'message';
+                    continue;
                 }
 
-                let textUpdated = false;
+                // Rozpoznawanie typu zdarzenia (event: ...)
+                if (trimmedLine.startsWith('event:')) {
+                    const eventName = trimmedLine.substring(6).trim();
+                    if (eventName === '[DONE]') continue; 
+                    currentEventType = eventName;
+                    continue;
+                }
 
-                for (const line of lines) {
-                    const trimmedLine = line.trim();
-                    
-                    if (!trimmedLine) {
-                        currentEventType = 'message';
-                        continue;
-                    }
+                // Przetwarzanie danych (data: ...)
+                if (trimmedLine.startsWith('data:')) {
+                    const chunk = trimmedLine.substring(5).trim();
+                    if (!chunk) continue;
 
-                    if (trimmedLine.startsWith('event:')) {
-                        const eventName = trimmedLine.substring(6).trim();
-                        if (eventName === '[DONE]') continue; 
-                        currentEventType = eventName;
-                        continue;
-                    }
-
-                    if (trimmedLine.startsWith('data:')) {
-                        const chunk = trimmedLine.substring(5).trim();
-                        if (!chunk) continue;
-
-                        if (currentEventType === 'source') {
+                    // PRZYPADEK 1: Dane źródłowe (attachment_id)
+                    // Wewnątrz askAPI -> w pętli obsługującej xhr.onreadystatechange
+                    if (currentEventType === 'source') {
+                        if (!firstSourceFound) {
                             try {
                                 const sourceData = JSON.parse(chunk);
-                                // TODO: Handle source data (e.g., setCurrentSource(sourceData.file_name))
+                                if (sourceData && sourceData.attachment_id) {
+                                    // Zapisujemy nowe zmienne
+                                    setAttachmentId(sourceData.attachment_id);
+                                    
+                                    // Oczyszczamy nazwę pliku (np. z "/attachments/instrukcje__1.pdf" robimy "instrukcje__1.pdf")
+                                    const rawFileName = sourceData.file_name || 'Dokument.pdf';
+                                    const cleanFileName = rawFileName.split('/').pop() || 'Dokument.pdf';
+                                    setAttachmentName(cleanFileName);
+                                    if (sourceData.page) {
+                                        setAttachmentPage(sourceData.page);
+                                    }
+                                    firstSourceFound = true; 
+                                    console.log("Przechwycono plik:", cleanFileName, "ID:", sourceData.attachment_id);
+                                }
                             } catch (e) {
                                 console.error("Source parsing error:", e);
                             }
-                        } 
-                        else if (currentEventType === 'token') {
-                            try {
-                                const token = JSON.parse(chunk);
-                                if (typeof token === 'string') {
-                                    fullText += token;
-                                    textUpdated = true;
-                                } else if (token && typeof token.text === 'string') {
-                                    fullText += token.text;
-                                    textUpdated = true;
-                                }
-                            } catch (e) {
-                                fullText += chunk;
+                        }
+                    }
+                    // PRZYPADEK 2: Tokeny tekstu
+                    else if (currentEventType === 'token') {
+                        try {
+                            const token = JSON.parse(chunk);
+                            if (typeof token === 'string') {
+                                fullText += token;
+                                textUpdated = true;
+                            } else if (token && typeof token.text === 'string') {
+                                fullText += token.text;
                                 textUpdated = true;
                             }
+                        } catch (e) {
+                            // Jeśli to nie JSON, potraktuj jako surowy tekst
+                            fullText += chunk;
+                            textUpdated = true;
                         }
                     }
                 }
-
-                if (textUpdated || xhr.readyState === 4) {
-                    if (!spinnerRemoved && fullText.length > 0) {
-                        setIsLoading(false);
-                        spinnerRemoved = true;
-                    }
-
-                    setMessages((prev) =>
-                        prev.map((msg) =>
-                            msg.id === aiMessageId ? { ...msg, text: fullText } : msg
-                        )
-                    );
-                }
             }
-        };
 
-        xhr.onload = () => {
-            setIsLoading(false);
-            if (xhr.status >= 200 && xhr.status < 300) {
-                setCurrentSource('02-8FGF15'); 
-                
-                const rawAsset = require('@/assets/schemas/schemat1.png');
-                let schemaAsset;
-
-                if (Platform.OS === 'web') {
-                    if (typeof rawAsset === 'string') {
-                        schemaAsset = rawAsset;
-                    } else if (rawAsset?.uri) {
-                        schemaAsset = rawAsset.uri; 
-                    } else if (rawAsset?.default) {
-                        schemaAsset = rawAsset.default; 
-                    } else {
-                        schemaAsset = rawAsset; 
-                    }
-                } else {
-                    schemaAsset = Image.resolveAssetSource(rawAsset).uri;
+            // Aktualizacja UI wiadomości
+            if (textUpdated || xhr.readyState === 4) {
+                if (!spinnerRemoved && fullText.length > 0) {
+                    setIsLoading(false);
+                    spinnerRemoved = true;
                 }
 
-                setCurrentImage(schemaAsset);
-                setShowSchema(true); 
-
-                if (fullText.length > 0) {
-                    playChatGptAudio(fullText);
-                }
-            } else {
-                handleError(`HTTP Error: ${xhr.status}`);
+                setMessages((prev) =>
+                    prev.map((msg) =>
+                        msg.id === aiMessageId ? { ...msg, text: fullText } : msg
+                    )
+                );
             }
-        };
-
-        xhr.onerror = () => handleError('Server connection error.');
-        xhr.ontimeout = () => handleError('Response timeout exceeded.');
-
-        const handleError = (errorDetails: string) => {
-            setIsLoading(false);
-            const errorMsg = `Sorry, an issue occurred: ${errorDetails}`;
-            setMessages((prev) =>
-                prev.map((msg) =>
-                    msg.id === aiMessageId && !fullText ? { ...msg, text: errorMsg } : msg
-                )
-            );
-        };
-
-        xhr.send(JSON.stringify({ question: question }));
+        }
     };
 
+    xhr.onload = () => {
+        setIsLoading(false);
+        if (xhr.status >= 200 && xhr.status < 300) {
+            // Logika ładowania schematu/obrazka
+            const rawAsset = require('@/assets/schemas/schemat1.png');
+            let schemaAsset;
+
+            if (Platform.OS === 'web') {
+                if (typeof rawAsset === 'string') {
+                    schemaAsset = rawAsset;
+                } else if (rawAsset?.uri) {
+                    schemaAsset = rawAsset.uri; 
+                } else if (rawAsset?.default) {
+                    schemaAsset = rawAsset.default; 
+                } else {
+                    schemaAsset = rawAsset; 
+                }
+            } else {
+                schemaAsset = Image.resolveAssetSource(rawAsset).uri;
+            }
+
+            setCurrentImage(schemaAsset);
+            setShowSchema(true); 
+
+            if (fullText.length > 0) {
+                playChatGptAudio(fullText);
+            }
+        } else {
+            handleError(`HTTP Error: ${xhr.status}`);
+        }
+    };
+
+    xhr.onerror = () => handleError('Server connection error.');
+    xhr.ontimeout = () => handleError('Response timeout exceeded.');
+
+    const handleError = (errorDetails: string) => {
+        setIsLoading(false);
+        const errorMsg = `Sorry, an issue occurred: ${errorDetails}`;
+        setMessages((prev) =>
+            prev.map((msg) =>
+                msg.id === aiMessageId && !fullText ? { ...msg, text: errorMsg } : msg
+            )
+        );
+    };
+
+    xhr.send(JSON.stringify({ question: question }));
+};
     /** Handles sending a text question from the input field */
     const handleSendText = () => {
         if (inputText.trim().length === 0) return;
@@ -492,6 +520,9 @@ const askAPI = async (question: string) => {
             />
             <RightPanel
                 currentSource={currentSource}
+                attachmentId={attachmentId}
+                attachmentName={attachmentName}
+                attachmentPage={attachmentPage}
                 hasAskedQuestion={messages.length > 1}
                 currentImage={currentImage}
                 isLoading={isLoading}
