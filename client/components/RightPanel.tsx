@@ -14,33 +14,35 @@ const AVAILABLE_FILES = [
     { id: 6, name: 'Instrukcja_BHP_Wozki.pdf', icon: 'shield-check-outline', color: '#22C55E', source: require('../assets/instrukcje.pdf') },
 ];
 
-const REMOTE_PDF_URL = 'https://staging.asystent-serwisanta.pl/api/attachments/get/55';
-const DOWNLOADED_FILENAME = 'instrukcja_serwisowa.pdf';
-
 const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || "";
 
-/**
- * RightPanel Component
- * Handles the display of the file grid, the PDF Viewer, and image schematics.
- */
 export default function RightPanel({
-                                       currentSource,
-                                       hasAskedQuestion,
-                                       currentImage,
-                                       isLoading: isApiLoading,
-                                       isListening,
-                                       onMicPress,
-                                       selectedPdf, 
-                                       onSelectPdf,
-                                       showSchema,
-                                       setShowSchema,
-                                       setCurrentImage
-                                   }: any) {
+    currentSource,
+    attachmentId,
+    attachmentName,
+    attachmentPage,
+    hasAskedQuestion,
+    currentImage,
+    isLoading: isApiLoading,
+    isListening,
+    onMicPress,
+    selectedPdf, 
+    onSelectPdf,
+    showSchema,
+    setShowSchema,
+    setCurrentImage
+}: any) {
 
     const [isDownloading, setIsDownloading] = useState(false);
     const downloadResumableRef = useRef<FileSystem.DownloadResumable | null>(null);
     const [downloadingFileId, setDownloadingFileId] = useState<number | null>(null);
     
+    const dynamicPdfUrl = attachmentId 
+        ? `https://staging.asystent-serwisanta.pl/api/attachments/get/${attachmentId}`
+        : 'https://staging.asystent-serwisanta.pl/api/attachments/get/55';
+        
+    const dynamicFileName = attachmentName || 'instrukcja_serwisowa.pdf';
+
     const getInvertedImageHtml = (imageUrl: string) => `
       <!DOCTYPE html>
       <html>
@@ -55,15 +57,13 @@ export default function RightPanel({
       </html>
     `;
 
-    // --- UNIFIED DOWNLOAD LOGIC ---
-    const performDownload = async (remoteUrl: string, localFilename: string, displayName: string, fileIdForGrid: number | null = null) => {
+    const performDownload = async (remoteUrl: string, localFilename: string, displayName: string, fileIdForGrid: number | null = null, targetPage: number = 1) => {
         if (isDownloading) return;
 
         setIsDownloading(true);
         setDownloadingFileId(fileIdForGrid);
 
         try {
-            // ARTIFICIAL DELAY - 5 SECONDS
             await new Promise(resolve => setTimeout(resolve, 5000));
 
             if (Platform.OS === 'web') {
@@ -75,7 +75,8 @@ export default function RightPanel({
                     source: { 
                         uri: remoteUrl,
                         headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` }
-                    }
+                    },
+                    page: targetPage
                 });
             } else {
                 const fileUri = FileSystem.documentDirectory + localFilename;
@@ -83,11 +84,7 @@ export default function RightPanel({
                 downloadResumableRef.current = FileSystem.createDownloadResumable(
                     remoteUrl, 
                     fileUri, 
-                    {
-                        headers: {
-                            'Authorization': `Bearer ${AUTH_TOKEN}`
-                        }
-                    }
+                    { headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` } }
                 );
                 
                 const result = await downloadResumableRef.current.downloadAsync();
@@ -98,7 +95,8 @@ export default function RightPanel({
                         name: displayName,
                         icon: 'file-download',
                         color: '#22C55E',
-                        source: { uri: result.uri } 
+                        source: { uri: result.uri },
+                        page: targetPage
                     });
                 } else {
                     throw new Error("Download failed - no URI");
@@ -115,7 +113,7 @@ export default function RightPanel({
     };
 
     const handleFileGridPress = async (file: typeof AVAILABLE_FILES[0]) => {
-        await performDownload(REMOTE_PDF_URL, DOWNLOADED_FILENAME, file.name, file.id);
+        await performDownload(dynamicPdfUrl, dynamicFileName, file.name, file.id, 1);
     };
 
     const renderSourceButton = () => {
@@ -125,7 +123,7 @@ export default function RightPanel({
             <TouchableOpacity
                 onPress={() => {
                     if (showSchema) {
-                        performDownload(REMOTE_PDF_URL, DOWNLOADED_FILENAME, 'Instrukcja_Serwisowa.pdf', null);
+                        performDownload(dynamicPdfUrl, dynamicFileName, dynamicFileName, null, attachmentPage || 1);
                     } else {
                         setShowSchema(true);
                     }
@@ -185,12 +183,7 @@ export default function RightPanel({
                         <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
                             <img 
                                 src={currentImage} 
-                                style={{ 
-                                    width: '100%', 
-                                    height: '100%', 
-                                    objectFit: 'contain', 
-                                    filter: 'invert(100%)'
-                                }} 
+                                style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'invert(100%)' }} 
                                 alt="Schemat"
                             />
                         </View>
@@ -203,13 +196,12 @@ export default function RightPanel({
                     )
                 ) : (currentImage && !showSchema) || selectedPdf ? (
                     <View className="flex-1 relative">
-                        <PdfViewer source={selectedPdf?.source || require('../assets/instrukcje.pdf')} />
+                        <PdfViewer 
+                            source={selectedPdf?.source || require('../assets/instrukcje.pdf')} 
+                            page={selectedPdf?.page || 1} 
+                        />
                         <View className="absolute top-0 left-0 bg-[#121212] border border-neutral-800 px-3 py-2 rounded-br-lg flex-row items-center shadow-lg opacity-90 z-10">
-                            <MaterialCommunityIcons 
-                                name={(selectedPdf?.icon as any) || "file-pdf-box"} 
-                                size={18} 
-                                color={selectedPdf?.color || "#EF4444"} 
-                            />
+                            <MaterialCommunityIcons name={(selectedPdf?.icon as any) || "file-pdf-box"} size={18} color={selectedPdf?.color || "#EF4444"} />
                             <Text className="text-slate-200 text-[11px] font-bold ml-2 tracking-widest uppercase">
                                 {selectedPdf?.name || 'Dokument.pdf'}
                             </Text>
@@ -235,26 +227,13 @@ export default function RightPanel({
                                         )}
 
                                         <View className="w-24 h-24 items-center justify-center relative">
-                                            <MaterialCommunityIcons
-                                                name={file.icon as any}
-                                                size={64}
-                                                color={file.color}
-                                                style={{ opacity: 0.2 }}
-                                            />
-                                            
+                                            <MaterialCommunityIcons name={file.icon as any} size={64} color={file.color} style={{ opacity: 0.2 }} />
                                             <View className="absolute inset-0 items-center justify-center">
-                                                {isThisFileDownloading ? (
-                                                    <ActivityIndicator size="large" color="#fff" /> 
-                                                ) : (
-                                                    <Feather name="download-cloud" size={32} color="#fff" />
-                                                )}
+                                                {isThisFileDownloading ? <ActivityIndicator size="large" color="#fff" /> : <Feather name="download-cloud" size={32} color="#fff" />}
                                             </View>
                                         </View>
 
-                                        <Text
-                                            className="font-bold mt-4 text-[13px] text-center leading-4 text-neutral-500"
-                                            numberOfLines={2}
-                                        >
+                                        <Text className="font-bold mt-4 text-[13px] text-center leading-4 text-neutral-500" numberOfLines={2}>
                                             {file.name}
                                         </Text>
                                     </TouchableOpacity>

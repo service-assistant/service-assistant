@@ -6,7 +6,7 @@ import Pdf from 'react-native-pdf';
  * PDF Viewer Component.
  * NOTE: This component/view is primarily targeted and tested for Android.
  */
-export default function PdfViewer({ source }: { source: any }) {
+export default function PdfViewer({ source, page }: { source: any; page: number }) {
     return (
         <View className="flex-1 bg-black overflow-hidden justify-center items-center">
             {/* 
@@ -16,6 +16,7 @@ export default function PdfViewer({ source }: { source: any }) {
             */}
             <Pdf
                 source={source}
+                page={page}
                 trustAllCerts={false}
                 fitPolicy={0}
                 spacing={0}  
