@@ -9,3 +9,9 @@ Most important commands are listed in `Makefile`. To learn about their usage jus
 ```
 make help
 ```
+
+## Recommended learning resources
+
+- [TypeScript for JS Programmers](https://www.typescriptlang.org/docs/handbook/typescript-in-5-minutes.html)
+- [React Native Documentation](https://reactnative.dev/docs/getting-started)
+- [Expo Documentation](https://docs.expo.dev/)

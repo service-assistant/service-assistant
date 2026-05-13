@@ -1,4 +1,4 @@
-FROM python:3.14.3-slim
+FROM python:3.12.13-slim
 
 ENV POETRY_VERSION=2.3.2 \
     POETRY_VIRTUALENVS_CREATE=false \
@@ -18,4 +18,4 @@ COPY . .
 
 EXPOSE 8000
 
-CMD ["poetry", "run", "fastapi", "run"]
+CMD ["poetry", "run", "fastapi", "run", "--host", "0.0.0.0", "--port", "8000"]
