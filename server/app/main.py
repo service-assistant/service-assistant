@@ -12,9 +12,16 @@ app = FastAPI()
 
 settings = get_settings()
 
+OPEN_PATHS = {"/docs", "/redoc", "/openapi.json", "/health"}
+
 
 @app.middleware("http")
 async def bearer_auth_middleware(request: Request, call_next):
+    path = request.url.path
+
+    if any(path == prefix or path.startswith(f"{prefix}/") for prefix in OPEN_PATHS):
+        return await call_next(request)
+
     auth_header = request.headers.get("Authorization")
     expected = f"Bearer {settings.auth_token}"
 
