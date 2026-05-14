@@ -13,7 +13,7 @@ export default function TabLayout() {
     return (
         <>
             {/* Hide the system status bar globally for all screens within this layout */}
-            <StatusBar hidden={true} />
+            <StatusBar hidden={true}  />
 
             <Tabs
                 screenOptions={{

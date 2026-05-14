@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, View, Animated, Image } from 'react-native';
 import { Buffer } from 'buffer';
-import { 
-    useAudioPlayer, 
-    useAudioRecorder, 
-    AudioModule, 
-    RecordingPresets 
+import {
+    useAudioPlayer,
+    useAudioRecorder,
+    AudioModule,
+    RecordingPresets
 } from 'expo-audio';
 import { Asset } from 'expo-asset';
 
@@ -35,7 +35,7 @@ export default function ChatScreen() {
     const [currentImage, setCurrentImage] = useState<string | null>(null);
     const [currentSource, setCurrentSource] = useState<string>('02-8FGF15');
     const [attachmentPage, setAttachmentPage] = useState<number>(1); // domyślnie strona 1
-    
+
     const [attachmentId, setAttachmentId] = useState<number | null>(null);
     const [attachmentName, setAttachmentName] = useState<string>('');
 
@@ -51,14 +51,14 @@ export default function ChatScreen() {
         ...RecordingPresets.HIGH_QUALITY,
         isMeteringEnabled: true,
     });
-    
+
     // --- LISTENING LOGIC REFERENCES ---
     const userSpeakingMessageIdRef = useRef<number>(0);
     const meteringIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const soundLevelAnim = useRef(new Animated.Value(0.2)).current; 
+    const soundLevelAnim = useRef(new Animated.Value(0.2)).current;
     const lastLoudTime = useRef<number>(0);
     const hasSpoken = useRef<boolean>(false);
-    
+
     // --- SILENCE CONFIGURATION (Auto-stop) ---
     const silenceThreshold = -50;
     const silenceDuration = 2500;
@@ -96,7 +96,7 @@ export default function ChatScreen() {
                 setIsLoading(false);
                 return;
             }
-        
+
             const response = await fetch('https://api.openai.com/v1/audio/speech', {
                 method: 'POST',
                 headers: {
@@ -121,7 +121,7 @@ export default function ChatScreen() {
                 const arrayBuffer = await response.arrayBuffer();
                 const base64data = Buffer.from(arrayBuffer).toString('base64');
                 const fileUri = (FileSystem.documentDirectory || '') + 'chatgpt_response.mp3';
-                
+
                 await FileSystem.writeAsStringAsync(fileUri, base64data, {
                     encoding: FileSystem.EncodingType.Base64,
                 });
@@ -145,189 +145,189 @@ export default function ChatScreen() {
  * @param {string} question - The input text from the user to send to the API.
  */
     const askAPI = async (question: string) => {
-    setIsLoading(true);
-    const aiMessageId = Date.now() + Math.random(); 
-    
-    const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || "";
-    
-    setMessages((prev) => [
-        ...prev,
-        { id: aiMessageId, sender: 'ai', text: '' },
-    ]);
+        setIsLoading(true);
+        const aiMessageId = Date.now() + Math.random();
 
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${SERVER_URL}/api/questions`, true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.setRequestHeader('Accept', 'text/plain');
+        const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || "";
 
-    if (AUTH_TOKEN) {
-        xhr.setRequestHeader('Authorization', `Bearer ${AUTH_TOKEN}`);
-    }
+        setMessages((prev) => [
+            ...prev,
+            { id: aiMessageId, sender: 'ai', text: '' },
+        ]);
 
-    let fullText = '';
-    let spinnerRemoved = false;
-    let lastResponse = '';
-    let buffer = '';
-    let currentEventType = 'message'; 
-    
-    // Flaga do przechwycenia tylko pierwszego źródła
-    let firstSourceFound = false;
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${SERVER_URL}/api/questions`, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Accept', 'text/plain');
 
-    xhr.onreadystatechange = () => {
-        if (xhr.readyState === 3 || xhr.readyState === 4) {
-            const currentResponse = xhr.responseText;
-            if (!currentResponse) return;
+        if (AUTH_TOKEN) {
+            xhr.setRequestHeader('Authorization', `Bearer ${AUTH_TOKEN}`);
+        }
 
-            let newData = '';
-            // Obsługa narastającego responseText w XHR
-            if (lastResponse.length > 0 && currentResponse.startsWith(lastResponse)) {
-                newData = currentResponse.substring(lastResponse.length);
-            } else {
-                newData = currentResponse; 
-            }
-            lastResponse = currentResponse;
+        let fullText = '';
+        let spinnerRemoved = false;
+        let lastResponse = '';
+        let buffer = '';
+        let currentEventType = 'message';
 
-            buffer += newData;
-            const lines = buffer.split('\n');
-            
-            // Jeśli stream trwa, zachowaj ostatnią (niepełną) linię w buforze
-            if (xhr.readyState === 3) {
-                buffer = lines.pop() || '';
-            } else {
-                buffer = '';
-            }
+        // Flaga do przechwycenia tylko pierwszego źródła
+        let firstSourceFound = false;
 
-            let textUpdated = false;
+        xhr.onreadystatechange = () => {
+            if (xhr.readyState === 3 || xhr.readyState === 4) {
+                const currentResponse = xhr.responseText;
+                if (!currentResponse) return;
 
-            for (const line of lines) {
-                const trimmedLine = line.trim();
-                
-                if (!trimmedLine) {
-                    currentEventType = 'message';
-                    continue;
+                let newData = '';
+                // Obsługa narastającego responseText w XHR
+                if (lastResponse.length > 0 && currentResponse.startsWith(lastResponse)) {
+                    newData = currentResponse.substring(lastResponse.length);
+                } else {
+                    newData = currentResponse;
+                }
+                lastResponse = currentResponse;
+
+                buffer += newData;
+                const lines = buffer.split('\n');
+
+                // Jeśli stream trwa, zachowaj ostatnią (niepełną) linię w buforze
+                if (xhr.readyState === 3) {
+                    buffer = lines.pop() || '';
+                } else {
+                    buffer = '';
                 }
 
-                // Rozpoznawanie typu zdarzenia (event: ...)
-                if (trimmedLine.startsWith('event:')) {
-                    const eventName = trimmedLine.substring(6).trim();
-                    if (eventName === '[DONE]') continue; 
-                    currentEventType = eventName;
-                    continue;
-                }
+                let textUpdated = false;
 
-                // Przetwarzanie danych (data: ...)
-                if (trimmedLine.startsWith('data:')) {
-                    const chunk = trimmedLine.substring(5).trim();
-                    if (!chunk) continue;
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
 
-                    // PRZYPADEK 1: Dane źródłowe (attachment_id)
-                    // Wewnątrz askAPI -> w pętli obsługującej xhr.onreadystatechange
-                    if (currentEventType === 'source') {
-                        if (!firstSourceFound) {
-                            try {
-                                const sourceData = JSON.parse(chunk);
-                                if (sourceData && sourceData.attachment_id) {
-                                    // Zapisujemy nowe zmienne
-                                    setAttachmentId(sourceData.attachment_id);
-                                    
-                                    // Oczyszczamy nazwę pliku (np. z "/attachments/instrukcje__1.pdf" robimy "instrukcje__1.pdf")
-                                    const rawFileName = sourceData.file_name || 'Dokument.pdf';
-                                    const cleanFileName = rawFileName.split('/').pop() || 'Dokument.pdf';
-                                    setAttachmentName(cleanFileName);
-                                    if (sourceData.page) {
-                                        setAttachmentPage(sourceData.page);
+                    if (!trimmedLine) {
+                        currentEventType = 'message';
+                        continue;
+                    }
+
+                    // Rozpoznawanie typu zdarzenia (event: ...)
+                    if (trimmedLine.startsWith('event:')) {
+                        const eventName = trimmedLine.substring(6).trim();
+                        if (eventName === '[DONE]') continue;
+                        currentEventType = eventName;
+                        continue;
+                    }
+
+                    // Przetwarzanie danych (data: ...)
+                    if (trimmedLine.startsWith('data:')) {
+                        const chunk = trimmedLine.substring(5).trim();
+                        if (!chunk) continue;
+
+                        // PRZYPADEK 1: Dane źródłowe (attachment_id)
+                        // Wewnątrz askAPI -> w pętli obsługującej xhr.onreadystatechange
+                        if (currentEventType === 'source') {
+                            if (!firstSourceFound) {
+                                try {
+                                    const sourceData = JSON.parse(chunk);
+                                    if (sourceData && sourceData.attachment_id) {
+                                        // Zapisujemy nowe zmienne
+                                        setAttachmentId(sourceData.attachment_id);
+
+                                        // Oczyszczamy nazwę pliku (np. z "/attachments/instrukcje__1.pdf" robimy "instrukcje__1.pdf")
+                                        const rawFileName = sourceData.file_name || 'Dokument.pdf';
+                                        const cleanFileName = rawFileName.split('/').pop() || 'Dokument.pdf';
+                                        setAttachmentName(cleanFileName);
+                                        if (sourceData.page) {
+                                            setAttachmentPage(sourceData.page);
+                                        }
+                                        firstSourceFound = true;
+                                        console.log("Przechwycono plik:", cleanFileName, "ID:", sourceData.attachment_id);
                                     }
-                                    firstSourceFound = true; 
-                                    console.log("Przechwycono plik:", cleanFileName, "ID:", sourceData.attachment_id);
+                                } catch (e) {
+                                    console.error("Source parsing error:", e);
+                                }
+                            }
+                        }
+                        // PRZYPADEK 2: Tokeny tekstu
+                        else if (currentEventType === 'token') {
+                            try {
+                                const token = JSON.parse(chunk);
+                                if (typeof token === 'string') {
+                                    fullText += token;
+                                    textUpdated = true;
+                                } else if (token && typeof token.text === 'string') {
+                                    fullText += token.text;
+                                    textUpdated = true;
                                 }
                             } catch (e) {
-                                console.error("Source parsing error:", e);
+                                // Jeśli to nie JSON, potraktuj jako surowy tekst
+                                fullText += chunk;
+                                textUpdated = true;
                             }
                         }
                     }
-                    // PRZYPADEK 2: Tokeny tekstu
-                    else if (currentEventType === 'token') {
-                        try {
-                            const token = JSON.parse(chunk);
-                            if (typeof token === 'string') {
-                                fullText += token;
-                                textUpdated = true;
-                            } else if (token && typeof token.text === 'string') {
-                                fullText += token.text;
-                                textUpdated = true;
-                            }
-                        } catch (e) {
-                            // Jeśli to nie JSON, potraktuj jako surowy tekst
-                            fullText += chunk;
-                            textUpdated = true;
-                        }
+                }
+
+                // Aktualizacja UI wiadomości
+                if (textUpdated || xhr.readyState === 4) {
+                    if (!spinnerRemoved && fullText.length > 0) {
+                        setIsLoading(false);
+                        spinnerRemoved = true;
                     }
+
+                    setMessages((prev) =>
+                        prev.map((msg) =>
+                            msg.id === aiMessageId ? { ...msg, text: fullText } : msg
+                        )
+                    );
                 }
             }
+        };
 
-            // Aktualizacja UI wiadomości
-            if (textUpdated || xhr.readyState === 4) {
-                if (!spinnerRemoved && fullText.length > 0) {
-                    setIsLoading(false);
-                    spinnerRemoved = true;
-                }
+        xhr.onload = () => {
+            setIsLoading(false);
+            if (xhr.status >= 200 && xhr.status < 300) {
+                // Logika ładowania schematu/obrazka
+                const rawAsset = require('@/assets/schemas/schemat1.png');
+                let schemaAsset;
 
-                setMessages((prev) =>
-                    prev.map((msg) =>
-                        msg.id === aiMessageId ? { ...msg, text: fullText } : msg
-                    )
-                );
-            }
-        }
-    };
-
-    xhr.onload = () => {
-        setIsLoading(false);
-        if (xhr.status >= 200 && xhr.status < 300) {
-            // Logika ładowania schematu/obrazka
-            const rawAsset = require('@/assets/schemas/schemat1.png');
-            let schemaAsset;
-
-            if (Platform.OS === 'web') {
-                if (typeof rawAsset === 'string') {
-                    schemaAsset = rawAsset;
-                } else if (rawAsset?.uri) {
-                    schemaAsset = rawAsset.uri; 
-                } else if (rawAsset?.default) {
-                    schemaAsset = rawAsset.default; 
+                if (Platform.OS === 'web') {
+                    if (typeof rawAsset === 'string') {
+                        schemaAsset = rawAsset;
+                    } else if (rawAsset?.uri) {
+                        schemaAsset = rawAsset.uri;
+                    } else if (rawAsset?.default) {
+                        schemaAsset = rawAsset.default;
+                    } else {
+                        schemaAsset = rawAsset;
+                    }
                 } else {
-                    schemaAsset = rawAsset; 
+                    schemaAsset = Image.resolveAssetSource(rawAsset).uri;
+                }
+
+                setCurrentImage(schemaAsset);
+                setShowSchema(true);
+
+                if (fullText.length > 0) {
+                    playChatGptAudio(fullText);
                 }
             } else {
-                schemaAsset = Image.resolveAssetSource(rawAsset).uri;
+                handleError(`HTTP Error: ${xhr.status}`);
             }
+        };
 
-            setCurrentImage(schemaAsset);
-            setShowSchema(true); 
+        xhr.onerror = () => handleError('Server connection error.');
+        xhr.ontimeout = () => handleError('Response timeout exceeded.');
 
-            if (fullText.length > 0) {
-                playChatGptAudio(fullText);
-            }
-        } else {
-            handleError(`HTTP Error: ${xhr.status}`);
-        }
+        const handleError = (errorDetails: string) => {
+            setIsLoading(false);
+            const errorMsg = `Sorry, an issue occurred: ${errorDetails}`;
+            setMessages((prev) =>
+                prev.map((msg) =>
+                    msg.id === aiMessageId && !fullText ? { ...msg, text: errorMsg } : msg
+                )
+            );
+        };
+
+        xhr.send(JSON.stringify({ question: question }));
     };
-
-    xhr.onerror = () => handleError('Server connection error.');
-    xhr.ontimeout = () => handleError('Response timeout exceeded.');
-
-    const handleError = (errorDetails: string) => {
-        setIsLoading(false);
-        const errorMsg = `Sorry, an issue occurred: ${errorDetails}`;
-        setMessages((prev) =>
-            prev.map((msg) =>
-                msg.id === aiMessageId && !fullText ? { ...msg, text: errorMsg } : msg
-            )
-        );
-    };
-
-    xhr.send(JSON.stringify({ question: question }));
-};
     /** Handles sending a text question from the input field */
     const handleSendText = () => {
         if (inputText.trim().length === 0) return;
@@ -373,10 +373,10 @@ export default function ChatScreen() {
             const transcript = data.results?.channels[0]?.alternatives[0]?.transcript || '';
 
             if (transcript.trim().length > 0) {
-                setMessages((prev) => prev.map(msg => 
-                    msg.id === userSpeakingMessageIdRef.current 
-                    ? { ...msg, text: transcript, isSpeaking: false }
-                    : msg
+                setMessages((prev) => prev.map(msg =>
+                    msg.id === userSpeakingMessageIdRef.current
+                        ? { ...msg, text: transcript, isSpeaking: false }
+                        : msg
                 ));
                 askAPI(transcript);
             } else {
@@ -396,7 +396,7 @@ export default function ChatScreen() {
             clearInterval(meteringIntervalRef.current);
             meteringIntervalRef.current = null;
         }
-        
+
         setIsListening(false);
 
         if (audioRecorder.isRecording) {
@@ -420,10 +420,10 @@ export default function ChatScreen() {
 
         meteringIntervalRef.current = setInterval(() => {
             const status = audioRecorder.getStatus();
-            
+
             if (!status.isRecording) return;
-            
-            const metering = status.metering ?? -160; 
+
+            const metering = status.metering ?? -160;
             const now = Date.now();
 
             let newScale = 0.2;
@@ -434,7 +434,7 @@ export default function ChatScreen() {
 
             Animated.timing(soundLevelAnim, {
                 toValue: newScale,
-                duration: 100, 
+                duration: 100,
                 useNativeDriver: true,
             }).start();
 
@@ -473,8 +473,8 @@ export default function ChatScreen() {
 
             const userTempId = Date.now();
             userSpeakingMessageIdRef.current = userTempId;
-            soundLevelAnim.setValue(0.2); 
-            
+            soundLevelAnim.setValue(0.2);
+
             setMessages((prev) => [
                 ...prev,
                 { id: userTempId, sender: 'user', text: '', isSpeaking: true },
