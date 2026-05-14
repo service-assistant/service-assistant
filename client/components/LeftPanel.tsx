@@ -12,9 +12,6 @@ import {
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
-/**
- * Structure of a single chat message.
- */
 export interface Message {
     id: number;
     sender: 'ai' | 'user';
@@ -22,9 +19,6 @@ export interface Message {
     isSpeaking?: boolean;
 }
 
-/**
- * Properties passed to the LeftPanel component.
- */
 interface LeftPanelProps {
     messages: Message[];
     isLoading: boolean;
@@ -37,11 +31,10 @@ interface LeftPanelProps {
     setInputText: (text: string) => void;
     onSendText: () => void;
     currentSource: string;
+    isGenerating: boolean;
+    onStop: () => void;
 }
 
-/**
- * Component displaying the voice waveform indicator while the user is speaking.
- */
 const SoundWaveformIndicator = ({ soundLevel }: { soundLevel: Animated.Value }) => {
     const bars = Array.from({ length: 8 }, (_, i) => i);
 
@@ -66,9 +59,6 @@ const SoundWaveformIndicator = ({ soundLevel }: { soundLevel: Animated.Value }) 
     );
 };
 
-/**
- * Dot animation indicating data processing by the AI.
- */
 const BotTypingAnimation = () => {
     const dot1 = useRef(new Animated.Value(0)).current;
     const dot2 = useRef(new Animated.Value(0)).current;
@@ -119,9 +109,6 @@ const BotTypingAnimation = () => {
     );
 };
 
-/**
- * Pulsing border animation around the microphone button while listening.
- */
 const ListeningPulse = () => {
     const scale = useRef(new Animated.Value(1)).current;
     const opacity = useRef(new Animated.Value(1)).current;
@@ -151,9 +138,6 @@ const ListeningPulse = () => {
     );
 };
 
-/**
- * Main left panel component containing the chat interface and input controls.
- */
 export default function LeftPanel({
     messages,
     isLoading,
@@ -165,17 +149,19 @@ export default function LeftPanel({
     inputText,
     setInputText,
     onSendText,
-    currentSource
+    currentSource,
+    isGenerating,
+    onStop
 }: LeftPanelProps) {
     const scrollViewRef = useRef<ScrollView>(null);
     const router = useRouter();
 
     return (
         <View className='w-[32%] h-full flex flex-col'>
-            
+
             <View className='w-full h-14 mb-4 flex-row items-center'>
-                <TouchableOpacity 
-                    className='flex-row items-center border border-[#CC5500] px-4 py-3 rounded-md bg-[#0a0a0a]' 
+                <TouchableOpacity
+                    className='flex-row items-center border border-[#CC5500] px-4 py-3 rounded-md bg-[#0a0a0a]'
                     onPress={() => router.push('/home')}
                 >
                     <Feather name="arrow-left" size={18} color="#CC5500" />
@@ -195,8 +181,8 @@ export default function LeftPanel({
                 </Text>
             </View>
 
-            <View className='flex-1 border border-[#CC5500] rounded-2xl bg-[#09090B] flex-col overflow-hidden shadow-2xl'>
-                
+            <View className='flex-1 border border-[#CC5500] rounded-2xl bg-[#09090B] flex-col overflow-hidden shadow-2xl relative'>
+
                 <View className='p-4 border-b border-neutral-800 flex-row items-center bg-[#0d0d0f]'>
                     <View className='w-12 h-12 rounded-md border border-[#CC5500] items-center justify-center mr-3'>
                         <Image
@@ -213,36 +199,37 @@ export default function LeftPanel({
                         </View>
                     </View>
                 </View>
-                    
-                <ScrollView
-                    ref={scrollViewRef}
-                    onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-                    className='flex-1 p-4'
-                >
-                    <View className='flex flex-col gap-4 pb-4'>
-                        {messages.map((msg) =>
-                            msg.sender === 'ai' ? (
-                                <View key={msg.id} className='bg-[#1E1E22] rounded-2xl rounded-tl-sm px-4 py-3 self-start max-w-[90%]'>
-                                    <Text className='text-slate-300 text-[14px] leading-5'>{msg.text}</Text>
-                                </View>
-                            ) : (
-                                <View key={msg.id} className='bg-[#A64D00] rounded-2xl rounded-tr-sm px-4 py-3 self-end max-w-[90%]'>
-                                    {msg.isSpeaking ? (
-                                        <SoundWaveformIndicator soundLevel={soundLevelAnim} />
-                                    ) : (
-                                        <Text className='text-white text-[14px] leading-5'>{msg.text}</Text>
-                                    )}
-                                </View>
-                            )
-                        )}
-                        {isLoading && <BotTypingAnimation />}
-                    </View>
-                </ScrollView>
+
+                <View className='flex-1 relative'>
+                    <ScrollView
+                        ref={scrollViewRef}
+                        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+                        className='flex-1 p-4'
+                    >
+                        <View className='flex flex-col gap-4 pb-4'>
+                            {messages.map((msg) =>
+                                msg.sender === 'ai' ? (
+                                    <View key={msg.id} className='bg-[#1E1E22] rounded-2xl rounded-tl-sm px-4 py-3 self-start max-w-[90%]'>
+                                        <Text className='text-slate-300 text-[14px] leading-5'>{msg.text}</Text>
+                                    </View>
+                                ) : (
+                                    <View key={msg.id} className='bg-[#A64D00] rounded-2xl rounded-tr-sm px-4 py-3 self-end max-w-[90%]'>
+                                        {msg.isSpeaking ? (
+                                            <SoundWaveformIndicator soundLevel={soundLevelAnim} />
+                                        ) : (
+                                            <Text className='text-white text-[14px] leading-5'>{msg.text}</Text>
+                                        )}
+                                    </View>
+                                )
+                            )}
+                            {isLoading ? <BotTypingAnimation /> : null}
+                        </View>
+                    </ScrollView>
+                </View>
 
                 <View className='w-full px-4 py-6 flex-col border-t border-neutral-900 bg-[#0d0d0f]'>
                     <View className='flex-row justify-center items-center gap-6'>
 
-                        {/* Przycisk Aparatu */}
                         <TouchableOpacity className='w-[72px] h-[72px] bg-[#27272a] border border-[#3f3f46] rounded-[12px] items-center justify-center'>
                             <Image
                                 source={require('../assets/images/camera.png')}
@@ -251,31 +238,39 @@ export default function LeftPanel({
                             />
                         </TouchableOpacity>
 
-                        {/* Sekcja Mikrofonu */}
                         <View className='items-center flex-col gap-3'>
                             <TouchableOpacity
-                                onPressIn={onMicPress}
-                                className={`w-[112px] h-[112px] rounded-[12px] items-center justify-center ${isListening ? 'bg-[#2A1100] border-2 border-[#FF6600]' : 'bg-[#27272a] border border-[#3f3f46]'
+                                onPressIn={!isGenerating ? onMicPress : undefined}
+                                onPress={isGenerating ? onStop : undefined}
+                                className={`w-[112px] h-[112px] rounded-[12px] items-center justify-center ${isListening || isGenerating
+                                    ? 'bg-[#2A1100] border-2 border-[#FF6600]'
+                                    : 'bg-[#27272a] border border-[#3f3f46]'
                                     }`}
                             >
-                                {isListening && <ListeningPulse />}
+                                {isListening && !isGenerating ? <ListeningPulse /> : null}
 
-                                <Image
-                                    source={require('../assets/images/micro.png')}
-                                    style={{ width: 56, height: 56, tintColor: isListening ? '#FF6600' : '#D4D4D8' }}
-                                    resizeMode="contain"
-                                />
+                                {isGenerating ? (
+                                    <MaterialCommunityIcons name="stop" size={56} color="#FF6600" />
+                                ) : (
+                                    <Image
+                                        source={require('../assets/images/micro.png')}
+                                        style={{ width: 56, height: 56, tintColor: isListening ? '#FF6600' : '#D4D4D8' }}
+                                        resizeMode="contain"
+                                    />
+                                )}
                             </TouchableOpacity>
-                            <Text className={`text-[10px] font-bold tracking-widest ${isListening ? 'text-[#FF6600]' : 'text-white'}`}>
-                                {isListening ? 'SŁUCHAM...' : 'NACIŚNIJ ŻEBY MÓWIĆ'}
+                            <Text className={`text-[10px] font-bold tracking-widest ${isListening || isGenerating ? 'text-[#FF6600]' : 'text-white'}`}>
+                                {isGenerating
+                                    ? 'NACIŚNIJ ABY ZATRZYMAĆ'
+                                    : isListening
+                                        ? 'SŁUCHAM...'
+                                        : 'NACIŚNIJ ŻEBY MÓWIĆ'}
                             </Text>
                         </View>
 
-                        {/* Przycisk Klawiatury (Pisania) */}
                         <TouchableOpacity
                             onPress={() => setShowTextInput(!showTextInput)}
-                            className={`w-[72px] h-[72px] border rounded-[12px] items-center justify-center ${showTextInput ? 'bg-[#2A1100] border-[#FF6600]' : 'bg-[#27272a] border-[#3f3f46]'
-                                }`}
+                            className={`w-[72px] h-[72px] border rounded-[12px] items-center justify-center ${showTextInput ? 'bg-[#2A1100] border-[#FF6600]' : 'bg-[#27272a] border-[#3f3f46]'}`}
                         >
                             <Image
                                 source={require('../assets/images/writing.png')}
@@ -285,8 +280,7 @@ export default function LeftPanel({
                         </TouchableOpacity>
                     </View>
 
-                    {/* Pole tekstowe */}
-                    {showTextInput && (
+                    {showTextInput ? (
                         <View className='flex-row w-full mt-6 items-center gap-2'>
                             <TextInput
                                 className='flex-1 bg-[#1A1A1D] border border-neutral-800 text-slate-200 px-4 py-3 rounded-xl text-sm'
@@ -304,7 +298,7 @@ export default function LeftPanel({
                                 <Feather name="send" size={18} color="white" />
                             </TouchableOpacity>
                         </View>
-                    )}
+                    ) : null}
                 </View>
             </View>
         </View>

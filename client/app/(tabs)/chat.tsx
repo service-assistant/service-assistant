@@ -13,28 +13,29 @@ import * as FileSystem from 'expo-file-system/legacy';
 import RightPanel from "@/components/RightPanel";
 import LeftPanel, { Message } from "@/components/LeftPanel";
 
-/** Server URL depending on the platform (Android emulator vs others) */
-// const SERVER_URL = Platform.OS === 'android' 
-//   ? 'http://10.0.2.2:8000' 
-//   : 'http://127.0.0.1:8000';
+const SERVER_URL = 'https://staging.asystent-serwisanta.pl';
 
-const SERVER_URL = 'https://staging.asystent-serwisanta.pl'
 /**
  * Main application screen.
  * Manages chat state, voice communication (STT Deepgram, TTS OpenAI),
  * streaming response logic from the custom API, and view states (right/left panel).
  */
 export default function ChatScreen() {
-    // --- UI & DATA STATE ---
+    // --- UI & DATA STATES ---
     const [showSchema, setShowSchema] = useState<boolean>(true);
     const [selectedPdf, setSelectedPdf] = useState<any>(null);
     const [isListening, setIsListening] = useState<boolean>(false);
     const [isLoading, setIsLoading] = useState<boolean>(false);
+
+    // --- STOP CONTROL STATES ---
+    const [isGenerating, setIsGenerating] = useState<boolean>(false);
+    const [isAudioPlaying, setIsAudioPlaying] = useState<boolean>(false);
+
     const [showTextInput, setShowTextInput] = useState<boolean>(false);
     const [inputText, setInputText] = useState<string>('');
     const [currentImage, setCurrentImage] = useState<string | null>(null);
     const [currentSource, setCurrentSource] = useState<string>('02-8FGF15');
-    const [attachmentPage, setAttachmentPage] = useState<number>(1); // domyślnie strona 1
+    const [attachmentPage, setAttachmentPage] = useState<number>(1);
 
     const [attachmentId, setAttachmentId] = useState<number | null>(null);
     const [attachmentName, setAttachmentName] = useState<string>('');
@@ -52,12 +53,16 @@ export default function ChatScreen() {
         isMeteringEnabled: true,
     });
 
-    // --- LISTENING LOGIC REFERENCES ---
+    // --- LOGIC REFERENCES ---
     const userSpeakingMessageIdRef = useRef<number>(0);
     const meteringIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const soundLevelAnim = useRef(new Animated.Value(0.2)).current;
     const lastLoudTime = useRef<number>(0);
     const hasSpoken = useRef<boolean>(false);
+
+    // --- REQUEST CANCELLATION REFERENCES ---
+    const xhrRef = useRef<XMLHttpRequest | null>(null);
+    const ttsAbortControllerRef = useRef<AbortController | null>(null);
 
     // --- SILENCE CONFIGURATION (Auto-stop) ---
     const silenceThreshold = -50;
@@ -73,6 +78,8 @@ export default function ChatScreen() {
 
         return () => {
             if (meteringIntervalRef.current) clearInterval(meteringIntervalRef.current);
+            if (xhrRef.current) xhrRef.current.abort();
+            if (ttsAbortControllerRef.current) ttsAbortControllerRef.current.abort();
         };
     }, []);
 
@@ -81,19 +88,63 @@ export default function ChatScreen() {
         if (currentImage) setShowSchema(true);
     }, [currentImage]);
 
+    /** 
+     * AUDIO PLAYER TRACKING
+     * Periodically checks if audio is still playing.
+     */
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (ttsPlayer && ttsPlayer.playing) {
+                setIsAudioPlaying(true);
+            } else {
+                setIsAudioPlaying(false);
+            }
+        }, 300);
+        return () => clearInterval(interval);
+    }, [ttsPlayer]);
+
+    /** 
+     * STOPS THE AI
+     * Halts text generation and audio playback.
+     */
+    const handleStop = () => {
+        // 1. Abort text stream request
+        if (xhrRef.current) {
+            xhrRef.current.abort();
+            xhrRef.current = null;
+        }
+
+        // 2. Abort audio fetching (if waiting for OpenAI response)
+        if (ttsAbortControllerRef.current) {
+            ttsAbortControllerRef.current.abort();
+            ttsAbortControllerRef.current = null;
+        }
+
+        // 3. Pause audio playback (if already playing)
+        if (ttsPlayer && ttsPlayer.playing) {
+            ttsPlayer.pause();
+        }
+
+        // 4. Reset states
+        setIsGenerating(false);
+        setIsLoading(false);
+        setIsAudioPlaying(false);
+    };
+
     /**
      * Sends text to the OpenAI API to generate speech (Text-to-Speech)
-     * and plays it automatically.
-     * @param text Text to be read by the AI.
      */
     const playChatGptAudio = async (text: string) => {
+        // Create a new AbortController for every fetch request
+        const abortController = new AbortController();
+        ttsAbortControllerRef.current = abortController;
+
         try {
             setIsLoading(true);
             const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 
             if (!apiKey) {
                 alert("Missing API Key! Restart Expo with: npx expo start -c");
-                setIsLoading(false);
                 return;
             }
 
@@ -108,17 +159,26 @@ export default function ChatScreen() {
                     input: text,
                     voice: 'alloy',
                 }),
+                signal: abortController.signal,
             });
 
             if (!response.ok) throw new Error(`OpenAI API connection error: ${response.status}`);
 
+            // If stopped while waiting for the HTTP response:
+            if (abortController.signal.aborted) return;
+
             if (Platform.OS === 'web') {
                 const blob = await response.blob();
+                if (abortController.signal.aborted) return; // Double check abort status
+
                 const url = URL.createObjectURL(blob);
                 ttsPlayer.replace(url);
+                setIsAudioPlaying(true);
                 ttsPlayer.play();
             } else {
                 const arrayBuffer = await response.arrayBuffer();
+                if (abortController.signal.aborted) return;
+
                 const base64data = Buffer.from(arrayBuffer).toString('base64');
                 const fileUri = (FileSystem.documentDirectory || '') + 'chatgpt_response.mp3';
 
@@ -126,26 +186,37 @@ export default function ChatScreen() {
                     encoding: FileSystem.EncodingType.Base64,
                 });
 
+                // Final check before playing audio
+                if (abortController.signal.aborted) return;
+
                 ttsPlayer.replace(fileUri);
+                setIsAudioPlaying(true);
                 ttsPlayer.play();
             }
-        } catch (error) {
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                console.log('OpenAI audio fetch aborted by user.');
+                return; // Ignore the error if intentionally aborted
+            }
             console.error('ChatGPT TTS playback error:', error);
             alert('Failed to generate audio.');
         } finally {
             setIsLoading(false);
+            setIsGenerating(false);
+
+            // Clear reference to avoid memory leaks
+            if (ttsAbortControllerRef.current === abortController) {
+                ttsAbortControllerRef.current = null;
+            }
         }
     };
 
     /**
- * Sends a user query to the RAG backend, streams the SSE response token by token,
- * updates the chat UI, and plays the TTS audio upon completion.
- * Also extracts source metadata if provided by the backend.
- *
- * @param {string} question - The input text from the user to send to the API.
- */
+     * Sends a user query to the RAG backend, streams the SSE response token by token
+     */
     const askAPI = async (question: string) => {
         setIsLoading(true);
+        setIsGenerating(true);
         const aiMessageId = Date.now() + Math.random();
 
         const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || "";
@@ -156,6 +227,8 @@ export default function ChatScreen() {
         ]);
 
         const xhr = new XMLHttpRequest();
+        xhrRef.current = xhr;
+
         xhr.open('POST', `${SERVER_URL}/api/questions`, true);
         xhr.setRequestHeader('Content-Type', 'application/json');
         xhr.setRequestHeader('Accept', 'text/plain');
@@ -169,17 +242,21 @@ export default function ChatScreen() {
         let lastResponse = '';
         let buffer = '';
         let currentEventType = 'message';
-
-        // Flaga do przechwycenia tylko pierwszego źródła
         let firstSourceFound = false;
 
+        xhr.onabort = () => {
+            setIsLoading(false);
+            setIsGenerating(false);
+        };
+
         xhr.onreadystatechange = () => {
+            if (xhr.status === 0 && xhr.readyState === 4) return;
+
             if (xhr.readyState === 3 || xhr.readyState === 4) {
                 const currentResponse = xhr.responseText;
                 if (!currentResponse) return;
 
                 let newData = '';
-                // Obsługa narastającego responseText w XHR
                 if (lastResponse.length > 0 && currentResponse.startsWith(lastResponse)) {
                     newData = currentResponse.substring(lastResponse.length);
                 } else {
@@ -190,7 +267,6 @@ export default function ChatScreen() {
                 buffer += newData;
                 const lines = buffer.split('\n');
 
-                // Jeśli stream trwa, zachowaj ostatnią (niepełną) linię w buforze
                 if (xhr.readyState === 3) {
                     buffer = lines.pop() || '';
                 } else {
@@ -207,7 +283,6 @@ export default function ChatScreen() {
                         continue;
                     }
 
-                    // Rozpoznawanie typu zdarzenia (event: ...)
                     if (trimmedLine.startsWith('event:')) {
                         const eventName = trimmedLine.substring(6).trim();
                         if (eventName === '[DONE]') continue;
@@ -215,22 +290,17 @@ export default function ChatScreen() {
                         continue;
                     }
 
-                    // Przetwarzanie danych (data: ...)
                     if (trimmedLine.startsWith('data:')) {
                         const chunk = trimmedLine.substring(5).trim();
                         if (!chunk) continue;
 
-                        // PRZYPADEK 1: Dane źródłowe (attachment_id)
-                        // Wewnątrz askAPI -> w pętli obsługującej xhr.onreadystatechange
                         if (currentEventType === 'source') {
                             if (!firstSourceFound) {
                                 try {
                                     const sourceData = JSON.parse(chunk);
                                     if (sourceData && sourceData.attachment_id) {
-                                        // Zapisujemy nowe zmienne
                                         setAttachmentId(sourceData.attachment_id);
 
-                                        // Oczyszczamy nazwę pliku (np. z "/attachments/instrukcje__1.pdf" robimy "instrukcje__1.pdf")
                                         const rawFileName = sourceData.file_name || 'Dokument.pdf';
                                         const cleanFileName = rawFileName.split('/').pop() || 'Dokument.pdf';
                                         setAttachmentName(cleanFileName);
@@ -238,14 +308,12 @@ export default function ChatScreen() {
                                             setAttachmentPage(sourceData.page);
                                         }
                                         firstSourceFound = true;
-                                        console.log("Przechwycono plik:", cleanFileName, "ID:", sourceData.attachment_id);
                                     }
                                 } catch (e) {
                                     console.error("Source parsing error:", e);
                                 }
                             }
                         }
-                        // PRZYPADEK 2: Tokeny tekstu
                         else if (currentEventType === 'token') {
                             try {
                                 const token = JSON.parse(chunk);
@@ -257,7 +325,6 @@ export default function ChatScreen() {
                                     textUpdated = true;
                                 }
                             } catch (e) {
-                                // Jeśli to nie JSON, potraktuj jako surowy tekst
                                 fullText += chunk;
                                 textUpdated = true;
                             }
@@ -265,7 +332,6 @@ export default function ChatScreen() {
                     }
                 }
 
-                // Aktualizacja UI wiadomości
                 if (textUpdated || xhr.readyState === 4) {
                     if (!spinnerRemoved && fullText.length > 0) {
                         setIsLoading(false);
@@ -282,9 +348,10 @@ export default function ChatScreen() {
         };
 
         xhr.onload = () => {
+            if (xhr.status === 0) return; // Ignore if aborted
             setIsLoading(false);
+
             if (xhr.status >= 200 && xhr.status < 300) {
-                // Logika ładowania schematu/obrazka
                 const rawAsset = require('@/assets/schemas/schemat1.png');
                 let schemaAsset;
 
@@ -307,17 +374,25 @@ export default function ChatScreen() {
 
                 if (fullText.length > 0) {
                     playChatGptAudio(fullText);
+                } else {
+                    setIsGenerating(false);
                 }
             } else {
                 handleError(`HTTP Error: ${xhr.status}`);
             }
         };
 
-        xhr.onerror = () => handleError('Server connection error.');
-        xhr.ontimeout = () => handleError('Response timeout exceeded.');
+        xhr.onerror = () => {
+            if (xhr.status === 0) return;
+            handleError('Server connection error.');
+        };
+        xhr.ontimeout = () => {
+            handleError('Response timeout exceeded.');
+        };
 
         const handleError = (errorDetails: string) => {
             setIsLoading(false);
+            setIsGenerating(false);
             const errorMsg = `Sorry, an issue occurred: ${errorDetails}`;
             setMessages((prev) =>
                 prev.map((msg) =>
@@ -328,9 +403,12 @@ export default function ChatScreen() {
 
         xhr.send(JSON.stringify({ question: question }));
     };
-    /** Handles sending a text question from the input field */
+
+    /** Handles sending a text question */
     const handleSendText = () => {
         if (inputText.trim().length === 0) return;
+
+        handleStop(); // Stop AI playback/generation before sending a new message
 
         const userTempId = Date.now();
         setMessages((prev) => [
@@ -344,11 +422,7 @@ export default function ChatScreen() {
         setShowTextInput(false);
     };
 
-    /**
-     * Sends the recorded audio file to the Deepgram API (Speech-to-Text),
-     * and then passes the transcribed text to the backend (`askAPI`).
-     * @param uri Path to the local audio file.
-     */
+    /** Sends the recorded audio file to the Deepgram API */
     const sendToDeepgram = async (uri: string) => {
         setIsLoading(true);
         try {
@@ -390,7 +464,6 @@ export default function ChatScreen() {
         }
     };
 
-    /** Stops the recording, clears the monitoring interval, and sends the audio to Deepgram. */
     const stopRecordingAndSend = async () => {
         if (meteringIntervalRef.current) {
             clearInterval(meteringIntervalRef.current);
@@ -410,10 +483,6 @@ export default function ChatScreen() {
         }
     };
 
-    /** 
-     * Monitors microphone volume during recording. 
-     * Animates the waveform indicator and detects prolonged silence to automatically stop recording.
-     */
     const startMetering = () => {
         lastLoudTime.current = Date.now();
         hasSpoken.current = false;
@@ -455,14 +524,9 @@ export default function ChatScreen() {
         }, 100);
     };
 
-    /** 
-     * Main microphone button handler. 
-     * Toggles between starting the listener (requests permissions, starts metering) and stopping the recording.
-     */
+    /** Main microphone button handler. */
     const handleMicPress = async () => {
-        if (ttsPlayer.playing) {
-            ttsPlayer.pause();
-        }
+        handleStop(); // Stop AI playback/generation when user starts speaking
 
         if (showTextInput) setShowTextInput(false);
 
@@ -500,8 +564,10 @@ export default function ChatScreen() {
         }
     };
 
-    /** Variable controlling the visibility of the AI "typing" loading animation in the left panel */
     const isBotTyping = isLoading && !messages.some(m => m.sender === 'ai' && m.text === '');
+
+    // AI is considered active if generating text or playing audio
+    const isBotActive = isGenerating || isAudioPlaying;
 
     return (
         <View className='flex-1 flex-row bg-black p-4'>
@@ -517,6 +583,8 @@ export default function ChatScreen() {
                 setInputText={setInputText}
                 onSendText={handleSendText}
                 currentSource={currentSource}
+                isGenerating={isBotActive}
+                onStop={handleStop}
             />
             <RightPanel
                 currentSource={currentSource}
@@ -536,6 +604,8 @@ export default function ChatScreen() {
                     setShowSchema(false);
                 }}
                 setCurrentImage={setCurrentImage}
+                isGenerating={isBotActive}
+                onStop={handleStop}
             />
         </View>
     );
