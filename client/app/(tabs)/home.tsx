@@ -15,6 +15,7 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -217,7 +218,7 @@ const InlineBrandAsset: React.FC<{ brand: string }> = ({ brand }) => {
             />
         );
     }
-    
+
     // Fallback to stylized text if no logo is available
     return <Text className='text-white text-xl font-semibold mx-1'>{brand.toUpperCase()}</Text>;
 };
@@ -226,7 +227,7 @@ const InlineBrandAsset: React.FC<{ brand: string }> = ({ brand }) => {
 
 export default function HomeScreen() {
     const router = useRouter();
-    
+
     // State for managing active filters and search queries
     const [activeBrandFilter, setActiveBrandFilter] = useState<string>('WSZYSTKIE');
     const [activeTypeFilter, setActiveTypeFilter] = useState<string>('WSZYSTKIE');
@@ -270,11 +271,11 @@ export default function HomeScreen() {
      */
     const renderVehicleName = (name: string) => {
         let elements: (string | React.ReactNode)[] = [name];
-        
+
         BRAND_FILTERS.filter((b) => b !== 'WSZYSTKIE').forEach((brand) => {
             const next: (string | React.ReactNode)[] = [];
             const regex = new RegExp(`(${brand})`, 'gi');
-            
+
             elements.forEach((el) => {
                 if (typeof el === 'string') {
                     el.split(regex).forEach((part) => {
@@ -286,7 +287,7 @@ export default function HomeScreen() {
             });
             elements = next;
         });
-        
+
         return (
             <View className='flex-row flex-wrap justify-center items-center mb-3 min-h-[32px]'>
                 {elements.map((el, index) =>
@@ -371,22 +372,25 @@ export default function HomeScreen() {
                         right: 0,
                         paddingHorizontal: 24,
                         paddingTop: 16,
+                        paddingBottom: 16, // Dodano stały padding zamiast marginesów na dole elementów
                         zIndex: 10,
                         backgroundColor: '#09090b',
                     }}>
-                    <View className='flex-row justify-between items-center mb-8'>
+                    {/* Zmniejszono mb-8 na mb-4 */}
+                    <View className='flex-row justify-between items-center mb-4'>
                         <View className='flex-row items-center'>
                             <Image
-                                source={require('../../assets/images/LOGO.png')}
+                                source={require('../../assets/images/fixo3.png')}
                                 className='mr-3'
-                                style={{ width: 50, height: 50 }}
+                                style={{ width: 80, height: 50 }}
                                 resizeMode='contain'
                             />
                             <Text className='text-white text-4xl font-bold'>Wybierz Pojazd</Text>
                         </View>
                     </View>
 
-                    <View className='mb-4'>
+                    {/* Zmniejszono mb-4 na mb-3 */}
+                    <View className='mb-3'>
                         <Text className='text-gray-400 text-sm font-bold uppercase tracking-widest ml-2 mb-2'>
                             Marka
                         </Text>
@@ -406,7 +410,8 @@ export default function HomeScreen() {
                         </ScrollView>
                     </View>
 
-                    <View className='mb-6'>
+                    {/* Usunięto mb-6 (zamieniono na mb-0), aby usunąć ogromną lukę pod filtrami */}
+                    <View className='mb-0'>
                         <Text className='text-gray-400 text-sm font-bold uppercase tracking-widest ml-2 mb-2'>
                             Typ
                         </Text>
@@ -425,9 +430,9 @@ export default function HomeScreen() {
                                         style={
                                             Platform.OS === 'android'
                                                 ? {
-                                                      includeFontPadding: false,
-                                                      textAlignVertical: 'center',
-                                                  }
+                                                    includeFontPadding: false,
+                                                    textAlignVertical: 'center',
+                                                }
                                                 : {}
                                         }>
                                         {f}
@@ -445,7 +450,7 @@ export default function HomeScreen() {
                     numColumns={3}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={{
-                        paddingTop: headerHeight,
+                        paddingTop: headerHeight, // Teraz headerHeight będzie miał idealną wartość
                         paddingBottom: 180,
                         alignItems: 'center',
                     }}
@@ -460,48 +465,62 @@ export default function HomeScreen() {
                 style={{ pointerEvents: 'box-none' }}
                 className='absolute bottom-8 left-0 right-0 w-full items-center z-50'
             >
-                <View
-                    className='flex-row items-start justify-center gap-6 px-10 py-6'
+                <BlurView
+                    intensity={70} // Siła rozmycia (możesz dostosować, np. od 20 do 80)
+                    tint="dark"    // Ciemny motyw szkła
+                    className='flex-row items-start justify-center gap-6 px-10 py-6 overflow-hidden'
                     style={{
-                        backgroundColor: 'rgba(20, 20, 22, 0.85)',
                         borderRadius: 100,
                         borderWidth: 1,
-                        borderColor: 'rgba(255, 255, 255, 0.05)',
+                        borderColor: 'rgba(255, 255, 255, 0.25)',
                     }}
+                    
                 >
-                    <TouchableOpacity className='w-[72px] h-[72px] bg-[#121212] border border-black rounded-[12px] items-center justify-center mt-[20px]'>
+                    {/* Przycisk Aparatu */}
+                    <TouchableOpacity className='w-[72px] h-[72px] bg-[#27272a] border border-[#3f3f46] rounded-[12px] items-center justify-center mt-[20px]'>
                         <Image
                             source={require('../../assets/images/camera.png')}
-                            style={{ width: 32, height: 32, tintColor: '#A3A3A3' }}
+                            style={{ width: 32, height: 32, tintColor: '#D4D4D8' }}
                         />
                     </TouchableOpacity>
 
+                    {/* Sekcja Mikrofonu */}
                     <View className='items-center flex-col gap-3 min-w-[140px]'>
                         <TouchableOpacity
                             onPressIn={onMicPress}
-                            className={`w-[112px] h-[112px] rounded-[12px] items-center justify-center ${
-                                isListening ? 'bg-[#2A1100] border-2 border-[#FF6600]' : 'bg-[#121212] border border-black'
-                            }`}
+                            className={`w-[112px] h-[112px] rounded-[12px] items-center justify-center ${isListening
+                                ? 'bg-[#2A1100] border-2 border-[#FF6600]'
+                                : 'bg-[#27272a] border border-[#3f3f46]'
+                                }`}
                         >
                             {isListening && <ListeningPulse />}
                             <Image
                                 source={require('../../assets/images/micro.png')}
-                                style={{ width: 56, height: 56, tintColor: isListening ? '#FF6600' : '#A3A3A3' }}
+                                style={{ width: 56, height: 56, tintColor: isListening ? '#FF6600' : '#D4D4D8' }}
                                 resizeMode="contain"
                             />
                         </TouchableOpacity>
-                        <Text className={`text-center text-[10px] font-bold tracking-widest ${isListening ? 'text-[#FF6600]' : 'text-[#A3A3A3]'}`}>
+                        <Text
+                            className={`text-center text-[11px] font-bold tracking-widest ${isListening ? 'text-[#FF6600]' : 'text-white'}`}
+                            style={{
+                                // Cień tekstu ratuje czytelność na skomplikowanych tłach
+                                textShadowColor: 'rgba(0, 0, 0, 0.8)',
+                                textShadowOffset: { width: 0, height: 1 },
+                                textShadowRadius: 3
+                            }}
+                        >
                             {isListening ? 'SŁUCHAM...' : 'NACIŚNIJ ŻEBY MÓWIĆ'}
                         </Text>
                     </View>
 
-                    <TouchableOpacity className='w-[72px] h-[72px] bg-[#121212] border border-black rounded-[12px] items-center justify-center mt-[20px]'>
+                    {/* Przycisk Szukaj */}
+                    <TouchableOpacity className='w-[72px] h-[72px] bg-[#27272a] border border-[#3f3f46] rounded-[12px] items-center justify-center mt-[20px]'>
                         <Image
                             source={require('../../assets/images/search.png')}
-                            style={{ width: 32, height: 32, tintColor: '#A3A3A3' }}
+                            style={{ width: 32, height: 32, tintColor: '#D4D4D8' }}
                         />
                     </TouchableOpacity>
-                </View>
+                </BlurView>
             </View>
         </SafeAreaView>
     );

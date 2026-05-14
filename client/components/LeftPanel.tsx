@@ -206,14 +206,14 @@ export default function LeftPanel({
                         />
                     </View>
                     <View>
-                        <Text className='text-slate-200 font-bold tracking-widest text-xs'>FLT ASYSTENT</Text>
+                        <Text className='text-slate-200 font-bold tracking-widest text-xs'>FIXO ASYSTENT</Text>
                         <View className='flex-row items-center mt-1'>
                             <View className='w-2 h-2 rounded-full bg-green-500 mr-1.5' />
                             <Text className='text-green-500 font-bold tracking-widest text-[10px]'>System Online</Text>
                         </View>
                     </View>
                 </View>
-
+                    
                 <ScrollView
                     ref={scrollViewRef}
                     onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
@@ -241,48 +241,51 @@ export default function LeftPanel({
 
                 <View className='w-full px-4 py-6 flex-col border-t border-neutral-900 bg-[#0d0d0f]'>
                     <View className='flex-row justify-center items-center gap-6'>
-                        <TouchableOpacity className='w-[72px] h-[72px] bg-[#121212] border border-black rounded-[12px] items-center justify-center'>
+
+                        {/* Przycisk Aparatu */}
+                        <TouchableOpacity className='w-[72px] h-[72px] bg-[#27272a] border border-[#3f3f46] rounded-[12px] items-center justify-center'>
                             <Image
                                 source={require('../assets/images/camera.png')}
-                                style={{ width: 32, height: 32, tintColor: '#A3A3A3' }}
+                                style={{ width: 32, height: 32, tintColor: '#D4D4D8' }}
                                 resizeMode="contain"
                             />
                         </TouchableOpacity>
 
+                        {/* Sekcja Mikrofonu */}
                         <View className='items-center flex-col gap-3'>
                             <TouchableOpacity
                                 onPressIn={onMicPress}
-                                className={`w-[112px] h-[112px] rounded-[12px] items-center justify-center ${
-                                    isListening ? 'bg-[#2A1100] border-2 border-[#FF6600]' : 'bg-[#121212] border border-black'
-                                }`}
+                                className={`w-[112px] h-[112px] rounded-[12px] items-center justify-center ${isListening ? 'bg-[#2A1100] border-2 border-[#FF6600]' : 'bg-[#27272a] border border-[#3f3f46]'
+                                    }`}
                             >
                                 {isListening && <ListeningPulse />}
 
                                 <Image
                                     source={require('../assets/images/micro.png')}
-                                    style={{ width: 56, height: 56, tintColor: isListening ? '#FF6600' : '#A3A3A3' }}
+                                    style={{ width: 56, height: 56, tintColor: isListening ? '#FF6600' : '#D4D4D8' }}
                                     resizeMode="contain"
                                 />
                             </TouchableOpacity>
-                            <Text className={`text-[10px] font-bold tracking-widest ${isListening ? 'text-[#FF6600]' : 'text-[#A3A3A3]'}`}>
+                            <Text className={`text-[10px] font-bold tracking-widest ${isListening ? 'text-[#FF6600]' : 'text-white'}`}>
                                 {isListening ? 'SŁUCHAM...' : 'NACIŚNIJ ŻEBY MÓWIĆ'}
                             </Text>
                         </View>
 
-                        <TouchableOpacity 
+                        {/* Przycisk Klawiatury (Pisania) */}
+                        <TouchableOpacity
                             onPress={() => setShowTextInput(!showTextInput)}
-                            className={`w-[72px] h-[72px] border rounded-[12px] items-center justify-center ${
-                                showTextInput ? 'bg-[#2A1100] border-[#FF6600]' : 'bg-[#121212] border-black'
-                            }`}
+                            className={`w-[72px] h-[72px] border rounded-[12px] items-center justify-center ${showTextInput ? 'bg-[#2A1100] border-[#FF6600]' : 'bg-[#27272a] border-[#3f3f46]'
+                                }`}
                         >
                             <Image
                                 source={require('../assets/images/writing.png')}
-                                style={{ width: 32, height: 32, tintColor: showTextInput ? '#FF6600' : '#A3A3A3' }}
+                                style={{ width: 32, height: 32, tintColor: showTextInput ? '#FF6600' : '#D4D4D8' }}
                                 resizeMode="contain"
                             />
                         </TouchableOpacity>
                     </View>
 
+                    {/* Pole tekstowe */}
                     {showTextInput && (
                         <View className='flex-row w-full mt-6 items-center gap-2'>
                             <TextInput
@@ -294,7 +297,7 @@ export default function LeftPanel({
                                 onSubmitEditing={onSendText}
                                 autoFocus
                             />
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 className='bg-[#CC5500] w-[46px] h-[46px] rounded-xl items-center justify-center'
                                 onPress={onSendText}
                             >
