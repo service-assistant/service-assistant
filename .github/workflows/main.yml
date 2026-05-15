@@ -18,6 +18,15 @@ jobs:
       - name: Run lint check
         run: npm --prefix ./client run lint
 
+  client-format-check:
+    name: Check formatting (client)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - name: Run format check
+        run: npm --prefix ./client exec prettier -- --check .
+
   client-test:
     name: Run tests (client)
     runs-on: ubuntu-24.04
