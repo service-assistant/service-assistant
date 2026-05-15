@@ -1,7 +1,8 @@
-from unittest.mock import MagicMock, AsyncMock, Mock, patch
-from sqlalchemy.ext.asyncio import AsyncSession
-import pytest
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.services.embedding import embed_question, get_close_chunks
@@ -19,6 +20,7 @@ async def test_embed_question_returns_first_embedding():
         openai_chat_model="gpt",
         openai_api_key="key",
         attachments_dir=Path("../attachments"),
+        auth_token="token",
     )
 
     client = MagicMock()
@@ -31,13 +33,13 @@ async def test_embed_question_returns_first_embedding():
 
 
 @pytest.mark.asyncio
-async def test_get_close_chunks():
+async def test_get_close_chunks_without_device_id():
     session = AsyncMock(spec=AsyncSession)
 
     fake_rows = [
-        (1, "chunk 1", "/attachments/sample.pdf", 0),
-        (2, "chunk 2", "/attachments/sample.pdf", 1),
-        (3, "chunk 3", "/attachments/sample.pdf", 2),
+        (1, "chunk 1", 10, None),
+        (2, "chunk 2", 10, {"page": 1}),
+        (3, "chunk 3", 11, None),
     ]
 
     mock_result = Mock()
@@ -48,24 +50,31 @@ async def test_get_close_chunks():
     result = await get_close_chunks(session, vector)
 
     assert result == [
-        {
-            "id": 1,
-            "content": "chunk 1",
-            "document_name": "/attachments/sample.pdf",
-            "page": 0,
-        },
+        {"id": 1, "content": "chunk 1", "attachment_id": 10, "extra_metadata": None},
         {
             "id": 2,
             "content": "chunk 2",
-            "document_name": "/attachments/sample.pdf",
-            "page": 1,
+            "attachment_id": 10,
+            "extra_metadata": {"page": 1},
         },
-        {
-            "id": 3,
-            "content": "chunk 3",
-            "document_name": "/attachments/sample.pdf",
-            "page": 2,
-        },
+        {"id": 3, "content": "chunk 3", "attachment_id": 11, "extra_metadata": None},
     ]
+    session.execute.assert_called_once()
 
+
+@pytest.mark.asyncio
+async def test_get_close_chunks_with_device_id():
+    session = AsyncMock(spec=AsyncSession)
+
+    fake_rows = [(1, "chunk 1", 10, None)]
+
+    mock_result = Mock()
+    mock_result.fetchall.return_value = fake_rows
+    session.execute.return_value = mock_result
+
+    result = await get_close_chunks(session, [0.1, 0.2], device_id=5)
+
+    assert result == [
+        {"id": 1, "content": "chunk 1", "attachment_id": 10, "extra_metadata": None}
+    ]
     session.execute.assert_called_once()
