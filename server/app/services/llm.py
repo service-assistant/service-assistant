@@ -1,4 +1,3 @@
-from collections.abc import AsyncIterator
 from typing import Final
 
 from openai import AsyncOpenAI
@@ -23,15 +22,13 @@ def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
     return "\n".join(parts) if parts else "No relevant context found."
 
 
-async def query(
-    question: str, chunks: list[str], settings: Settings
-) -> AsyncIterator[str]:
+async def query(question: str, chunks: list[str], settings: Settings) -> str:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     context_text = _build_context(chunks)
 
-    stream = await client.chat.completions.create(
+    response = await client.chat.completions.create(
         model=settings.openai_chat_model,
-        stream=True,
+        stream=False,
         temperature=0.2,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -42,7 +39,4 @@ async def query(
         ],
     )
 
-    async for event in stream:
-        delta = event.choices[0].delta.content if event.choices else None
-        if delta:
-            yield delta
+    return response.choices[0].message.content or ""
