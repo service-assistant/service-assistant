@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
 import {
@@ -92,61 +93,61 @@ const VEHICLES: Vehicle[] = [
 ];
 
 const BRAND_FILTERS = [
-    'WSZYSTKIE',
-    'TOYOTA',
-    'DIECI',
-    'UNICARRIERS',
-    'TCM',
-    'STILL',
-    'JUNGHEINRICH',
+	'WSZYSTKIE',
+	'TOYOTA',
+	'DIECI',
+	'UNICARRIERS',
+	'TCM',
+	'STILL',
+	'JUNGHEINRICH',
 ];
 const TYPE_FILTERS = ['WSZYSTKIE', 'PALETOWY', 'PALETOWY Z MASZTEM', 'CZOŁOWY'];
 
 const PRIMARY_ORANGE = '#FF6B00';
 
 const FILTER_LOGO_SIZES: Record<string, { width: number; height: number }> = {
-    TOYOTA: { width: 96, height: 26 },
-    DIECI: { width: 72, height: 26 },
-    UNICARRIERS: { width: 132, height: 26 },
-    TCM: { width: 60, height: 26 },
-    STILL: { width: 60, height: 26 },
-    JUNGHEINRICH: { width: 132, height: 26 },
-    DEFAULT: { width: 84, height: 26 },
+	TOYOTA: { width: 96, height: 26 },
+	DIECI: { width: 72, height: 26 },
+	UNICARRIERS: { width: 132, height: 26 },
+	TCM: { width: 60, height: 26 },
+	STILL: { width: 60, height: 26 },
+	JUNGHEINRICH: { width: 132, height: 26 },
+	DEFAULT: { width: 84, height: 26 },
 };
 
 const INLINE_LOGO_SIZES: Record<string, { width: number; height: number }> = {
-    TOYOTA: { width: 84, height: 24 },
-    DIECI: { width: 60, height: 24 },
-    UNICARRIERS: { width: 108, height: 24 },
-    TCM: { width: 54, height: 24 },
-    STILL: { width: 54, height: 24 },
-    JUNGHEINRICH: { width: 108, height: 24 },
-    DEFAULT: { width: 72, height: 24 },
+	TOYOTA: { width: 84, height: 24 },
+	DIECI: { width: 60, height: 24 },
+	UNICARRIERS: { width: 108, height: 24 },
+	TCM: { width: 54, height: 24 },
+	STILL: { width: 54, height: 24 },
+	JUNGHEINRICH: { width: 108, height: 24 },
+	DEFAULT: { width: 72, height: 24 },
 };
 
 const getBrandLogo = (brand: string): ImageSourcePropType | null => {
-    switch (brand.toUpperCase()) {
-        case 'TOYOTA':
-            return require('../../assets/images/toyota.png');
-        case 'DIECI':
-            return require('../../assets/images/dieci.png');
-        case 'UNICARRIERS':
-            return require('../../assets/images/unicarriers.png');
-        case 'TCM':
-            return require('../../assets/images/tcm.png');
-        case 'STILL':
-            return require('../../assets/images/still.png');
-        case 'JUNGHEINRICH':
-            return require('../../assets/images/jungheinrich.png');
-        default:
-            return null;
-    }
+	switch (brand.toUpperCase()) {
+		case 'TOYOTA':
+			return require('../../assets/images/toyota.png');
+		case 'DIECI':
+			return require('../../assets/images/dieci.png');
+		case 'UNICARRIERS':
+			return require('../../assets/images/unicarriers.png');
+		case 'TCM':
+			return require('../../assets/images/tcm.png');
+		case 'STILL':
+			return require('../../assets/images/still.png');
+		case 'JUNGHEINRICH':
+			return require('../../assets/images/jungheinrich.png');
+		default:
+			return null;
+	}
 };
 
 // --- HELPER COMPONENTS ---
 
 const ListeningPulse = () => (
-    <View className="absolute top-0 bottom-0 left-0 right-0 bg-[#FF6600]/20 rounded-[12px]" />
+	<View className='absolute top-0 bottom-0 left-0 right-0 bg-[#FF6600]/20 rounded-[12px]' />
 );
 
 const BrandLogoOrText: React.FC<{ brand: string; active: boolean }> = ({ brand, active }) => {

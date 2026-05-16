@@ -1,5 +1,15 @@
-import React, { useRef, useState } from 'react';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import * as FileSystem from 'expo-file-system/legacy';
+import React, { useRef, useState } from 'react';
+import {
+	ActivityIndicator,
+	Alert,
+	Platform,
+	ScrollView,
+	Text,
+	TouchableOpacity,
+	View,
+} from 'react-native';
 import { WebView } from 'react-native-webview';
 import PdfViewer from './PdfViewer';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -14,7 +24,7 @@ const AVAILABLE_FILES = [
     { id: 6, name: 'Instrukcja_BHP_Wozki.pdf', icon: 'shield-check-outline', color: '#22C55E', source: require('../assets/instrukcje.pdf') },
 ];
 
-const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || "";
+const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
 
 export default function RightPanel({
     // Props dla plików

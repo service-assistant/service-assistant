@@ -1,17 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, View, Animated, Image, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { Buffer } from 'buffer';
-import {
-    useAudioPlayer,
-    useAudioRecorder,
-    AudioModule,
-    RecordingPresets
-} from 'expo-audio';
-import { Asset } from 'expo-asset';
+import { AudioModule, RecordingPresets, useAudioPlayer, useAudioRecorder } from 'expo-audio';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Image, Platform, View } from 'react-native';
 
+import LeftPanel, { Message } from '@/components/LeftPanel';
+import RightPanel from '@/components/RightPanel';
 import * as FileSystem from 'expo-file-system/legacy';
-import RightPanel from "@/components/RightPanel";
-import LeftPanel, { Message } from "@/components/LeftPanel";
 
 const SERVER_URL = 'https://staging.asystent-serwisanta.pl';
 

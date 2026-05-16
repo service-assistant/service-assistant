@@ -1,10 +1,10 @@
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
-import '../global.css';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import '../global.css';
 
 // Expo Router configuration: ensures that reloading inside a modal or a nested screen
 // retains the back button functionality by anchoring the navigation to the tabs layout.
@@ -20,13 +20,16 @@ export default function RootLayout() {
 
 	return (
 		<SafeAreaProvider>
-		<ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-			<Stack>
-				<Stack.Screen name='(tabs)' options={{ headerShown: false }} />
-				<Stack.Screen name='modal' options={{ presentation: 'modal', title: 'Modal' }} />
-			</Stack>
-			<StatusBar style='auto' />
-		</ThemeProvider>
+			<ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+				<Stack>
+					<Stack.Screen name='(tabs)' options={{ headerShown: false }} />
+					<Stack.Screen
+						name='modal'
+						options={{ presentation: 'modal', title: 'Modal' }}
+					/>
+				</Stack>
+				<StatusBar style='auto' />
+			</ThemeProvider>
 		</SafeAreaProvider>
 	);
 }
