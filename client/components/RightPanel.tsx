@@ -15,6 +15,8 @@ import {
 import { WebView } from 'react-native-webview';
 import PdfViewer from './PdfViewer';
 
+// --- MOCK DATA ---
+
 const AVAILABLE_FILES = [
 	{
 		id: 1,
@@ -62,8 +64,43 @@ const AVAILABLE_FILES = [
 
 const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
 
+// --- INTERFACES ---
+
+export interface PdfDocument {
+	name: string;
+	icon: string;
+	color: string;
+	source: { uri: string; headers?: Record<string, string> } | number;
+	page: number;
+}
+
+export interface RightPanelProps {
+	currentSource: string;
+	attachmentId: number | null;
+	attachmentName: string;
+	attachmentPage: number;
+	hasAskedQuestion: boolean;
+	currentImage: string | null;
+	isLoading: boolean;
+	selectedPdf: PdfDocument | null;
+	onSelectPdf: (pdf: PdfDocument | null) => void;
+	showSchema: boolean;
+	setShowSchema: (show: boolean) => void;
+	setCurrentImage: (image: string | null) => void;
+	isListening: boolean;
+	onMicPress: () => void;
+	soundLevelAnim: Animated.Value;
+	isGenerating: boolean;
+	onStop: () => void;
+}
+
+/**
+ * RightPanel Component
+ *
+ * Responsible for rendering the document viewer, schema images, and the grid of available files.
+ * Adapts its layout based on the screen width (Mobile vs. Desktop/Tablet).
+ */
 export default function RightPanel({
-	// Props dla plików
 	currentSource,
 	attachmentId,
 	attachmentName,
@@ -76,25 +113,29 @@ export default function RightPanel({
 	showSchema,
 	setShowSchema,
 	setCurrentImage,
-
-	// Props dla czatu (wersja mobilna)
 	isListening,
 	onMicPress,
 	soundLevelAnim,
-}: any) {
+	isGenerating,
+	onStop,
+}: RightPanelProps) {
 	const { width } = useWindowDimensions();
 	const isMobile = width < 768;
 
-	const [isDownloading, setIsDownloading] = useState(false);
+	const [isDownloading, setIsDownloading] = useState<boolean>(false);
 	const downloadResumableRef = useRef<FileSystem.DownloadResumable | null>(null);
 	const [downloadingFileId, setDownloadingFileId] = useState<number | null>(null);
 
-	const dynamicPdfUrl = attachmentId
-		? `https://staging.asystent-serwisanta.pl/api/attachments/get/${attachmentId}`
-		: 'https://staging.asystent-serwisanta.pl/api/attachments/get/55';
-
+	// TODO: Replace '1' with dynamic attachmentId when API logic is fully implemented
+	const dynamicPdfUrl = `https://staging.asystent-serwisanta.pl/api/attachments/${1}/file`;
 	const dynamicFileName = attachmentName || 'instrukcja_serwisowa.pdf';
 
+	/**
+	 * Generates HTML for an inverted image view (useful for dark mode schemas).
+	 *
+	 * @param imageUrl - URL of the image to display.
+	 * @returns Raw HTML string.
+	 */
 	const getInvertedImageHtml = (imageUrl: string) => `
       <!DOCTYPE html>
       <html>
@@ -109,6 +150,16 @@ export default function RightPanel({
       </html>
     `;
 
+	/**
+	 * Handles downloading a PDF file from a remote server.
+	 * Functions differently on Web (passes URI directly) vs Native (downloads via FileSystem).
+	 *
+	 * @param remoteUrl - API endpoint to download from.
+	 * @param localFilename - Desired filename for local storage.
+	 * @param displayName - Name to display in the UI.
+	 * @param fileIdForGrid - Associated file ID to display loading indicators correctly.
+	 * @param targetPage - The page to open after the document is loaded.
+	 */
 	const performDownload = async (
 		remoteUrl: string,
 		localFilename: string,
@@ -122,7 +173,8 @@ export default function RightPanel({
 		setDownloadingFileId(fileIdForGrid);
 
 		try {
-			await new Promise((resolve) => setTimeout(resolve, 5000));
+			// Artificial delay to simulate processing or network latency
+			await new Promise((resolve) => setTimeout(resolve, 3000));
 
 			if (Platform.OS === 'web') {
 				setShowSchema(false);
@@ -170,10 +222,16 @@ export default function RightPanel({
 		}
 	};
 
+	/**
+	 * Triggered when a file from the mock grid is selected.
+	 */
 	const handleFileGridPress = async (file: (typeof AVAILABLE_FILES)[0]) => {
 		await performDownload(dynamicPdfUrl, dynamicFileName, file.name, file.id, 1);
 	};
 
+	/**
+	 * Renders the toggle button to switch between PDF viewer and Image Schema viewer.
+	 */
 	const renderSourceButton = () => {
 		if (!currentImage) return null;
 
@@ -213,11 +271,11 @@ export default function RightPanel({
 		);
 	};
 
-	// --- WIDOK MOBILNY (PLIKI + CZAT) ---
+	// --- MOBILE VIEW (FILES + CHAT) ---
 	if (isMobile) {
 		return (
 			<View className='flex-1 bg-black p-4 pb-8 justify-between'>
-				{/* Nagłówek */}
+				{/* Header */}
 				<View className='flex-row justify-between items-center mt-6'>
 					<TouchableOpacity className='border border-[#d35400] p-3 rounded-lg bg-black'>
 						<Feather name='arrow-left' size={20} color='#d35400' />
@@ -233,7 +291,7 @@ export default function RightPanel({
 					</TouchableOpacity>
 				</View>
 
-				{/* Sekcja Plików / Schematu */}
+				{/* Main Content: Files / Schema Section */}
 				{selectedPdf ? (
 					<View className='flex-1 mt-8 mb-4 relative'>
 						<PdfViewer
@@ -315,7 +373,7 @@ export default function RightPanel({
 
 				{!selectedPdf && !showSchema && <View className='flex-1' />}
 
-				{/* Dolny pasek (Sekcja Czatu / Mikrofonu) */}
+				{/* Bottom Bar: Chat / Mic Controls */}
 				<View className='items-center'>
 					<View className='flex-row w-full justify-around items-center mb-4'>
 						<TouchableOpacity className='bg-[#111] p-5 rounded-2xl'>
@@ -347,9 +405,10 @@ export default function RightPanel({
 		);
 	}
 
-	// --- WIDOK DESKTOPOWY / TABLETOWY ---
+	// --- DESKTOP / TABLET VIEW ---
 	return (
 		<View className='flex-1 h-full flex-col pl-6'>
+			{/* Top Toolbar */}
 			<View className='w-full flex-row items-center mb-4 h-14'>
 				<View className='flex-1' />
 				<View className='flex-1 flex-row justify-end gap-3'>
@@ -381,6 +440,7 @@ export default function RightPanel({
 				</View>
 			</View>
 
+			{/* Main Content View */}
 			<View className='flex-1 rounded-xl overflow-hidden bg-black'>
 				{currentImage && showSchema ? (
 					Platform.OS === 'web' ? (
