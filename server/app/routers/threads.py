@@ -1,4 +1,7 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
@@ -76,15 +79,18 @@ async def delete_thread(thread_id: int, session: AsyncSession = Depends(get_sess
 
 @router.post(
     "/{thread_id}/messages",
-    status_code=status.HTTP_201_CREATED,
-    response_model=Message,
     summary="Send a message",
     description=(
         "Appends a user message to the thread, then runs a RAG pipeline: "
         "embeds the question, retrieves the most relevant document chunks for the thread's device, "
-        "and queries the LLM with the resulting context. Returns the assistant's reply."
+        "and streams the LLM reply via Server-Sent Events. "
+        "Emits `chunk` events for each text fragment and a final `message` event "
+        "with the persisted assistant Message as JSON."
     ),
-    responses={404: {"description": "Thread not found"}},
+    responses={
+        200: {"description": "SSE stream of chunk and message events"},
+        404: {"description": "Thread not found"},
+    },
 )
 async def create_message(
     thread_id: int,
@@ -112,24 +118,34 @@ async def create_message(
     )
     context_chunks = [chunk["content"] for chunk in close_chunks]
 
-    answer = await llm.query(body.content, context_chunks, settings)
+    async def event_stream():
+        answer_parts: list[str] = []
 
-    system_message = Message(
-        content=answer,
-        thread_id=thread_id,
-        sender=MessageSender.system,
-    )
-    session.add(system_message)
-    await session.commit()
-    await session.refresh(system_message)
+        async for chunk in llm.stream_query(body.content, context_chunks, settings):
+            answer_parts.append(chunk)
+            yield f"event: chunk\ndata: {json.dumps(chunk)}\n\n"
 
-    assert system_message.id is not None
-    for chunk in close_chunks:
-        session.add(ChunkMessage(message_id=system_message.id, chunk_id=chunk["id"]))
-    await session.commit()
-    await session.refresh(system_message)
+        answer = "".join(answer_parts)
+        system_message = Message(
+            content=answer,
+            thread_id=thread_id,
+            sender=MessageSender.system,
+        )
+        session.add(system_message)
+        await session.commit()
+        await session.refresh(system_message)
 
-    return system_message
+        assert system_message.id is not None
+        for chunk in close_chunks:
+            session.add(
+                ChunkMessage(message_id=system_message.id, chunk_id=chunk["id"])
+            )
+        await session.commit()
+        await session.refresh(system_message)
+
+        yield f"event: message\ndata: {system_message.model_dump_json()}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.get(

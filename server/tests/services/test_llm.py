@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.config import Settings
-from app.services.llm import _build_context, query
+from app.services.llm import _build_context, stream_query
 
 
 def make_settings() -> Settings:
@@ -63,48 +63,56 @@ def test_should_include_all_chunks_when_within_max_chars():
     assert result.count("[Fragment") == 2
 
 
+def make_stream_mock(deltas: list[str | None]):
+    async def _aiter():
+        for content in deltas:
+            event = MagicMock()
+            event.choices[0].delta.content = content
+            yield event
+
+    mock_stream = _aiter()
+    return AsyncMock(return_value=mock_stream)
+
+
 @pytest.mark.asyncio
 async def test_should_return_llm_response_content():
     settings = make_settings()
     mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "Odpowiedź asystenta"
-    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+    mock_client.chat.completions.create = make_stream_mock(["Odpowiedź", " asystenta"])
 
     with patch("app.services.llm.AsyncOpenAI", return_value=mock_client):
-        result = await query("What is error E-23?", ["Fault E-23 means..."], settings)
+        chunks = [
+            chunk
+            async for chunk in stream_query(
+                "What is error E-23?", ["Fault E-23 means..."], settings
+            )
+        ]
 
-    assert result == "Odpowiedź asystenta"
+    assert "".join(chunks) == "Odpowiedź asystenta"
     mock_client.chat.completions.create.assert_called_once()
 
 
 @pytest.mark.asyncio
-async def test_should_return_empty_string_when_llm_content_is_none():
+async def test_should_skip_none_delta_chunks():
     settings = make_settings()
     mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = None
-    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+    mock_client.chat.completions.create = make_stream_mock([None, "real content", None])
 
     with patch("app.services.llm.AsyncOpenAI", return_value=mock_client):
-        result = await query("test question", [], settings)
+        chunks = [chunk async for chunk in stream_query("test question", [], settings)]
 
-    assert result == ""
+    assert chunks == ["real content"]
 
 
 @pytest.mark.asyncio
 async def test_should_pass_question_and_context_to_llm():
     settings = make_settings()
     mock_client = MagicMock()
-    mock_response = MagicMock()
-    mock_response.choices = [MagicMock()]
-    mock_response.choices[0].message.content = "Answer"
-    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+    mock_client.chat.completions.create = make_stream_mock(["Answer"])
 
     with patch("app.services.llm.AsyncOpenAI", return_value=mock_client):
-        await query("My question", ["context chunk"], settings)
+        async for _ in stream_query("My question", ["context chunk"], settings):
+            pass
 
     call_kwargs = mock_client.chat.completions.create.call_args.kwargs
     messages = call_kwargs["messages"]
