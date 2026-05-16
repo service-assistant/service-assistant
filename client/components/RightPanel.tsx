@@ -3,20 +3,21 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { WebView } from 'react-native-webview';
 import PdfViewer from './PdfViewer';
 import * as FileSystem from 'expo-file-system/legacy';
-import { View, Text, TouchableOpacity, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Platform, Alert, ActivityIndicator, useWindowDimensions, Animated } from 'react-native';
 
 const AVAILABLE_FILES = [
     { id: 1, name: 'Instrukcja_Obslugi_Toyota.pdf', icon: 'forklift', color: '#06B6D4', source: require('../assets/instrukcje.pdf') },
     { id: 2, name: 'Schematy_Elektryczne.pdf', icon: 'lightning-bolt', color: '#EAB308', source: require('../assets/instrukcje.pdf') },
     { id: 3, name: 'Katalog_Czesci_2024.pdf', icon: 'cogs', color: '#A855F7', source: require('../assets/instrukcje.pdf') },
     { id: 4, name: 'Biuletyn_Serwisowy.pdf', icon: 'wrench-outline', color: '#3B82F6', source: require('../assets/instrukcje.pdf') },
-    { id: 5, name: 'Kody_Bledow_Silnika.pdf', icon: 'engine-outline', color: '#EF4444', source: require('../assets/instrukcje.pdf') },
+    { id: 5, name: 'kody_awarii.pdf', icon: 'alert-outline', color: '#EF4444', source: require('../assets/instrukcje.pdf') },
     { id: 6, name: 'Instrukcja_BHP_Wozki.pdf', icon: 'shield-check-outline', color: '#22C55E', source: require('../assets/instrukcje.pdf') },
 ];
 
 const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || "";
 
 export default function RightPanel({
+    // Props dla plików
     currentSource,
     attachmentId,
     attachmentName,
@@ -24,23 +25,28 @@ export default function RightPanel({
     hasAskedQuestion,
     currentImage,
     isLoading: isApiLoading,
-    isListening,
-    onMicPress,
-    selectedPdf, 
+    selectedPdf,
     onSelectPdf,
     showSchema,
     setShowSchema,
-    setCurrentImage
+    setCurrentImage,
+
+    // Props dla czatu (wersja mobilna)
+    isListening,
+    onMicPress,
+    soundLevelAnim
 }: any) {
+    const { width } = useWindowDimensions();
+    const isMobile = width < 768;
 
     const [isDownloading, setIsDownloading] = useState(false);
     const downloadResumableRef = useRef<FileSystem.DownloadResumable | null>(null);
     const [downloadingFileId, setDownloadingFileId] = useState<number | null>(null);
-    
-    const dynamicPdfUrl = attachmentId 
+
+    const dynamicPdfUrl = attachmentId
         ? `https://staging.asystent-serwisanta.pl/api/attachments/get/${attachmentId}`
         : 'https://staging.asystent-serwisanta.pl/api/attachments/get/55';
-        
+
     const dynamicFileName = attachmentName || 'instrukcja_serwisowa.pdf';
 
     const getInvertedImageHtml = (imageUrl: string) => `
@@ -72,7 +78,7 @@ export default function RightPanel({
                     name: displayName,
                     icon: 'file-download',
                     color: '#22C55E',
-                    source: { 
+                    source: {
                         uri: remoteUrl,
                         headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` }
                     },
@@ -80,17 +86,17 @@ export default function RightPanel({
                 });
             } else {
                 const fileUri = FileSystem.documentDirectory + localFilename;
-                
+
                 downloadResumableRef.current = FileSystem.createDownloadResumable(
-                    remoteUrl, 
-                    fileUri, 
+                    remoteUrl,
+                    fileUri,
                     { headers: { 'Authorization': `Bearer ${AUTH_TOKEN}` } }
                 );
-                
+
                 const result = await downloadResumableRef.current.downloadAsync();
-                
+
                 if (result && result.uri) {
-                    setShowSchema(false); 
+                    setShowSchema(false);
                     onSelectPdf({
                         name: displayName,
                         icon: 'file-download',
@@ -150,6 +156,123 @@ export default function RightPanel({
         );
     };
 
+    // --- WIDOK MOBILNY (PLIKI + CZAT) ---
+    if (isMobile) {
+        return (
+            <View className="flex-1 bg-black p-4 pb-8 justify-between">
+                {/* Nagłówek */}
+                <View className="flex-row justify-between items-center mt-6">
+                    <TouchableOpacity className="border border-[#d35400] p-3 rounded-lg bg-black">
+                        <Feather name="arrow-left" size={20} color="#d35400" />
+                    </TouchableOpacity>
+
+                    <View className="flex-row items-center">
+                        <Text className="text-white font-bold text-lg mr-2">TOYOTA</Text>
+                        <Text className="text-white font-semibold text-md">{currentSource}</Text>
+                    </View>
+
+                    <TouchableOpacity className="border border-[#d35400] p-3 rounded-lg bg-black">
+                        <MaterialCommunityIcons name="robot-outline" size={22} color="#d35400" />
+                    </TouchableOpacity>
+                </View>
+
+                {/* Sekcja Plików / Schematu */}
+                {selectedPdf ? (
+                    <View className="flex-1 mt-8 mb-4 relative">
+                        <PdfViewer
+                            source={selectedPdf?.source || require('../assets/instrukcje.pdf')}
+                            page={selectedPdf?.page || 1}
+                        />
+                        <TouchableOpacity
+                            onPress={() => onSelectPdf(null)}
+                            className="absolute top-2 right-2 bg-black/80 p-2 rounded-full z-10"
+                        >
+                            <Feather name="x" size={20} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
+                ) : showSchema && currentImage ? (
+                    <View className='flex-1 mt-8 mb-4 rounded-xl overflow-hidden bg-black relative'>
+                        {Platform.OS === 'web' ? (
+                            <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
+                                <img
+                                    src={currentImage}
+                                    style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'invert(100%)' }}
+                                    alt="Schemat"
+                                />
+                            </View>
+                        ) : (
+                            <WebView
+                                source={{ html: getInvertedImageHtml(currentImage) }}
+                                style={{ flex: 1, backgroundColor: 'transparent' }}
+                                scrollEnabled={false}
+                            />
+                        )}
+                        <TouchableOpacity
+                            onPress={() => setShowSchema(false)}
+                            className="absolute top-2 right-2 bg-black/80 p-2 rounded-full z-10"
+                        >
+                            <Feather name="x" size={20} color="#fff" />
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <ScrollView className="flex-1 mt-8 mb-4" showsVerticalScrollIndicator={false}>
+                        <View className="flex-row flex-wrap justify-between gap-y-4">
+                            {AVAILABLE_FILES.map((file) => {
+                                const isThisFileDownloading = isDownloading && downloadingFileId === file.id;
+                                return (
+                                    <TouchableOpacity
+                                        key={file.id}
+                                        onPress={() => handleFileGridPress(file)}
+                                        disabled={isDownloading}
+                                        className="bg-[#111] rounded-2xl p-6 items-center w-[48%] aspect-square justify-center relative"
+                                    >
+                                        {isThisFileDownloading ? (
+                                            <ActivityIndicator size="large" color={file.color} />
+                                        ) : (
+                                            <MaterialCommunityIcons name={file.icon as any} size={70} color={file.color} />
+                                        )}
+                                        <Text className="text-white text-xs font-bold mt-4 text-center" numberOfLines={2}>
+                                            {file.name}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+                    </ScrollView>
+                )}
+
+                {!selectedPdf && !showSchema && <View className="flex-1" />}
+
+                {/* Dolny pasek (Sekcja Czatu / Mikrofonu) */}
+                <View className="items-center">
+                    <View className="flex-row w-full justify-around items-center mb-4">
+                        <TouchableOpacity className="bg-[#111] p-5 rounded-2xl">
+                            <Feather name="camera" size={24} color="#9ca3af" />
+                        </TouchableOpacity>
+
+                        <Animated.View style={{ transform: [{ scale: soundLevelAnim || 1 }] }}>
+                            <TouchableOpacity
+                                onPress={onMicPress}
+                                className={`border-2 border-[#d35400] p-6 rounded-3xl ${isListening ? 'bg-[#3a1a00]' : 'bg-[#1a0f00]'}`}
+                            >
+                                <MaterialCommunityIcons name="microphone" size={48} color="#d35400" />
+                            </TouchableOpacity>
+                        </Animated.View>
+
+                        <TouchableOpacity className="bg-[#111] p-5 rounded-2xl">
+                            <Feather name="search" size={24} color="#9ca3af" />
+                        </TouchableOpacity>
+                    </View>
+
+                    <Text className="text-[#d35400] text-xs font-bold uppercase tracking-widest mt-2">
+                        {isListening ? "ASYSTENT SŁUCHA" : "ASYSTENT GOTOWY"}
+                    </Text>
+                </View>
+            </View>
+        );
+    }
+
+    // --- WIDOK DESKTOPOWY / TABLETOWY ---
     return (
         <View className='flex-1 h-full flex-col pl-6'>
             <View className='w-full flex-row items-center mb-4 h-14'>
@@ -181,9 +304,9 @@ export default function RightPanel({
                 {currentImage && showSchema ? (
                     Platform.OS === 'web' ? (
                         <View style={{ flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }}>
-                            <img 
-                                src={currentImage} 
-                                style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'invert(100%)' }} 
+                            <img
+                                src={currentImage}
+                                style={{ width: '100%', height: '100%', objectFit: 'contain', filter: 'invert(100%)' }}
                                 alt="Schemat"
                             />
                         </View>
@@ -196,9 +319,9 @@ export default function RightPanel({
                     )
                 ) : (currentImage && !showSchema) || selectedPdf ? (
                     <View className="flex-1 relative">
-                        <PdfViewer 
-                            source={selectedPdf?.source || require('../assets/instrukcje.pdf')} 
-                            page={selectedPdf?.page || 1} 
+                        <PdfViewer
+                            source={selectedPdf?.source || require('../assets/instrukcje.pdf')}
+                            page={selectedPdf?.page || 1}
                         />
                         <View className="absolute top-0 left-0 bg-[#121212] border border-neutral-800 px-3 py-2 rounded-br-lg flex-row items-center shadow-lg opacity-90 z-10">
                             <MaterialCommunityIcons name={(selectedPdf?.icon as any) || "file-pdf-box"} size={18} color={selectedPdf?.color || "#EF4444"} />

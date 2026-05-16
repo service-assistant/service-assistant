@@ -6,18 +6,18 @@ import {
     Dimensions,
     Image,
     ImageSourcePropType,
-    Modal,
     Platform,
     Pressable,
     ScrollView,
     Text,
     TouchableOpacity,
     View,
+    useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 // --- CONFIGURATION & DATA ---
 
@@ -30,11 +30,10 @@ type Vehicle = {
     brand: string;
     type: string;
     imageUrl: ImageSourcePropType;
+    imageOffsetY: number;
+    imageZoom: number;
 };
 
-/**
- * Mock data containing a list of available vehicles.
- */
 const VEHICLES: Vehicle[] = [
     {
         id: '1',
@@ -42,6 +41,8 @@ const VEHICLES: Vehicle[] = [
         brand: 'DIECI',
         type: 'czołowy',
         imageUrl: require('../../assets/images/WOZEK1.jpeg'),
+        imageOffsetY: -20,
+        imageZoom: 1.00,
     },
     {
         id: '2',
@@ -49,6 +50,8 @@ const VEHICLES: Vehicle[] = [
         brand: 'UNICARRIERS',
         type: 'paletowy',
         imageUrl: require('../../assets/images/WOZEK2.jpg'),
+        imageOffsetY: -20,
+        imageZoom: 1.00,
     },
     {
         id: '3',
@@ -56,6 +59,8 @@ const VEHICLES: Vehicle[] = [
         brand: 'TCM',
         type: 'czołowy',
         imageUrl: require('../../assets/images/WOZEK3.jpg'),
+        imageOffsetY: -40,
+        imageZoom: 1.00,
     },
     {
         id: '4',
@@ -63,13 +68,17 @@ const VEHICLES: Vehicle[] = [
         brand: 'TOYOTA',
         type: 'paletowy z masztem',
         imageUrl: require('../../assets/images/WOZEK4.jpg'),
+        imageOffsetY: 10,
+        imageZoom: 1.00,
     },
     {
         id: '5',
-        name: 'DIECI Icarus 60.18 – GD',
+        name: 'DIECI Icarus 60.18 - GD',
         brand: 'DIECI',
         type: 'czołowy',
         imageUrl: require('../../assets/images/WOZEK5.jpg'),
+        imageOffsetY: 0,
+        imageZoom: 1.0,
     },
     {
         id: '6',
@@ -77,10 +86,11 @@ const VEHICLES: Vehicle[] = [
         brand: 'JUNGHEINRICH',
         type: 'czołowy',
         imageUrl: require('../../assets/images/WOZEK6.jpg'),
+        imageOffsetY: -55,
+        imageZoom: 1.20,
     },
 ];
 
-// Predefined filter options for brands and vehicle types
 const BRAND_FILTERS = [
     'WSZYSTKIE',
     'TOYOTA',
@@ -94,7 +104,6 @@ const TYPE_FILTERS = ['WSZYSTKIE', 'PALETOWY', 'PALETOWY Z MASZTEM', 'CZOŁOWY']
 
 const PRIMARY_ORANGE = '#FF6B00';
 
-// Dimensions mapping for logos used in filter buttons
 const FILTER_LOGO_SIZES: Record<string, { width: number; height: number }> = {
     TOYOTA: { width: 96, height: 26 },
     DIECI: { width: 72, height: 26 },
@@ -105,7 +114,6 @@ const FILTER_LOGO_SIZES: Record<string, { width: number; height: number }> = {
     DEFAULT: { width: 84, height: 26 },
 };
 
-// Dimensions mapping for logos used inline within text
 const INLINE_LOGO_SIZES: Record<string, { width: number; height: number }> = {
     TOYOTA: { width: 84, height: 24 },
     DIECI: { width: 60, height: 24 },
@@ -116,11 +124,6 @@ const INLINE_LOGO_SIZES: Record<string, { width: number; height: number }> = {
     DEFAULT: { width: 72, height: 24 },
 };
 
-/**
- * Returns the local image source for a given brand.
- * @param brand - The name of the brand.
- * @returns React Native image source or null if the brand is not found.
- */
 const getBrandLogo = (brand: string): ImageSourcePropType | null => {
     switch (brand.toUpperCase()) {
         case 'TOYOTA':
@@ -142,26 +145,17 @@ const getBrandLogo = (brand: string): ImageSourcePropType | null => {
 
 // --- HELPER COMPONENTS ---
 
-/**
- * Renders an animated pulse background when the microphone is listening.
- */
 const ListeningPulse = () => (
     <View className="absolute top-0 bottom-0 left-0 right-0 bg-[#FF6600]/20 rounded-[12px]" />
 );
 
-/**
- * Renders either the brand logo (if available) or the brand name as a text fallback.
- * Primarily used within the brand filter buttons.
- */
 const BrandLogoOrText: React.FC<{ brand: string; active: boolean }> = ({ brand, active }) => {
     const [imageError, setImageError] = useState(false);
     const logoSource = getBrandLogo(brand);
 
-    // Ensure proper text alignment on Android devices
     const textStyle =
         Platform.OS === 'android' ? { includeFontPadding: false, textAlignVertical: 'center' } : {};
 
-    // For the "ALL" ('WSZYSTKIE') filter, always render text
     if (brand === 'WSZYSTKIE') {
         return (
             <Text
@@ -172,7 +166,6 @@ const BrandLogoOrText: React.FC<{ brand: string; active: boolean }> = ({ brand, 
         );
     }
 
-    // Render image if the source is valid and there's no loading error
     if (logoSource && !imageError) {
         const dims = FILTER_LOGO_SIZES[brand.toUpperCase()] || FILTER_LOGO_SIZES.DEFAULT;
         return (
@@ -185,7 +178,6 @@ const BrandLogoOrText: React.FC<{ brand: string; active: boolean }> = ({ brand, 
         );
     }
 
-    // Fallback to text if the image fails to load
     return (
         <Text
             className={`text-sm font-bold ${active ? 'text-white' : 'text-gray-300'}`}
@@ -195,57 +187,27 @@ const BrandLogoOrText: React.FC<{ brand: string; active: boolean }> = ({ brand, 
     );
 };
 
-/**
- * Renders a brand logo inline within a line of text.
- */
-const InlineBrandAsset: React.FC<{ brand: string }> = ({ brand }) => {
-    const [imageError, setImageError] = useState(false);
-    const logoSource = getBrandLogo(brand);
-
-    if (logoSource && !imageError) {
-        const config = INLINE_LOGO_SIZES[brand.toUpperCase()] || INLINE_LOGO_SIZES.DEFAULT;
-
-        return (
-            <Image
-                source={logoSource}
-                style={{
-                    width: config.width,
-                    height: config.height,
-                    marginHorizontal: 6,
-                }}
-                resizeMode='contain'
-                onError={() => setImageError(true)}
-            />
-        );
-    }
-
-    // Fallback to stylized text if no logo is available
-    return <Text className='text-white text-xl font-semibold mx-1'>{brand.toUpperCase()}</Text>;
-};
-
 // --- MAIN SCREEN ---
 
 export default function HomeScreen() {
     const router = useRouter();
+    const { width: CURRENT_SCREEN_WIDTH } = useWindowDimensions();
+    const isTablet = CURRENT_SCREEN_WIDTH >= 768;
+    const insets = useSafeAreaInsets();
 
-    // State for managing active filters and search queries
     const [activeBrandFilter, setActiveBrandFilter] = useState<string>('WSZYSTKIE');
     const [activeTypeFilter, setActiveTypeFilter] = useState<string>('WSZYSTKIE');
     const [searchQuery, setSearchQuery] = useState<string>('');
-    const [selectedImage, setSelectedImage] = useState<ImageSourcePropType | null>(null);
 
-    // State for managing the voice assistant microphone
     const [isListening, setIsListening] = useState(false);
 
     const onMicPress = () => {
         setIsListening(!isListening);
     };
 
-    // State and references for header scroll animations
     const [headerHeight, setHeaderHeight] = useState(0);
     const scrollY = useRef(new Animated.Value(0)).current;
 
-    // Interpolations to hide the header on scroll down
     const headerTranslateY = scrollY.interpolate({
         inputRange: [0, headerHeight || 1],
         outputRange: [0, -(headerHeight || 1)],
@@ -258,7 +220,6 @@ export default function HomeScreen() {
         extrapolate: 'clamp',
     });
 
-    // Apply active filters and search query to the vehicles list
     const filteredVehicles = VEHICLES.filter((v) => {
         const mBrand = activeBrandFilter === 'WSZYSTKIE' || v.brand === activeBrandFilter;
         const mType = activeTypeFilter === 'WSZYSTKIE' || v.type.toUpperCase() === activeTypeFilter;
@@ -266,100 +227,125 @@ export default function HomeScreen() {
         return mBrand && mType && mSearch;
     });
 
-    /**
-     * Parses the vehicle name and replaces recognized brand names with their corresponding logo images.
-     */
-    const renderVehicleName = (name: string) => {
-        let elements: (string | React.ReactNode)[] = [name];
+    const isWeb = Platform.OS === 'web';
+    const paddingHorizontal = isTablet || isWeb ? 16 : 8;
+    const containerPadding = paddingHorizontal * 2;
+    const cardMargin = 16;
 
-        BRAND_FILTERS.filter((b) => b !== 'WSZYSTKIE').forEach((brand) => {
-            const next: (string | React.ReactNode)[] = [];
-            const regex = new RegExp(`(${brand})`, 'gi');
+    let columns = 2;
+    if (isWeb) {
+        columns = Math.max(2, Math.floor((CURRENT_SCREEN_WIDTH - containerPadding) / 320));
+    } else if (isTablet) {
+        columns = 3;
+    }
 
-            elements.forEach((el) => {
-                if (typeof el === 'string') {
-                    el.split(regex).forEach((part) => {
-                        if (part.toUpperCase() === brand.toUpperCase()) {
-                            next.push(<InlineBrandAsset key={Math.random()} brand={brand} />);
-                        } else if (part) next.push(part);
-                    });
-                } else next.push(el);
-            });
-            elements = next;
-        });
+    const cardWidth = (CURRENT_SCREEN_WIDTH - containerPadding) / columns - cardMargin;
+    const cardHeight = isWeb ? 380 : (isTablet ? 340 : cardWidth + 90);
+    const imageHeight = isWeb || isTablet ? 240 : cardWidth;
+
+    const renderCardInfo = (vehicle: Vehicle, isTabletSize: boolean) => {
+        const logoSource = getBrandLogo(vehicle.brand);
+        const logoHeight = isTabletSize || isWeb ? 24 : 20;
+
+        const brandToRemove = vehicle.brand.toLowerCase() + ' ';
+        const cleanName = vehicle.name.toLowerCase().startsWith(brandToRemove)
+            ? vehicle.name.substring(brandToRemove.length)
+            : vehicle.name;
+
+        if (isWeb) {
+            return (
+                <View className='w-full flex-row items-center justify-center mb-4 px-2'>
+                    {logoSource && (
+                        <Image
+                            source={logoSource}
+                            style={{ height: logoHeight, width: 80, marginRight: 12 }}
+                            resizeMode='contain'
+                        />
+                    )}
+                    <Text
+                        className='text-white font-bold text-xl'
+                        numberOfLines={1}>
+                        {cleanName.toUpperCase()}
+                    </Text>
+                </View>
+            );
+        }
 
         return (
-            <View className='flex-row flex-wrap justify-center items-center mb-3 min-h-[32px]'>
-                {elements.map((el, index) =>
-                    typeof el === 'string' ? (
-                        <Text key={index} className='text-white text-xl font-semibold'>
-                            {el}
-                        </Text>
-                    ) : (
-                        el
-                    )
+            <View className='w-full items-center justify-center p-3'>
+                {logoSource && (
+                    <View style={{ width: '100%', height: logoHeight, marginBottom: 8 }}>
+                        <Image
+                            source={logoSource}
+                            style={{ width: '100%', height: '100%' }}
+                            resizeMode='contain'
+                        />
+                    </View>
                 )}
+                <Text
+                    className={`text-white font-bold text-center ${isTabletSize ? 'text-xl' : 'text-lg'}`}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit>
+                    {cleanName.toUpperCase()}
+                </Text>
             </View>
         );
     };
 
-    /**
-     * Renders an individual item card in the vehicle list.
-     */
-    const renderVehicleCard = ({ item }: { item: Vehicle }) => (
-        <View
-            className='bg-[#18181b] rounded-2xl p-6 m-4 justify-between'
-            style={{ width: 400, height: 400 }}>
+    const renderVehicleCard = ({ item }: { item: Vehicle }) => {
+        return (
             <TouchableOpacity
-                activeOpacity={0.8}
-                onPress={() => setSelectedImage(item.imageUrl)}
-                className='flex-1 justify-center items-center w-full overflow-hidden rounded-2xl'>
-                <Image
-                    source={item.imageUrl}
-                    className='w-full h-full max-h-48'
-                    resizeMode='contain'
-                    style={{ transform: [{ scale: 1.6 }] }}
-                />
+                activeOpacity={isWeb ? 1 : 0.9}
+                onPress={isWeb ? undefined : () => router.push('/chat')}
+                className='bg-[#18181b] rounded-[24px] m-2 overflow-hidden flex-col'
+                style={{ width: cardWidth, height: cardHeight, ...(isWeb ? { cursor: 'default' } : {}) } as any}>
+
+                <View
+                    className='w-full items-center justify-center bg-[#27272a] overflow-hidden'
+                    style={{ height: imageHeight, position: 'relative' }}>
+                    <Image
+                        source={item.imageUrl}
+                        style={{
+                            position: 'absolute',
+                            width: cardWidth,
+                            height: imageHeight * 1.5,
+                            top: -(imageHeight * 0.25),
+                            transform: [
+                                { scale: item.imageZoom },
+                                { translateY: item.imageOffsetY }
+                            ]
+                        }}
+                        resizeMode='cover'
+                    />
+                </View>
+
+                <View className={`bg-[#18181b] flex-1 p-4 border-t border-[#3f3f46] justify-center items-center`}>
+                    {renderCardInfo(item, isTablet)}
+
+                    {isWeb && (
+                        <TouchableOpacity
+                            onPress={() => router.push('/chat')}
+                            style={{ backgroundColor: PRIMARY_ORANGE }}
+                            className='w-full py-4 rounded-[16px] flex-row justify-center items-center mt-1 z-10'>
+                            <Text className='text-white font-bold text-[15px]'>WYBIERZ ➔</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
             </TouchableOpacity>
-            <View className='w-full mt-4'>
-                {renderVehicleName(item.name)}
-                <TouchableOpacity
-                    onPress={() => router.push('/chat')}
-                    style={{ backgroundColor: PRIMARY_ORANGE }}
-                    className='w-full py-4 rounded-xl flex-row justify-center items-center'>
-                    <Text className='text-white font-bold text-base'>WYBIERZ ➔</Text>
-                </TouchableOpacity>
-            </View>
-        </View>
-    );
+        );
+    };
+
+    const bottomBar = {
+        gap: isTablet ? 12 : 8,
+        paddingHorizontal: isTablet ? 24 : 16,
+        sideBtnSize: isTablet ? 88 : 68,
+        centerBtnSize: isTablet ? 112 : 88,
+        sideIconSize: isTablet ? 40 : 32,
+        centerIconSize: isTablet ? 56 : 40,
+    };
 
     return (
         <SafeAreaView className='flex-1 bg-[#09090b]'>
-            <Modal
-                visible={!!selectedImage}
-                transparent
-                animationType='fade'
-                onRequestClose={() => setSelectedImage(null)}>
-                <Pressable
-                    className='flex-1 justify-center items-center bg-black/90'
-                    onPress={() => setSelectedImage(null)}>
-                    {selectedImage && (
-                        <View className='w-full items-center justify-center'>
-                            <Image
-                                source={selectedImage}
-                                style={{ width: '90%', height: SCREEN_HEIGHT * 0.9 }}
-                                resizeMode='contain'
-                            />
-                            <TouchableOpacity
-                                onPress={() => setSelectedImage(null)}
-                                className='absolute top-10 right-10 p-2 bg-white/10 rounded-full'>
-                                <Ionicons name='close' size={32} color='white' />
-                            </TouchableOpacity>
-                        </View>
-                    )}
-                </Pressable>
-            </Modal>
-
             <View className='flex-1'>
                 <Animated.View
                     onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
@@ -370,26 +356,28 @@ export default function HomeScreen() {
                         top: 0,
                         left: 0,
                         right: 0,
-                        paddingHorizontal: 24,
+                        paddingHorizontal: isTablet ? 24 : 16,
                         paddingTop: 16,
-                        paddingBottom: 16, // Dodano stały padding zamiast marginesów na dole elementów
+                        paddingBottom: 16,
                         zIndex: 10,
                         backgroundColor: '#09090b',
                     }}>
-                    {/* Zmniejszono mb-8 na mb-4 */}
                     <View className='flex-row justify-between items-center mb-4'>
                         <View className='flex-row items-center'>
                             <Image
                                 source={require('../../assets/images/fixo3.png')}
                                 className='mr-3'
-                                style={{ width: 80, height: 50 }}
+                                style={{ width: isTablet ? 80 : 60, height: isTablet ? 50 : 38 }}
                                 resizeMode='contain'
                             />
-                            <Text className='text-white text-4xl font-bold'>Wybierz Pojazd</Text>
+                            <Text
+                                className={`${isTablet ? 'text-4xl' : 'text-2xl'
+                                    } text-white font-bold`}>
+                                Wybierz Pojazd
+                            </Text>
                         </View>
                     </View>
 
-                    {/* Zmniejszono mb-4 na mb-3 */}
                     <View className='mb-3'>
                         <Text className='text-gray-400 text-sm font-bold uppercase tracking-widest ml-2 mb-2'>
                             Marka
@@ -410,7 +398,6 @@ export default function HomeScreen() {
                         </ScrollView>
                     </View>
 
-                    {/* Usunięto mb-6 (zamieniono na mb-0), aby usunąć ogromną lukę pod filtrami */}
                     <View className='mb-0'>
                         <Text className='text-gray-400 text-sm font-bold uppercase tracking-widest ml-2 mb-2'>
                             Typ
@@ -426,7 +413,8 @@ export default function HomeScreen() {
                                     }}
                                     className='px-6 py-3 rounded-full mr-4 min-h-[48px] justify-center items-center flex-row'>
                                     <Text
-                                        className={`text-sm font-bold ${activeTypeFilter === f ? 'text-white' : 'text-gray-300'}`}
+                                        className={`text-sm font-bold ${activeTypeFilter === f ? 'text-white' : 'text-gray-300'
+                                            }`}
                                         style={
                                             Platform.OS === 'android'
                                                 ? {
@@ -444,14 +432,16 @@ export default function HomeScreen() {
                 </Animated.View>
 
                 <Animated.FlatList
+                    key={`grid-${columns}`}
                     data={filteredVehicles}
                     keyExtractor={(item) => item.id}
                     renderItem={renderVehicleCard}
-                    numColumns={3}
+                    numColumns={columns}
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={{
-                        paddingTop: headerHeight, // Teraz headerHeight będzie miał idealną wartość
-                        paddingBottom: 180,
+                        paddingTop: headerHeight,
+                        paddingBottom: 220,
+                        paddingHorizontal: paddingHorizontal,
                         alignItems: 'center',
                     }}
                     onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
@@ -462,62 +452,73 @@ export default function HomeScreen() {
             </View>
 
             <View
-                style={{ pointerEvents: 'box-none' }}
-                className='absolute bottom-8 left-0 right-0 w-full items-center z-50'
+                style={{
+                    pointerEvents: 'box-none',
+                    bottom: insets.bottom > 0 ? insets.bottom + 16 : 32
+                }}
+                className='absolute left-0 right-0 w-full items-center z-50'
             >
                 <BlurView
-                    intensity={70} // Siła rozmycia (możesz dostosować, np. od 20 do 80)
-                    tint="dark"    // Ciemny motyw szkła
-                    className='flex-row items-start justify-center gap-6 px-10 py-6 overflow-hidden'
+                    intensity={Platform.OS === 'android' ? 10 : 30}
+                    tint="dark"
+                    className='flex-row items-center justify-center overflow-hidden'
                     style={{
                         borderRadius: 100,
                         borderWidth: 1,
                         borderColor: 'rgba(255, 255, 255, 0.25)',
+                        paddingHorizontal: isTablet ? 24 : 16,
+                        paddingVertical: isTablet ? 16 : 12,
+                        gap: isTablet ? 12 : 8,
+                        backgroundColor: Platform.OS === 'android' ? 'rgba(39, 39, 42, 0.55)' : 'transparent',
                     }}
-                    
                 >
-                    {/* Przycisk Aparatu */}
-                    <TouchableOpacity className='w-[72px] h-[72px] bg-[#27272a] border border-[#3f3f46] rounded-[12px] items-center justify-center mt-[20px]'>
+                    <TouchableOpacity
+                        className='bg-[#27272a] border border-[#3f3f46] rounded-[12px] items-center justify-center'
+                        style={{ width: bottomBar.sideBtnSize, height: bottomBar.sideBtnSize }}
+                    >
                         <Image
                             source={require('../../assets/images/camera.png')}
-                            style={{ width: 32, height: 32, tintColor: '#D4D4D8' }}
+                            style={{ width: bottomBar.sideIconSize, height: bottomBar.sideIconSize, tintColor: '#D4D4D8' }}
                         />
                     </TouchableOpacity>
 
-                    {/* Sekcja Mikrofonu */}
-                    <View className='items-center flex-col gap-3 min-w-[140px]'>
+                    <View className='items-center flex-col gap-2' style={{ width: isTablet ? 140 : 120 }}>
                         <TouchableOpacity
                             onPressIn={onMicPress}
-                            className={`w-[112px] h-[112px] rounded-[12px] items-center justify-center ${isListening
+                            className={`rounded-[12px] items-center justify-center ${isListening
                                 ? 'bg-[#2A1100] border-2 border-[#FF6600]'
                                 : 'bg-[#27272a] border border-[#3f3f46]'
                                 }`}
+                            style={{ width: bottomBar.centerBtnSize, height: bottomBar.centerBtnSize }}
                         >
                             {isListening && <ListeningPulse />}
                             <Image
                                 source={require('../../assets/images/micro.png')}
-                                style={{ width: 56, height: 56, tintColor: isListening ? '#FF6600' : '#D4D4D8' }}
+                                style={{ width: bottomBar.centerIconSize, height: bottomBar.centerIconSize, tintColor: isListening ? '#FF6600' : '#D4D4D8' }}
                                 resizeMode="contain"
                             />
                         </TouchableOpacity>
                         <Text
-                            className={`text-center text-[11px] font-bold tracking-widest ${isListening ? 'text-[#FF6600]' : 'text-white'}`}
+                            className={`text-center text-[10px] sm:text-[11px] font-bold tracking-widest ${isListening ? 'text-[#FF6600]' : 'text-white'}`}
                             style={{
-                                // Cień tekstu ratuje czytelność na skomplikowanych tłach
                                 textShadowColor: 'rgba(0, 0, 0, 0.8)',
                                 textShadowOffset: { width: 0, height: 1 },
                                 textShadowRadius: 3
                             }}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
                         >
                             {isListening ? 'SŁUCHAM...' : 'NACIŚNIJ ŻEBY MÓWIĆ'}
                         </Text>
                     </View>
 
-                    {/* Przycisk Szukaj */}
-                    <TouchableOpacity className='w-[72px] h-[72px] bg-[#27272a] border border-[#3f3f46] rounded-[12px] items-center justify-center mt-[20px]'>
+                    <TouchableOpacity
+                        className='bg-[#27272a] border border-[#3f3f46] rounded-[12px] items-center justify-center'
+                        style={{ width: bottomBar.sideBtnSize, height: bottomBar.sideBtnSize }}
+                    >
                         <Image
                             source={require('../../assets/images/search.png')}
-                            style={{ width: 32, height: 32, tintColor: '#D4D4D8' }}
+                            style={{ width: bottomBar.sideIconSize, height: bottomBar.sideIconSize, tintColor: '#D4D4D8' }}
                         />
                     </TouchableOpacity>
                 </BlurView>

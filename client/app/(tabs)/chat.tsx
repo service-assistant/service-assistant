@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Platform, View, Animated, Image } from 'react-native';
+import { Platform, View, Animated, Image, Text, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { Buffer } from 'buffer';
 import {
     useAudioPlayer,
@@ -21,6 +21,9 @@ const SERVER_URL = 'https://staging.asystent-serwisanta.pl';
  * streaming response logic from the custom API, and view states (right/left panel).
  */
 export default function ChatScreen() {
+    const { width } = useWindowDimensions();
+    const isMobile = width < 768; // Breakpoint for mobile
+
     // --- UI & DATA STATES ---
     const [showSchema, setShowSchema] = useState<boolean>(true);
     const [selectedPdf, setSelectedPdf] = useState<any>(null);
@@ -88,8 +91,7 @@ export default function ChatScreen() {
         if (currentImage) setShowSchema(true);
     }, [currentImage]);
 
-    /** 
-     * AUDIO PLAYER TRACKING
+    /** * AUDIO PLAYER TRACKING
      * Periodically checks if audio is still playing.
      */
     useEffect(() => {
@@ -103,8 +105,7 @@ export default function ChatScreen() {
         return () => clearInterval(interval);
     }, [ttsPlayer]);
 
-    /** 
-     * STOPS THE AI
+    /** * STOPS THE AI
      * Halts text generation and audio playback.
      */
     const handleStop = () => {
@@ -569,6 +570,33 @@ export default function ChatScreen() {
     // AI is considered active if generating text or playing audio
     const isBotActive = isGenerating || isAudioPlaying;
 
+    // --- RENDER MOBILE VIEW ---
+    if (isMobile) {
+        return (
+            <RightPanel
+                currentSource={currentSource}
+                attachmentId={attachmentId}
+                attachmentName={attachmentName}
+                attachmentPage={attachmentPage}
+                hasAskedQuestion={messages.length > 1}
+                currentImage={currentImage}
+                isLoading={isLoading}
+                selectedPdf={selectedPdf}
+                onSelectPdf={(pdf: any) => {
+                    setSelectedPdf(pdf);
+                    setShowSchema(false);
+                }}
+                showSchema={showSchema}
+                setShowSchema={setShowSchema}
+                setCurrentImage={setCurrentImage}
+                isListening={isListening}
+                onMicPress={handleMicPress}
+                soundLevelAnim={soundLevelAnim}
+            />
+        );
+    }
+
+    // --- RENDER TABLET / WEB VIEW ---
     return (
         <View className='flex-1 flex-row bg-black p-4'>
             <LeftPanel
@@ -606,6 +634,7 @@ export default function ChatScreen() {
                 setCurrentImage={setCurrentImage}
                 isGenerating={isBotActive}
                 onStop={handleStop}
+                soundLevelAnim={soundLevelAnim}
             />
         </View>
     );
