@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
       - name: Run format check
-        run: npm --prefix ./client exec prettier -- --check .
+        run: cd client && npm exec prettier -- --check .
 
   client-test:
     name: Run tests (client)
