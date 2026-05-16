@@ -12,6 +12,9 @@ import {
 	View,
 } from 'react-native';
 
+/**
+ * Represents a single chat message.
+ */
 export interface Message {
 	id: number;
 	sender: 'ai' | 'user';
@@ -19,6 +22,9 @@ export interface Message {
 	isSpeaking?: boolean;
 }
 
+/**
+ * Props for the LeftPanel component.
+ */
 interface LeftPanelProps {
 	messages: Message[];
 	isLoading: boolean;
@@ -33,8 +39,42 @@ interface LeftPanelProps {
 	currentSource: string;
 	isGenerating: boolean;
 	onStop: () => void;
+	logoUrl?: string;
 }
 
+/**
+ * Helper function to format basic markdown.
+ * Currently supports bold text enclosed in double asterisks (**text**).
+ *
+ * @param text - The raw text string to format.
+ * @returns An array of styled Text components.
+ */
+const renderFormattedText = (text: string) => {
+	if (!text) return null;
+
+	const parts = text.split(/(\*\*.*?\*\*)/g);
+
+	return (
+		<Text className='text-slate-300 text-[14px] leading-5'>
+			{parts.map((part, index) => {
+				if (part.startsWith('**') && part.endsWith('**')) {
+					return (
+						<Text key={index} className='font-bold text-white'>
+							{part.slice(2, -2)}
+						</Text>
+					);
+				}
+				return <Text key={index}>{part}</Text>;
+			})}
+		</Text>
+	);
+};
+
+/**
+ * Animated waveform indicator reacting to sound levels.
+ *
+ * @param props.soundLevel - Animated value representing the current microphone input level.
+ */
 const SoundWaveformIndicator = ({ soundLevel }: { soundLevel: Animated.Value }) => {
 	const bars = Array.from({ length: 8 }, (_, i) => i);
 
@@ -59,6 +99,9 @@ const SoundWaveformIndicator = ({ soundLevel }: { soundLevel: Animated.Value }) 
 	);
 };
 
+/**
+ * Animated three-dot typing indicator for the AI bot.
+ */
 const BotTypingAnimation = () => {
 	const dot1 = useRef(new Animated.Value(0)).current;
 	const dot2 = useRef(new Animated.Value(0)).current;
@@ -111,6 +154,9 @@ const BotTypingAnimation = () => {
 	);
 };
 
+/**
+ * Animated pulsing ring around the microphone button while listening.
+ */
 const ListeningPulse = () => {
 	const scale = useRef(new Animated.Value(1)).current;
 	const opacity = useRef(new Animated.Value(1)).current;
@@ -140,6 +186,9 @@ const ListeningPulse = () => {
 	);
 };
 
+/**
+ * Sidebar component containing the chat interface, controls, and active device header.
+ */
 export default function LeftPanel({
 	messages,
 	isLoading,
@@ -154,12 +203,14 @@ export default function LeftPanel({
 	currentSource,
 	isGenerating,
 	onStop,
+	logoUrl,
 }: LeftPanelProps) {
 	const scrollViewRef = useRef<ScrollView>(null);
 	const router = useRouter();
 
 	return (
 		<View className='w-[32%] h-full flex flex-col'>
+			{/* Header section with back button and device details */}
 			<View className='w-full h-14 mb-4 flex-row items-center'>
 				<TouchableOpacity
 					className='flex-row items-center border border-[#CC5500] px-4 py-3 rounded-md bg-[#0a0a0a]'
@@ -172,17 +223,20 @@ export default function LeftPanel({
 
 				<Text className='text-neutral-600 mx-4 text-xl'>|</Text>
 
-				<Image
-					source={require('../assets/images/toyota.png')}
-					style={{ width: 70, height: 20 }}
-					resizeMode='contain'
-				/>
+				{logoUrl ? (
+					<Image
+						source={{ uri: logoUrl }}
+						style={{ width: 90, height: 18 }}
+						resizeMode='contain'
+					/>
+				) : null}
 
 				<Text className='text-slate-200 font-bold ml-4 tracking-widest text-sm uppercase'>
 					{currentSource}
 				</Text>
 			</View>
 
+			{/* Chat container */}
 			<View className='flex-1 border border-[#CC5500] rounded-2xl bg-[#09090B] flex-col overflow-hidden shadow-2xl relative'>
 				<View className='p-4 border-b border-neutral-800 flex-row items-center bg-[#0d0d0f]'>
 					<View className='w-12 h-12 rounded-md border border-[#CC5500] items-center justify-center mr-3'>
@@ -205,6 +259,7 @@ export default function LeftPanel({
 					</View>
 				</View>
 
+				{/* Messages scroll area */}
 				<View className='flex-1 relative'>
 					<ScrollView
 						ref={scrollViewRef}
@@ -213,14 +268,14 @@ export default function LeftPanel({
 						}
 						className='flex-1 p-4'>
 						<View className='flex flex-col gap-4 pb-4'>
-							{messages.map((msg) =>
-								msg.sender === 'ai' ? (
+							{messages.map((msg) => {
+								if (msg.sender === 'ai' && !msg.text) return null;
+
+								return msg.sender === 'ai' ? (
 									<View
 										key={msg.id}
 										className='bg-[#1E1E22] rounded-2xl rounded-tl-sm px-4 py-3 self-start max-w-[90%]'>
-										<Text className='text-slate-300 text-[14px] leading-5'>
-											{msg.text}
-										</Text>
+										{renderFormattedText(msg.text)}
 									</View>
 								) : (
 									<View
@@ -234,13 +289,14 @@ export default function LeftPanel({
 											</Text>
 										)}
 									</View>
-								),
-							)}
+								);
+							})}
 							{isLoading ? <BotTypingAnimation /> : null}
 						</View>
 					</ScrollView>
 				</View>
 
+				{/* Input controls */}
 				<View className='w-full px-4 py-6 flex-col border-t border-neutral-900 bg-[#0d0d0f]'>
 					<View className='flex-row justify-center items-center gap-6'>
 						<TouchableOpacity className='w-[72px] h-[72px] bg-[#27272a] border border-[#3f3f46] rounded-[12px] items-center justify-center'>
@@ -277,7 +333,9 @@ export default function LeftPanel({
 								)}
 							</TouchableOpacity>
 							<Text
-								className={`text-[10px] font-bold tracking-widest ${isListening || isGenerating ? 'text-[#FF6600]' : 'text-white'}`}>
+								className={`text-[10px] font-bold tracking-widest ${
+									isListening || isGenerating ? 'text-[#FF6600]' : 'text-white'
+								}`}>
 								{isGenerating
 									? 'NACIŚNIJ ABY ZATRZYMAĆ'
 									: isListening
@@ -288,7 +346,11 @@ export default function LeftPanel({
 
 						<TouchableOpacity
 							onPress={() => setShowTextInput(!showTextInput)}
-							className={`w-[72px] h-[72px] border rounded-[12px] items-center justify-center ${showTextInput ? 'bg-[#2A1100] border-[#FF6600]' : 'bg-[#27272a] border-[#3f3f46]'}`}>
+							className={`w-[72px] h-[72px] border rounded-[12px] items-center justify-center ${
+								showTextInput
+									? 'bg-[#2A1100] border-[#FF6600]'
+									: 'bg-[#27272a] border-[#3f3f46]'
+							}`}>
 							<Image
 								source={require('../assets/images/writing.png')}
 								style={{

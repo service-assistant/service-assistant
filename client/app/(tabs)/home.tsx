@@ -1,9 +1,9 @@
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+	ActivityIndicator,
 	Animated,
-	Dimensions,
 	Image,
 	ImageSourcePropType,
 	Platform,
@@ -15,13 +15,36 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
+// --- CONFIGURATION & DATA TYPES ---
 
-// --- CONFIGURATION & DATA ---
+type Brand = {
+	id: number;
+	name: string;
+	logo_url: string;
+	created_at: string;
+	updated_at: string;
+};
 
-/**
- * Represents a vehicle entity.
- */
+type DeviceType = {
+	id: number;
+	name: string;
+	created_at: string;
+	updated_at: string;
+};
+
+// Raw device data directly from API
+type DeviceRaw = {
+	id: number;
+	brand_id: number;
+	device_type_id: number;
+	name: string;
+	model_serial_code: string;
+	image_url: string;
+	created_at: string;
+	updated_at: string;
+};
+
+// Unified type used by the UI
 type Vehicle = {
 	id: string;
 	name: string;
@@ -31,74 +54,6 @@ type Vehicle = {
 	imageOffsetY: number;
 	imageZoom: number;
 };
-
-const VEHICLES: Vehicle[] = [
-	{
-		id: '1',
-		name: 'DIECI Pegasus Classic 60.25',
-		brand: 'DIECI',
-		type: 'czołowy',
-		imageUrl: require('../../assets/images/WOZEK1.jpeg'),
-		imageOffsetY: -20,
-		imageZoom: 1.0,
-	},
-	{
-		id: '2',
-		name: 'UniCarriers ZX100',
-		brand: 'UNICARRIERS',
-		type: 'paletowy',
-		imageUrl: require('../../assets/images/WOZEK2.jpg'),
-		imageOffsetY: -20,
-		imageZoom: 1.0,
-	},
-	{
-		id: '3',
-		name: 'TCM FGE25E2',
-		brand: 'TCM',
-		type: 'czołowy',
-		imageUrl: require('../../assets/images/WOZEK3.jpg'),
-		imageOffsetY: -40,
-		imageZoom: 1.0,
-	},
-	{
-		id: '4',
-		name: 'Toyota 02-8FGFF15',
-		brand: 'TOYOTA',
-		type: 'paletowy z masztem',
-		imageUrl: require('../../assets/images/WOZEK4.jpg'),
-		imageOffsetY: 10,
-		imageZoom: 1.0,
-	},
-	{
-		id: '5',
-		name: 'DIECI Icarus 60.18 - GD',
-		brand: 'DIECI',
-		type: 'czołowy',
-		imageUrl: require('../../assets/images/WOZEK5.jpg'),
-		imageOffsetY: 0,
-		imageZoom: 1.0,
-	},
-	{
-		id: '6',
-		name: 'Jungheinrich TFG 425',
-		brand: 'JUNGHEINRICH',
-		type: 'czołowy',
-		imageUrl: require('../../assets/images/WOZEK6.jpg'),
-		imageOffsetY: -55,
-		imageZoom: 1.2,
-	},
-];
-
-const BRAND_FILTERS = [
-	'WSZYSTKIE',
-	'TOYOTA',
-	'DIECI',
-	'UNICARRIERS',
-	'TCM',
-	'STILL',
-	'JUNGHEINRICH',
-];
-const TYPE_FILTERS = ['WSZYSTKIE', 'PALETOWY', 'PALETOWY Z MASZTEM', 'CZOŁOWY'];
 
 const PRIMARY_ORANGE = '#FF6B00';
 
@@ -112,63 +67,37 @@ const FILTER_LOGO_SIZES: Record<string, { width: number; height: number }> = {
 	DEFAULT: { width: 84, height: 26 },
 };
 
-const INLINE_LOGO_SIZES: Record<string, { width: number; height: number }> = {
-	TOYOTA: { width: 84, height: 24 },
-	DIECI: { width: 60, height: 24 },
-	UNICARRIERS: { width: 108, height: 24 },
-	TCM: { width: 54, height: 24 },
-	STILL: { width: 54, height: 24 },
-	JUNGHEINRICH: { width: 108, height: 24 },
-	DEFAULT: { width: 72, height: 24 },
-};
-
-const getBrandLogo = (brand: string): ImageSourcePropType | null => {
-	switch (brand.toUpperCase()) {
-		case 'TOYOTA':
-			return require('../../assets/images/toyota.png');
-		case 'DIECI':
-			return require('../../assets/images/dieci.png');
-		case 'UNICARRIERS':
-			return require('../../assets/images/unicarriers.png');
-		case 'TCM':
-			return require('../../assets/images/tcm.png');
-		case 'STILL':
-			return require('../../assets/images/still.png');
-		case 'JUNGHEINRICH':
-			return require('../../assets/images/jungheinrich.png');
-		default:
-			return null;
-	}
-};
-
 // --- HELPER COMPONENTS ---
 
 const ListeningPulse = () => (
 	<View className='absolute top-0 bottom-0 left-0 right-0 bg-[#FF6600]/20 rounded-[12px]' />
 );
 
-const BrandLogoOrText: React.FC<{ brand: string; active: boolean }> = ({ brand, active }) => {
+const BrandLogoOrText: React.FC<{ brandName: string; logoUrl: string | null; active: boolean }> = ({
+	brandName,
+	logoUrl,
+	active,
+}) => {
 	const [imageError, setImageError] = useState(false);
-	const logoSource = getBrandLogo(brand);
 
 	const textStyle =
 		Platform.OS === 'android' ? { includeFontPadding: false, textAlignVertical: 'center' } : {};
 
-	if (brand === 'WSZYSTKIE') {
+	if (brandName === 'WSZYSTKIE') {
 		return (
 			<Text
 				className={`text-sm font-bold ${active ? 'text-white' : 'text-gray-300'}`}
 				style={textStyle as any}>
-				{brand}
+				{brandName}
 			</Text>
 		);
 	}
 
-	if (logoSource && !imageError) {
-		const dims = FILTER_LOGO_SIZES[brand.toUpperCase()] || FILTER_LOGO_SIZES.DEFAULT;
+	if (logoUrl && !imageError) {
+		const dims = FILTER_LOGO_SIZES[brandName.toUpperCase()] || FILTER_LOGO_SIZES.DEFAULT;
 		return (
 			<Image
-				source={logoSource}
+				source={{ uri: logoUrl }}
 				style={{ width: dims.width, height: dims.height }}
 				resizeMode='contain'
 				onError={() => setImageError(true)}
@@ -180,7 +109,7 @@ const BrandLogoOrText: React.FC<{ brand: string; active: boolean }> = ({ brand, 
 		<Text
 			className={`text-sm font-bold ${active ? 'text-white' : 'text-gray-300'}`}
 			style={textStyle as any}>
-			{brand}
+			{brandName.toUpperCase()}
 		</Text>
 	);
 };
@@ -196,8 +125,108 @@ export default function HomeScreen() {
 	const [activeBrandFilter, setActiveBrandFilter] = useState<string>('WSZYSTKIE');
 	const [activeTypeFilter, setActiveTypeFilter] = useState<string>('WSZYSTKIE');
 	const [searchQuery, setSearchQuery] = useState<string>('');
-
 	const [isListening, setIsListening] = useState(false);
+
+	// --- API STATES ---
+	const [brands, setBrands] = useState<Brand[]>([]);
+	const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
+	const [rawDevices, setRawDevices] = useState<DeviceRaw[]>([]);
+
+	const [isLoadingBrands, setIsLoadingBrands] = useState(true);
+	const [isLoadingTypes, setIsLoadingTypes] = useState(true);
+	const [isLoadingDevices, setIsLoadingDevices] = useState(true);
+
+	const API_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN;
+
+	// --- FETCH DATA FROM API ---
+	useEffect(() => {
+		const fetchBrands = async () => {
+			try {
+				const response = await fetch('https://staging.asystent-serwisanta.pl/api/brands', {
+					method: 'GET',
+					headers: {
+						Authorization: `Bearer ${API_TOKEN}`,
+						Accept: 'application/json',
+					},
+				});
+				if (!response.ok) throw new Error(`Brands API error: ${response.status}`);
+				const data: Brand[] = await response.json();
+				setBrands(data);
+			} catch (error) {
+				console.error('Failed to fetch brands:', error);
+			} finally {
+				setIsLoadingBrands(false);
+			}
+		};
+
+		const fetchDeviceTypes = async () => {
+			try {
+				const response = await fetch(
+					'https://staging.asystent-serwisanta.pl/api/device_types',
+					{
+						method: 'GET',
+						headers: {
+							Authorization: `Bearer ${API_TOKEN}`,
+							Accept: 'application/json',
+						},
+					},
+				);
+				if (!response.ok) throw new Error(`Types API error: ${response.status}`);
+				const data: DeviceType[] = await response.json();
+				setDeviceTypes(data);
+			} catch (error) {
+				console.error('Failed to fetch device types:', error);
+			} finally {
+				setIsLoadingTypes(false);
+			}
+		};
+
+		const fetchDevices = async () => {
+			try {
+				const response = await fetch('https://staging.asystent-serwisanta.pl/api/devices', {
+					method: 'GET',
+					headers: {
+						Authorization: `Bearer ${API_TOKEN}`,
+						Accept: 'application/json',
+					},
+				});
+				if (!response.ok) throw new Error(`Devices API error: ${response.status}`);
+				const data: DeviceRaw[] = await response.json();
+				setRawDevices(data);
+			} catch (error) {
+				console.error('Failed to fetch devices:', error);
+			} finally {
+				setIsLoadingDevices(false);
+			}
+		};
+
+		fetchBrands();
+		fetchDeviceTypes();
+		fetchDevices();
+	}, []);
+
+	// --- MAP DEVICES TO UI FORMAT ---
+	const mappedVehicles: Vehicle[] = rawDevices.map((device) => {
+		const brand = brands.find((b) => b.id === device.brand_id);
+		const type = deviceTypes.find((dt) => dt.id === device.device_type_id);
+
+		return {
+			id: device.id.toString(),
+			name: device.name,
+			brand: brand ? brand.name : 'NIEZNANA MARKA',
+			type: type ? type.name : 'NIEZNANY TYP',
+			imageUrl: device.image_url
+				? { uri: device.image_url }
+				: require('../../assets/images/fixo3.png'), // Fallback if image is missing
+			imageOffsetY: 0, // Default values, API images are not manually calibrated
+			imageZoom: 1.0,
+		};
+	});
+
+	const getRemoteBrandLogo = (brandName: string): string | null => {
+		const brand = brands.find((b) => b.name.toLowerCase() === brandName.toLowerCase());
+		return brand ? brand.logo_url : null;
+	};
 
 	const onMicPress = () => {
 		setIsListening(!isListening);
@@ -218,9 +247,13 @@ export default function HomeScreen() {
 		extrapolate: 'clamp',
 	});
 
-	const filteredVehicles = VEHICLES.filter((v) => {
-		const mBrand = activeBrandFilter === 'WSZYSTKIE' || v.brand === activeBrandFilter;
-		const mType = activeTypeFilter === 'WSZYSTKIE' || v.type.toUpperCase() === activeTypeFilter;
+	const filteredVehicles = mappedVehicles.filter((v) => {
+		const mBrand =
+			activeBrandFilter === 'WSZYSTKIE' ||
+			v.brand.toUpperCase() === activeBrandFilter.toUpperCase();
+		const mType =
+			activeTypeFilter === 'WSZYSTKIE' ||
+			v.type.toLowerCase() === activeTypeFilter.toLowerCase();
 		const mSearch = v.name.toLowerCase().includes(searchQuery.toLowerCase());
 		return mBrand && mType && mSearch;
 	});
@@ -242,7 +275,7 @@ export default function HomeScreen() {
 	const imageHeight = isWeb || isTablet ? 240 : cardWidth;
 
 	const renderCardInfo = (vehicle: Vehicle, isTabletSize: boolean) => {
-		const logoSource = getBrandLogo(vehicle.brand);
+		const logoUrl = getRemoteBrandLogo(vehicle.brand);
 		const logoHeight = isTabletSize || isWeb ? 24 : 20;
 
 		const brandToRemove = vehicle.brand.toLowerCase() + ' ';
@@ -253,9 +286,9 @@ export default function HomeScreen() {
 		if (isWeb) {
 			return (
 				<View className='w-full flex-row items-center justify-center mb-4 px-2'>
-					{logoSource && (
+					{logoUrl && (
 						<Image
-							source={logoSource}
+							source={{ uri: logoUrl }}
 							style={{ height: logoHeight, width: 80, marginRight: 12 }}
 							resizeMode='contain'
 						/>
@@ -269,10 +302,10 @@ export default function HomeScreen() {
 
 		return (
 			<View className='w-full items-center justify-center p-3'>
-				{logoSource && (
+				{logoUrl && (
 					<View style={{ width: '100%', height: logoHeight, marginBottom: 8 }}>
 						<Image
-							source={logoSource}
+							source={{ uri: logoUrl }}
 							style={{ width: '100%', height: '100%' }}
 							resizeMode='contain'
 						/>
@@ -292,7 +325,19 @@ export default function HomeScreen() {
 		return (
 			<TouchableOpacity
 				activeOpacity={isWeb ? 1 : 0.9}
-				onPress={isWeb ? undefined : () => router.push('/chat')}
+				onPress={
+					isWeb
+						? undefined
+						: () =>
+								router.push({
+									pathname: '/chat',
+									params: {
+										deviceId: item.id,
+										deviceName: item.name,
+										logoUrl: getRemoteBrandLogo(item.brand),
+									},
+								})
+				}
 				className='bg-[#18181b] rounded-[24px] m-2 overflow-hidden flex-col'
 				style={
 					{
@@ -309,7 +354,7 @@ export default function HomeScreen() {
 						style={{
 							position: 'absolute',
 							width: cardWidth,
-							height: imageHeight * 1.5,
+							height: imageHeight * 1.3,
 							top: -(imageHeight * 0.25),
 							transform: [
 								{ scale: item.imageZoom },
@@ -326,7 +371,12 @@ export default function HomeScreen() {
 
 					{isWeb && (
 						<TouchableOpacity
-							onPress={() => router.push('/chat')}
+							onPress={() =>
+								router.push({
+									pathname: '/chat',
+									params: { deviceId: item.id, deviceName: item.name },
+								})
+							}
 							style={{ backgroundColor: PRIMARY_ORANGE }}
 							className='w-full py-4 rounded-[16px] flex-row justify-center items-center mt-1 z-10'>
 							<Text className='text-white font-bold text-[15px]'>WYBIERZ ➔</Text>
@@ -345,6 +395,9 @@ export default function HomeScreen() {
 		sideIconSize: isTablet ? 40 : 32,
 		centerIconSize: isTablet ? 56 : 40,
 	};
+
+	const brandFilterOptions = [{ name: 'WSZYSTKIE', logo_url: null }, ...brands];
+	const typeFilterOptions = [{ name: 'WSZYSTKIE' }, ...deviceTypes];
 
 	return (
 		<SafeAreaView className='flex-1 bg-[#09090b]'>
@@ -385,74 +438,120 @@ export default function HomeScreen() {
 						<Text className='text-gray-400 text-sm font-bold uppercase tracking-widest ml-2 mb-2'>
 							Marka
 						</Text>
-						<ScrollView horizontal showsHorizontalScrollIndicator={false}>
-							{BRAND_FILTERS.map((f) => (
-								<TouchableOpacity
-									key={f}
-									onPress={() => setActiveBrandFilter(f)}
-									style={{
-										backgroundColor:
-											activeBrandFilter === f ? PRIMARY_ORANGE : '#27272a',
-									}}
-									className='px-6 py-3 rounded-full mr-4 min-h-[48px] justify-center items-center flex-row'>
-									<BrandLogoOrText brand={f} active={activeBrandFilter === f} />
-								</TouchableOpacity>
-							))}
-						</ScrollView>
+						{isLoadingBrands ? (
+							<ActivityIndicator
+								size='small'
+								color={PRIMARY_ORANGE}
+								style={{
+									alignSelf: 'flex-start',
+									marginVertical: 12,
+									marginLeft: 8,
+								}}
+							/>
+						) : (
+							<ScrollView horizontal showsHorizontalScrollIndicator={false}>
+								{brandFilterOptions.map((brandObj) => (
+									<TouchableOpacity
+										key={brandObj.name}
+										onPress={() => setActiveBrandFilter(brandObj.name)}
+										style={{
+											backgroundColor:
+												activeBrandFilter === brandObj.name
+													? PRIMARY_ORANGE
+													: '#27272a',
+										}}
+										className='px-6 py-3 rounded-full mr-4 min-h-[48px] justify-center items-center flex-row'>
+										<BrandLogoOrText
+											brandName={brandObj.name}
+											logoUrl={brandObj.logo_url}
+											active={activeBrandFilter === brandObj.name}
+										/>
+									</TouchableOpacity>
+								))}
+							</ScrollView>
+						)}
 					</View>
 
 					<View className='mb-0'>
 						<Text className='text-gray-400 text-sm font-bold uppercase tracking-widest ml-2 mb-2'>
 							Typ
 						</Text>
-						<ScrollView horizontal showsHorizontalScrollIndicator={false}>
-							{TYPE_FILTERS.map((f) => (
-								<TouchableOpacity
-									key={f}
-									onPress={() => setActiveTypeFilter(f)}
-									style={{
-										backgroundColor:
-											activeTypeFilter === f ? PRIMARY_ORANGE : '#27272a',
-									}}
-									className='px-6 py-3 rounded-full mr-4 min-h-[48px] justify-center items-center flex-row'>
-									<Text
-										className={`text-sm font-bold ${
-											activeTypeFilter === f ? 'text-white' : 'text-gray-300'
-										}`}
-										style={
-											Platform.OS === 'android'
-												? {
-														includeFontPadding: false,
-														textAlignVertical: 'center',
-													}
-												: {}
-										}>
-										{f}
-									</Text>
-								</TouchableOpacity>
-							))}
-						</ScrollView>
+						{isLoadingTypes ? (
+							<ActivityIndicator
+								size='small'
+								color={PRIMARY_ORANGE}
+								style={{
+									alignSelf: 'flex-start',
+									marginVertical: 12,
+									marginLeft: 8,
+								}}
+							/>
+						) : (
+							<ScrollView horizontal showsHorizontalScrollIndicator={false}>
+								{typeFilterOptions.map((typeObj) => (
+									<TouchableOpacity
+										key={typeObj.name}
+										onPress={() => setActiveTypeFilter(typeObj.name)}
+										style={{
+											backgroundColor:
+												activeTypeFilter === typeObj.name
+													? PRIMARY_ORANGE
+													: '#27272a',
+										}}
+										className='px-6 py-3 rounded-full mr-4 min-h-[48px] justify-center items-center flex-row'>
+										<Text
+											className={`text-sm font-bold uppercase ${
+												activeTypeFilter === typeObj.name
+													? 'text-white'
+													: 'text-gray-300'
+											}`}
+											style={
+												Platform.OS === 'android'
+													? {
+															includeFontPadding: false,
+															textAlignVertical: 'center',
+														}
+													: {}
+											}>
+											{typeObj.name}
+										</Text>
+									</TouchableOpacity>
+								))}
+							</ScrollView>
+						)}
 					</View>
 				</Animated.View>
 
-				<Animated.FlatList
-					key={`grid-${columns}`}
-					data={filteredVehicles}
-					keyExtractor={(item) => item.id}
-					renderItem={renderVehicleCard}
-					numColumns={columns}
-					showsVerticalScrollIndicator={false}
-					contentContainerStyle={{
-						paddingTop: headerHeight,
-						paddingBottom: 220,
-						paddingHorizontal: paddingHorizontal,
-						alignItems: 'center',
-					}}
-					onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
-						useNativeDriver: true,
-					})}
-					scrollEventThrottle={16}
-				/>
+				{isLoadingDevices ? (
+					<View
+						className='flex-1 justify-center items-center'
+						style={{ paddingTop: headerHeight + 50 }}>
+						<ActivityIndicator size='large' color={PRIMARY_ORANGE} />
+						<Text className='text-gray-400 mt-4'>Ładowanie maszyn...</Text>
+					</View>
+				) : (
+					<Animated.FlatList
+						key={`grid-${columns}`}
+						data={filteredVehicles}
+						keyExtractor={(item) => item.id}
+						renderItem={renderVehicleCard}
+						numColumns={columns}
+						showsVerticalScrollIndicator={false}
+						contentContainerStyle={{
+							paddingTop: headerHeight,
+							paddingBottom: 220,
+							paddingHorizontal: paddingHorizontal,
+							alignItems: 'center',
+						}}
+						onScroll={Animated.event(
+							[{ nativeEvent: { contentOffset: { y: scrollY } } }],
+							{
+								useNativeDriver: true,
+							},
+						)}
+						scrollEventThrottle={16}
+					/>
+				)}
 			</View>
 
 			<View
