@@ -1,0 +1,33 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Thread #{{ thread.id }}{% endblock %}
+{% block heading %}Thread #{{ thread.id }} — {{ thread.title }}{% endblock %}
+
+{% block content %}
+
+<!-- Thread metadata -->
+<section class="bg-white border border-gray-200 rounded-lg p-5 mb-6 grid grid-cols-3 gap-4 text-sm">
+    <div>
+        <p class="text-gray-500 mb-0.5">Device</p>
+        <p class="font-medium">{{ device_name }}</p>
+    </div>
+    <div>
+        <p class="text-gray-500 mb-0.5">Created</p>
+        <p class="font-medium">{{ thread.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+    </div>
+    <div>
+        <p class="text-gray-500 mb-0.5">Messages</p>
+        <p class="font-medium">{{ messages | length }}</p>
+    </div>
+</section>
+
+<!-- Messages as JSON -->
+<section class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
+        <h2 class="text-sm font-semibold text-gray-700">Messages</h2>
+        <a href="/admin/threads" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to threads</a>
+    </div>
+    <pre class="p-5 text-xs leading-relaxed overflow-x-auto bg-gray-50 text-gray-800 whitespace-pre-wrap">{{ messages_json }}</pre>
+</section>
+
+{% endblock %}

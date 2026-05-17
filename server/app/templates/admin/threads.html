@@ -1,0 +1,41 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Threads{% endblock %}
+{% block heading %}Threads{% endblock %}
+
+{% block content %}
+
+<section class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">ID</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Title</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Device</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Messages</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Created</th>
+                <th class="px-4 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for row in threads %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 text-gray-500">{{ row.thread.id }}</td>
+                <td class="px-4 py-3 font-medium">{{ row.thread.title }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ row.device_name }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ row.message_count }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ row.thread.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td class="px-4 py-3 text-right">
+                    <a href="/admin/threads/{{ row.thread.id }}" class="text-blue-600 hover:underline text-sm">View</a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="px-4 py-8 text-center text-gray-400">No threads yet.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+{% endblock %}
