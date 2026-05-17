@@ -1,3 +1,4 @@
+import json
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,7 +12,15 @@ from sqlmodel import select
 
 from app.config import Settings, get_settings
 from app.database import get_session
-from app.models import Attachment, AttachmentDevice, Brand, Device, DeviceType
+from app.models import (
+    Attachment,
+    AttachmentDevice,
+    Brand,
+    ChatThread,
+    Device,
+    DeviceType,
+    Message,
+)
 from app.routers.attachments import get_unique_filepath
 from app.services.ingest import ingest_pdf_to_attachment
 
@@ -410,3 +419,100 @@ async def delete_device_type(
     await session.delete(dt)
     await session.commit()
     return _redirect("/admin/device_types", success="Device type deleted.")
+
+
+# ---------------------------------------------------------------------------
+# Threads
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ThreadRow:
+    thread: ChatThread
+    device_name: str
+    message_count: int
+
+
+@router.get("/threads", response_class=HTMLResponse)
+async def get_threads(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    threads_result = await session.execute(select(ChatThread))
+    all_threads = threads_result.scalars().all()
+
+    devices_result = await session.execute(select(Device))
+    device_map = {d.id: d.name for d in devices_result.scalars().all()}
+
+    rows: list[ThreadRow] = []
+    for thread in all_threads:
+        count_result = await session.execute(
+            select(Message).where(Message.thread_id == thread.id)
+        )
+        count = len(count_result.scalars().all())
+        rows.append(
+            ThreadRow(
+                thread=thread,
+                device_name=device_map.get(thread.device_id, "?"),
+                message_count=count,
+            )
+        )
+
+    return templates.TemplateResponse(
+        "admin/threads.html",
+        {"request": request, "active": "threads", "threads": rows},
+    )
+
+
+@router.get("/threads/{thread_id}", response_class=HTMLResponse)
+async def get_thread_detail(
+    thread_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    thread = await session.get(ChatThread, thread_id)
+    if not thread:
+        return _redirect("/admin/threads", error="Thread not found.")
+
+    devices_result = await session.execute(select(Device))
+    device_map = {d.id: d.name for d in devices_result.scalars().all()}
+
+    messages_result = await session.execute(
+        select(Message).where(Message.thread_id == thread_id)
+    )
+    messages = messages_result.scalars().all()
+
+    messages_json = json.dumps(
+        [
+            {
+                "id": m.id,
+                "sender": m.sender,
+                "content": m.content,
+                "image_url": m.image_url,
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in messages
+        ],
+        indent=2,
+        ensure_ascii=False,
+    )
+
+    return templates.TemplateResponse(
+        "admin/thread_detail.html",
+        {
+            "request": request,
+            "active": "threads",
+            "thread": thread,
+            "device_name": device_map.get(thread.device_id, "?"),
+            "messages": messages,
+            "messages_json": messages_json,
+        },
+    )
