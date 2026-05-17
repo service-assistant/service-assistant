@@ -4,7 +4,14 @@ from openai import AsyncOpenAI
 
 from ..config import Settings
 
-SYSTEM_PROMPT: Final[str] = "Jesteś pomocnym asystentem"
+SYSTEM_PROMPT: Final[str] = """
+Jesteś pomocnym asystentem serwisowym.
+Odpowiadaj na podstawie dostarczonych fragmentów dokumentacji.
+Jeżeli dokumenty nie zawierają odpowiedzi, powiedz to wprost.
+Nie domyślaj się procedur serwisowych z własnej wiedzy.
+Odpowiadaj krótko i bezpośrednio, prodedury możesz podawać w ponumerowanych krokach.
+Nie odpowiadaj na pytania spoza serwisu/naprawy urządzeń.
+"""
 
 
 def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
