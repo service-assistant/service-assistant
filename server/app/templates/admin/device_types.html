@@ -1,0 +1,56 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Device Types{% endblock %}
+{% block heading %}Device Types{% endblock %}
+
+{% block content %}
+
+<!-- Create form -->
+<section class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">Add Device Type</h2>
+    <form method="post" action="/admin/device_types" class="flex items-end gap-4">
+        <div class="flex-1">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <input type="text" name="name" required placeholder="e.g. Counterbalance Forklift"
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-md transition-colors whitespace-nowrap">
+            Add Type
+        </button>
+    </form>
+</section>
+
+<!-- Device types table -->
+<section class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">ID</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Name</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Created</th>
+                <th class="px-4 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for dt in device_types %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 text-gray-500">{{ dt.id }}</td>
+                <td class="px-4 py-3 font-medium">{{ dt.name }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ dt.created_at.strftime('%Y-%m-%d') }}</td>
+                <td class="px-4 py-3 text-right">
+                    <form method="post" action="/admin/device_types/{{ dt.id }}/delete"
+                          onsubmit="return confirm('Delete this device type?')">
+                        <button type="submit" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="4" class="px-4 py-8 text-center text-gray-400">No device types yet.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+{% endblock %}
