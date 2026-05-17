@@ -1,4 +1,12 @@
-from app.routers import admin, attachments, brands, device_types, devices, messages, threads
+from app.routers import (
+    admin,
+    attachments,
+    brands,
+    device_types,
+    devices,
+    messages,
+    threads,
+)
 from fastapi import FastAPI, Depends, status, Request
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse

@@ -21,7 +21,9 @@ _templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
 
 
-def _redirect(path: str, *, success: str | None = None, error: str | None = None) -> RedirectResponse:
+def _redirect(
+    path: str, *, success: str | None = None, error: str | None = None
+) -> RedirectResponse:
     params = {}
     if success:
         params["success"] = success
@@ -41,9 +43,12 @@ def _check_auth(request: Request, settings: Settings) -> RedirectResponse | None
 # Auth
 # ---------------------------------------------------------------------------
 
+
 @router.get("/login", response_class=HTMLResponse)
 async def get_login(request: Request):
-    return templates.TemplateResponse("admin/login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(
+        "admin/login.html", {"request": request, "error": None}
+    )
 
 
 @router.post("/login")
@@ -58,7 +63,9 @@ async def post_login(
             {"request": request, "error": "Invalid token."},
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
-    response = RedirectResponse("/admin/documents", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(
+        "/admin/documents", status_code=status.HTTP_303_SEE_OTHER
+    )
     response.set_cookie("admin_token", token, httponly=True, samesite="lax")
     return response
 
@@ -74,6 +81,7 @@ async def logout():
 # Root redirect
 # ---------------------------------------------------------------------------
 
+
 @router.get("", response_class=HTMLResponse)
 async def admin_root():
     return RedirectResponse("/admin/documents", status_code=status.HTTP_303_SEE_OTHER)
@@ -82,6 +90,7 @@ async def admin_root():
 # ---------------------------------------------------------------------------
 # Documents
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class AttachmentRow:
@@ -111,12 +120,19 @@ async def get_documents(
             select(AttachmentDevice).where(AttachmentDevice.attachment_id == att.id)
         )
         links = links_result.scalars().all()
-        names = [device_map[lnk.device_id] for lnk in links if lnk.device_id in device_map]
+        names = [
+            device_map[lnk.device_id] for lnk in links if lnk.device_id in device_map
+        ]
         rows.append(AttachmentRow(attachment=att, device_names=names))
 
     return templates.TemplateResponse(
         "admin/documents.html",
-        {"request": request, "active": "documents", "attachments": rows, "devices": all_devices},
+        {
+            "request": request,
+            "active": "documents",
+            "attachments": rows,
+            "devices": all_devices,
+        },
     )
 
 
@@ -137,7 +153,9 @@ async def post_documents(
         shutil.copyfileobj(file.file, f)
     file.file.close()
 
-    attachment = Attachment(file_global_path=str(saved_path), original_filename=original_name)
+    attachment = Attachment(
+        file_global_path=str(saved_path), original_filename=original_name
+    )
     session.add(attachment)
     await session.commit()
     await session.refresh(attachment)
@@ -149,10 +167,15 @@ async def post_documents(
     await session.commit()
 
     await ingest_pdf_to_attachment(
-        session=session, pdf_path=str(saved_path), attachment_id=attachment_id, settings=settings
+        session=session,
+        pdf_path=str(saved_path),
+        attachment_id=attachment_id,
+        settings=settings,
     )
 
-    return _redirect("/admin/documents", success=f"'{original_name}' uploaded and indexed.")
+    return _redirect(
+        "/admin/documents", success=f"'{original_name}' uploaded and indexed."
+    )
 
 
 @router.post("/documents/{attachment_id}/delete")
@@ -183,6 +206,7 @@ async def delete_document(
 # Devices
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class DeviceRow:
     device: Device
@@ -209,13 +233,23 @@ async def get_devices(
     dt_map = {dt.id: dt.name for dt in all_device_types}
 
     rows = [
-        DeviceRow(device=d, brand_name=brand_map.get(d.brand_id, "?"), device_type_name=dt_map.get(d.device_type_id, "?"))
+        DeviceRow(
+            device=d,
+            brand_name=brand_map.get(d.brand_id, "?"),
+            device_type_name=dt_map.get(d.device_type_id, "?"),
+        )
         for d in devices_result.scalars().all()
     ]
 
     return templates.TemplateResponse(
         "admin/devices.html",
-        {"request": request, "active": "devices", "devices": rows, "brands": all_brands, "device_types": all_device_types},
+        {
+            "request": request,
+            "active": "devices",
+            "devices": rows,
+            "brands": all_brands,
+            "device_types": all_device_types,
+        },
     )
 
 
@@ -266,6 +300,7 @@ async def delete_device(
 # ---------------------------------------------------------------------------
 # Brands
 # ---------------------------------------------------------------------------
+
 
 @router.get("/brands", response_class=HTMLResponse)
 async def get_brands(
@@ -322,6 +357,7 @@ async def delete_brand(
 # Device Types
 # ---------------------------------------------------------------------------
 
+
 @router.get("/device_types", response_class=HTMLResponse)
 async def get_device_types(
     request: Request,
@@ -334,7 +370,11 @@ async def get_device_types(
     result = await session.execute(select(DeviceType))
     return templates.TemplateResponse(
         "admin/device_types.html",
-        {"request": request, "active": "device_types", "device_types": result.scalars().all()},
+        {
+            "request": request,
+            "active": "device_types",
+            "device_types": result.scalars().all(),
+        },
     )
 
 
