@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -116,6 +117,10 @@ def test_should_send_message_and_return_system_reply(client, mock_session):
         }
     ]
 
+    async def mock_stream(*args, **kwargs):
+        yield "E-23 oznacza"
+        yield " błąd systemu hydraulicznego."
+
     with (
         patch(
             "app.routers.threads.embedding.embed_question",
@@ -125,10 +130,7 @@ def test_should_send_message_and_return_system_reply(client, mock_session):
             "app.routers.threads.embedding.get_close_chunks",
             new=AsyncMock(return_value=fake_chunks),
         ),
-        patch(
-            "app.routers.threads.llm.query",
-            new=AsyncMock(return_value="E-23 oznacza błąd systemu hydraulicznego."),
-        ),
+        patch("app.routers.threads.llm.stream_query", new=mock_stream),
     ):
         response = client.post(
             "/api/threads/1/messages",
@@ -136,11 +138,17 @@ def test_should_send_message_and_return_system_reply(client, mock_session):
             headers=AUTH_HEADERS,
         )
 
-    assert response.status_code == 201
-    data = response.json()
-    assert data["sender"] == "system"
-    assert data["content"] == "E-23 oznacza błąd systemu hydraulicznego."
-    assert data["id"] == 2
+    assert response.status_code == 200
+    lines = response.text.splitlines()
+    message_data = None
+    for i, line in enumerate(lines):
+        if line == "event: message":
+            message_data = json.loads(lines[i + 1].removeprefix("data: "))
+            break
+    assert message_data is not None
+    assert message_data["sender"] == "system"
+    assert message_data["content"] == "E-23 oznacza błąd systemu hydraulicznego."
+    assert message_data["id"] == 2
 
 
 def test_should_store_user_message_before_reply(client, mock_session):
@@ -152,6 +160,9 @@ def test_should_store_user_message_before_reply(client, mock_session):
 
     mock_session.refresh.side_effect = set_id
 
+    async def mock_stream(*args, **kwargs):
+        yield "Answer"
+
     with (
         patch(
             "app.routers.threads.embedding.embed_question",
@@ -161,10 +172,7 @@ def test_should_store_user_message_before_reply(client, mock_session):
             "app.routers.threads.embedding.get_close_chunks",
             new=AsyncMock(return_value=[]),
         ),
-        patch(
-            "app.routers.threads.llm.query",
-            new=AsyncMock(return_value="Answer"),
-        ),
+        patch("app.routers.threads.llm.stream_query", new=mock_stream),
     ):
         client.post(
             "/api/threads/1/messages",

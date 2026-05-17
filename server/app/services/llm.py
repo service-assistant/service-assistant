@@ -1,6 +1,8 @@
+from collections.abc import AsyncGenerator
 from typing import Final
 
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionMessageParam
 
 from ..config import Settings
 
@@ -22,21 +24,30 @@ def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
     return "\n".join(parts) if parts else "No relevant context found."
 
 
-async def query(question: str, chunks: list[str], settings: Settings) -> str:
+def _messages(question: str, context_text: str) -> list[ChatCompletionMessageParam]:
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": f"Context:\n{context_text}\n\nQuestion:\n{question}\n\nAnswer in Polish.",
+        },
+    ]
+
+
+async def stream_query(
+    question: str, chunks: list[str], settings: Settings
+) -> AsyncGenerator[str, None]:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     context_text = _build_context(chunks)
 
-    response = await client.chat.completions.create(
+    stream = await client.chat.completions.create(
         model=settings.openai_chat_model,
-        stream=False,
+        stream=True,
         temperature=0.2,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": f"Context:\n{context_text}\n\nQuestion:\n{question}\n\nAnswer in Polish.",
-            },
-        ],
+        messages=_messages(question, context_text),
     )
 
-    return response.choices[0].message.content or ""
+    async for event in stream:
+        delta = event.choices[0].delta.content
+        if delta:
+            yield delta
