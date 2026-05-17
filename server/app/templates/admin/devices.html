@@ -1,0 +1,92 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Devices{% endblock %}
+{% block heading %}Devices{% endblock %}
+
+{% block content %}
+
+<!-- Create form -->
+<section class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">Add Device</h2>
+    <form method="post" action="/admin/devices" class="grid grid-cols-2 gap-4">
+        <div class="col-span-2">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <input type="text" name="name" required placeholder="e.g. Toyota 8FBE20"
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Brand</label>
+            <select name="brand_id" required
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">— select brand —</option>
+                {% for brand in brands %}
+                <option value="{{ brand.id }}">{{ brand.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Device Type</label>
+            <select name="device_type_id" required
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">— select type —</option>
+                {% for dt in device_types %}
+                <option value="{{ dt.id }}">{{ dt.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Model / Serial code <span class="text-gray-400">(optional)</span></label>
+            <input type="text" name="model_serial_code" placeholder="e.g. 8FBE20-12345"
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Image URL <span class="text-gray-400">(optional)</span></label>
+            <input type="url" name="image_url" placeholder="https://..."
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div class="col-span-2">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-md transition-colors">
+                Add Device
+            </button>
+        </div>
+    </form>
+</section>
+
+<!-- Devices table -->
+<section class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">ID</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Name</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Brand</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Type</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Model code</th>
+                <th class="px-4 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for row in devices %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 text-gray-500">{{ row.device.id }}</td>
+                <td class="px-4 py-3 font-medium">{{ row.device.name }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ row.brand_name }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ row.device_type_name }}</td>
+                <td class="px-4 py-3 text-gray-500">{{ row.device.model_serial_code or '—' }}</td>
+                <td class="px-4 py-3 text-right">
+                    <form method="post" action="/admin/devices/{{ row.device.id }}/delete"
+                          onsubmit="return confirm('Delete this device?')">
+                        <button type="submit" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="px-4 py-8 text-center text-gray-400">No devices yet.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+{% endblock %}

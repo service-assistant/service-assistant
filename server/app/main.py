@@ -1,4 +1,12 @@
-from app.routers import attachments, brands, device_types, devices, messages, threads
+from app.routers import (
+    admin,
+    attachments,
+    brands,
+    device_types,
+    devices,
+    messages,
+    threads,
+)
 from fastapi import FastAPI, Depends, status, Request
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
@@ -36,7 +44,7 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-OPEN_PATHS = {"/docs", "/redoc", "/openapi.json", "/health"}
+OPEN_PATHS = {"/docs", "/redoc", "/openapi.json", "/health", "/admin"}
 
 
 @app.middleware("http")
@@ -66,6 +74,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(admin.router, prefix="/admin", include_in_schema=False)
 app.include_router(brands.router, prefix="/api/brands", tags=["brands"])
 app.include_router(
     device_types.router, prefix="/api/device_types", tags=["device_types"]
