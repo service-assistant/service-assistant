@@ -282,7 +282,7 @@ export default function ChatScreen() {
 						'Content-Type': 'application/json',
 					},
 					body: JSON.stringify({
-						device_id: deviceId ? parseInt(deviceId as string, 10) : 1, // Fallback to 1 on failure
+						device_id: 1, 
 						title: question.length > 40 ? `${question.substring(0, 40)}...` : question,
 					}),
 					signal: abortController.signal,
