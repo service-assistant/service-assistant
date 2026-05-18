@@ -3,12 +3,44 @@ import { AudioModule, RecordingPresets, useAudioPlayer, useAudioRecorder } from 
 import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Platform, useWindowDimensions, View } from 'react-native';
+import EventSource, { EventSourceEvent } from 'react-native-sse';
 
 import LeftPanel, { Message } from '@/components/LeftPanel';
 import RightPanel from '@/components/RightPanel';
 import * as FileSystem from 'expo-file-system/legacy';
 
 const SERVER_URL = 'https://staging.asystent-serwisanta.pl';
+
+type StreamEvent = 'chunk';
+
+type AssistantMessagePayload = {
+	id?: number;
+	content?: string;
+	image_url?: string | null;
+};
+
+type SourceChunkPayload = {
+	attachment_id: number;
+	metadata?: {
+		image_url?: string;
+		page?: number;
+		schema_url?: string;
+	} | null;
+};
+
+type AttachmentPayload = {
+	original_filename?: string;
+};
+
+const parseStreamData = <T,>(data: string | null): T | string => {
+	if (!data) return '';
+
+	try {
+		return JSON.parse(data) as T;
+	} catch {
+		return data;
+	}
+};
 
 /**
  * ChatScreen Component
@@ -264,32 +296,168 @@ export default function ChatScreen() {
 			}
 
 			// 2. SEND MESSAGE TO THE ACTIVE THREAD
-			const response = await fetch(`${SERVER_URL}/api/threads/${activeThreadId}/messages`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					Accept: 'application/json',
-					Authorization: `Bearer ${AUTH_TOKEN}`,
-				},
-				body: JSON.stringify({ content: question, question: question }),
-				signal: abortController.signal,
+			let fullText = '';
+			let imageUrl: string | null = null;
+			let systemMessageId: number | null = null;
+
+			await new Promise<void>((resolve, reject) => {
+				const eventSource = new EventSource<StreamEvent>(
+					`${SERVER_URL}/api/threads/${activeThreadId}/messages`,
+					{
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							Accept: 'text/event-stream',
+							Authorization: `Bearer ${AUTH_TOKEN}`,
+						},
+						body: JSON.stringify({ content: question }),
+						pollingInterval: 0,
+						timeoutBeforeConnection: 0,
+					},
+				);
+
+				const closeStream = () => {
+					eventSource.close();
+					abortController.signal.removeEventListener('abort', handleAbort);
+				};
+
+				const handleAbort = () => {
+					closeStream();
+					resolve();
+				};
+
+				const handleChunk = (event: EventSourceEvent<StreamEvent>) => {
+					const chunk = parseStreamData<string>(event.data);
+					const chunkText = typeof chunk === 'string' ? chunk : '';
+
+					if (!chunkText || abortController.signal.aborted) return;
+
+					fullText += chunkText;
+					setIsLoading(false);
+					setMessages((prev) =>
+						prev.map((msg) =>
+							msg.id === aiMessageId ? { ...msg, text: fullText } : msg,
+						),
+					);
+				};
+
+				const handleMessage = (event: EventSourceEvent<'message'>) => {
+					const message = parseStreamData<AssistantMessagePayload>(event.data);
+
+					if (typeof message === 'object' && message !== null) {
+						fullText = message.content || fullText;
+						imageUrl = message.image_url || null;
+						systemMessageId = message.id || null;
+					}
+
+					setMessages((prev) =>
+						prev.map((msg) =>
+							msg.id === aiMessageId ? { ...msg, text: fullText } : msg,
+						),
+					);
+
+					closeStream();
+					resolve();
+				};
+
+				const handleError = (event: EventSourceEvent<'error'>) => {
+					closeStream();
+
+					if (abortController.signal.aborted) {
+						resolve();
+						return;
+					}
+
+					if ('xhrStatus' in event) {
+						reject(new Error(`API server error: ${event.xhrStatus}`));
+					} else if ('message' in event) {
+						reject(new Error(event.message));
+					} else {
+						reject(new Error('SSE stream error'));
+					}
+				};
+
+				abortController.signal.addEventListener('abort', handleAbort);
+				eventSource.addEventListener('chunk', handleChunk);
+				eventSource.addEventListener('message', handleMessage);
+				eventSource.addEventListener('error', handleError);
 			});
 
-			if (!response.ok) throw new Error(`API server error: ${response.status}`);
+			let sourceAttachmentId: number | null = null;
+			let sourceAttachmentName = '';
+			let sourceAttachmentPage = 1;
 
-			const data = await response.json();
-			const fullText = data.content || '';
-			const imageUrl = data.image_url || null;
+			if (systemMessageId) {
+				const chunksResponse = await fetch(
+					`${SERVER_URL}/api/messages/${systemMessageId}/chunks`,
+					{
+						headers: {
+							Accept: 'application/json',
+							Authorization: `Bearer ${AUTH_TOKEN}`,
+						},
+						signal: abortController.signal,
+					},
+				);
 
-			// Update the AI bubble placeholder with the actual content
-			setMessages((prev) =>
-				prev.map((msg) => (msg.id === aiMessageId ? { ...msg, text: fullText } : msg)),
-			);
+				if (chunksResponse.ok) {
+					const chunks = (await chunksResponse.json()) as SourceChunkPayload[];
+					const sourceChunk = chunks[0];
+
+					if (sourceChunk?.attachment_id) {
+						sourceAttachmentId = sourceChunk.attachment_id;
+						sourceAttachmentPage = sourceChunk.metadata?.page || 1;
+						imageUrl =
+							imageUrl ||
+							sourceChunk.metadata?.image_url ||
+							sourceChunk.metadata?.schema_url ||
+							null;
+
+						const attachmentResponse = await fetch(
+							`${SERVER_URL}/api/attachments/${sourceAttachmentId}`,
+							{
+								headers: {
+									Accept: 'application/json',
+									Authorization: `Bearer ${AUTH_TOKEN}`,
+								},
+								signal: abortController.signal,
+							},
+						);
+
+						if (attachmentResponse.ok) {
+							const attachment =
+								(await attachmentResponse.json()) as AttachmentPayload;
+							sourceAttachmentName =
+								attachment.original_filename ||
+								`Dokument_${sourceAttachmentId}.pdf`;
+						} else {
+							sourceAttachmentName = `Dokument_${sourceAttachmentId}.pdf`;
+						}
+
+						setAttachmentId(sourceAttachmentId);
+						setAttachmentName(sourceAttachmentName);
+						setAttachmentPage(sourceAttachmentPage);
+					}
+				}
+			}
 
 			// Handle potential attachments/images
 			if (imageUrl) {
+				setSelectedPdf(null);
 				setCurrentImage(imageUrl);
 				setShowSchema(true);
+			} else if (sourceAttachmentId) {
+				setCurrentImage(null);
+				setShowSchema(false);
+				setSelectedPdf({
+					name: sourceAttachmentName || `Dokument_${sourceAttachmentId}.pdf`,
+					icon: 'file-pdf-box',
+					color: '#EF4444',
+					source: {
+						uri: `${SERVER_URL}/api/attachments/${sourceAttachmentId}/file`,
+						headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+					},
+					page: sourceAttachmentPage,
+				});
 			}
 
 			// Play AI response audio
