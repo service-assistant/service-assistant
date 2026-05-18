@@ -63,6 +63,9 @@ const AVAILABLE_FILES = [
 ];
 
 const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
+const PRIMARY_ORANGE = '#FF7A00';
+const LISTENING_CYAN = '#06B6D4';
+const PROCESSING_VIOLET = '#8B5CF6';
 
 // --- INTERFACES ---
 
@@ -125,9 +128,40 @@ export default function RightPanel({
 	const [isDownloading, setIsDownloading] = useState<boolean>(false);
 	const downloadResumableRef = useRef<FileSystem.DownloadResumable | null>(null);
 	const [downloadingFileId, setDownloadingFileId] = useState<number | null>(null);
+	const micState = isGenerating ? 'processing' : isListening ? 'listening' : 'idle';
+	const micStyle =
+		micState === 'processing'
+			? {
+					backgroundColor: 'rgba(46, 16, 101, 0.92)',
+					borderColor: 'rgba(139, 92, 246, 0.9)',
+					shadowColor: PROCESSING_VIOLET,
+					shadowOpacity: 0.42,
+					shadowRadius: 24,
+					iconColor: '#FFFFFF',
+					label: 'PRZETWARZAM...',
+				}
+			: micState === 'listening'
+				? {
+						backgroundColor: 'rgba(8, 47, 73, 0.92)',
+						borderColor: 'rgba(6, 182, 212, 0.9)',
+						shadowColor: LISTENING_CYAN,
+						shadowOpacity: 0.45,
+						shadowRadius: 26,
+						iconColor: '#FFFFFF',
+						label: 'SŁUCHAM...',
+					}
+				: {
+						backgroundColor: 'rgba(34, 34, 38, 0.92)',
+						borderColor: 'rgba(255, 122, 0, 0.22)',
+						shadowColor: '#000000',
+						shadowOpacity: 0,
+						shadowRadius: 0,
+						iconColor: '#E8E8E8',
+						label: 'ASYSTENT GOTOWY',
+					};
 
-	// TODO: Replace '1' with dynamic attachmentId when API logic is fully implemented
-	const dynamicPdfUrl = `https://staging.asystent-serwisanta.pl/api/attachments/${1}/file`;
+	const dynamicAttachmentId = attachmentId || 1;
+	const dynamicPdfUrl = `https://staging.asystent-serwisanta.pl/api/attachments/${dynamicAttachmentId}/file`;
 	const dynamicFileName = attachmentName || 'instrukcja_serwisowa.pdf';
 
 	/**
@@ -251,7 +285,7 @@ export default function RightPanel({
 					}
 				}}
 				disabled={isDownloading}
-				className={`flex-row items-center border ${isDownloading ? 'border-neutral-700 bg-neutral-900' : 'border-[#CC5500] bg-[#0a0a0a]'} px-4 py-3 rounded-md min-w-[170px] justify-center`}>
+				className={`flex-row items-center border ${isDownloading ? 'border-neutral-700 bg-neutral-900' : 'border-[#FF7A00]/40 bg-[#0a0a0a]'} px-4 py-3 rounded-md min-w-[170px] justify-center`}>
 				{isDownloading && downloadingFileId === null ? (
 					<View className='flex-row items-center'>
 						<ActivityIndicator size='small' color='#fff' />
@@ -261,9 +295,13 @@ export default function RightPanel({
 					</View>
 				) : (
 					<View className='flex-row items-center'>
-						<Feather name={showSchema ? 'image' : 'layers'} size={18} color='#CC5500' />
-						<Text className='text-[#CC5500] font-bold ml-2 tracking-widest text-[11px] uppercase'>
-							{showSchema ? 'POKAŻ ŹRÓDŁO' : 'POKAŻ SCHEMAT'}
+						<Feather
+							name={showSchema ? 'file-text' : 'layers'}
+							size={18}
+							color={PRIMARY_ORANGE}
+						/>
+						<Text className='text-[#FF7A00] font-bold ml-2 tracking-widest text-[11px] uppercase'>
+							{showSchema ? 'ŹRÓDŁA PDF' : 'POKAŻ SCHEMAT'}
 						</Text>
 					</View>
 				)}
@@ -349,18 +387,18 @@ export default function RightPanel({
 										key={file.id}
 										onPress={() => handleFileGridPress(file)}
 										disabled={isDownloading}
-										className='bg-[#111] rounded-2xl p-6 items-center w-[48%] aspect-square justify-center relative'>
+										className='rounded-2xl p-5 items-center w-[48%] aspect-square justify-center relative border border-white/10 bg-[#141418]'>
 										{isThisFileDownloading ? (
 											<ActivityIndicator size='large' color={file.color} />
 										) : (
 											<MaterialCommunityIcons
 												name={file.icon as any}
-												size={70}
+												size={58}
 												color={file.color}
 											/>
 										)}
 										<Text
-											className='text-white text-xs font-bold mt-4 text-center'
+											className='text-[#C9CDD3] text-xs font-semibold mt-4 text-center'
 											numberOfLines={2}>
 											{file.name}
 										</Text>
@@ -376,30 +414,45 @@ export default function RightPanel({
 				{/* Bottom Bar: Chat / Mic Controls */}
 				<View className='items-center'>
 					<View className='flex-row w-full justify-around items-center mb-4'>
-						<TouchableOpacity className='bg-[#111] p-5 rounded-2xl'>
+						<TouchableOpacity className='bg-[#1F1F24] border border-white/10 p-4 rounded-[14px]'>
 							<Feather name='camera' size={24} color='#9ca3af' />
 						</TouchableOpacity>
 
 						<Animated.View style={{ transform: [{ scale: soundLevelAnim || 1 }] }}>
 							<TouchableOpacity
-								onPress={onMicPress}
-								className={`border-2 border-[#d35400] p-6 rounded-3xl ${isListening ? 'bg-[#3a1a00]' : 'bg-[#1a0f00]'}`}>
+								onPress={isGenerating ? onStop : onMicPress}
+								className='p-6 rounded-3xl'
+								style={{
+									backgroundColor: micStyle.backgroundColor,
+									borderWidth: 1,
+									borderColor: micStyle.borderColor,
+									shadowColor: micStyle.shadowColor,
+									shadowOpacity: micStyle.shadowOpacity,
+									shadowRadius: micStyle.shadowRadius,
+								}}>
 								<MaterialCommunityIcons
-									name='microphone'
+									name={isGenerating ? 'stop' : 'microphone'}
 									size={48}
-									color='#d35400'
+									color={micStyle.iconColor}
 								/>
 							</TouchableOpacity>
 						</Animated.View>
 
-						<TouchableOpacity className='bg-[#111] p-5 rounded-2xl'>
+						<TouchableOpacity className='bg-[#1F1F24] border border-white/10 p-4 rounded-[14px]'>
 							<Feather name='search' size={24} color='#9ca3af' />
 						</TouchableOpacity>
 					</View>
 
-					<Text className='text-[#d35400] text-xs font-bold uppercase tracking-widest mt-2'>
-						{isListening ? 'ASYSTENT SŁUCHA' : 'ASYSTENT GOTOWY'}
-					</Text>
+					<View className='flex-row items-center mt-2'>
+						{isListening && !isGenerating ? (
+							<View className='w-1.5 h-1.5 rounded-full mr-2 bg-[#06B6D4]' />
+						) : null}
+						<Text
+							className='text-xs font-bold uppercase tracking-widest'
+							style={{ color: isListening ? LISTENING_CYAN : '#E5E7EB' }}>
+							{micStyle.label}
+						</Text>
+					</View>
 				</View>
 			</View>
 		);
@@ -424,15 +477,15 @@ export default function RightPanel({
 							setDownloadingFileId(null);
 						}}
 						disabled={isDownloading}
-						className={`flex-row items-center border ${isDownloading ? 'border-neutral-700' : 'border-[#CC5500]'} px-4 py-3 rounded-md bg-[#0a0a0a]`}>
+						className={`flex-row items-center border ${isDownloading ? 'border-neutral-700' : 'border-[#FF7A00]/40'} px-4 py-3 rounded-md bg-[#0a0a0a]`}>
 						<MaterialCommunityIcons
 							name='file-tree'
 							size={18}
-							color={isDownloading ? '#555' : '#CC5500'}
+							color={isDownloading ? '#555' : PRIMARY_ORANGE}
 						/>
 						<Text
-							className={`${isDownloading ? 'text-neutral-600' : 'text-[#CC5500]'} font-bold ml-2 tracking-widest text-[11px] uppercase`}>
-							POKAŻ PLIKI
+							className={`${isDownloading ? 'text-neutral-600' : 'text-[#FF7A00]'} font-bold ml-2 tracking-widest text-[11px] uppercase`}>
+							ŹRÓDŁA PDF
 						</Text>
 					</TouchableOpacity>
 
@@ -498,17 +551,17 @@ export default function RightPanel({
 										key={file.id}
 										onPress={() => handleFileGridPress(file)}
 										disabled={isDownloading}
-										className='w-[30%] border rounded-2xl items-center justify-center py-6 px-3 bg-[#121212] border-neutral-800 relative'>
+										className='w-[30%] border rounded-2xl items-center justify-center py-5 px-3 bg-[#141418] border-[#26262C] relative'>
 										{isThisFileDownloading && (
-											<Text className='absolute top-2 text-[#CC5500] font-bold text-[9px] tracking-widest uppercase'>
+											<Text className='absolute top-2 text-[#FF7A00] font-bold text-[9px] tracking-widest uppercase'>
 												POBIERANIE...
 											</Text>
 										)}
 
-										<View className='w-24 h-24 items-center justify-center relative'>
+										<View className='w-20 h-20 items-center justify-center relative'>
 											<MaterialCommunityIcons
 												name={file.icon as any}
-												size={64}
+												size={56}
 												color={file.color}
 												style={{ opacity: 0.2 }}
 											/>
@@ -518,7 +571,7 @@ export default function RightPanel({
 												) : (
 													<Feather
 														name='download-cloud'
-														size={32}
+														size={28}
 														color='#fff'
 													/>
 												)}
@@ -526,7 +579,7 @@ export default function RightPanel({
 										</View>
 
 										<Text
-											className='font-bold mt-4 text-[13px] text-center leading-4 text-neutral-500'
+											className='font-semibold mt-4 text-[13px] text-center leading-4 text-[#C9CDD3]'
 											numberOfLines={2}>
 											{file.name}
 										</Text>
