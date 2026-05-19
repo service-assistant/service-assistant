@@ -29,7 +29,6 @@ async def ingest_pdf_to_attachment(
     rows: list[tuple[str, list[float], int, list[str]]] = []
 
     for page_num, page in enumerate(doc.pages()):
-
         # extract text
         text = str(page.get_text())
         if not text or not text.strip():
@@ -43,7 +42,7 @@ async def ingest_pdf_to_attachment(
         while start < len(text):
             chunks.append(text[start : start + chunk_size])
             start += chunk_size - overlap
-        
+
         # extract images
         page_images = extract_page_images(
             doc, page, settings.attachments_dir / "images"
