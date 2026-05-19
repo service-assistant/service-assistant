@@ -1,7 +1,7 @@
 from pathlib import Path
 import uuid
 import fitz
-from pymupdf import pymupdf
+from pymupdf import Pixmap, csRGB
 
 
 def extract_page_images(doc, page, output_dir: Path) -> list[str]:
@@ -13,13 +13,11 @@ def extract_page_images(doc, page, output_dir: Path) -> list[str]:
         filename = f"{uuid.uuid4()}.png"
         image_path = output_dir / filename
 
-        pix = pymupdf.Pixmap(doc, xref)
+        pix = Pixmap(doc, xref)
         if pix.n - pix.alpha > 3:
-            pix = pymupdf.Pixmap(pymupdf.csRGB, pix)
+            pix = Pixmap(csRGB, pix)
 
         pix.save(str(image_path))
-        pix = None
-
         image_paths.append(str(image_path))
 
     vector_images = save_drawing_region(page, output_dir)
@@ -72,6 +70,4 @@ def save_drawing_region(
     image_path = output_dir / filename
 
     pix.save(str(image_path))
-    pix = None
-
     return str(image_path)
