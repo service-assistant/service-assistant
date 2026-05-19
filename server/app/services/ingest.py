@@ -5,6 +5,7 @@ import fitz  # pymupdf
 
 from ..config import Settings
 from ..models import Chunk
+from .ext_img import extract_page_images
 
 
 def batch_list(items, batch_size):
@@ -25,7 +26,7 @@ async def ingest_pdf_to_attachment(
     )
 
     doc = fitz.open(pdf_path)
-    rows: list[tuple[str, list[float], int]] = []
+    rows: list[tuple[str, list[float], int, list[str]]] = []
 
     for page_num, page in enumerate(doc.pages()):
         text = str(page.get_text())
@@ -47,15 +48,17 @@ async def ingest_pdf_to_attachment(
             )
             embeddings = [d.embedding for d in response.data]
             for chunk, emb in zip(batch, embeddings):
-                rows.append((chunk, emb, page_num))
+                page_images = extract_page_images(
+                    doc, page, settings.attachments_dir / "images"
+                )
+                rows.append((chunk, emb, page_num, page_images))
 
     await insert_chunks(session, rows, attachment_id)
-    print("File ingested to base, attachment_id:", attachment_id)
 
 
 async def insert_chunks(
     session: AsyncSession,
-    rows: list[tuple[str, list[float], int]],
+    rows: list[tuple[str, list[float], int, list[str]]],
     attachment_id: int,
 ):
     objects = [
@@ -63,9 +66,9 @@ async def insert_chunks(
             content=chunk,
             embedding=embedding,
             attachment_id=attachment_id,
-            extra_metadata={"page": page_num},
+            extra_metadata={"page": page_num, "images": page_images},
         )
-        for chunk, embedding, page_num in rows
+        for chunk, embedding, page_num, page_images in rows
     ]
     session.add_all(objects)
     await session.commit()
