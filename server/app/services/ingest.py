@@ -5,7 +5,7 @@ import fitz  # pymupdf
 
 from ..config import Settings
 from ..models import Chunk
-from .ext_img import extract_page_images
+from .extract_images import extract_page_images
 
 
 def batch_list(items, batch_size):
@@ -29,6 +29,8 @@ async def ingest_pdf_to_attachment(
     rows: list[tuple[str, list[float], int, list[str]]] = []
 
     for page_num, page in enumerate(doc.pages()):
+
+        # extract text
         text = str(page.get_text())
         if not text or not text.strip():
             continue
@@ -41,16 +43,20 @@ async def ingest_pdf_to_attachment(
         while start < len(text):
             chunks.append(text[start : start + chunk_size])
             start += chunk_size - overlap
+        
+        # extract images
+        page_images = extract_page_images(
+            doc, page, settings.attachments_dir / "images"
+        )
 
+        # create embeddings for text chunks
         for batch in batch_list(chunks, 32):
             response = await client.embeddings.create(
                 model=settings.azure_openai_embeddings_deployment, input=batch
             )
             embeddings = [d.embedding for d in response.data]
+
             for chunk, emb in zip(batch, embeddings):
-                page_images = extract_page_images(
-                    doc, page, settings.attachments_dir / "images"
-                )
                 rows.append((chunk, emb, page_num, page_images))
 
     await insert_chunks(session, rows, attachment_id)

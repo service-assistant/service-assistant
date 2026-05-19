@@ -22,6 +22,10 @@ def extract_page_images(doc, page, output_dir: Path) -> list[str]:
 
         image_paths.append(str(image_path))
 
+    vector_images = save_drawing_region(page, output_dir)
+    if vector_images is not None:
+        image_paths.append(vector_images)
+
     return image_paths
 
 
@@ -64,22 +68,10 @@ def save_drawing_region(
         clip=combined_rect,
     )
 
-    output_dir.mkdir(parents=True, exist_ok=True)
-
     filename = f"{uuid.uuid4()}.png"
+    image_path = output_dir / filename
 
-    output_path = output_dir / filename
-
-    pix.save(str(output_path))
+    pix.save(str(image_path))
     pix = None
 
-    return str(output_path)
-
-
-# doc = fitz.open("/home/madghos/service-assistant/server/app/services/LWE140, LWE160, LWE180, LWE200, LWE250 - podręcznik serwisowy EN.pdf")
-
-# for page_index in range(30): # iterate over pdf pages
-#     page = doc[page_index] # get the page
-
-#     print(extract_page_images(doc, page, Path("/home/madghos/service-assistant/server/app/services")))
-#     print(save_drawing_region(page, Path("/home/madghos/service-assistant/server/app/services")))
+    return str(image_path)
