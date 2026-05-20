@@ -4,10 +4,10 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
+from sqlmodel import col, select
 
 from app.database import get_session
-from app.models import Brand, Device, DeviceType
+from app.models import Brand, Device, DeviceType, Attachment, AttachmentDevice
 
 router = APIRouter()
 
@@ -90,6 +90,32 @@ async def create_device(
 )
 async def list_devices(session: AsyncSession = Depends(get_session)):
     result = await session.execute(select(Device))
+    return result.scalars().all()
+
+
+@router.get(
+    "/{device_id}/attachments",
+    response_model=list[Attachment],
+    summary="List device attachments",
+    description="Returns all instruction files (attachments) linked to the given device.",
+    responses={404: {"description": "Device not found"}},
+)
+async def list_device_attachments(
+    device_id: int, session: AsyncSession = Depends(get_session)
+):
+    device = await session.get(Device, device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    result = await session.execute(
+        select(Attachment)
+        .join(
+            AttachmentDevice,
+            col(AttachmentDevice.attachment_id) == col(Attachment.id),
+        )
+        .where(AttachmentDevice.device_id == device_id)
+        .order_by(col(Attachment.created_at).desc())
+    )
     return result.scalars().all()
 
 
