@@ -1,4 +1,6 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
@@ -85,7 +87,7 @@ const MIC_STATE_STYLES: Record<
 		shadowRadius: 10,
 		iconColor: '#E8E8E8',
 		textColor: 'rgba(229, 231, 235, 0.78)',
-		label: 'NACIŚNIJ ŻEBY MÓWIĆ',
+		label: 'NACIĹšNIJ Ĺ»EBY MĂ“WIÄ†',
 	},
 	listening: {
 		backgroundColor: 'rgba(8, 47, 73, 0.92)',
@@ -95,7 +97,7 @@ const MIC_STATE_STYLES: Record<
 		shadowRadius: 26,
 		iconColor: '#FFFFFF',
 		textColor: '#FFFFFF',
-		label: 'SŁUCHAM...',
+		label: 'SĹUCHAM...',
 	},
 	processing: {
 		backgroundColor: 'rgba(46, 16, 101, 0.92)',
@@ -135,7 +137,7 @@ const MIC_STATE_STYLES: Record<
 		shadowRadius: 8,
 		iconColor: '#A1A1AA',
 		textColor: 'rgba(229, 231, 235, 0.5)',
-		label: 'NIEDOSTĘPNE',
+		label: 'NIEDOSTÄPNE',
 	},
 };
 
@@ -205,7 +207,13 @@ export default function HomeScreen() {
 	const [activeTypeFilter, setActiveTypeFilter] = useState<string>('WSZYSTKIE');
 	const [searchQuery, setSearchQuery] = useState<string>('');
 	const [isListening, setIsListening] = useState(false);
+	const [isCameraOpen, setIsCameraOpen] = useState(false);
+	const [capturedPhotoUri, setCapturedPhotoUri] = useState<string | null>(null);
+	const [attachedPhotoUri, setAttachedPhotoUri] = useState<string | null>(null);
+	const [cameraFlash, setCameraFlash] = useState<'off' | 'on'>('off');
+	const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 	const listeningPulseAnim = useRef(new Animated.Value(0)).current;
+	const cameraRef = useRef<any>(null);
 
 	// --- API STATES ---
 	const [brands, setBrands] = useState<Brand[]>([]);
@@ -342,6 +350,42 @@ export default function HomeScreen() {
 		setIsListening(!isListening);
 	};
 
+	const openCamera = async () => {
+		const permission = cameraPermission?.granted
+			? cameraPermission
+			: await requestCameraPermission();
+
+		if (!permission.granted) return;
+
+		setCapturedPhotoUri(null);
+		setIsCameraOpen(true);
+	};
+
+	const closeCamera = () => {
+		setCapturedPhotoUri(null);
+		setIsCameraOpen(false);
+	};
+
+	const takePhoto = async () => {
+		const photo = await cameraRef.current?.takePictureAsync?.({
+			quality: 0.75,
+			skipProcessing: true,
+			shutterSound: false,
+			flash: cameraFlash,
+		});
+
+		if (photo?.uri) {
+			setCapturedPhotoUri(photo.uri);
+		}
+	};
+
+	const attachPhoto = () => {
+		if (capturedPhotoUri) {
+			setAttachedPhotoUri(capturedPhotoUri);
+		}
+		closeCamera();
+	};
+
 	const openChat = (vehicle: Vehicle) => {
 		const logoUrl = getRemoteBrandLogo(vehicle.brand);
 
@@ -461,11 +505,7 @@ export default function HomeScreen() {
 		return (
 			<TouchableOpacity
 				activeOpacity={isWeb ? 1 : 0.9}
-				onPress={
-					isWeb
-						? undefined
-						: () => openChat(item)
-				}
+				onPress={isWeb ? undefined : () => openChat(item)}
 				className='bg-[#18181b] rounded-[24px] m-2 overflow-hidden flex-col'
 				style={
 					{
@@ -501,7 +541,7 @@ export default function HomeScreen() {
 							onPress={() => openChat(item)}
 							style={{ backgroundColor: PRIMARY_ORANGE }}
 							className='w-full py-4 rounded-[16px] flex-row justify-center items-center mt-1 z-10'>
-							<Text className='text-white font-bold text-[15px]'>WYBIERZ ➔</Text>
+							<Text className='text-white font-bold text-[15px]'>WYBIERZ âž”</Text>
 						</TouchableOpacity>
 					)}
 				</View>
@@ -543,7 +583,7 @@ export default function HomeScreen() {
 	const typeFilterOptions = [{ name: 'WSZYSTKIE' }, ...deviceTypes];
 
 	return (
-		<SafeAreaView className='flex-1 bg-[#09090b]'>
+		<SafeAreaView className='flex-1 bg-[#09090b]' edges={['top', 'left', 'right']}>
 			<View className='flex-1'>
 				<Animated.View
 					onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
@@ -670,7 +710,7 @@ export default function HomeScreen() {
 						className='flex-1 justify-center items-center'
 						style={{ paddingTop: headerHeight + 50 }}>
 						<ActivityIndicator size='large' color={PRIMARY_ORANGE} />
-						<Text className='text-gray-400 mt-4'>Ładowanie maszyn...</Text>
+						<Text className='text-gray-400 mt-4'>Ĺadowanie maszyn...</Text>
 					</View>
 				) : (
 					<Animated.FlatList
@@ -725,13 +765,16 @@ export default function HomeScreen() {
 								: 'rgba(24, 24, 28, 0.76)',
 					}}>
 					<TouchableOpacity
+						onPress={openCamera}
 						className='rounded-[12px] items-center justify-center'
 						style={{
 							width: bottomBar.sideBtnSize,
 							height: bottomBar.sideBtnSize,
 							backgroundColor: 'rgba(31, 31, 36, 0.88)',
 							borderWidth: 1,
-							borderColor: 'rgba(255, 255, 255, 0.08)',
+							borderColor: attachedPhotoUri
+								? 'rgba(255, 122, 0, 0.75)'
+								: 'rgba(255, 255, 255, 0.08)',
 						}}>
 						<Image
 							source={require('../../assets/images/camera.png')}
@@ -741,6 +784,9 @@ export default function HomeScreen() {
 								tintColor: '#D4D4D8',
 							}}
 						/>
+						{attachedPhotoUri ? (
+							<View className='absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-[#FF6B00]' />
+						) : null}
 					</TouchableOpacity>
 
 					<View
@@ -827,6 +873,87 @@ export default function HomeScreen() {
 					</TouchableOpacity>
 				</BlurView>
 			</View>
+
+			{isCameraOpen ? (
+				<View className='absolute inset-0 bg-black z-[100]'>
+					<SafeAreaView className='flex-1' edges={['top', 'left', 'right']}>
+						<View
+							className='absolute left-4 flex-row gap-3 z-10'
+							style={{ top: Math.max(insets.top, 18) + 18 }}>
+							<TouchableOpacity
+								onPress={closeCamera}
+								className='w-12 h-12 rounded-full bg-black/70 border border-white/20 items-center justify-center'>
+								<Text className='text-white text-2xl leading-7'>×</Text>
+							</TouchableOpacity>
+							<TouchableOpacity
+								onPress={() =>
+									setCameraFlash((flash) => (flash === 'on' ? 'off' : 'on'))
+								}
+								className='w-12 h-12 rounded-full bg-black/70 border border-white/20 items-center justify-center'>
+								<MaterialCommunityIcons
+									name={cameraFlash === 'on' ? 'flash' : 'flash-off'}
+									size={24}
+									color={cameraFlash === 'on' ? PRIMARY_ORANGE : '#FFFFFF'}
+								/>
+							</TouchableOpacity>
+						</View>
+
+						<View className='flex-1 items-center justify-center px-4 pb-28 pt-16'>
+							<View
+								className='w-full overflow-hidden bg-[#111] border border-white/10'
+								style={{
+									aspectRatio: 3 / 4,
+									maxHeight: isTablet ? 760 : 560,
+									borderRadius: 18,
+								}}>
+								{capturedPhotoUri ? (
+									<Image
+										source={{ uri: capturedPhotoUri }}
+										style={{ width: '100%', height: '100%' }}
+										resizeMode='cover'
+									/>
+								) : (
+									<CameraView
+										ref={cameraRef}
+										style={{ flex: 1 }}
+										facing='back'
+										flash={cameraFlash}
+									/>
+								)}
+							</View>
+						</View>
+
+						<View
+							className='absolute left-0 right-0 items-center px-5'
+							style={{ bottom: insets.bottom > 0 ? insets.bottom + 34 : 44 }}>
+							{capturedPhotoUri ? (
+								<View className='w-full flex-row justify-center gap-3'>
+									<TouchableOpacity
+										onPress={() => setCapturedPhotoUri(null)}
+										className='h-14 px-5 rounded-[12px] bg-[#1F1F24]/95 border border-white/10 items-center justify-center'>
+										<Text className='text-white font-bold text-[13px] uppercase'>
+											Zrób ponownie
+										</Text>
+									</TouchableOpacity>
+									<TouchableOpacity
+										onPress={attachPhoto}
+										className='h-14 px-7 rounded-[12px] bg-[#FF6B00] items-center justify-center'>
+										<Text className='text-white font-bold text-[13px] uppercase'>
+											Dołącz
+										</Text>
+									</TouchableOpacity>
+								</View>
+							) : (
+								<TouchableOpacity
+									onPress={takePhoto}
+									className='w-20 h-20 rounded-full bg-white/95 border-[6px] border-[#FF6B00] items-center justify-center'>
+									<View className='w-12 h-12 rounded-full bg-white' />
+								</TouchableOpacity>
+							)}
+						</View>
+					</SafeAreaView>
+				</View>
+			) : null}
 		</SafeAreaView>
 	);
 }

@@ -6,14 +6,22 @@ import { View } from 'react-native';
  * NOTE: This component uses an HTML <iframe> as standard React Native PDF libraries
  * often lack full web support.
  */
+const getPdfUri = (source: any) => {
+	if (typeof source === 'string') return source;
+	if (typeof source?.uri === 'string') return source.uri;
+	return '';
+};
+
 export default function PdfViewer({ source }: { source: any }) {
+	const pdfUri = getPdfUri(source);
+
 	return (
 		// The container uses overflow-hidden to crop the oversized iframe inside it
 		<View className='flex-1 w-full h-full overflow-hidden'>
 			<iframe
 				// URL parameters hide the browser's default PDF viewer UI (toolbar, scrollbar)
 				// and force the document to fit horizontally (view=FitH)
-				src={`${source}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+				src={`${pdfUri}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
 				style={{
 					// Oversizing the iframe and using negative margins to hide
 					// any remaining native browser scrollbars or borders
