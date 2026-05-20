@@ -1,18 +1,25 @@
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import * as FileSystem from 'expo-file-system/legacy';
-import React, { useRef, useState } from 'react';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useRef, useState } from 'react';
 import {
 	ActivityIndicator,
 	Alert,
 	Animated,
+	Image,
+	Keyboard,
 	Platform,
 	ScrollView,
 	Text,
+	TextInput,
 	TouchableOpacity,
 	View,
 	useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
+import type { Message } from './LeftPanel';
 import PdfViewer from './PdfViewer';
 
 // --- MOCK DATA ---
@@ -73,7 +80,7 @@ export interface PdfDocument {
 	name: string;
 	icon: string;
 	color: string;
-	source: { uri: string; headers?: Record<string, string> } | number;
+	source: { uri: string; headers?: Record<string, string> } | string | number;
 	page: number;
 }
 
@@ -95,6 +102,14 @@ export interface RightPanelProps {
 	soundLevelAnim: Animated.Value;
 	isGenerating: boolean;
 	onStop: () => void;
+	messages?: Message[];
+	isChatLoading?: boolean;
+	showTextInput?: boolean;
+	setShowTextInput?: (show: boolean) => void;
+	inputText?: string;
+	setInputText?: (text: string) => void;
+	onSendText?: () => void;
+	logoUrl?: string;
 }
 
 /**
@@ -121,13 +136,26 @@ export default function RightPanel({
 	soundLevelAnim,
 	isGenerating,
 	onStop,
+	messages = [],
+	isChatLoading = false,
+	showTextInput = false,
+	setShowTextInput,
+	inputText = '',
+	setInputText,
+	onSendText,
+	logoUrl,
 }: RightPanelProps) {
 	const { width } = useWindowDimensions();
 	const isMobile = width < 768;
+	const router = useRouter();
+	const insets = useSafeAreaInsets();
 
 	const [isDownloading, setIsDownloading] = useState<boolean>(false);
 	const downloadResumableRef = useRef<FileSystem.DownloadResumable | null>(null);
+	const webPdfObjectUrlRef = useRef<string | null>(null);
 	const [downloadingFileId, setDownloadingFileId] = useState<number | null>(null);
+	const [mobileMode, setMobileMode] = useState<'chat' | 'sources'>('chat');
+	const [keyboardHeight, setKeyboardHeight] = useState(0);
 	const micState = isGenerating ? 'processing' : isListening ? 'listening' : 'idle';
 	const micStyle =
 		micState === 'processing'
@@ -138,6 +166,7 @@ export default function RightPanel({
 					shadowOpacity: 0.42,
 					shadowRadius: 24,
 					iconColor: '#FFFFFF',
+					textColor: '#FFFFFF',
 					label: 'PRZETWARZAM...',
 				}
 			: micState === 'listening'
@@ -148,21 +177,73 @@ export default function RightPanel({
 						shadowOpacity: 0.45,
 						shadowRadius: 26,
 						iconColor: '#FFFFFF',
+						textColor: '#FFFFFF',
 						label: 'SŁUCHAM...',
 					}
 				: {
 						backgroundColor: 'rgba(34, 34, 38, 0.92)',
-						borderColor: 'rgba(255, 122, 0, 0.22)',
-						shadowColor: '#000000',
-						shadowOpacity: 0,
-						shadowRadius: 0,
+						borderColor: 'rgba(255, 122, 0, 0.3)',
+						shadowColor: PRIMARY_ORANGE,
+						shadowOpacity: 0.1,
+						shadowRadius: 10,
 						iconColor: '#E8E8E8',
-						label: 'ASYSTENT GOTOWY',
+						textColor: 'rgba(229, 231, 235, 0.78)',
+						label: 'NACIŚNIJ ŻEBY MÓWIĆ',
 					};
 
 	const dynamicAttachmentId = attachmentId || 1;
 	const dynamicPdfUrl = `https://staging.asystent-serwisanta.pl/api/attachments/${dynamicAttachmentId}/file`;
 	const dynamicFileName = attachmentName || 'instrukcja_serwisowa.pdf';
+	const mobileBottomInset = insets.bottom > 0 ? insets.bottom + 14 : 24;
+	const bottomBar = {
+		gap: 6,
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		sideBtnSize: 58,
+		centerBtnSize: 76,
+		sideIconSize: 26,
+		centerIconSize: 38,
+		centerColumnWidth: 120,
+	};
+	const bottomBarBlurProps =
+		Platform.OS === 'android'
+			? ({
+					intensity: 35,
+					blurReductionFactor: 4,
+					experimentalBlurMethod: 'dimezisBlurView',
+				} as const)
+			: { intensity: 40 };
+	const mobileControlsHeight = bottomBar.centerBtnSize + bottomBar.paddingVertical * 2 + 56;
+	const keyboardInputOffset = Platform.OS === 'ios' ? 56 : 72;
+	const mobileControlsBottom =
+		keyboardHeight > 0 ? keyboardHeight + keyboardInputOffset : mobileBottomInset;
+	const isKeyboardTyping = showTextInput && keyboardHeight > 0;
+
+	useEffect(() => {
+		const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+		const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+		const showSubscription = Keyboard.addListener(showEvent, (event) => {
+			setKeyboardHeight(event.endCoordinates.height);
+		});
+		const hideSubscription = Keyboard.addListener(hideEvent, () => {
+			setKeyboardHeight(0);
+		});
+
+		return () => {
+			showSubscription.remove();
+			hideSubscription.remove();
+		};
+	}, []);
+
+	useEffect(() => {
+		return () => {
+			if (webPdfObjectUrlRef.current && Platform.OS === 'web') {
+				URL.revokeObjectURL(webPdfObjectUrlRef.current);
+				webPdfObjectUrlRef.current = null;
+			}
+		};
+	}, []);
 
 	/**
 	 * Generates HTML for an inverted image view (useful for dark mode schemas).
@@ -211,15 +292,29 @@ export default function RightPanel({
 			await new Promise((resolve) => setTimeout(resolve, 3000));
 
 			if (Platform.OS === 'web') {
+				if (webPdfObjectUrlRef.current) {
+					URL.revokeObjectURL(webPdfObjectUrlRef.current);
+					webPdfObjectUrlRef.current = null;
+				}
+
+				const response = await fetch(remoteUrl, {
+					headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+				});
+
+				if (!response.ok) {
+					throw new Error(`PDF download failed: ${response.status}`);
+				}
+
+				const blob = await response.blob();
+				const objectUrl = URL.createObjectURL(blob);
+				webPdfObjectUrlRef.current = objectUrl;
+
 				setShowSchema(false);
 				onSelectPdf({
 					name: displayName,
 					icon: 'file-download',
 					color: '#22C55E',
-					source: {
-						uri: remoteUrl,
-						headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
-					},
+					source: objectUrl,
 					page: targetPage,
 				});
 			} else {
@@ -309,152 +404,399 @@ export default function RightPanel({
 		);
 	};
 
+	const renderMobileSourceButton = () => {
+		if (!currentImage && !attachmentId) return null;
+
+		return (
+			<TouchableOpacity
+				onPress={() => {
+					setMobileMode('sources');
+					if (currentImage) {
+						setShowSchema(true);
+					} else {
+						performDownload(
+							dynamicPdfUrl,
+							dynamicFileName,
+							dynamicFileName,
+							null,
+							attachmentPage || 1,
+						);
+					}
+				}}
+				disabled={isDownloading}
+				className='self-end mt-5 border border-[#FF7A00] px-6 py-3 flex-row items-center justify-center'
+				style={{ minWidth: 190 }}>
+				{isDownloading && downloadingFileId === null ? (
+					<ActivityIndicator size='small' color={PRIMARY_ORANGE} />
+				) : (
+					<Feather name='link' size={22} color={PRIMARY_ORANGE} />
+				)}
+				<Text className='text-[#FF7A00] font-semibold ml-5 tracking-widest text-[13px] uppercase'>
+					ŹRÓDŁO
+				</Text>
+			</TouchableOpacity>
+		);
+	};
+
+	const renderMobileMessages = () => (
+		<ScrollView
+			className='flex-1'
+			contentContainerStyle={{
+				paddingTop: 18,
+				paddingBottom: mobileControlsHeight + mobileBottomInset + 24,
+			}}
+			showsVerticalScrollIndicator={false}>
+			{messages.map((msg, index) => {
+				if (msg.sender === 'ai' && !msg.text) return null;
+				const isLastAi = msg.sender === 'ai' && index === messages.length - 1;
+
+				return msg.sender === 'ai' ? (
+					<View
+						key={msg.id}
+						className='bg-[#202328] self-start rounded-[18px] px-4 py-3 mb-5'
+						style={{
+							maxWidth: '96%',
+							borderTopLeftRadius: 18,
+							borderBottomLeftRadius: 18,
+							borderTopRightRadius: 18,
+							borderBottomRightRadius: 18,
+						}}>
+						<Text className='text-[#D8DCE2] text-[17px] leading-[22px]'>
+							{msg.text}
+						</Text>
+						{isLastAi ? renderMobileSourceButton() : null}
+					</View>
+				) : (
+					<View
+						key={msg.id}
+						className='bg-[#B65000] self-end rounded-[18px] px-4 py-3 mb-5'
+						style={{ maxWidth: '94%' }}>
+						{msg.isSpeaking ? (
+							<View className='py-1'>
+								<MaterialCommunityIcons name='waveform' size={32} color='#FFFFFF' />
+							</View>
+						) : (
+							<Text className='text-white text-[17px] leading-[22px]'>
+								{msg.text}
+							</Text>
+						)}
+					</View>
+				);
+			})}
+			{isChatLoading ? (
+				<View className='bg-[#202328] self-start rounded-[18px] px-4 py-3 mb-5 flex-row items-center'>
+					<ActivityIndicator size='small' color={PRIMARY_ORANGE} />
+					<Text className='text-[#D8DCE2] text-[14px] ml-3'>Przetwarzanie...</Text>
+				</View>
+			) : null}
+		</ScrollView>
+	);
+
 	// --- MOBILE VIEW (FILES + CHAT) ---
 	if (isMobile) {
 		return (
-			<View className='flex-1 bg-black p-4 pb-8 justify-between'>
-				{/* Header */}
-				<View className='flex-row justify-between items-center mt-6'>
-					<TouchableOpacity className='border border-[#d35400] p-3 rounded-lg bg-black'>
-						<Feather name='arrow-left' size={20} color='#d35400' />
-					</TouchableOpacity>
-
-					<View className='flex-row items-center'>
-						<Text className='text-white font-bold text-lg mr-2'>TOYOTA</Text>
-						<Text className='text-white font-semibold text-md'>{currentSource}</Text>
-					</View>
-
-					<TouchableOpacity className='border border-[#d35400] p-3 rounded-lg bg-black'>
-						<MaterialCommunityIcons name='robot-outline' size={22} color='#d35400' />
-					</TouchableOpacity>
-				</View>
-
-				{/* Main Content: Files / Schema Section */}
-				{selectedPdf ? (
-					<View className='flex-1 mt-8 mb-4 relative'>
-						<PdfViewer
-							source={selectedPdf?.source || require('../assets/instrukcje.pdf')}
-							page={selectedPdf?.page || 1}
-						/>
+			<SafeAreaView className='flex-1 bg-black' edges={['top', 'left', 'right']}>
+				<View className='flex-1 bg-black px-4'>
+					{/* Header */}
+					<View className='flex-row justify-between items-center pt-3'>
 						<TouchableOpacity
-							onPress={() => onSelectPdf(null)}
-							className='absolute top-2 right-2 bg-black/80 p-2 rounded-full z-10'>
-							<Feather name='x' size={20} color='#fff' />
+							onPress={() => router.push('/home')}
+							className='border border-[#d35400] bg-black items-center justify-center'
+							style={{ width: 46, height: 46 }}>
+							<Feather name='arrow-left' size={26} color='#d35400' />
 						</TouchableOpacity>
-					</View>
-				) : showSchema && currentImage ? (
-					<View className='flex-1 mt-8 mb-4 rounded-xl overflow-hidden bg-black relative'>
-						{Platform.OS === 'web' ? (
-							<View
-								style={{
-									flex: 1,
-									backgroundColor: '#000',
-									justifyContent: 'center',
-									alignItems: 'center',
-								}}>
-								<img
-									src={currentImage}
-									style={{
-										width: '100%',
-										height: '100%',
-										objectFit: 'contain',
-										filter: 'invert(100%)',
-									}}
-									alt='Schemat'
-								/>
-							</View>
-						) : (
-							<WebView
-								source={{ html: getInvertedImageHtml(currentImage) }}
-								style={{ flex: 1, backgroundColor: 'transparent' }}
-								scrollEnabled={false}
-							/>
-						)}
-						<TouchableOpacity
-							onPress={() => setShowSchema(false)}
-							className='absolute top-2 right-2 bg-black/80 p-2 rounded-full z-10'>
-							<Feather name='x' size={20} color='#fff' />
-						</TouchableOpacity>
-					</View>
-				) : (
-					<ScrollView className='flex-1 mt-8 mb-4' showsVerticalScrollIndicator={false}>
-						<View className='flex-row flex-wrap justify-between gap-y-4'>
-							{AVAILABLE_FILES.map((file) => {
-								const isThisFileDownloading =
-									isDownloading && downloadingFileId === file.id;
-								return (
-									<TouchableOpacity
-										key={file.id}
-										onPress={() => handleFileGridPress(file)}
-										disabled={isDownloading}
-										className='rounded-2xl p-5 items-center w-[48%] aspect-square justify-center relative border border-white/10 bg-[#141418]'>
-										{isThisFileDownloading ? (
-											<ActivityIndicator size='large' color={file.color} />
-										) : (
-											<MaterialCommunityIcons
-												name={file.icon as any}
-												size={58}
-												color={file.color}
-											/>
-										)}
-										<Text
-											className='text-[#C9CDD3] text-xs font-semibold mt-4 text-center'
-											numberOfLines={2}>
-											{file.name}
-										</Text>
-									</TouchableOpacity>
-								);
-							})}
+
+						<View
+							className='flex-row items-center justify-center flex-1 px-2'
+							style={{ minWidth: 0 }}>
+							{logoUrl ? (
+								<View style={{ width: 86, height: 24, marginRight: 8 }}>
+									<Image
+										source={{ uri: logoUrl }}
+										style={{ width: '100%', height: '100%' }}
+										resizeMode='contain'
+									/>
+								</View>
+							) : null}
+							<Text
+								className='text-white font-semibold text-[14px]'
+								style={{ flexShrink: 1, minWidth: 0 }}
+								numberOfLines={1}
+								adjustsFontSizeToFit>
+								{currentSource}
+							</Text>
 						</View>
-					</ScrollView>
-				)}
 
-				{!selectedPdf && !showSchema && <View className='flex-1' />}
-
-				{/* Bottom Bar: Chat / Mic Controls */}
-				<View className='items-center'>
-					<View className='flex-row w-full justify-around items-center mb-4'>
-						<TouchableOpacity className='bg-[#1F1F24] border border-white/10 p-4 rounded-[14px]'>
-							<Feather name='camera' size={24} color='#9ca3af' />
+						<TouchableOpacity
+							onPress={() =>
+								setMobileMode((mode) => (mode === 'chat' ? 'sources' : 'chat'))
+							}
+							className='border border-[#d35400] bg-black items-center justify-center'
+							style={{ width: 46, height: 46 }}>
+							<Feather
+								name={mobileMode === 'chat' ? 'link' : 'message-circle'}
+								size={24}
+								color='#d35400'
+							/>
 						</TouchableOpacity>
+					</View>
 
-						<Animated.View style={{ transform: [{ scale: soundLevelAnim || 1 }] }}>
+					<View style={{ height: 16 }} />
+
+					{/* Main Content: Files / Schema Section */}
+					{mobileMode === 'chat' ? (
+						renderMobileMessages()
+					) : selectedPdf ? (
+						<View className='flex-1 mt-6 mb-4 relative'>
+							<PdfViewer
+								source={selectedPdf?.source || require('../assets/instrukcje.pdf')}
+								page={selectedPdf?.page || 1}
+							/>
 							<TouchableOpacity
-								onPress={isGenerating ? onStop : onMicPress}
-								className='p-6 rounded-3xl'
+								onPress={() => onSelectPdf(null)}
+								className='absolute top-2 right-2 bg-black/80 p-2 rounded-full z-10'>
+								<Feather name='x' size={20} color='#fff' />
+							</TouchableOpacity>
+						</View>
+					) : showSchema && currentImage ? (
+						<View className='flex-1 mt-6 mb-4 rounded-xl overflow-hidden bg-black relative'>
+							{Platform.OS === 'web' ? (
+								<View
+									style={{
+										flex: 1,
+										backgroundColor: '#000',
+										justifyContent: 'center',
+										alignItems: 'center',
+									}}>
+									<img
+										src={currentImage}
+										style={{
+											width: '100%',
+											height: '100%',
+											objectFit: 'contain',
+											filter: 'invert(100%)',
+										}}
+										alt='Schemat'
+									/>
+								</View>
+							) : (
+								<WebView
+									source={{ html: getInvertedImageHtml(currentImage) }}
+									style={{ flex: 1, backgroundColor: 'transparent' }}
+									scrollEnabled={false}
+								/>
+							)}
+							<TouchableOpacity
+								onPress={() => setShowSchema(false)}
+								className='absolute top-2 right-2 bg-black/80 p-2 rounded-full z-10'>
+								<Feather name='x' size={20} color='#fff' />
+							</TouchableOpacity>
+						</View>
+					) : (
+						<ScrollView
+							className='flex-1 mt-6 mb-4'
+							contentContainerStyle={{
+								flexGrow: 1,
+								paddingBottom: mobileControlsHeight + mobileBottomInset + 24,
+							}}
+							showsVerticalScrollIndicator={false}>
+							<View className='flex-row flex-wrap justify-between gap-y-4'>
+								{AVAILABLE_FILES.map((file) => {
+									const isThisFileDownloading =
+										isDownloading && downloadingFileId === file.id;
+									return (
+										<TouchableOpacity
+											key={file.id}
+											onPress={() => handleFileGridPress(file)}
+											disabled={isDownloading}
+											className='rounded-2xl p-5 items-center w-[48%] aspect-square justify-center relative border border-white/10 bg-[#141418]'>
+											{isThisFileDownloading ? (
+												<ActivityIndicator
+													size='large'
+													color={file.color}
+												/>
+											) : (
+												<MaterialCommunityIcons
+													name={file.icon as any}
+													size={58}
+													color={file.color}
+												/>
+											)}
+											<Text
+												className='text-[#C9CDD3] text-xs font-semibold mt-4 text-center'
+												numberOfLines={2}>
+												{file.name}
+											</Text>
+										</TouchableOpacity>
+									);
+								})}
+							</View>
+						</ScrollView>
+					)}
+
+					{/* Bottom Bar: Chat / Mic Controls */}
+					<View
+						className='absolute left-0 right-0 items-center px-4'
+						style={{ bottom: mobileControlsBottom }}>
+						{showTextInput ? (
+							<View
+								className='flex-row w-full items-center gap-2'
+								style={{ marginBottom: isKeyboardTyping ? 0 : 12 }}>
+								<TextInput
+									className='flex-1 bg-[#1A1A1D] border border-neutral-800 text-slate-200 px-4 py-3 rounded-xl text-[15px]'
+									placeholder='Wpisz pytanie...'
+									placeholderTextColor='#777'
+									value={inputText}
+									onChangeText={setInputText}
+									onSubmitEditing={onSendText}
+									autoFocus
+								/>
+								<TouchableOpacity
+									className='bg-[#CC5500] w-[48px] h-[48px] rounded-xl items-center justify-center'
+									onPress={onSendText}>
+									<Feather name='send' size={19} color='white' />
+								</TouchableOpacity>
+							</View>
+						) : null}
+
+						<BlurView
+							{...bottomBarBlurProps}
+							tint='dark'
+							className='flex-row items-center justify-center overflow-hidden'
+							style={{
+								borderRadius: 100,
+								borderWidth: 1,
+								borderColor: 'rgba(255, 122, 0, 0.18)',
+								paddingHorizontal: bottomBar.paddingHorizontal,
+								paddingVertical: bottomBar.paddingVertical,
+								gap: bottomBar.gap,
+								shadowColor: '#000',
+								shadowOffset: { width: 0, height: 12 },
+								shadowOpacity: 0.45,
+								shadowRadius: 36,
+								elevation: 12,
+								display: isKeyboardTyping ? 'none' : 'flex',
+								backgroundColor:
+									Platform.OS === 'android'
+										? 'rgba(18, 18, 22, 0.82)'
+										: 'rgba(24, 24, 28, 0.76)',
+							}}>
+							<TouchableOpacity
+								className='rounded-[12px] items-center justify-center'
 								style={{
-									backgroundColor: micStyle.backgroundColor,
+									width: bottomBar.sideBtnSize,
+									height: bottomBar.sideBtnSize,
+									backgroundColor: 'rgba(31, 31, 36, 0.88)',
 									borderWidth: 1,
-									borderColor: micStyle.borderColor,
-									shadowColor: micStyle.shadowColor,
-									shadowOpacity: micStyle.shadowOpacity,
-									shadowRadius: micStyle.shadowRadius,
+									borderColor: 'rgba(255, 255, 255, 0.08)',
 								}}>
-								<MaterialCommunityIcons
-									name={isGenerating ? 'stop' : 'microphone'}
-									size={48}
-									color={micStyle.iconColor}
+								<Image
+									source={require('../assets/images/camera.png')}
+									style={{
+										width: bottomBar.sideIconSize,
+										height: bottomBar.sideIconSize,
+										tintColor: '#D4D4D8',
+									}}
+									resizeMode='contain'
 								/>
 							</TouchableOpacity>
-						</Animated.View>
 
-						<TouchableOpacity className='bg-[#1F1F24] border border-white/10 p-4 rounded-[14px]'>
-							<Feather name='search' size={24} color='#9ca3af' />
-						</TouchableOpacity>
-					</View>
+							<View
+								className='items-center flex-col gap-2'
+								style={{ width: bottomBar.centerColumnWidth }}>
+								<TouchableOpacity
+									onPress={isGenerating ? onStop : onMicPress}
+									className='rounded-[12px] items-center justify-center'
+									style={{
+										width: bottomBar.centerBtnSize,
+										height: bottomBar.centerBtnSize,
+										backgroundColor: micStyle.backgroundColor,
+										borderWidth: 1,
+										borderColor: micStyle.borderColor,
+										shadowColor: micStyle.shadowColor,
+										shadowOffset: { width: 0, height: 0 },
+										shadowOpacity: micStyle.shadowOpacity,
+										shadowRadius: micStyle.shadowRadius,
+										elevation: micState === 'idle' ? 5 : 10,
+									}}>
+									{isListening && !isGenerating ? (
+										<Animated.View
+											pointerEvents='none'
+											className='absolute top-0 bottom-0 left-0 right-0 rounded-[12px]'
+											style={{
+												borderWidth: 1,
+												borderColor: LISTENING_CYAN,
+												backgroundColor: 'rgba(6, 182, 212, 0.14)',
+												opacity: 0.45,
+												transform: [{ scale: soundLevelAnim }],
+											}}
+										/>
+									) : null}
+									{isGenerating ? (
+										<MaterialCommunityIcons
+											name='stop'
+											size={bottomBar.centerIconSize}
+											color={micStyle.iconColor}
+										/>
+									) : (
+										<Image
+											source={require('../assets/images/micro.png')}
+											style={{
+												width: bottomBar.centerIconSize,
+												height: bottomBar.centerIconSize,
+												tintColor: micStyle.iconColor,
+											}}
+											resizeMode='contain'
+										/>
+									)}
+								</TouchableOpacity>
+								<View className='flex-row items-center justify-center mt-1'>
+									{isListening && !isGenerating ? (
+										<View
+											className='w-1.5 h-1.5 rounded-full mr-2'
+											style={{ backgroundColor: LISTENING_CYAN }}
+										/>
+									) : null}
+									<Text
+										className='text-center text-[11px] font-bold'
+										style={{
+											letterSpacing: 0.8,
+											color: micStyle.textColor,
+											textShadowColor: 'rgba(0, 0, 0, 0.8)',
+											textShadowOffset: { width: 0, height: 1 },
+											textShadowRadius: 3,
+										}}
+										numberOfLines={1}
+										adjustsFontSizeToFit>
+										{micStyle.label}
+									</Text>
+								</View>
+							</View>
 
-					<View className='flex-row items-center mt-2'>
-						{isListening && !isGenerating ? (
-							<View className='w-1.5 h-1.5 rounded-full mr-2 bg-[#06B6D4]' />
-						) : null}
-						<Text
-							className='text-xs font-bold uppercase tracking-widest'
-							style={{ color: isListening ? LISTENING_CYAN : '#E5E7EB' }}>
-							{micStyle.label}
-						</Text>
+							<TouchableOpacity
+								onPress={() => setShowTextInput?.(!showTextInput)}
+								className='rounded-[12px] items-center justify-center'
+								style={{
+									width: bottomBar.sideBtnSize,
+									height: bottomBar.sideBtnSize,
+									backgroundColor: 'rgba(31, 31, 36, 0.88)',
+									borderWidth: 1,
+									borderColor: 'rgba(255, 255, 255, 0.08)',
+								}}>
+								<Image
+									source={require('../assets/images/writing.png')}
+									style={{
+										width: bottomBar.sideIconSize,
+										height: bottomBar.sideIconSize,
+										tintColor: showTextInput ? PRIMARY_ORANGE : '#D4D4D8',
+									}}
+									resizeMode='contain'
+								/>
+							</TouchableOpacity>
+						</BlurView>
 					</View>
 				</View>
-			</View>
+			</SafeAreaView>
 		);
 	}
 

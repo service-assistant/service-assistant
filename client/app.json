@@ -11,6 +11,7 @@
 		"ios": {
 			"supportsTablet": true,
 			"infoPlist": {
+				"NSCameraUsageDescription": "Aplikacja wymaga dostępu do aparatu, żeby dołączać zdjęcia.",
 				"NSMicrophoneUsageDescription": "Aplikacja wymaga dostępu do mikrofonu do komend głosowych.",
 				"NSSpeechRecognitionUsageDescription": "Aplikacja wymaga dostępu do rozpoznawania mowy."
 			}
@@ -22,7 +23,7 @@
 				"backgroundImage": "./assets/images/android-icon-background.png",
 				"monochromeImage": "./assets/images/android-icon-monochrome.png"
 			},
-			"permissions": ["android.permission.RECORD_AUDIO"],
+			"permissions": ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"],
 			"edgeToEdgeEnabled": true,
 			"predictiveBackGestureEnabled": false,
 			"package": "com.ziemnio.client"
@@ -59,6 +60,12 @@
 				}
 			],
 			"expo-web-browser",
+			[
+				"expo-camera",
+				{
+					"cameraPermission": "Aplikacja wymaga dostępu do aparatu, żeby dołączać zdjęcia."
+				}
+			],
 			"expo-audio",
 			"expo-video",
 			"expo-asset"

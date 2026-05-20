@@ -282,7 +282,7 @@ export default function ChatScreen() {
 						'Content-Type': 'application/json',
 					},
 					body: JSON.stringify({
-						device_id: 1, 
+						device_id: 1,
 						title: question.length > 40 ? `${question.substring(0, 40)}...` : question,
 					}),
 					signal: abortController.signal,
@@ -691,6 +691,14 @@ export default function ChatScreen() {
 				soundLevelAnim={soundLevelAnim}
 				isGenerating={isBotActive}
 				onStop={handleStop}
+				messages={messages}
+				isChatLoading={isBotTyping}
+				showTextInput={showTextInput}
+				setShowTextInput={setShowTextInput}
+				inputText={inputText}
+				setInputText={setInputText}
+				onSendText={handleSendText}
+				logoUrl={logoUrl}
 			/>
 		);
 	}
