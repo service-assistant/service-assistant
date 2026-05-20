@@ -209,3 +209,12 @@ def test_should_return_404_when_deleting_nonexistent_device(client, mock_session
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Device not found"
+
+
+def test_should_return_404_when_listing_attachments_for_nonexistent_device(
+    client, mock_session
+):
+    mock_session.get.return_value = None
+    response = client.get("/api/devices/999/attachments", headers=AUTH_HEADERS)
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Device not found"
