@@ -6,7 +6,7 @@ import { Animated, Platform, useWindowDimensions, View } from 'react-native';
 import EventSource, { EventSourceEvent } from 'react-native-sse';
 
 import LeftPanel, { Message } from '@/components/LeftPanel';
-import RightPanel from '@/components/RightPanel';
+import RightPanel, { AvailableFile } from '@/components/RightPanel';
 import * as FileSystem from 'expo-file-system/legacy';
 
 const SERVER_URL = 'https://staging.asystent-serwisanta.pl';
@@ -29,8 +29,25 @@ type SourceChunkPayload = {
 };
 
 type AttachmentPayload = {
+	id?: number;
 	original_filename?: string;
 };
+
+type DeviceAttachmentPayload = {
+	id: number;
+	original_filename: string;
+};
+
+const HARDCODED_DEVICE_ID = 1;
+
+const FILE_ICON_OPTIONS = [
+	{ icon: 'file-pdf-box', color: '#EF4444' },
+	{ icon: 'file-document-outline', color: '#06B6D4' },
+	{ icon: 'lightning-bolt', color: '#EAB308' },
+	{ icon: 'cogs', color: '#A855F7' },
+	{ icon: 'wrench-outline', color: '#3B82F6' },
+	{ icon: 'shield-check-outline', color: '#22C55E' },
+];
 
 const parseStreamData = <T,>(data: string | null): T | string => {
 	if (!data) return '';
@@ -69,6 +86,8 @@ export default function ChatScreen() {
 	const [selectedPdf, setSelectedPdf] = useState<any>(null);
 	const [isListening, setIsListening] = useState<boolean>(false);
 	const [isLoading, setIsLoading] = useState<boolean>(true);
+	const [availableFiles, setAvailableFiles] = useState<AvailableFile[]>([]);
+	const [isAvailableFilesLoading, setIsAvailableFilesLoading] = useState<boolean>(true);
 
 	// --- STOP CONTROL STATES ---
 	const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -135,6 +154,60 @@ export default function ChatScreen() {
 			setCurrentSource(deviceName);
 		}
 	}, [deviceName]);
+
+	useEffect(() => {
+		const abortController = new AbortController();
+		const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
+
+		const fetchAvailableFiles = async () => {
+			setIsAvailableFilesLoading(true);
+
+			try {
+				const response = await fetch(
+					`${SERVER_URL}/api/devices/${HARDCODED_DEVICE_ID}/attachments`,
+					{
+						headers: {
+							Accept: 'application/json',
+							Authorization: `Bearer ${AUTH_TOKEN}`,
+						},
+						signal: abortController.signal,
+					},
+				);
+
+				if (!response.ok) {
+					throw new Error(`Failed to load attachments: ${response.status}`);
+				}
+
+				const attachments = (await response.json()) as DeviceAttachmentPayload[];
+				setAvailableFiles(
+					attachments.map((attachment, index) => {
+						const iconOption = FILE_ICON_OPTIONS[index % FILE_ICON_OPTIONS.length];
+
+						return {
+							id: attachment.id,
+							name: attachment.original_filename || `Dokument_${attachment.id}.pdf`,
+							icon: iconOption.icon,
+							color: iconOption.color,
+							remoteUrl: `${SERVER_URL}/api/attachments/${attachment.id}/file`,
+						};
+					}),
+				);
+			} catch (error: any) {
+				if (error.name !== 'AbortError') {
+					console.error('Available files load error:', error);
+					setAvailableFiles([]);
+				}
+			} finally {
+				if (!abortController.signal.aborted) {
+					setIsAvailableFilesLoading(false);
+				}
+			}
+		};
+
+		fetchAvailableFiles();
+
+		return () => abortController.abort();
+	}, []);
 
 	/**
 	 * Initial setup for the screen.
@@ -282,7 +355,7 @@ export default function ChatScreen() {
 						'Content-Type': 'application/json',
 					},
 					body: JSON.stringify({
-						device_id: 1,
+						device_id: HARDCODED_DEVICE_ID,
 						title: question.length > 40 ? `${question.substring(0, 40)}...` : question,
 					}),
 					signal: abortController.signal,
@@ -675,6 +748,8 @@ export default function ChatScreen() {
 				attachmentId={attachmentId}
 				attachmentName={attachmentName}
 				attachmentPage={attachmentPage}
+				availableFiles={availableFiles}
+				isAvailableFilesLoading={isAvailableFilesLoading}
 				hasAskedQuestion={messages.length > 1}
 				currentImage={currentImage}
 				isLoading={isLoading}
@@ -726,6 +801,8 @@ export default function ChatScreen() {
 				attachmentId={attachmentId}
 				attachmentName={attachmentName}
 				attachmentPage={attachmentPage}
+				availableFiles={availableFiles}
+				isAvailableFilesLoading={isAvailableFilesLoading}
 				hasAskedQuestion={messages.length > 1}
 				currentImage={currentImage}
 				isLoading={isLoading}

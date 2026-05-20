@@ -1,4 +1,4 @@
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+﻿import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
@@ -541,7 +541,7 @@ export default function HomeScreen() {
 							onPress={() => openChat(item)}
 							style={{ backgroundColor: PRIMARY_ORANGE }}
 							className='w-full py-4 rounded-[16px] flex-row justify-center items-center mt-1 z-10'>
-							<Text className='text-white font-bold text-[15px]'>WYBIERZ âž”</Text>
+							<Text className='text-white font-bold text-[15px]'>WYBIERZ</Text>
 						</TouchableOpacity>
 					)}
 				</View>
