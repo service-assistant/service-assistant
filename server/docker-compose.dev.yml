@@ -35,7 +35,7 @@ services:
     volumes:
       - ./app:/app/app
       - ./alembic:/app/alembic
-      - attachments:/attachments/images
+      - attachments:/attachments
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
       interval: 10s

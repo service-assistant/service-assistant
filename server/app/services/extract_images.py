@@ -17,6 +17,7 @@ def extract_page_images(doc, page, output_dir: Path) -> list[str]:
         if pix.n - pix.alpha > 3:
             pix = Pixmap(csRGB, pix)
 
+        output_dir.mkdir(parents=True, exist_ok=True)
         pix.save(str(image_path))
         image_paths.append(str(image_path))
 
@@ -66,6 +67,7 @@ def save_drawing_region(
         clip=combined_rect,
     )
 
+    output_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid.uuid4()}.png"
     image_path = output_dir / filename
 
