@@ -2,7 +2,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
 	ActivityIndicator,
 	Alert,
@@ -22,53 +22,6 @@ import { WebView } from 'react-native-webview';
 import type { Message } from './LeftPanel';
 import PdfViewer from './PdfViewer';
 
-// --- MOCK DATA ---
-
-const AVAILABLE_FILES = [
-	{
-		id: 1,
-		name: 'Instrukcja_Obslugi_Toyota.pdf',
-		icon: 'forklift',
-		color: '#06B6D4',
-		source: require('../assets/instrukcje.pdf'),
-	},
-	{
-		id: 2,
-		name: 'Schematy_Elektryczne.pdf',
-		icon: 'lightning-bolt',
-		color: '#EAB308',
-		source: require('../assets/instrukcje.pdf'),
-	},
-	{
-		id: 3,
-		name: 'Katalog_Czesci_2024.pdf',
-		icon: 'cogs',
-		color: '#A855F7',
-		source: require('../assets/instrukcje.pdf'),
-	},
-	{
-		id: 4,
-		name: 'Biuletyn_Serwisowy.pdf',
-		icon: 'wrench-outline',
-		color: '#3B82F6',
-		source: require('../assets/instrukcje.pdf'),
-	},
-	{
-		id: 5,
-		name: 'kody_awarii.pdf',
-		icon: 'alert-outline',
-		color: '#EF4444',
-		source: require('../assets/instrukcje.pdf'),
-	},
-	{
-		id: 6,
-		name: 'Instrukcja_BHP_Wozki.pdf',
-		icon: 'shield-check-outline',
-		color: '#22C55E',
-		source: require('../assets/instrukcje.pdf'),
-	},
-];
-
 const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
 const PRIMARY_ORANGE = '#FF7A00';
 const LISTENING_CYAN = '#06B6D4';
@@ -84,11 +37,21 @@ export interface PdfDocument {
 	page: number;
 }
 
+export interface AvailableFile {
+	id: number;
+	name: string;
+	icon: string;
+	color: string;
+	remoteUrl: string;
+}
+
 export interface RightPanelProps {
 	currentSource: string;
 	attachmentId: number | null;
 	attachmentName: string;
 	attachmentPage: number;
+	availableFiles: AvailableFile[];
+	isAvailableFilesLoading?: boolean;
 	hasAskedQuestion: boolean;
 	currentImage: string | null;
 	isLoading: boolean;
@@ -123,6 +86,8 @@ export default function RightPanel({
 	attachmentId,
 	attachmentName,
 	attachmentPage,
+	availableFiles,
+	isAvailableFilesLoading = false,
 	hasAskedQuestion,
 	currentImage,
 	isLoading: isApiLoading,
@@ -154,6 +119,7 @@ export default function RightPanel({
 	const downloadResumableRef = useRef<FileSystem.DownloadResumable | null>(null);
 	const webPdfObjectUrlRef = useRef<string | null>(null);
 	const [downloadingFileId, setDownloadingFileId] = useState<number | null>(null);
+	const [downloadedFileIds, setDownloadedFileIds] = useState<Set<number>>(new Set());
 	const [mobileMode, setMobileMode] = useState<'chat' | 'sources'>('chat');
 	const [keyboardHeight, setKeyboardHeight] = useState(0);
 	const micState = isGenerating ? 'processing' : isListening ? 'listening' : 'idle';
@@ -245,6 +211,72 @@ export default function RightPanel({
 		};
 	}, []);
 
+	const getLocalFilename = useCallback(
+		(file: AvailableFile) => `attachment-${file.id}-${file.name.replace(/[\\/:*?"<>|]/g, '_')}`,
+		[],
+	);
+
+	const getLocalFileUri = useCallback(
+		(file: AvailableFile) =>
+			FileSystem.documentDirectory
+				? `${FileSystem.documentDirectory}${getLocalFilename(file)}`
+				: null,
+		[getLocalFilename],
+	);
+
+	useEffect(() => {
+		let cancelled = false;
+
+		const syncDownloadedFiles = async () => {
+			if (!FileSystem.documentDirectory) return;
+
+			const downloadedIds = await Promise.all(
+				availableFiles.map(async (file) => {
+					const fileUri = getLocalFileUri(file);
+					if (!fileUri) return null;
+
+					const info = await FileSystem.getInfoAsync(fileUri);
+					return info.exists ? file.id : null;
+				}),
+			);
+
+			if (!cancelled) {
+				setDownloadedFileIds(
+					new Set(downloadedIds.filter((id): id is number => id !== null)),
+				);
+			}
+		};
+
+		syncDownloadedFiles();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [availableFiles, getLocalFileUri]);
+
+	const deleteDownloadedFile = async (file: AvailableFile) => {
+		try {
+			if (Platform.OS !== 'web') {
+				const fileUri = getLocalFileUri(file);
+				if (fileUri) {
+					const info = await FileSystem.getInfoAsync(fileUri);
+					if (info.exists) {
+						await FileSystem.deleteAsync(fileUri, { idempotent: true });
+					}
+				}
+			}
+
+			setDownloadedFileIds((prev) => {
+				const next = new Set(prev);
+				next.delete(file.id);
+				return next;
+			});
+		} catch (error) {
+			console.error('Delete downloaded file error:', error);
+			Alert.alert('Błąd', `Nie udało się usunąć pliku: ${file.name}`);
+		}
+	};
+
 	/**
 	 * Generates HTML for an inverted image view (useful for dark mode schemas).
 	 *
@@ -288,9 +320,6 @@ export default function RightPanel({
 		setDownloadingFileId(fileIdForGrid);
 
 		try {
-			// Artificial delay to simulate processing or network latency
-			await new Promise((resolve) => setTimeout(resolve, 3000));
-
 			if (Platform.OS === 'web') {
 				if (webPdfObjectUrlRef.current) {
 					URL.revokeObjectURL(webPdfObjectUrlRef.current);
@@ -318,7 +347,7 @@ export default function RightPanel({
 					page: targetPage,
 				});
 			} else {
-				const fileUri = FileSystem.documentDirectory + localFilename;
+				const fileUri = `${FileSystem.documentDirectory}${localFilename}`;
 
 				downloadResumableRef.current = FileSystem.createDownloadResumable(
 					remoteUrl,
@@ -341,6 +370,10 @@ export default function RightPanel({
 					throw new Error('Download failed - no URI');
 				}
 			}
+
+			if (fileIdForGrid !== null) {
+				setDownloadedFileIds((prev) => new Set(prev).add(fileIdForGrid));
+			}
 		} catch (e) {
 			console.error('Download error:', e);
 			Alert.alert('Błąd', `Nie udało się pobrać pliku: ${displayName}`);
@@ -352,10 +385,107 @@ export default function RightPanel({
 	};
 
 	/**
-	 * Triggered when a file from the mock grid is selected.
+	 * Triggered when a file from the grid is selected.
 	 */
-	const handleFileGridPress = async (file: (typeof AVAILABLE_FILES)[0]) => {
-		await performDownload(dynamicPdfUrl, dynamicFileName, file.name, file.id, 1);
+	const handleFileGridPress = async (file: AvailableFile) => {
+		const localFileUri = getLocalFileUri(file);
+
+		if (downloadedFileIds.has(file.id) && localFileUri) {
+			setShowSchema(false);
+			onSelectPdf({
+				name: file.name,
+				icon: 'file-download',
+				color: '#22C55E',
+				source: { uri: localFileUri },
+				page: 1,
+			});
+			return;
+		}
+
+		await performDownload(file.remoteUrl, getLocalFilename(file), file.name, file.id, 1);
+	};
+
+	const renderFileGrid = (compact = false) => {
+		if (isAvailableFilesLoading) {
+			return (
+				<View className='flex-1 items-center justify-center py-10'>
+					<ActivityIndicator size='large' color={PRIMARY_ORANGE} />
+				</View>
+			);
+		}
+
+		if (availableFiles.length === 0) {
+			return (
+				<View className='flex-1 items-center justify-center py-10 px-4'>
+					<Text className='text-neutral-500 text-center'>
+						Brak plików dla tego urządzenia.
+					</Text>
+				</View>
+			);
+		}
+
+		return (
+			<View
+				className={
+					compact
+						? 'flex-row flex-wrap justify-between gap-y-4'
+						: 'flex-row flex-wrap justify-center gap-4 px-4'
+				}>
+				{availableFiles.map((file) => {
+					const isThisFileDownloading = isDownloading && downloadingFileId === file.id;
+					const isDownloaded = downloadedFileIds.has(file.id);
+
+					return (
+						<TouchableOpacity
+							key={file.id}
+							onPress={() => handleFileGridPress(file)}
+							disabled={isDownloading}
+							className={`${compact ? 'w-[48%] aspect-square p-5' : 'w-[30%] py-5 px-3'} border rounded-2xl items-center justify-center bg-[#141418] border-[#26262C] relative`}>
+							{isDownloaded ? (
+								<TouchableOpacity
+									onPress={() => deleteDownloadedFile(file)}
+									disabled={isDownloading}
+									className='absolute top-2 right-2 w-7 h-7 rounded-full bg-black/80 border border-white/15 items-center justify-center z-10'>
+									<Feather name='x' size={16} color='#C9CDD3' />
+								</TouchableOpacity>
+							) : null}
+
+							<View className='w-20 h-20 items-center justify-center relative'>
+								<MaterialCommunityIcons
+									name={file.icon as any}
+									size={compact ? 58 : 56}
+									color={file.color}
+									style={{ opacity: compact || isDownloaded ? 1 : 0.2 }}
+								/>
+								{compact || isDownloaded ? null : (
+									<View className='absolute inset-0 items-center justify-center'>
+										{isThisFileDownloading ? (
+											<ActivityIndicator size='large' color='#fff' />
+										) : (
+											<Feather name='download-cloud' size={28} color='#fff' />
+										)}
+									</View>
+								)}
+							</View>
+
+							{compact && isThisFileDownloading ? (
+								<ActivityIndicator
+									size='large'
+									color={file.color}
+									className='absolute'
+								/>
+							) : null}
+
+							<Text
+								className={`${compact ? 'text-xs mt-4' : 'text-[13px] mt-4 leading-4'} font-semibold text-center text-[#C9CDD3]`}
+								numberOfLines={2}>
+								{file.name}
+							</Text>
+						</TouchableOpacity>
+					);
+				})}
+			</View>
+		);
 	};
 
 	/**
@@ -600,37 +730,7 @@ export default function RightPanel({
 								paddingBottom: mobileControlsHeight + mobileBottomInset + 24,
 							}}
 							showsVerticalScrollIndicator={false}>
-							<View className='flex-row flex-wrap justify-between gap-y-4'>
-								{AVAILABLE_FILES.map((file) => {
-									const isThisFileDownloading =
-										isDownloading && downloadingFileId === file.id;
-									return (
-										<TouchableOpacity
-											key={file.id}
-											onPress={() => handleFileGridPress(file)}
-											disabled={isDownloading}
-											className='rounded-2xl p-5 items-center w-[48%] aspect-square justify-center relative border border-white/10 bg-[#141418]'>
-											{isThisFileDownloading ? (
-												<ActivityIndicator
-													size='large'
-													color={file.color}
-												/>
-											) : (
-												<MaterialCommunityIcons
-													name={file.icon as any}
-													size={58}
-													color={file.color}
-												/>
-											)}
-											<Text
-												className='text-[#C9CDD3] text-xs font-semibold mt-4 text-center'
-												numberOfLines={2}>
-												{file.name}
-											</Text>
-										</TouchableOpacity>
-									);
-								})}
-							</View>
+							{renderFileGrid(true)}
 						</ScrollView>
 					)}
 
@@ -883,52 +983,7 @@ export default function RightPanel({
 					</View>
 				) : (
 					<ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-						<View className='flex-row flex-wrap justify-center gap-4 px-4'>
-							{AVAILABLE_FILES.map((file) => {
-								const isThisFileDownloading =
-									isDownloading && downloadingFileId === file.id;
-
-								return (
-									<TouchableOpacity
-										key={file.id}
-										onPress={() => handleFileGridPress(file)}
-										disabled={isDownloading}
-										className='w-[30%] border rounded-2xl items-center justify-center py-5 px-3 bg-[#141418] border-[#26262C] relative'>
-										{isThisFileDownloading && (
-											<Text className='absolute top-2 text-[#FF7A00] font-bold text-[9px] tracking-widest uppercase'>
-												POBIERANIE...
-											</Text>
-										)}
-
-										<View className='w-20 h-20 items-center justify-center relative'>
-											<MaterialCommunityIcons
-												name={file.icon as any}
-												size={56}
-												color={file.color}
-												style={{ opacity: 0.2 }}
-											/>
-											<View className='absolute inset-0 items-center justify-center'>
-												{isThisFileDownloading ? (
-													<ActivityIndicator size='large' color='#fff' />
-												) : (
-													<Feather
-														name='download-cloud'
-														size={28}
-														color='#fff'
-													/>
-												)}
-											</View>
-										</View>
-
-										<Text
-											className='font-semibold mt-4 text-[13px] text-center leading-4 text-[#C9CDD3]'
-											numberOfLines={2}>
-											{file.name}
-										</Text>
-									</TouchableOpacity>
-								);
-							})}
-						</View>
+						{renderFileGrid()}
 					</ScrollView>
 				)}
 			</View>
