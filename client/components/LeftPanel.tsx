@@ -53,20 +53,23 @@ interface LeftPanelProps {
 	logoUrl?: string;
 }
 
-/**
- * Helper function to format basic markdown.
- * Currently supports bold text enclosed in double asterisks (**text**).
- *
- * @param text - The raw text string to format.
- * @returns An array of styled Text components.
- */
-const renderFormattedText = (text: string) => {
-	if (!text) return null;
+const messageTextStyle = { color: '#E7E9EF', fontSize: 14, lineHeight: 20 };
+const sectionTitleStyle = {
+	color: '#FFFFFF',
+	fontSize: 14,
+	fontWeight: '800' as const,
+	marginTop: 10,
+	marginBottom: 4,
+};
 
+const renderInlineFormattedText = (
+	text: string,
+	style: typeof messageTextStyle | typeof sectionTitleStyle,
+) => {
 	const parts = text.split(/(\*\*.*?\*\*)/g);
 
 	return (
-		<Text className='text-slate-300 text-[14px] leading-5'>
+		<Text style={style}>
 			{parts.map((part, index) => {
 				if (part.startsWith('**') && part.endsWith('**')) {
 					return (
@@ -78,6 +81,42 @@ const renderFormattedText = (text: string) => {
 				return <Text key={index}>{part}</Text>;
 			})}
 		</Text>
+	);
+};
+
+const isListItem = (line: string) => /^(\d+[\.)]|[-•])\s+/.test(line.trim());
+const isSectionTitle = (line: string, nextLine?: string) => {
+	const trimmed = line.trim().replace(/\*\*/g, '');
+	const nextTrimmed = nextLine?.trim() || '';
+
+	if (!trimmed || isListItem(trimmed)) return false;
+	if (trimmed.length > 70) return false;
+
+	return trimmed.endsWith(':') || isListItem(nextTrimmed);
+};
+
+const renderFormattedText = (text: string) => {
+	if (!text) return null;
+
+	const lines = text.split('\n');
+
+	return (
+		<View>
+			{lines.map((line, index) => {
+				if (!line.trim()) return <View key={index} style={{ height: 8 }} />;
+
+				const sectionTitle = isSectionTitle(line, lines[index + 1]);
+
+				return (
+					<View key={index}>
+						{renderInlineFormattedText(
+							sectionTitle ? line.replace(/:$/, '') : line,
+							sectionTitle ? sectionTitleStyle : messageTextStyle,
+						)}
+					</View>
+				);
+			})}
+		</View>
 	);
 };
 
@@ -192,7 +231,7 @@ const ListeningPulse = () => {
 	return (
 		<Animated.View
 			style={{ transform: [{ scale }], opacity }}
-			className='absolute w-full h-full rounded-[16px] border-2 border-[#06B6D4]'
+			className='absolute w-full h-full rounded-[12px] border-2 border-[#06B6D4]'
 		/>
 	);
 };
@@ -252,6 +291,16 @@ export default function LeftPanel({
 						label: 'NACIŚNIJ ŻEBY MÓWIĆ',
 						labelColor: 'rgba(229, 231, 235, 0.78)',
 					};
+	const bottomBar = {
+		gap: 10,
+		paddingHorizontal: 18,
+		paddingVertical: 11,
+		sideBtnSize: 76,
+		centerBtnSize: 96,
+		sideIconSize: 34,
+		centerIconSize: 50,
+		centerColumnWidth: 140,
+	};
 
 	return (
 		<View className='w-[32%] h-full flex flex-col'>
@@ -285,18 +334,31 @@ export default function LeftPanel({
 			<View
 				className='flex-1 rounded-2xl flex-col overflow-hidden relative'
 				style={{
-					backgroundColor: 'rgba(18, 18, 22, 0.92)',
+					backgroundColor: '#050506',
 					borderWidth: 1,
 					borderColor: 'rgba(255, 122, 0, 0.35)',
 					shadowColor: PRIMARY_ORANGE,
 					shadowOpacity: 0.1,
 					shadowRadius: 24,
 				}}>
-				<View className='p-4 border-b border-neutral-800 flex-row items-center bg-[#0d0d0f]'>
-					<View className='w-12 h-12 rounded-md border border-[#FF7A00]/50 items-center justify-center mr-3'>
+				<View
+					className='flex-row items-center bg-black'
+					style={{
+						height: 64,
+						paddingHorizontal: 18,
+						borderBottomWidth: 1,
+						borderBottomColor: 'rgba(255,255,255,0.06)',
+					}}>
+					<View
+						className='border border-[#FF7A00]/50 items-center justify-center mr-3'
+						style={{
+							width: 42,
+							height: 42,
+							borderRadius: 10,
+						}}>
 						<Image
 							source={require('../assets/images/robot.png')}
-							style={{ width: 32, height: 32, tintColor: PRIMARY_ORANGE }}
+							style={{ width: 28, height: 28, tintColor: PRIMARY_ORANGE }}
 							resizeMode='contain'
 						/>
 					</View>
@@ -320,25 +382,52 @@ export default function LeftPanel({
 						onContentSizeChange={() =>
 							scrollViewRef.current?.scrollToEnd({ animated: true })
 						}
-						className='flex-1 p-4'>
-						<View className='flex flex-col gap-4 pb-4'>
+						className='flex-1'
+						contentContainerStyle={{
+							paddingHorizontal: 24,
+							paddingTop: 16,
+							paddingBottom: 210,
+						}}>
+						<View className='flex flex-col gap-4'>
 							{messages.map((msg) => {
 								if (msg.sender === 'ai' && !msg.text) return null;
 
 								return msg.sender === 'ai' ? (
 									<View
 										key={msg.id}
-										className='bg-[#1E1E22] rounded-2xl rounded-tl-sm px-4 py-3 self-start max-w-[90%]'>
+										className='self-start'
+										style={{
+											maxWidth: '86%',
+											backgroundColor: 'rgba(24, 25, 31, 0.96)',
+											borderRadius: 14,
+											paddingHorizontal: 16,
+											paddingVertical: 12,
+											borderWidth: 1,
+											borderColor: 'rgba(255,255,255,0.055)',
+										}}>
 										{renderFormattedText(msg.text)}
 									</View>
 								) : (
 									<View
 										key={msg.id}
-										className='bg-[#B45309] rounded-2xl rounded-tr-sm px-4 py-3 self-end max-w-[90%]'>
+										style={{
+											maxWidth: '82%',
+											alignSelf: 'flex-end',
+											marginRight: 14,
+											backgroundColor: '#D96A00',
+											borderRadius: 14,
+											paddingHorizontal: 14,
+											paddingVertical: 10,
+										}}>
 										{msg.isSpeaking ? (
 											<SoundWaveformIndicator soundLevel={soundLevelAnim} />
 										) : (
-											<Text className='text-white text-[14px] leading-5'>
+											<Text
+												style={{
+													color: '#E7E9EF',
+													fontSize: 14,
+													lineHeight: 20,
+												}}>
 												{msg.text}
 											</Text>
 										)}
@@ -349,6 +438,20 @@ export default function LeftPanel({
 						</View>
 					</ScrollView>
 				</View>
+
+				<View
+					pointerEvents='none'
+					className='absolute left-0 right-0 bottom-0'
+					style={{
+						height: 160,
+						backgroundColor: 'rgba(0,0,0,0.72)',
+						shadowColor: '#000',
+						shadowOffset: { width: 0, height: -12 },
+						shadowOpacity: 0.42,
+						shadowRadius: 28,
+						elevation: 8,
+					}}
+				/>
 
 				{messages.length <= 1 ? (
 					<View className='px-4 pb-3'>
@@ -372,66 +475,101 @@ export default function LeftPanel({
 
 				{/* Input controls */}
 				<View
-					className='mx-5 mb-5 p-4 flex-col rounded-3xl'
+					className='absolute flex-col items-center justify-center'
 					style={{
-						backgroundColor: 'rgba(22, 22, 26, 0.96)',
-						borderWidth: 1,
-						borderColor: 'rgba(255, 255, 255, 0.06)',
-						shadowColor: '#000',
-						shadowOffset: { width: 0, height: 8 },
-						shadowOpacity: 0.35,
-						shadowRadius: 28,
-						elevation: 1,
+						left: 24,
+						right: 24,
+						bottom: 18,
+						height: 112,
+						borderRadius: 56,
 					}}>
-					<View className='flex-row justify-center items-center gap-4'>
-						<TouchableOpacity className='w-16 h-16 bg-[#1F1F24]/90 border border-white/10 rounded-[14px] items-center justify-center'>
+					<View
+						className='flex-row items-center justify-center overflow-hidden'
+						style={{
+							height: 112,
+							borderRadius: 56,
+							borderWidth: 0,
+							paddingHorizontal: bottomBar.paddingHorizontal,
+							paddingVertical: bottomBar.paddingVertical,
+							gap: bottomBar.gap,
+							shadowOpacity: 0,
+							shadowRadius: 0,
+							elevation: 0,
+							backgroundColor: 'transparent',
+						}}>
+						<TouchableOpacity
+							activeOpacity={1}
+							className='rounded-[12px] items-center justify-center'
+							style={{
+								width: bottomBar.sideBtnSize,
+								height: bottomBar.sideBtnSize,
+								backgroundColor: 'rgba(31, 31, 36, 0.88)',
+								borderWidth: 1,
+								borderColor: 'rgba(255, 255, 255, 0.08)',
+							}}>
 							<Image
 								source={require('../assets/images/camera.png')}
-								style={{ width: 28, height: 28, tintColor: '#D4D4D8' }}
+								style={{
+									width: bottomBar.sideIconSize,
+									height: bottomBar.sideIconSize,
+									tintColor: '#D4D4D8',
+								}}
 								resizeMode='contain'
 							/>
 						</TouchableOpacity>
 
-						<View className='items-center flex-col gap-2'>
+						<View
+							className='items-center flex-col gap-2'
+							style={{ width: bottomBar.centerColumnWidth }}>
 							<TouchableOpacity
 								onPressIn={!isGenerating ? onMicPress : undefined}
 								onPress={isGenerating ? onStop : undefined}
-								className='w-[88px] h-[88px] rounded-[16px] items-center justify-center'
+								className='rounded-[12px] items-center justify-center'
 								style={{
+									width: bottomBar.centerBtnSize,
+									height: bottomBar.centerBtnSize,
 									backgroundColor: micStyle.backgroundColor,
 									borderWidth: 1,
 									borderColor: micStyle.borderColor,
-									shadowColor: micStyle.shadowColor,
-									shadowOpacity: micStyle.shadowOpacity,
-									shadowRadius: micStyle.shadowRadius,
+									shadowOpacity: 0,
+									shadowRadius: 0,
+									elevation: 0,
 								}}>
 								{isListening && !isGenerating ? <ListeningPulse /> : null}
 
 								{isGenerating ? (
 									<MaterialCommunityIcons
 										name='stop'
-										size={46}
+										size={bottomBar.centerIconSize}
 										color={micStyle.iconColor}
 									/>
 								) : (
 									<Image
 										source={require('../assets/images/micro.png')}
 										style={{
-											width: 42,
-											height: 42,
+											width: bottomBar.centerIconSize,
+											height: bottomBar.centerIconSize,
 											tintColor: micStyle.iconColor,
 										}}
 										resizeMode='contain'
 									/>
 								)}
 							</TouchableOpacity>
-							<View className='flex-row items-center'>
+							<View className='flex-row items-center justify-center mt-1'>
 								{isListening && !isGenerating ? (
 									<View className='w-1.5 h-1.5 rounded-full mr-2 bg-[#06B6D4]' />
 								) : null}
 								<Text
-									className='text-[11px] font-bold'
-									style={{ color: micStyle.labelColor, letterSpacing: 0.8 }}>
+									className='text-center text-[11px] sm:text-xs font-bold'
+									style={{
+										color: micStyle.labelColor,
+										letterSpacing: 0.8,
+										textShadowColor: 'rgba(0, 0, 0, 0.8)',
+										textShadowOffset: { width: 0, height: 1 },
+										textShadowRadius: 3,
+									}}
+									numberOfLines={1}
+									adjustsFontSizeToFit>
 									{isGenerating ? 'NACIŚNIJ ABY ZATRZYMAĆ' : micStyle.label}
 								</Text>
 							</View>
@@ -439,16 +577,24 @@ export default function LeftPanel({
 
 						<TouchableOpacity
 							onPress={() => setShowTextInput(!showTextInput)}
-							className={`w-16 h-16 border rounded-[14px] items-center justify-center ${
-								showTextInput
-									? 'bg-[#2A1100] border-[#FF7A00]/70'
-									: 'bg-[#1F1F24]/90 border-white/10'
-							}`}>
+							activeOpacity={1}
+							className='rounded-[12px] items-center justify-center'
+							style={{
+								width: bottomBar.sideBtnSize,
+								height: bottomBar.sideBtnSize,
+								backgroundColor: showTextInput
+									? 'rgba(42, 17, 0, 0.92)'
+									: 'rgba(31, 31, 36, 0.88)',
+								borderWidth: 1,
+								borderColor: showTextInput
+									? 'rgba(255, 122, 0, 0.7)'
+									: 'rgba(255, 255, 255, 0.08)',
+							}}>
 							<Image
 								source={require('../assets/images/writing.png')}
 								style={{
-									width: 28,
-									height: 28,
+									width: bottomBar.sideIconSize,
+									height: bottomBar.sideIconSize,
 									tintColor: showTextInput ? PRIMARY_ORANGE : '#D4D4D8',
 								}}
 								resizeMode='contain'
@@ -457,7 +603,7 @@ export default function LeftPanel({
 					</View>
 
 					{showTextInput ? (
-						<View className='flex-row w-full mt-6 items-center gap-2'>
+						<View className='flex-row w-full mt-4 items-center gap-2'>
 							<TextInput
 								className='flex-1 bg-[#1A1A1D] border border-neutral-800 text-slate-200 px-4 py-3 rounded-xl text-sm'
 								placeholder='Wpisz swoje pytanie...'
