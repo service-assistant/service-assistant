@@ -7,6 +7,14 @@ from app.config import Settings
 from app.services.llm import _build_context, stream_query
 
 
+def make_mock_session():
+    session = AsyncMock()
+    mock_result = MagicMock()
+    mock_result.all.return_value = []
+    session.scalars.return_value = mock_result
+    return session
+
+
 def make_settings() -> Settings:
     return Settings(
         env="test",
@@ -84,7 +92,11 @@ async def test_should_return_llm_response_content():
         chunks = [
             chunk
             async for chunk in stream_query(
-                "What is error E-23?", ["Fault E-23 means..."], settings
+                make_mock_session(),
+                1,
+                "What is error E-23?",
+                ["Fault E-23 means..."],
+                settings,
             )
         ]
 
@@ -99,7 +111,12 @@ async def test_should_skip_none_delta_chunks():
     mock_client.chat.completions.create = make_stream_mock([None, "real content", None])
 
     with patch("app.services.llm.AsyncOpenAI", return_value=mock_client):
-        chunks = [chunk async for chunk in stream_query("test question", [], settings)]
+        chunks = [
+            chunk
+            async for chunk in stream_query(
+                make_mock_session(), 1, "test question", [], settings
+            )
+        ]
 
     assert chunks == ["real content"]
 
@@ -111,11 +128,13 @@ async def test_should_pass_question_and_context_to_llm():
     mock_client.chat.completions.create = make_stream_mock(["Answer"])
 
     with patch("app.services.llm.AsyncOpenAI", return_value=mock_client):
-        async for _ in stream_query("My question", ["context chunk"], settings):
+        async for _ in stream_query(
+            make_mock_session(), 1, "My question", ["context chunk"], settings
+        ):
             pass
 
     call_kwargs = mock_client.chat.completions.create.call_args.kwargs
     messages = call_kwargs["messages"]
-    user_message = messages[1]["content"]
+    user_message = messages[-1]["content"]
     assert "My question" in user_message
     assert "context chunk" in user_message
