@@ -5,7 +5,6 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-# from sqlmodel import select
 
 from ..config import Settings
 from ..models import Message
@@ -80,8 +79,6 @@ async def stream_query(
     recent_thread_messages = await _recent_thread_messages(session, thread_id, 16)
     history_messages = _build_history_messages(recent_thread_messages)
     messages = _messages(question, context_text, history_messages)
-
-    print(messages)
 
     stream = await client.chat.completions.create(
         model=settings.openai_chat_model,
