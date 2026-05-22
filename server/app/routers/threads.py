@@ -1,11 +1,11 @@
 import json
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
-from typing import Annotated
 
 from app.config import Settings, get_settings
 from app.database import get_session
@@ -110,7 +110,7 @@ async def create_message(
         sender=MessageSender.user,
     )
     session.add(user_message)
-    await session.commit()
+    await session.flush()
 
     embedded_question = await embedding.embed_question(body.content, settings)
     close_chunks = await embedding.get_close_chunks(
@@ -121,7 +121,9 @@ async def create_message(
     async def event_stream():
         answer_parts: list[str] = []
 
-        async for chunk in llm.stream_query(body.content, context_chunks, settings):
+        async for chunk in llm.stream_query(
+            session, thread.id, body.content, context_chunks, settings
+        ):
             answer_parts.append(chunk)
             yield f"event: chunk\ndata: {json.dumps(chunk)}\n\n"
 
@@ -159,9 +161,10 @@ async def list_messages(thread_id: int, session: AsyncSession = Depends(get_sess
     thread = await session.get(ChatThread, thread_id)
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
-    result = await session.execute(
-        select(Message)
-        .where(Message.thread_id == thread_id)
-        .order_by(col(Message.created_at))
-    )
-    return result.scalars().all()
+    return (
+        await session.scalars(
+            select(Message)
+            .where(Message.thread_id == thread_id)
+            .order_by(col(Message.created_at))
+        )
+    ).all()

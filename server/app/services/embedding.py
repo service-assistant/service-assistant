@@ -1,10 +1,12 @@
 from typing import TypedDict
 
 from openai import AsyncAzureOpenAI
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+# from sqlmodel import select
 
 from ..config import Settings
+from ..models import AttachmentDevice, Chunk
 
 
 class RetrievedChunk(TypedDict):
@@ -29,36 +31,23 @@ async def embed_question(question: str, settings: Settings) -> list[float]:
 async def get_close_chunks(
     session: AsyncSession,
     embedded_vector: list[float],
-    device_id: int | None = None,
+    device_id: int,
 ) -> list[RetrievedChunk]:
-    if device_id is not None:
-        query = text("""
-            SELECT c.id, c.content, c.attachment_id, c.metadata
-            FROM chunks c
-            JOIN attachments_devices ad ON c.attachment_id = ad.attachment_id
-            WHERE ad.device_id = :device_id
-            ORDER BY c.embedding <-> :vector
-            LIMIT 5
-        """)
-        result = await session.execute(
-            query, {"vector": str(embedded_vector), "device_id": device_id}
-        )
-    else:
-        query = text("""
-            SELECT id, content, attachment_id, metadata
-            FROM chunks
-            ORDER BY embedding <-> :vector
-            LIMIT 5
-        """)
-        result = await session.execute(query, {"vector": str(embedded_vector)})
+    result = await session.scalars(
+        select(Chunk)
+        .join(AttachmentDevice, AttachmentDevice.attachment_id == Chunk.attachment_id)
+        .where(AttachmentDevice.device_id == device_id)
+        .order_by(Chunk.embedding.op("<->")(embedded_vector))
+        .limit(5)
+    )
+    chunks = result.all()
 
-    rows = result.fetchall()
     return [
         {
-            "id": row[0],
-            "content": row[1],
-            "attachment_id": row[2],
-            "extra_metadata": row[3],
+            "id": chunk.id,
+            "content": chunk.content,
+            "attachment_id": chunk.attachment_id,
+            "extra_metadata": chunk.extra_metadata,
         }
-        for row in rows
+        for chunk in chunks
     ]

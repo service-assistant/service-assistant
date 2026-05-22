@@ -3,8 +3,12 @@ from typing import Final
 
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+# from sqlmodel import select
 
 from ..config import Settings
+from ..models import Message
 
 SYSTEM_PROMPT: Final[str] = """
 Jesteś pomocnym asystentem serwisowym.
@@ -31,9 +35,31 @@ def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
     return "\n".join(parts) if parts else "No relevant context found."
 
 
-def _messages(question: str, context_text: str) -> list[ChatCompletionMessageParam]:
+async def _recent_thread_messages(
+    session: AsyncSession, thread_id: int, limit: int
+) -> list[Message]:
+    return (
+        await session.scalars(
+            select(Message)
+            .where(Message.thread_id == thread_id)
+            .order_by(Message.created_at)
+            .limit(limit)
+        )
+    ).all()
+
+
+def _build_history_messages(
+    messages: list[Message],
+) -> list[ChatCompletionMessageParam]:
+    return [{"role": m.sender, "content": m.content} for m in messages]
+
+
+def _messages(
+    question: str, context_text: str, history_messages: list[ChatCompletionMessageParam]
+) -> list[ChatCompletionMessageParam]:
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
+        *history_messages,
         {
             "role": "user",
             "content": f"Context:\n{context_text}\n\nQuestion:\n{question}\n\nAnswer in Polish.",
@@ -42,16 +68,26 @@ def _messages(question: str, context_text: str) -> list[ChatCompletionMessagePar
 
 
 async def stream_query(
-    question: str, chunks: list[str], settings: Settings
+    session: AsyncSession,
+    thread_id: int,
+    question: str,
+    chunks: list[str],
+    settings: Settings,
 ) -> AsyncGenerator[str, None]:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     context_text = _build_context(chunks)
+
+    recent_thread_messages = await _recent_thread_messages(session, thread_id, 16)
+    history_messages = _build_history_messages(recent_thread_messages)
+    messages = _messages(question, context_text, history_messages)
+
+    print(messages)
 
     stream = await client.chat.completions.create(
         model=settings.openai_chat_model,
         stream=True,
         temperature=0.2,
-        messages=_messages(question, context_text),
+        messages=messages,
     )
 
     async for event in stream:

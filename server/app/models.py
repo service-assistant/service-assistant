@@ -3,9 +3,10 @@ from enum import Enum
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, String
+from sqlalchemy import Column
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlmodel import Field, SQLModel, Relationship
+from sqlmodel import Field, Relationship, SQLModel
 
 EMBEDDING_DIMENSIONS = 1536
 
@@ -138,7 +139,7 @@ class Message(SQLModel, table=True):
     content: str
     thread_id: int = Field(foreign_key="chat_threads.id", ondelete="CASCADE")
     image_url: str | None = None
-    sender: MessageSender = Field(sa_type=String)
+    sender: MessageSender = Field(sa_column=Column(SAEnum(MessageSender)))
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
