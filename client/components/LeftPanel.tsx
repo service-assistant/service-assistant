@@ -1,23 +1,37 @@
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
 	Animated,
-	Easing,
 	Image,
 	ScrollView,
 	Text,
 	TextInput,
 	TouchableOpacity,
 	View,
+	Platform,
 } from 'react-native';
 
 const PRIMARY_ORANGE = '#FF7A00';
 const LISTENING_CYAN = '#06B6D4';
 const PROCESSING_VIOLET = '#8B5CF6';
+const CHAT_PANEL_BLUR_PROPS =
+	Platform.OS === 'android'
+		? ({
+				intensity: 10,
+				blurReductionFactor: 4,
+				experimentalBlurMethod: 'dimezisBlurView',
+			} as const)
+		: { intensity: 40 };
+const CHAT_PANEL_BACKGROUND =
+	Platform.OS === 'android' ? 'rgba(18, 18, 22, 0.82)' : 'rgba(24, 24, 28, 0.76)';
+const CHAT_CORNER_MASK_SIZE = 18;
+const HEADER_LOGO_HEIGHT = 22;
+const HEADER_LOGO_FALLBACK_WIDTH = 110;
 
 const QUICK_PROMPTS = [
-	'Jak sprawdzić błąd?',
+	'Jak naprawić pompę',
 	'Pokaż schemat elektryczny',
 	'Jak wykonać podstawowy serwis?',
 	'Jakie części pasują?',
@@ -38,7 +52,6 @@ export interface Message {
  */
 interface LeftPanelProps {
 	messages: Message[];
-	isLoading: boolean;
 	isListening: boolean;
 	onMicPress: () => void;
 	soundLevelAnim: Animated.Value;
@@ -150,61 +163,6 @@ const SoundWaveformIndicator = ({ soundLevel }: { soundLevel: Animated.Value }) 
 };
 
 /**
- * Animated three-dot typing indicator for the AI bot.
- */
-const BotTypingAnimation = () => {
-	const dot1 = useRef(new Animated.Value(0)).current;
-	const dot2 = useRef(new Animated.Value(0)).current;
-	const dot3 = useRef(new Animated.Value(0)).current;
-
-	useEffect(() => {
-		const animateDot = (v: Animated.Value, delay: number) => {
-			return Animated.loop(
-				Animated.sequence([
-					Animated.delay(delay),
-					Animated.timing(v, {
-						toValue: -6,
-						duration: 400,
-						easing: Easing.bezier(0.4, 0, 0.6, 1),
-						useNativeDriver: true,
-					}),
-					Animated.timing(v, {
-						toValue: 0,
-						duration: 400,
-						easing: Easing.bezier(0.4, 0, 0.6, 1),
-						useNativeDriver: true,
-					}),
-				]),
-			);
-		};
-
-		const animation = Animated.parallel([
-			animateDot(dot1, 0),
-			animateDot(dot2, 200),
-			animateDot(dot3, 400),
-		]);
-
-		animation.start();
-		return () => animation.stop();
-	}, [dot1, dot2, dot3]);
-
-	return (
-		<View className='bg-[#1E1E22] rounded-2xl rounded-tl-sm px-5 py-4 self-start flex-row items-center'>
-			{[dot1, dot2, dot3].map((v, i) => (
-				<Animated.View
-					key={i}
-					style={{ transform: [{ translateY: v }] }}
-					className='w-1.5 h-1.5 bg-[#CC5500] rounded-full mx-0.5'
-				/>
-			))}
-			<Text className='text-slate-400 text-[10px] ml-3 font-bold tracking-widest uppercase'>
-				Przetwarzanie...
-			</Text>
-		</View>
-	);
-};
-
-/**
  * Animated pulsing ring around the microphone button while listening.
  */
 const ListeningPulse = () => {
@@ -241,7 +199,6 @@ const ListeningPulse = () => {
  */
 export default function LeftPanel({
 	messages,
-	isLoading,
 	isListening,
 	onMicPress,
 	soundLevelAnim,
@@ -256,6 +213,7 @@ export default function LeftPanel({
 	logoUrl,
 }: LeftPanelProps) {
 	const scrollViewRef = useRef<ScrollView>(null);
+	const [logoAspectRatio, setLogoAspectRatio] = useState<number | null>(null);
 	const router = useRouter();
 	const micState = isGenerating ? 'processing' : isListening ? 'listening' : 'idle';
 	const micStyle =
@@ -282,11 +240,11 @@ export default function LeftPanel({
 						labelColor: '#FFFFFF',
 					}
 				: {
-						backgroundColor: 'rgba(34, 34, 38, 0.92)',
-						borderColor: 'rgba(255, 122, 0, 0.22)',
-						shadowColor: '#000000',
-						shadowOpacity: 0,
-						shadowRadius: 0,
+						backgroundColor: 'rgba(34, 34, 38, 0.9)',
+						borderColor: 'rgba(255, 122, 0, 0.3)',
+						shadowColor: PRIMARY_ORANGE,
+						shadowOpacity: 0.1,
+						shadowRadius: 10,
 						iconColor: '#E8E8E8',
 						label: 'NACIŚNIJ ŻEBY MÓWIĆ',
 						labelColor: 'rgba(229, 231, 235, 0.78)',
@@ -299,8 +257,48 @@ export default function LeftPanel({
 		centerBtnSize: 96,
 		sideIconSize: 34,
 		centerIconSize: 50,
-		centerColumnWidth: 140,
+		centerColumnWidth: 160,
 	};
+	const controlsBottom = 8;
+	const controlsLabelGap = 8;
+	const controlsLabelHeight = 14;
+	const controlsBarHeight =
+		bottomBar.centerBtnSize +
+		controlsLabelGap +
+		controlsLabelHeight +
+		bottomBar.paddingVertical * 2;
+	const textInputRowHeight = 54;
+	const textInputTopMargin = 6;
+	const controlsHeight = showTextInput
+		? controlsBarHeight + textInputTopMargin + textInputRowHeight
+		: controlsBarHeight;
+	const quickPromptsBottom =
+		controlsBottom + controlsHeight + (showTextInput ? 26 : 22);
+	const bottomFadeHeight = controlsHeight + controlsBottom * 2;
+	const messagesBottomPadding =
+		messages.length <= 1 ? quickPromptsBottom + 40 : bottomFadeHeight + 12;
+	const sideButtonTopOffset = bottomBar.centerBtnSize - bottomBar.sideBtnSize;
+	const chatHeaderHeight = 56;
+	const headerLogoWidth = logoAspectRatio
+		? HEADER_LOGO_HEIGHT * logoAspectRatio
+		: HEADER_LOGO_FALLBACK_WIDTH;
+
+	useEffect(() => {
+		if (!logoUrl) {
+			setLogoAspectRatio(null);
+			return;
+		}
+
+		Image.getSize(
+			logoUrl,
+			(width, height) => {
+				if (width > 0 && height > 0) {
+					setLogoAspectRatio(width / height);
+				}
+			},
+			() => setLogoAspectRatio(null),
+		);
+	}, [logoUrl]);
 
 	return (
 		<View className='w-[32%] h-full flex flex-col'>
@@ -320,12 +318,22 @@ export default function LeftPanel({
 				{logoUrl ? (
 					<Image
 						source={{ uri: logoUrl }}
-						style={{ width: 90, height: 18 }}
+						style={{
+							width: headerLogoWidth,
+							height: HEADER_LOGO_HEIGHT,
+						}}
 						resizeMode='contain'
 					/>
 				) : null}
 
-				<Text className='text-slate-200 font-bold ml-4 tracking-widest text-sm uppercase'>
+				<Text
+					className='font-bold ml-4 tracking-widest uppercase'
+					style={{
+						color: '#FFFFFF',
+						fontSize: 18,
+						lineHeight: HEADER_LOGO_HEIGHT,
+					}}
+					numberOfLines={1}>
 					{currentSource}
 				</Text>
 			</View>
@@ -334,21 +342,57 @@ export default function LeftPanel({
 			<View
 				className='flex-1 rounded-2xl flex-col overflow-hidden relative'
 				style={{
-					backgroundColor: '#050506',
+					backgroundColor: '#09090b',
 					borderWidth: 1,
 					borderColor: 'rgba(255, 122, 0, 0.35)',
 					shadowColor: PRIMARY_ORANGE,
 					shadowOpacity: 0.1,
 					shadowRadius: 24,
 				}}>
-				<View
-					className='flex-row items-center bg-black'
+				<BlurView
+					{...CHAT_PANEL_BLUR_PROPS}
+					tint='dark'
+					pointerEvents='none'
+					className='absolute left-0 right-0 top-0'
 					style={{
-						height: 64,
-						paddingHorizontal: 18,
+						height: chatHeaderHeight,
 						borderBottomWidth: 1,
-						borderBottomColor: 'rgba(255,255,255,0.06)',
-					}}>
+						borderBottomColor: 'rgba(255, 122, 0, 0.18)',
+						backgroundColor: CHAT_PANEL_BACKGROUND,
+						shadowColor: '#000',
+						shadowOffset: { width: 0, height: 10 },
+						shadowOpacity: 0.35,
+						shadowRadius: 28,
+						elevation: 12,
+						zIndex: 20,
+					}}
+				/>
+				<View
+					pointerEvents='none'
+					className='absolute left-0 top-0'
+					style={{
+						width: CHAT_CORNER_MASK_SIZE,
+						height: CHAT_CORNER_MASK_SIZE,
+						borderTopLeftRadius: 16,
+						backgroundColor: CHAT_PANEL_BACKGROUND,
+						zIndex: 20,
+					}}
+				/>
+				<View
+					pointerEvents='none'
+					className='absolute right-0 top-0'
+					style={{
+						width: CHAT_CORNER_MASK_SIZE,
+						height: CHAT_CORNER_MASK_SIZE,
+						borderTopRightRadius: 16,
+						backgroundColor: CHAT_PANEL_BACKGROUND,
+						zIndex: 20,
+					}}
+				/>
+				<View
+					pointerEvents='none'
+					className='absolute left-0 right-0 top-0 flex-row items-center px-[18px]'
+					style={{ height: chatHeaderHeight, zIndex: 21 }}>
 					<View
 						className='border border-[#FF7A00]/50 items-center justify-center mr-3'
 						style={{
@@ -384,9 +428,9 @@ export default function LeftPanel({
 						}
 						className='flex-1'
 						contentContainerStyle={{
-							paddingHorizontal: 24,
-							paddingTop: 16,
-							paddingBottom: 210,
+							paddingHorizontal: 0,
+							paddingTop: chatHeaderHeight + 12,
+							paddingBottom: messagesBottomPadding,
 						}}>
 						<View className='flex flex-col gap-4'>
 							{messages.map((msg) => {
@@ -398,6 +442,7 @@ export default function LeftPanel({
 										className='self-start'
 										style={{
 											maxWidth: '86%',
+											marginLeft: 16,
 											backgroundColor: 'rgba(24, 25, 31, 0.96)',
 											borderRadius: 14,
 											paddingHorizontal: 16,
@@ -413,7 +458,7 @@ export default function LeftPanel({
 										style={{
 											maxWidth: '82%',
 											alignSelf: 'flex-end',
-											marginRight: 14,
+											marginRight: 16,
 											backgroundColor: '#D96A00',
 											borderRadius: 14,
 											paddingHorizontal: 14,
@@ -434,27 +479,52 @@ export default function LeftPanel({
 									</View>
 								);
 							})}
-							{isLoading ? <BotTypingAnimation /> : null}
 						</View>
 					</ScrollView>
 				</View>
 
-				<View
+				<BlurView
+					{...CHAT_PANEL_BLUR_PROPS}
+					tint='dark'
 					pointerEvents='none'
 					className='absolute left-0 right-0 bottom-0'
 					style={{
-						height: 160,
-						backgroundColor: 'rgba(0,0,0,0.72)',
+						height: bottomFadeHeight,
+						backgroundColor: CHAT_PANEL_BACKGROUND,
+						borderTopWidth: 1,
+						borderTopColor: 'rgba(255, 122, 0, 0.18)',
 						shadowColor: '#000',
 						shadowOffset: { width: 0, height: -12 },
-						shadowOpacity: 0.42,
-						shadowRadius: 28,
-						elevation: 8,
+						shadowOpacity: 0.45,
+						shadowRadius: 36,
+						elevation: 12,
+					}}
+				/>
+				<View
+					pointerEvents='none'
+					className='absolute left-0 bottom-0'
+					style={{
+						width: CHAT_CORNER_MASK_SIZE,
+						height: CHAT_CORNER_MASK_SIZE,
+						borderBottomLeftRadius: 16,
+						backgroundColor: CHAT_PANEL_BACKGROUND,
+					}}
+				/>
+				<View
+					pointerEvents='none'
+					className='absolute right-0 bottom-0'
+					style={{
+						width: CHAT_CORNER_MASK_SIZE,
+						height: CHAT_CORNER_MASK_SIZE,
+						borderBottomRightRadius: 16,
+						backgroundColor: CHAT_PANEL_BACKGROUND,
 					}}
 				/>
 
 				{messages.length <= 1 ? (
-					<View className='px-4 pb-3'>
+					<View
+						className='absolute left-0 right-0 px-4'
+						style={{ bottom: quickPromptsBottom }}>
 						<View className='flex-row flex-wrap gap-2'>
 							{QUICK_PROMPTS.map((prompt) => (
 								<TouchableOpacity
@@ -475,23 +545,22 @@ export default function LeftPanel({
 
 				{/* Input controls */}
 				<View
-					className='absolute flex-col items-center justify-center'
+					className='absolute flex-col items-center justify-start'
 					style={{
 						left: 24,
 						right: 24,
-						bottom: 18,
-						height: 112,
+						bottom: controlsBottom,
+						height: controlsHeight,
 						borderRadius: 56,
 					}}>
 					<View
-						className='flex-row items-center justify-center overflow-hidden'
+						className='flex-row justify-center'
 						style={{
-							height: 112,
 							borderRadius: 56,
-							borderWidth: 0,
 							paddingHorizontal: bottomBar.paddingHorizontal,
 							paddingVertical: bottomBar.paddingVertical,
 							gap: bottomBar.gap,
+							alignItems: 'flex-start',
 							shadowOpacity: 0,
 							shadowRadius: 0,
 							elevation: 0,
@@ -503,6 +572,7 @@ export default function LeftPanel({
 							style={{
 								width: bottomBar.sideBtnSize,
 								height: bottomBar.sideBtnSize,
+								marginTop: sideButtonTopOffset,
 								backgroundColor: 'rgba(31, 31, 36, 0.88)',
 								borderWidth: 1,
 								borderColor: 'rgba(255, 255, 255, 0.08)',
@@ -531,9 +601,11 @@ export default function LeftPanel({
 									backgroundColor: micStyle.backgroundColor,
 									borderWidth: 1,
 									borderColor: micStyle.borderColor,
-									shadowOpacity: 0,
-									shadowRadius: 0,
-									elevation: 0,
+									shadowColor: micStyle.shadowColor,
+									shadowOffset: { width: 0, height: 0 },
+									shadowOpacity: micStyle.shadowOpacity,
+									shadowRadius: micStyle.shadowRadius,
+									elevation: micState === 'idle' ? 5 : 10,
 								}}>
 								{isListening && !isGenerating ? <ListeningPulse /> : null}
 
@@ -560,7 +632,7 @@ export default function LeftPanel({
 									<View className='w-1.5 h-1.5 rounded-full mr-2 bg-[#06B6D4]' />
 								) : null}
 								<Text
-									className='text-center text-[11px] sm:text-xs font-bold'
+									className='text-center text-[11px] font-bold'
 									style={{
 										color: micStyle.labelColor,
 										letterSpacing: 0.8,
@@ -569,7 +641,7 @@ export default function LeftPanel({
 										textShadowRadius: 3,
 									}}
 									numberOfLines={1}
-									adjustsFontSizeToFit>
+									ellipsizeMode='clip'>
 									{isGenerating ? 'NACIŚNIJ ABY ZATRZYMAĆ' : micStyle.label}
 								</Text>
 							</View>
@@ -582,6 +654,7 @@ export default function LeftPanel({
 							style={{
 								width: bottomBar.sideBtnSize,
 								height: bottomBar.sideBtnSize,
+								marginTop: sideButtonTopOffset,
 								backgroundColor: showTextInput
 									? 'rgba(42, 17, 0, 0.92)'
 									: 'rgba(31, 31, 36, 0.88)',
@@ -603,7 +676,9 @@ export default function LeftPanel({
 					</View>
 
 					{showTextInput ? (
-						<View className='flex-row w-full mt-4 items-center gap-2'>
+						<View
+							className='flex-row w-full items-center gap-2'
+							style={{ marginTop: textInputTopMargin }}>
 							<TextInput
 								className='flex-1 bg-[#1A1A1D] border border-neutral-800 text-slate-200 px-4 py-3 rounded-xl text-sm'
 								placeholder='Wpisz swoje pytanie...'

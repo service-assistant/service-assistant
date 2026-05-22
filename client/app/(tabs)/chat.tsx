@@ -739,7 +739,7 @@ export default function ChatScreen() {
 	};
 
 	const isBotTyping = isLoading && !messages.some((m) => m.sender === 'ai' && m.text === '');
-	const isBotActive = isGenerating || isAudioPlaying;
+	const isMicProcessing = !isListening && (isLoading || isGenerating || isAudioPlaying);
 
 	if (isMobile) {
 		return (
@@ -764,7 +764,7 @@ export default function ChatScreen() {
 				isListening={isListening}
 				onMicPress={handleMicPress}
 				soundLevelAnim={soundLevelAnim}
-				isGenerating={isBotActive}
+				isGenerating={isMicProcessing}
 				onStop={handleStop}
 				messages={messages}
 				isChatLoading={isBotTyping}
@@ -782,7 +782,6 @@ export default function ChatScreen() {
 		<View className='flex-1 flex-row bg-black p-4'>
 			<LeftPanel
 				messages={messages}
-				isLoading={isBotTyping}
 				isListening={isListening}
 				onMicPress={handleMicPress}
 				soundLevelAnim={soundLevelAnim}
@@ -792,7 +791,7 @@ export default function ChatScreen() {
 				setInputText={setInputText}
 				onSendText={handleSendText}
 				currentSource={currentSource}
-				isGenerating={isBotActive}
+				isGenerating={isMicProcessing}
 				onStop={handleStop}
 				logoUrl={logoUrl}
 			/>
@@ -816,7 +815,7 @@ export default function ChatScreen() {
 					setShowSchema(false);
 				}}
 				setCurrentImage={setCurrentImage}
-				isGenerating={isBotActive}
+				isGenerating={isMicProcessing}
 				onStop={handleStop}
 				soundLevelAnim={soundLevelAnim}
 			/>
