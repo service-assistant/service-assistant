@@ -87,7 +87,7 @@ const MIC_STATE_STYLES: Record<
 		shadowRadius: 10,
 		iconColor: '#E8E8E8',
 		textColor: 'rgba(229, 231, 235, 0.78)',
-		label: 'NACIĹšNIJ Ĺ»EBY MĂ“WIÄ†',
+		label: 'Naciśnij żeby mówić',
 	},
 	listening: {
 		backgroundColor: 'rgba(8, 47, 73, 0.92)',
@@ -97,7 +97,7 @@ const MIC_STATE_STYLES: Record<
 		shadowRadius: 26,
 		iconColor: '#FFFFFF',
 		textColor: '#FFFFFF',
-		label: 'SĹUCHAM...',
+		label: 'SŁUCHAM...',
 	},
 	processing: {
 		backgroundColor: 'rgba(46, 16, 101, 0.92)',
@@ -137,7 +137,7 @@ const MIC_STATE_STYLES: Record<
 		shadowRadius: 8,
 		iconColor: '#A1A1AA',
 		textColor: 'rgba(229, 231, 235, 0.5)',
-		label: 'NIEDOSTÄPNE',
+		label: 'NIEDOSTĘPNE',
 	},
 };
 
@@ -561,7 +561,7 @@ export default function HomeScreen() {
 	const bottomBarBlurProps =
 		Platform.OS === 'android'
 			? ({
-					intensity: 35,
+					intensity: 10,
 					blurReductionFactor: 4,
 					experimentalBlurMethod: 'dimezisBlurView',
 				} as const)
@@ -743,27 +743,38 @@ export default function HomeScreen() {
 					bottom: insets.bottom > 0 ? insets.bottom + 14 : 24,
 				}}
 				className='absolute left-0 right-0 w-full items-center z-50'>
-				<BlurView
-					{...bottomBarBlurProps}
-					tint='dark'
-					className='flex-row items-center justify-center overflow-hidden'
-					style={{
-						borderRadius: 100,
-						borderWidth: 1,
-						borderColor: 'rgba(255, 122, 0, 0.18)',
-						paddingHorizontal: bottomBar.paddingHorizontal,
-						paddingVertical: bottomBar.paddingVertical,
-						gap: bottomBar.gap,
-						shadowColor: '#000',
-						shadowOffset: { width: 0, height: 12 },
-						shadowOpacity: 0.45,
-						shadowRadius: 36,
-						elevation: 12,
-						backgroundColor:
-							Platform.OS === 'android'
-								? 'rgba(18, 18, 22, 0.82)'
-								: 'rgba(24, 24, 28, 0.76)',
-					}}>
+				<View
+					className='relative'
+					style={{}}>
+					<BlurView
+						{...bottomBarBlurProps}
+						tint='dark'
+						pointerEvents='none'
+						className='absolute inset-0 overflow-hidden'
+						style={{
+							borderRadius: 100,
+							borderWidth: 1,
+							borderColor: 'rgba(255, 122, 0, 0.18)',
+							shadowColor: '#000',
+							shadowOffset: { width: 0, height: 12 },
+							shadowOpacity: 0.45,
+							shadowRadius: 36,
+							elevation: 12,
+							zIndex: 0,
+							backgroundColor:
+								Platform.OS === 'android'
+									? 'rgba(18, 18, 22, 0.82)'
+									: 'rgba(24, 24, 28, 0.76)',
+						}}
+					/>
+					<View
+						className='flex-row items-center justify-center'
+						style={{
+							paddingHorizontal: bottomBar.paddingHorizontal,
+							paddingVertical: bottomBar.paddingVertical,
+							gap: bottomBar.gap,
+							zIndex: 1,
+						}}>
 					<TouchableOpacity
 						onPress={openCamera}
 						className='rounded-[12px] items-center justify-center'
@@ -869,9 +880,10 @@ export default function HomeScreen() {
 								height: bottomBar.sideIconSize,
 								tintColor: '#D4D4D8',
 							}}
-						/>
+							/>
 					</TouchableOpacity>
-				</BlurView>
+					</View>
+				</View>
 			</View>
 
 			{isCameraOpen ? (
