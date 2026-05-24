@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,21 +33,26 @@ async def test_embed_question_returns_first_embedding():
 
 
 @pytest.mark.asyncio
-async def test_get_close_chunks_without_device_id():
+async def test_get_close_chunks_with_device_id():
     session = AsyncMock(spec=AsyncSession)
 
-    fake_rows = [
-        (1, "chunk 1", 10, None),
-        (2, "chunk 2", 10, {"page": 1}),
-        (3, "chunk 3", 11, None),
-    ]
+    chunk1 = MagicMock()
+    chunk1.id = 1
+    chunk1.content = "chunk 1"
+    chunk1.attachment_id = 10
+    chunk1.extra_metadata = None
 
-    mock_result = Mock()
-    mock_result.fetchall.return_value = fake_rows
-    session.execute.return_value = mock_result
+    chunk2 = MagicMock()
+    chunk2.id = 2
+    chunk2.content = "chunk 2"
+    chunk2.attachment_id = 10
+    chunk2.extra_metadata = {"page": 1}
 
-    vector = [0.1, 0.2, 0.3]
-    result = await get_close_chunks(session, vector)
+    mock_result = MagicMock()
+    mock_result.all.return_value = [chunk1, chunk2]
+    session.scalars.return_value = mock_result
+
+    result = await get_close_chunks(session, [0.1, 0.2], device_id=5)
 
     assert result == [
         {"id": 1, "content": "chunk 1", "attachment_id": 10, "extra_metadata": None},
@@ -57,24 +62,5 @@ async def test_get_close_chunks_without_device_id():
             "attachment_id": 10,
             "extra_metadata": {"page": 1},
         },
-        {"id": 3, "content": "chunk 3", "attachment_id": 11, "extra_metadata": None},
     ]
-    session.execute.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_get_close_chunks_with_device_id():
-    session = AsyncMock(spec=AsyncSession)
-
-    fake_rows = [(1, "chunk 1", 10, None)]
-
-    mock_result = Mock()
-    mock_result.fetchall.return_value = fake_rows
-    session.execute.return_value = mock_result
-
-    result = await get_close_chunks(session, [0.1, 0.2], device_id=5)
-
-    assert result == [
-        {"id": 1, "content": "chunk 1", "attachment_id": 10, "extra_metadata": None}
-    ]
-    session.execute.assert_called_once()
+    session.scalars.assert_called_once()

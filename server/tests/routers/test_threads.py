@@ -205,9 +205,9 @@ def test_should_list_messages_in_thread_chronologically(client, mock_session):
     )
 
     mock_session.get.return_value = thread
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = [user_msg, system_msg]
-    mock_session.execute.return_value = mock_result
+    mock_scalars_result = MagicMock()
+    mock_scalars_result.all.return_value = [user_msg, system_msg]
+    mock_session.scalars.return_value = mock_scalars_result
 
     response = client.get("/api/threads/1/messages", headers=AUTH_HEADERS)
 
@@ -222,9 +222,9 @@ def test_should_list_messages_in_thread_chronologically(client, mock_session):
 
 def test_should_return_empty_list_when_thread_has_no_messages(client, mock_session):
     mock_session.get.return_value = make_thread()
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = []
-    mock_session.execute.return_value = mock_result
+    mock_scalars_result = MagicMock()
+    mock_scalars_result.all.return_value = []
+    mock_session.scalars.return_value = mock_scalars_result
 
     response = client.get("/api/threads/1/messages", headers=AUTH_HEADERS)
 
