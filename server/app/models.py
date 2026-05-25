@@ -139,7 +139,9 @@ class Message(SQLModel, table=True):
     content: str
     thread_id: int = Field(foreign_key="chat_threads.id", ondelete="CASCADE")
     image_url: str | None = None
-    sender: MessageSender = Field(sa_column=Column(SAEnum(MessageSender)))
+    sender: MessageSender = Field(
+        sa_column=Column(SAEnum(MessageSender, native_enum=False))
+    )
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
 
