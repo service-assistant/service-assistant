@@ -24,7 +24,6 @@ def make_message(**kwargs) -> Message:
         id=1,
         content="Test content",
         thread_id=1,
-        image_url=None,
         sender=MessageSender.system,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),

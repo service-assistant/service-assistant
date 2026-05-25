@@ -496,7 +496,6 @@ async def get_thread_detail(
                 "id": m.id,
                 "sender": m.sender,
                 "content": m.content,
-                "image_url": m.image_url,
                 "created_at": m.created_at.isoformat(),
             }
             for m in messages
