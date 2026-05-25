@@ -4,7 +4,9 @@ import fitz
 from pymupdf import Pixmap, csRGB
 
 
-def extract_page_images(doc, page, output_dir: Path) -> list[str]:
+def extract_page_images(
+    doc: fitz.Document, page: fitz.Page, output_dir: Path
+) -> list[str]:
     image_paths = []
 
     for img in page.get_images(full=True):
@@ -29,9 +31,9 @@ def extract_page_images(doc, page, output_dir: Path) -> list[str]:
 
 
 def save_drawing_region(
-    page,
+    page: fitz.Page,
     output_dir: Path,
-    min_drawings: int = 50,
+    min_drawings: int = 30,
     min_drawing_size: int = 5,
 ) -> str | None:
     drawings = page.get_drawings()

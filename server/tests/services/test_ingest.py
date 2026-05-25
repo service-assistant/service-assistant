@@ -48,32 +48,39 @@ async def test_ingest_pdf_to_attachment():
             return_value=mock_client,
         ):
             with patch(
-                "app.services.ingest.extract_page_images",
-                return_value=fake_images,
+                "app.services.ingest.chunk_page",
+                return_value=[
+                    "chunk 1",
+                    "chunk 2",
+                ],
             ):
                 with patch(
-                    "app.services.ingest.insert_chunks",
-                    new_callable=AsyncMock,
-                ) as mock_insert:
-                    await ingest_pdf_to_attachment(
-                        session=session,
-                        pdf_path="test.pdf",
-                        attachment_id=1,
-                        settings=settings,
-                    )
+                    "app.services.ingest.extract_page_images",
+                    return_value=fake_images,
+                ):
+                    with patch(
+                        "app.services.ingest.insert_chunks",
+                        new_callable=AsyncMock,
+                    ) as mock_insert:
+                        await ingest_pdf_to_attachment(
+                            session=session,
+                            pdf_path="test.pdf",
+                            attachment_id=1,
+                            settings=settings,
+                        )
 
-                    assert mock_insert.called
+                        assert mock_insert.called
 
-                    args, kwargs = mock_insert.call_args
+                        args, kwargs = mock_insert.call_args
 
-                    rows = args[1]
+                        rows = args[1]
 
-                    assert len(rows) > 0
+                        assert len(rows) > 0
 
-                    chunk, embedding, page_num, page_images = rows[0]
+                        chunk, embedding, page_num, page_images = rows[0]
 
-                    assert isinstance(chunk, str)
-                    assert isinstance(embedding, list)
-                    assert isinstance(page_num, int)
-                    assert isinstance(page_images, list)
-                    assert page_images == fake_images
+                        assert isinstance(chunk, str)
+                        assert isinstance(embedding, list)
+                        assert isinstance(page_num, int)
+                        assert isinstance(page_images, list)
+                        assert page_images == fake_images

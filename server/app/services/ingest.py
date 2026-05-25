@@ -6,6 +6,7 @@ import fitz  # pymupdf
 from ..config import Settings
 from ..models import Chunk
 from .extract_images import extract_page_images
+from .chunking import chunk_page
 
 
 def batch_list(items, batch_size):
@@ -30,18 +31,7 @@ async def ingest_pdf_to_attachment(
 
     for page_num, page in enumerate(doc.pages()):
         # extract text
-        text = str(page.get_text())
-        if not text or not text.strip():
-            continue
-        text = " ".join(text.split())
-
-        chunks: list[str] = []
-        start = 0
-        chunk_size = 1000
-        overlap = 200
-        while start < len(text):
-            chunks.append(text[start : start + chunk_size])
-            start += chunk_size - overlap
+        chunks = chunk_page(pdf_path, page_num)
 
         # extract images
         page_images = extract_page_images(
