@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -552,25 +553,38 @@ class ChunkRow:
     attachment_filename: str
 
 
+_CHUNKS_PAGE_SIZE = 20
+
+
 @router.get("/chunks", response_class=HTMLResponse)
 async def get_chunks(
     request: Request,
     settings: Settings = Depends(get_settings),
     session: AsyncSession = Depends(get_session),
     attachment_id: int | None = None,
+    page: int = 1,
 ):
     if redirect := _check_auth(request, settings):
         return redirect
+
+    page = max(page, 1)
 
     attachments_result = await session.execute(select(Attachment))
     all_attachments = attachments_result.scalars().all()
     attachment_map = {a.id: a.original_filename for a in all_attachments}
 
-    query = select(Chunk).order_by(Chunk.attachment_id, Chunk.id)
+    base_query = select(Chunk).order_by(Chunk.attachment_id, Chunk.id)
     if attachment_id is not None:
-        query = query.where(Chunk.attachment_id == attachment_id)
+        base_query = base_query.where(Chunk.attachment_id == attachment_id)
 
-    chunks_result = await session.execute(query)
+    count_result = await session.execute(select(func.count()).select_from(base_query.subquery()))
+    total = count_result.scalar_one()
+    total_pages = max((total + _CHUNKS_PAGE_SIZE - 1) // _CHUNKS_PAGE_SIZE, 1)
+    page = min(page, total_pages)
+
+    chunks_result = await session.execute(
+        base_query.offset((page - 1) * _CHUNKS_PAGE_SIZE).limit(_CHUNKS_PAGE_SIZE)
+    )
     chunks = chunks_result.scalars().all()
 
     rows = [
@@ -589,5 +603,8 @@ async def get_chunks(
             "rows": rows,
             "attachments": all_attachments,
             "selected_attachment_id": attachment_id,
+            "page": page,
+            "total_pages": total_pages,
+            "total": total,
         },
     )
