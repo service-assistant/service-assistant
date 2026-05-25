@@ -5,7 +5,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
@@ -577,7 +586,9 @@ async def get_chunks(
     if attachment_id is not None:
         base_query = base_query.where(Chunk.attachment_id == attachment_id)
 
-    count_result = await session.execute(select(func.count()).select_from(base_query.subquery()))
+    count_result = await session.execute(
+        select(func.count()).select_from(base_query.subquery())
+    )
     total = count_result.scalar_one()
     total_pages = max((total + _CHUNKS_PAGE_SIZE - 1) // _CHUNKS_PAGE_SIZE, 1)
     page = min(page, total_pages)
