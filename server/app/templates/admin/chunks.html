@@ -1,0 +1,75 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Chunks{% endblock %}
+{% block heading %}Chunks{% endblock %}
+
+{% block content %}
+
+<!-- Filter -->
+<section class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">Filter</h2>
+    <form method="get" action="/admin/chunks" class="flex items-end gap-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Document</label>
+            <select name="attachment_id" class="block text-sm border border-gray-300 rounded-md px-3 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                <option value="">All documents</option>
+                {% for a in attachments %}
+                <option value="{{ a.id }}" {% if selected_attachment_id == a.id %}selected{% endif %}>{{ a.original_filename }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-1.5 rounded-md transition-colors">
+            Apply
+        </button>
+        {% if selected_attachment_id %}
+        <a href="/admin/chunks" class="text-sm text-gray-500 hover:text-gray-700">Clear</a>
+        {% endif %}
+    </form>
+</section>
+
+<!-- Chunks list -->
+{% if rows %}
+<div class="space-y-6">
+    {% for row in rows %}
+    <div class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div class="px-5 py-3 border-b border-gray-100 flex items-center gap-4">
+            <span class="text-xs font-mono text-gray-400">#{{ row.chunk.id }}</span>
+            <span class="text-sm font-medium text-gray-700">{{ row.attachment_filename }}</span>
+            {% if row.chunk.extra_metadata and row.chunk.extra_metadata.page is not none %}
+            <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">page {{ row.chunk.extra_metadata.page + 1 }}</span>
+            {% endif %}
+        </div>
+
+        <div class="px-5 py-4 grid {% if row.chunk.extra_metadata and row.chunk.extra_metadata.images %}grid-cols-2{% else %}grid-cols-1{% endif %} gap-6">
+            <!-- Text content -->
+            <div>
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Content</p>
+                <p class="text-sm text-gray-700 whitespace-pre-wrap break-words leading-relaxed">{{ row.chunk.content }}</p>
+            </div>
+
+            <!-- Images -->
+            {% if row.chunk.extra_metadata and row.chunk.extra_metadata.images %}
+            <div>
+                <p class="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Images ({{ row.chunk.extra_metadata.images | length }})</p>
+                <div class="flex flex-wrap gap-3">
+                    {% for img_path in row.chunk.extra_metadata.images %}
+                    <a href="/admin/images/{{ img_path.lstrip('/') }}" target="_blank" class="block">
+                        <img src="/admin/images/{{ img_path.lstrip('/') }}"
+                             alt="Chunk image"
+                             class="max-h-48 max-w-xs rounded border border-gray-200 object-contain hover:opacity-80 transition-opacity" />
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="bg-white border border-gray-200 rounded-lg px-5 py-12 text-center text-gray-400 text-sm">
+    No chunks found.
+</div>
+{% endif %}
+
+{% endblock %}
