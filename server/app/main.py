@@ -6,6 +6,7 @@ from app.routers import (
     devices,
     messages,
     threads,
+    images,
 )
 from fastapi import FastAPI, Depends, status, Request
 from fastapi.openapi.utils import get_openapi
@@ -83,6 +84,7 @@ app.include_router(devices.router, prefix="/api/devices", tags=["devices"])
 app.include_router(attachments.router, prefix="/api/attachments", tags=["attachments"])
 app.include_router(threads.router, prefix="/api/threads", tags=["threads"])
 app.include_router(messages.router, prefix="/api/messages", tags=["messages"])
+app.include_router(images.router, prefix="/api/images", tags=["images"])
 
 
 @app.get("/health", include_in_schema=False)

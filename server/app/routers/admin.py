@@ -1,12 +1,23 @@
 import json
+import mimetypes
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -17,6 +28,7 @@ from app.models import (
     AttachmentDevice,
     Brand,
     ChatThread,
+    Chunk,
     Device,
     DeviceType,
     Message,
@@ -84,6 +96,28 @@ async def logout():
     response = RedirectResponse("/admin/login", status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie("admin_token")
     return response
+
+
+# ---------------------------------------------------------------------------
+# Images proxy (cookie-auth so browser <img> tags work)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/images/{image_path:path}", response_class=FileResponse)
+async def admin_image(
+    image_path: str,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    file_path = Path("/") / image_path
+    if not file_path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    media_type, _ = mimetypes.guess_type(str(file_path))
+    return FileResponse(path=file_path, media_type=media_type or "image/png")
 
 
 # ---------------------------------------------------------------------------
@@ -496,7 +530,6 @@ async def get_thread_detail(
                 "id": m.id,
                 "sender": m.sender,
                 "content": m.content,
-                "image_url": m.image_url,
                 "created_at": m.created_at.isoformat(),
             }
             for m in messages
@@ -514,5 +547,75 @@ async def get_thread_detail(
             "device_name": device_map.get(thread.device_id, "?"),
             "messages": messages,
             "messages_json": messages_json,
+        },
+    )
+
+
+# ---------------------------------------------------------------------------
+# Chunks
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ChunkRow:
+    chunk: Chunk
+    attachment_filename: str
+
+
+_CHUNKS_PAGE_SIZE = 20
+
+
+@router.get("/chunks", response_class=HTMLResponse)
+async def get_chunks(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    attachment_id: int | None = None,
+    page: int = 1,
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    page = max(page, 1)
+
+    attachments_result = await session.execute(select(Attachment))
+    all_attachments = attachments_result.scalars().all()
+    attachment_map = {a.id: a.original_filename for a in all_attachments}
+
+    base_query = select(Chunk).order_by(Chunk.attachment_id, Chunk.id)
+    if attachment_id is not None:
+        base_query = base_query.where(Chunk.attachment_id == attachment_id)
+
+    count_result = await session.execute(
+        select(func.count()).select_from(base_query.subquery())
+    )
+    total = count_result.scalar_one()
+    total_pages = max((total + _CHUNKS_PAGE_SIZE - 1) // _CHUNKS_PAGE_SIZE, 1)
+    page = min(page, total_pages)
+
+    chunks_result = await session.execute(
+        base_query.offset((page - 1) * _CHUNKS_PAGE_SIZE).limit(_CHUNKS_PAGE_SIZE)
+    )
+    chunks = chunks_result.scalars().all()
+
+    rows = [
+        ChunkRow(
+            chunk=c,
+            attachment_filename=attachment_map.get(c.attachment_id, "?"),
+        )
+        for c in chunks
+    ]
+
+    return templates.TemplateResponse(
+        "admin/chunks.html",
+        {
+            "request": request,
+            "active": "chunks",
+            "rows": rows,
+            "attachments": all_attachments,
+            "selected_attachment_id": attachment_id,
+            "page": page,
+            "total_pages": total_pages,
+            "total": total,
         },
     )

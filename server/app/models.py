@@ -138,7 +138,6 @@ class Message(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     content: str
     thread_id: int = Field(foreign_key="chat_threads.id", ondelete="CASCADE")
-    image_url: str | None = None
     sender: MessageSender = Field(
         sa_column=Column(SAEnum(MessageSender, native_enum=False))
     )
