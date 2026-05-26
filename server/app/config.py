@@ -15,11 +15,9 @@ class Settings(BaseSettings):
     openai_chat_model: str
     azure_openai_api_version: str
     attachments_dir: Path
-    deepgram_api_key: str
+    deepgram_api_key: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
-
-    
 
 
 @lru_cache
