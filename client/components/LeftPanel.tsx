@@ -300,7 +300,7 @@ export default function LeftPanel({
 	}, [logoUrl]);
 
 	return (
-		<View className='w-[32%] h-full flex flex-col'>
+		<View className='w-[40%] h-full flex flex-col'>
 			{/* Header section with back button and device details */}
 			<View className='w-full h-14 mb-4 flex-row items-center'>
 				<TouchableOpacity
