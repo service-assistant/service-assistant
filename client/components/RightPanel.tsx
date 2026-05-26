@@ -2,13 +2,14 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
 	ActivityIndicator,
 	Alert,
 	Animated,
 	Image,
 	Keyboard,
+	PanResponder,
 	Platform,
 	ScrollView,
 	Text,
@@ -54,6 +55,9 @@ export interface RightPanelProps {
 	isAvailableFilesLoading?: boolean;
 	hasAskedQuestion: boolean;
 	currentImage: string | null;
+	currentImages?: string[];
+	currentImageIndex?: number;
+	onImageIndexChange?: (index: number) => void;
 	isLoading: boolean;
 	selectedPdf: PdfDocument | null;
 	onSelectPdf: (pdf: PdfDocument | null) => void;
@@ -90,6 +94,9 @@ export default function RightPanel({
 	isAvailableFilesLoading = false,
 	hasAskedQuestion,
 	currentImage,
+	currentImages = [],
+	currentImageIndex = 0,
+	onImageIndexChange,
 	isLoading: isApiLoading,
 	selectedPdf,
 	onSelectPdf,
@@ -120,8 +127,14 @@ export default function RightPanel({
 	const webPdfObjectUrlRef = useRef<string | null>(null);
 	const [downloadingFileId, setDownloadingFileId] = useState<number | null>(null);
 	const [downloadedFileIds, setDownloadedFileIds] = useState<Set<number>>(new Set());
+	const [isShowingFileGrid, setIsShowingFileGrid] = useState<boolean>(false);
 	const [mobileMode, setMobileMode] = useState<'chat' | 'sources'>('chat');
 	const [keyboardHeight, setKeyboardHeight] = useState(0);
+	const imageFadeAnim = useRef(new Animated.Value(1)).current;
+	const imageSlideAnim = useRef(new Animated.Value(0)).current;
+	const previousImageIndexRef = useRef(currentImageIndex);
+	const imageTransitionDirectionRef = useRef(1);
+	const lastImageSwipeAtRef = useRef(0);
 	const micState = isGenerating ? 'processing' : isListening ? 'listening' : 'idle';
 	const micStyle =
 		micState === 'processing'
@@ -160,6 +173,24 @@ export default function RightPanel({
 	const dynamicAttachmentId = attachmentId || 1;
 	const dynamicPdfUrl = `https://staging.asystent-serwisanta.pl/api/attachments/${dynamicAttachmentId}/file`;
 	const dynamicFileName = attachmentName || 'instrukcja_serwisowa.pdf';
+	const sourcePdfFile =
+		availableFiles.find((file) => file.id === dynamicAttachmentId) ||
+		({
+			id: dynamicAttachmentId,
+			name: dynamicFileName,
+			icon: 'file-pdf-box',
+			color: '#EF4444',
+			remoteUrl: dynamicPdfUrl,
+		} satisfies AvailableFile);
+	const isSourcePdfDownloaded = downloadedFileIds.has(sourcePdfFile.id);
+	const isSourcePdfDownloading = isDownloading && downloadingFileId === sourcePdfFile.id;
+	const hasMultipleImages = currentImages.length > 1;
+	const currentImagePosition =
+		currentImages.length > 0 ? Math.min(currentImageIndex + 1, currentImages.length) : 0;
+	const imageTransitionStyle = {
+		opacity: imageFadeAnim,
+		transform: [{ translateX: imageSlideAnim }],
+	};
 	const mobileBottomInset = insets.bottom > 0 ? insets.bottom + 14 : 24;
 	const bottomBar = {
 		gap: 6,
@@ -210,6 +241,87 @@ export default function RightPanel({
 			}
 		};
 	}, []);
+
+	useEffect(() => {
+		setIsShowingFileGrid(false);
+	}, [currentImage]);
+
+	useEffect(() => {
+		const previousIndex = previousImageIndexRef.current;
+		previousImageIndexRef.current = currentImageIndex;
+
+		if (!currentImage || previousIndex === currentImageIndex) return;
+
+		const direction = imageTransitionDirectionRef.current;
+
+		imageFadeAnim.setValue(0);
+		imageSlideAnim.setValue(direction * 42);
+
+		Animated.parallel([
+			Animated.timing(imageFadeAnim, {
+				toValue: 1,
+				duration: 220,
+				useNativeDriver: true,
+			}),
+			Animated.spring(imageSlideAnim, {
+				toValue: 0,
+				speed: 22,
+				bounciness: 5,
+				useNativeDriver: true,
+			}),
+		]).start();
+	}, [currentImage, currentImageIndex, imageFadeAnim, imageSlideAnim]);
+
+	const showPreviousImage = useCallback(() => {
+		if (!hasMultipleImages) return;
+		const now = Date.now();
+		if (now - lastImageSwipeAtRef.current < 360) return;
+		lastImageSwipeAtRef.current = now;
+
+		const nextIndex = currentImageIndex <= 0 ? currentImages.length - 1 : currentImageIndex - 1;
+		imageTransitionDirectionRef.current = -1;
+		onImageIndexChange?.(nextIndex);
+	}, [currentImageIndex, currentImages.length, hasMultipleImages, onImageIndexChange]);
+
+	const showNextImage = useCallback(() => {
+		if (!hasMultipleImages) return;
+		const now = Date.now();
+		if (now - lastImageSwipeAtRef.current < 360) return;
+		lastImageSwipeAtRef.current = now;
+
+		const nextIndex = currentImageIndex >= currentImages.length - 1 ? 0 : currentImageIndex + 1;
+		imageTransitionDirectionRef.current = 1;
+		onImageIndexChange?.(nextIndex);
+	}, [currentImageIndex, currentImages.length, hasMultipleImages, onImageIndexChange]);
+
+	const imageSwipeResponder = useMemo(
+		() =>
+			PanResponder.create({
+				onMoveShouldSetPanResponder: (_, gestureState) =>
+					hasMultipleImages &&
+					Math.abs(gestureState.dx) > 24 &&
+					Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 1.2,
+				onPanResponderRelease: (_, gestureState) => {
+					if (gestureState.dx > 60) {
+						showPreviousImage();
+					} else if (gestureState.dx < -60) {
+						showNextImage();
+					}
+				},
+			}),
+		[hasMultipleImages, showNextImage, showPreviousImage],
+	);
+
+	const handleImageWebViewMessage = useCallback(
+		(event: any) => {
+			if (event.nativeEvent.data === 'previous') {
+				showPreviousImage();
+			} else if (event.nativeEvent.data === 'next') {
+				showNextImage();
+			}
+		},
+		[showNextImage, showPreviousImage],
+	);
 
 	const getLocalFilename = useCallback(
 		(file: AvailableFile) => `attachment-${file.id}-${file.name.replace(/[\\/:*?"<>|]/g, '_')}`,
@@ -277,23 +389,36 @@ export default function RightPanel({
 		}
 	};
 
-	/**
-	 * Generates HTML for an inverted image view (useful for dark mode schemas).
-	 *
-	 * @param imageUrl - URL of the image to display.
-	 * @returns Raw HTML string.
-	 */
 	const getInvertedImageHtml = (imageUrl: string) => `
       <!DOCTYPE html>
       <html>
       <head>
          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
          <style>
-            html, body { width: 100%; height: 100%; margin: 0; padding: 0; background-color: #000000; display: flex; justify-content: center; align-items: center; overflow: hidden; }
-            img { width: 100%; height: 100%; object-fit: contain; filter: invert(100%); }
+            html, body { width: 100%; min-height: 100%; margin: 0; padding: 0; background-color: #000000; overflow-x: hidden; overflow-y: auto; }
+            img { display: block; width: 100%; height: auto; filter: invert(100%); }
          </style>
       </head>
-      <body><img src="${imageUrl}" /></body>
+      <body>
+         <img src="${imageUrl}" />
+         <script>
+            let startX = 0;
+            let startY = 0;
+            document.addEventListener('touchstart', function(event) {
+               const touch = event.changedTouches[0];
+               startX = touch.clientX;
+               startY = touch.clientY;
+            }, { passive: true });
+            document.addEventListener('touchend', function(event) {
+               const touch = event.changedTouches[0];
+               const dx = touch.clientX - startX;
+               const dy = touch.clientY - startY;
+               if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+                  window.ReactNativeWebView && window.ReactNativeWebView.postMessage(dx > 0 ? 'previous' : 'next');
+               }
+            }, { passive: true });
+         </script>
+      </body>
       </html>
     `;
 
@@ -338,7 +463,6 @@ export default function RightPanel({
 				const objectUrl = URL.createObjectURL(blob);
 				webPdfObjectUrlRef.current = objectUrl;
 
-				setShowSchema(false);
 				onSelectPdf({
 					name: displayName,
 					icon: 'file-download',
@@ -346,6 +470,7 @@ export default function RightPanel({
 					source: objectUrl,
 					page: targetPage,
 				});
+				setShowSchema(false);
 			} else {
 				const fileUri = `${FileSystem.documentDirectory}${localFilename}`;
 
@@ -358,7 +483,6 @@ export default function RightPanel({
 				const result = await downloadResumableRef.current.downloadAsync();
 
 				if (result && result.uri) {
-					setShowSchema(false);
 					onSelectPdf({
 						name: displayName,
 						icon: 'file-download',
@@ -366,6 +490,7 @@ export default function RightPanel({
 						source: { uri: result.uri },
 						page: targetPage,
 					});
+					setShowSchema(false);
 				} else {
 					throw new Error('Download failed - no URI');
 				}
@@ -391,7 +516,7 @@ export default function RightPanel({
 		const localFileUri = getLocalFileUri(file);
 
 		if (downloadedFileIds.has(file.id) && localFileUri) {
-			setShowSchema(false);
+			setIsShowingFileGrid(false);
 			onSelectPdf({
 				name: file.name,
 				icon: 'file-download',
@@ -399,10 +524,43 @@ export default function RightPanel({
 				source: { uri: localFileUri },
 				page: 1,
 			});
+			setShowSchema(false);
 			return;
 		}
 
+		setIsShowingFileGrid(false);
 		await performDownload(file.remoteUrl, getLocalFilename(file), file.name, file.id, 1);
+	};
+
+	const handleSourcePdfPress = async () => {
+		const localFileUri = getLocalFileUri(sourcePdfFile);
+
+		if (localFileUri) {
+			const info = await FileSystem.getInfoAsync(localFileUri);
+
+			if (info.exists) {
+				setIsShowingFileGrid(false);
+				setDownloadedFileIds((prev) => new Set(prev).add(sourcePdfFile.id));
+				onSelectPdf({
+					name: sourcePdfFile.name,
+					icon: 'file-download',
+					color: '#22C55E',
+					source: { uri: localFileUri },
+					page: attachmentPage || 1,
+				});
+				setShowSchema(false);
+				return;
+			}
+		}
+
+		setIsShowingFileGrid(false);
+		await performDownload(
+			sourcePdfFile.remoteUrl,
+			getLocalFilename(sourcePdfFile),
+			sourcePdfFile.name,
+			sourcePdfFile.id,
+			attachmentPage || 1,
+		);
 	};
 
 	const renderFileGrid = (compact = false) => {
@@ -497,21 +655,21 @@ export default function RightPanel({
 		return (
 			<TouchableOpacity
 				onPress={() => {
+					if (isShowingFileGrid) {
+						setIsShowingFileGrid(false);
+						setShowSchema(true);
+						return;
+					}
+
 					if (showSchema) {
-						performDownload(
-							dynamicPdfUrl,
-							dynamicFileName,
-							dynamicFileName,
-							null,
-							attachmentPage || 1,
-						);
+						handleSourcePdfPress();
 					} else {
 						setShowSchema(true);
 					}
 				}}
 				disabled={isDownloading}
 				className={`flex-row items-center border ${isDownloading ? 'border-neutral-700 bg-neutral-900' : 'border-[#FF7A00]/40 bg-[#0a0a0a]'} px-4 py-3 rounded-md min-w-[170px] justify-center`}>
-				{isDownloading && downloadingFileId === null ? (
+				{isSourcePdfDownloading ? (
 					<View className='flex-row items-center'>
 						<ActivityIndicator size='small' color='#fff' />
 						<Text className='text-white font-bold ml-3 tracking-widest text-[11px] uppercase'>
@@ -521,18 +679,71 @@ export default function RightPanel({
 				) : (
 					<View className='flex-row items-center'>
 						<Feather
-							name={showSchema ? 'file-text' : 'layers'}
+							name={showSchema && !isShowingFileGrid ? 'file-text' : 'layers'}
 							size={18}
 							color={PRIMARY_ORANGE}
 						/>
 						<Text className='text-[#FF7A00] font-bold ml-2 tracking-widest text-[11px] uppercase'>
-							{showSchema ? 'ŹRÓDŁA PDF' : 'POKAŻ SCHEMAT'}
+							{isShowingFileGrid
+								? 'POKAŻ SCHEMAT'
+								: showSchema
+									? isSourcePdfDownloaded
+										? 'POKAŻ ŹRÓDŁO'
+										: 'POBIERZ ŹRÓDŁO'
+									: 'POKAŻ SCHEMAT'}
 						</Text>
 					</View>
 				)}
 			</TouchableOpacity>
 		);
 	};
+
+	const renderImageCounter = () => {
+		if (!hasMultipleImages) return null;
+
+		return (
+			<View className='absolute top-2 left-2 bg-black/80 border border-white/10 px-3 py-1.5 rounded-full z-10'>
+				<Text className='text-white text-[11px] font-bold tracking-widest'>
+					{currentImagePosition}/{currentImages.length}
+				</Text>
+			</View>
+		);
+	};
+
+	const renderImageLayer = (
+		imageUrl: string,
+		style: object,
+		pointerEvents: 'auto' | 'none' = 'auto',
+	) => (
+		<Animated.View className='flex-1' pointerEvents={pointerEvents} style={style}>
+			{Platform.OS === 'web' ? (
+				<View
+					style={{
+						flex: 1,
+						backgroundColor: '#000',
+						alignItems: 'center',
+						overflowY: 'auto',
+					}}>
+					<img
+						src={imageUrl}
+						style={{
+							width: '100%',
+							height: 'auto',
+							filter: 'invert(100%)',
+						}}
+						alt='Schemat'
+					/>
+				</View>
+			) : (
+				<WebView
+					source={{ html: getInvertedImageHtml(imageUrl) }}
+					style={{ flex: 1, backgroundColor: 'transparent' }}
+					scrollEnabled
+					onMessage={handleImageWebViewMessage}
+				/>
+			)}
+		</Animated.View>
+	);
 
 	const renderMobileSourceButton = () => {
 		if (!currentImage && !attachmentId) return null;
@@ -542,15 +753,11 @@ export default function RightPanel({
 				onPress={() => {
 					setMobileMode('sources');
 					if (currentImage) {
+						onSelectPdf(null);
+						setIsShowingFileGrid(false);
 						setShowSchema(true);
 					} else {
-						performDownload(
-							dynamicPdfUrl,
-							dynamicFileName,
-							dynamicFileName,
-							null,
-							attachmentPage || 1,
-						);
+						handleSourcePdfPress();
 					}
 				}}
 				disabled={isDownloading}
@@ -676,6 +883,18 @@ export default function RightPanel({
 					{/* Main Content: Files / Schema Section */}
 					{mobileMode === 'chat' ? (
 						renderMobileMessages()
+					) : showSchema && currentImage ? (
+						<View
+							className='flex-1 mt-6 mb-4 rounded-xl overflow-hidden bg-black relative'
+							{...imageSwipeResponder.panHandlers}>
+							{renderImageLayer(currentImage, imageTransitionStyle)}
+							{renderImageCounter()}
+							<TouchableOpacity
+								onPress={() => setShowSchema(false)}
+								className='absolute top-2 right-2 bg-black/80 p-2 rounded-full z-10'>
+								<Feather name='x' size={20} color='#fff' />
+							</TouchableOpacity>
+						</View>
 					) : selectedPdf ? (
 						<View className='flex-1 mt-6 mb-4 relative'>
 							<PdfViewer
@@ -684,40 +903,6 @@ export default function RightPanel({
 							/>
 							<TouchableOpacity
 								onPress={() => onSelectPdf(null)}
-								className='absolute top-2 right-2 bg-black/80 p-2 rounded-full z-10'>
-								<Feather name='x' size={20} color='#fff' />
-							</TouchableOpacity>
-						</View>
-					) : showSchema && currentImage ? (
-						<View className='flex-1 mt-6 mb-4 rounded-xl overflow-hidden bg-black relative'>
-							{Platform.OS === 'web' ? (
-								<View
-									style={{
-										flex: 1,
-										backgroundColor: '#000',
-										justifyContent: 'center',
-										alignItems: 'center',
-									}}>
-									<img
-										src={currentImage}
-										style={{
-											width: '100%',
-											height: '100%',
-											objectFit: 'contain',
-											filter: 'invert(100%)',
-										}}
-										alt='Schemat'
-									/>
-								</View>
-							) : (
-								<WebView
-									source={{ html: getInvertedImageHtml(currentImage) }}
-									style={{ flex: 1, backgroundColor: 'transparent' }}
-									scrollEnabled={false}
-								/>
-							)}
-							<TouchableOpacity
-								onPress={() => setShowSchema(false)}
 								className='absolute top-2 right-2 bg-black/80 p-2 rounded-full z-10'>
 								<Feather name='x' size={20} color='#fff' />
 							</TouchableOpacity>
@@ -914,7 +1099,7 @@ export default function RightPanel({
 							}
 							onSelectPdf(null);
 							setShowSchema(false);
-							setCurrentImage(null);
+							setIsShowingFileGrid(true);
 							setIsDownloading(false);
 							setDownloadingFileId(null);
 						}}
@@ -927,7 +1112,7 @@ export default function RightPanel({
 						/>
 						<Text
 							className={`${isDownloading ? 'text-neutral-600' : 'text-[#FF7A00]'} font-bold ml-2 tracking-widest text-[11px] uppercase`}>
-							ŹRÓDŁA PDF
+							POKAŻ PLIKI
 						</Text>
 					</TouchableOpacity>
 
@@ -937,34 +1122,16 @@ export default function RightPanel({
 
 			{/* Main Content View */}
 			<View className='flex-1 rounded-xl overflow-hidden bg-black'>
-				{currentImage && showSchema ? (
-					Platform.OS === 'web' ? (
-						<View
-							style={{
-								flex: 1,
-								backgroundColor: '#000',
-								justifyContent: 'center',
-								alignItems: 'center',
-							}}>
-							<img
-								src={currentImage}
-								style={{
-									width: '100%',
-									height: '100%',
-									objectFit: 'contain',
-									filter: 'invert(100%)',
-								}}
-								alt='Schemat'
-							/>
-						</View>
-					) : (
-						<WebView
-							source={{ html: getInvertedImageHtml(currentImage) }}
-							style={{ flex: 1, backgroundColor: 'transparent' }}
-							scrollEnabled={false}
-						/>
-					)
-				) : (currentImage && !showSchema) || selectedPdf ? (
+				{isShowingFileGrid ? (
+					<ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+						{renderFileGrid()}
+					</ScrollView>
+				) : currentImage && showSchema ? (
+					<View className='flex-1 relative' {...imageSwipeResponder.panHandlers}>
+						{renderImageLayer(currentImage, imageTransitionStyle)}
+						{renderImageCounter()}
+					</View>
+				) : selectedPdf ? (
 					<View className='flex-1 relative'>
 						<PdfViewer
 							source={selectedPdf?.source || require('../assets/instrukcje.pdf')}

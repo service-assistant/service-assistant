@@ -743,9 +743,7 @@ export default function HomeScreen() {
 					bottom: insets.bottom > 0 ? insets.bottom + 14 : 24,
 				}}
 				className='absolute left-0 right-0 w-full items-center z-50'>
-				<View
-					className='relative'
-					style={{}}>
+				<View className='relative' style={{}}>
 					<BlurView
 						{...bottomBarBlurProps}
 						tint='dark'
@@ -775,113 +773,113 @@ export default function HomeScreen() {
 							gap: bottomBar.gap,
 							zIndex: 1,
 						}}>
-					<TouchableOpacity
-						onPress={openCamera}
-						className='rounded-[12px] items-center justify-center'
-						style={{
-							width: bottomBar.sideBtnSize,
-							height: bottomBar.sideBtnSize,
-							backgroundColor: 'rgba(31, 31, 36, 0.88)',
-							borderWidth: 1,
-							borderColor: attachedPhotoUri
-								? 'rgba(255, 122, 0, 0.75)'
-								: 'rgba(255, 255, 255, 0.08)',
-						}}>
-						<Image
-							source={require('../../assets/images/camera.png')}
-							style={{
-								width: bottomBar.sideIconSize,
-								height: bottomBar.sideIconSize,
-								tintColor: '#D4D4D8',
-							}}
-						/>
-						{attachedPhotoUri ? (
-							<View className='absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-[#FF6B00]' />
-						) : null}
-					</TouchableOpacity>
-
-					<View
-						className='items-center flex-col gap-2'
-						style={{ width: isTablet ? 140 : 120 }}>
 						<TouchableOpacity
-							onPressIn={onMicPress}
+							onPress={openCamera}
 							className='rounded-[12px] items-center justify-center'
 							style={{
-								width: bottomBar.centerBtnSize,
-								height: bottomBar.centerBtnSize,
-								backgroundColor: micStyle.backgroundColor,
+								width: bottomBar.sideBtnSize,
+								height: bottomBar.sideBtnSize,
+								backgroundColor: 'rgba(31, 31, 36, 0.88)',
 								borderWidth: 1,
-								borderColor: micStyle.borderColor,
-								shadowColor: micStyle.shadowColor,
-								shadowOffset: { width: 0, height: 0 },
-								shadowOpacity: micStyle.shadowOpacity,
-								shadowRadius: micStyle.shadowRadius,
-								elevation: micUiState === 'idle' ? 5 : 10,
+								borderColor: attachedPhotoUri
+									? 'rgba(255, 122, 0, 0.75)'
+									: 'rgba(255, 255, 255, 0.08)',
 							}}>
-							{micUiState === 'listening' ? (
-								<Animated.View
-									pointerEvents='none'
-									className='absolute top-0 bottom-0 left-0 right-0 rounded-[12px]'
-									style={{
-										borderWidth: 1,
-										borderColor: LISTENING_CYAN,
-										backgroundColor: 'rgba(6, 182, 212, 0.14)',
-										opacity: listeningPulseOpacity,
-										transform: [{ scale: listeningPulseScale }],
-									}}
-								/>
-							) : null}
 							<Image
-								source={require('../../assets/images/micro.png')}
+								source={require('../../assets/images/camera.png')}
 								style={{
-									width: bottomBar.centerIconSize,
-									height: bottomBar.centerIconSize,
-									tintColor: micStyle.iconColor,
+									width: bottomBar.sideIconSize,
+									height: bottomBar.sideIconSize,
+									tintColor: '#D4D4D8',
 								}}
-								resizeMode='contain'
+							/>
+							{attachedPhotoUri ? (
+								<View className='absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-[#FF6B00]' />
+							) : null}
+						</TouchableOpacity>
+
+						<View
+							className='items-center flex-col gap-2'
+							style={{ width: isTablet ? 140 : 120 }}>
+							<TouchableOpacity
+								onPressIn={onMicPress}
+								className='rounded-[12px] items-center justify-center'
+								style={{
+									width: bottomBar.centerBtnSize,
+									height: bottomBar.centerBtnSize,
+									backgroundColor: micStyle.backgroundColor,
+									borderWidth: 1,
+									borderColor: micStyle.borderColor,
+									shadowColor: micStyle.shadowColor,
+									shadowOffset: { width: 0, height: 0 },
+									shadowOpacity: micStyle.shadowOpacity,
+									shadowRadius: micStyle.shadowRadius,
+									elevation: micUiState === 'idle' ? 5 : 10,
+								}}>
+								{micUiState === 'listening' ? (
+									<Animated.View
+										pointerEvents='none'
+										className='absolute top-0 bottom-0 left-0 right-0 rounded-[12px]'
+										style={{
+											borderWidth: 1,
+											borderColor: LISTENING_CYAN,
+											backgroundColor: 'rgba(6, 182, 212, 0.14)',
+											opacity: listeningPulseOpacity,
+											transform: [{ scale: listeningPulseScale }],
+										}}
+									/>
+								) : null}
+								<Image
+									source={require('../../assets/images/micro.png')}
+									style={{
+										width: bottomBar.centerIconSize,
+										height: bottomBar.centerIconSize,
+										tintColor: micStyle.iconColor,
+									}}
+									resizeMode='contain'
+								/>
+							</TouchableOpacity>
+							<View className='flex-row items-center justify-center mt-1'>
+								{micUiState === 'listening' ? (
+									<View
+										className='w-1.5 h-1.5 rounded-full mr-2'
+										style={{ backgroundColor: LISTENING_CYAN }}
+									/>
+								) : null}
+								<Text
+									className='text-center text-[11px] sm:text-xs font-bold'
+									style={{
+										letterSpacing: 0.8,
+										color: micStyle.textColor,
+										textShadowColor: 'rgba(0, 0, 0, 0.8)',
+										textShadowOffset: { width: 0, height: 1 },
+										textShadowRadius: 3,
+									}}
+									numberOfLines={1}
+									adjustsFontSizeToFit>
+									{micStyle.label}
+								</Text>
+							</View>
+						</View>
+
+						<TouchableOpacity
+							className='rounded-[12px] items-center justify-center'
+							style={{
+								width: bottomBar.sideBtnSize,
+								height: bottomBar.sideBtnSize,
+								backgroundColor: 'rgba(31, 31, 36, 0.88)',
+								borderWidth: 1,
+								borderColor: 'rgba(255, 255, 255, 0.08)',
+							}}>
+							<Image
+								source={require('../../assets/images/search.png')}
+								style={{
+									width: bottomBar.sideIconSize,
+									height: bottomBar.sideIconSize,
+									tintColor: '#D4D4D8',
+								}}
 							/>
 						</TouchableOpacity>
-						<View className='flex-row items-center justify-center mt-1'>
-							{micUiState === 'listening' ? (
-								<View
-									className='w-1.5 h-1.5 rounded-full mr-2'
-									style={{ backgroundColor: LISTENING_CYAN }}
-								/>
-							) : null}
-							<Text
-								className='text-center text-[11px] sm:text-xs font-bold'
-								style={{
-									letterSpacing: 0.8,
-									color: micStyle.textColor,
-									textShadowColor: 'rgba(0, 0, 0, 0.8)',
-									textShadowOffset: { width: 0, height: 1 },
-									textShadowRadius: 3,
-								}}
-								numberOfLines={1}
-								adjustsFontSizeToFit>
-								{micStyle.label}
-							</Text>
-						</View>
-					</View>
-
-					<TouchableOpacity
-						className='rounded-[12px] items-center justify-center'
-						style={{
-							width: bottomBar.sideBtnSize,
-							height: bottomBar.sideBtnSize,
-							backgroundColor: 'rgba(31, 31, 36, 0.88)',
-							borderWidth: 1,
-							borderColor: 'rgba(255, 255, 255, 0.08)',
-						}}>
-						<Image
-							source={require('../../assets/images/search.png')}
-							style={{
-								width: bottomBar.sideIconSize,
-								height: bottomBar.sideIconSize,
-								tintColor: '#D4D4D8',
-							}}
-							/>
-					</TouchableOpacity>
 					</View>
 				</View>
 			</View>

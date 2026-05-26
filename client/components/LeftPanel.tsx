@@ -5,12 +5,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
 	Animated,
 	Image,
+	Platform,
 	ScrollView,
 	Text,
 	TextInput,
 	TouchableOpacity,
 	View,
-	Platform,
 } from 'react-native';
 
 const PRIMARY_ORANGE = '#FF7A00';
@@ -33,7 +33,7 @@ const HEADER_LOGO_FALLBACK_WIDTH = 110;
 const QUICK_PROMPTS = [
 	'Jak naprawić pompę',
 	'Pokaż schemat elektryczny',
-	'Jak wykonać podstawowy serwis?',
+	'Kiedy podnoszenie jest bezpieczne?',
 	'Jakie części pasują?',
 ];
 
@@ -272,8 +272,7 @@ export default function LeftPanel({
 	const controlsHeight = showTextInput
 		? controlsBarHeight + textInputTopMargin + textInputRowHeight
 		: controlsBarHeight;
-	const quickPromptsBottom =
-		controlsBottom + controlsHeight + (showTextInput ? 26 : 22);
+	const quickPromptsBottom = controlsBottom + controlsHeight + (showTextInput ? 26 : 22);
 	const bottomFadeHeight = controlsHeight + controlsBottom * 2;
 	const messagesBottomPadding =
 		messages.length <= 1 ? quickPromptsBottom + 40 : bottomFadeHeight + 12;

@@ -22,6 +22,7 @@ type AssistantMessagePayload = {
 type SourceChunkPayload = {
 	attachment_id: number;
 	metadata?: {
+		images?: string[];
 		image_url?: string;
 		page?: number;
 		schema_url?: string;
@@ -57,6 +58,30 @@ const parseStreamData = <T,>(data: string | null): T | string => {
 	} catch {
 		return data;
 	}
+};
+
+const buildChunkImageUrl = (imagePath: string) =>
+	`${SERVER_URL}/api/images/${encodeURIComponent(imagePath)}`;
+
+const fetchAuthorizedImageDataUrl = async (
+	imageUrl: string,
+	authToken: string,
+	signal: AbortSignal,
+) => {
+	const response = await fetch(imageUrl, {
+		headers: { Authorization: `Bearer ${authToken}` },
+		signal,
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to load source image: ${response.status}`);
+	}
+
+	const contentType = response.headers.get('content-type') || 'image/png';
+	const arrayBuffer = await response.arrayBuffer();
+	const base64 = Buffer.from(arrayBuffer).toString('base64');
+
+	return `data:${contentType};base64,${base64}`;
 };
 
 /**
@@ -96,6 +121,8 @@ export default function ChatScreen() {
 	const [showTextInput, setShowTextInput] = useState<boolean>(false);
 	const [inputText, setInputText] = useState<string>('');
 	const [currentImage, setCurrentImage] = useState<string | null>(null);
+	const [currentImages, setCurrentImages] = useState<string[]>([]);
+	const [currentImageIndex, setCurrentImageIndex] = useState<number>(0);
 	const [attachmentPage, setAttachmentPage] = useState<number>(1);
 
 	const [attachmentId, setAttachmentId] = useState<number | null>(null);
@@ -459,6 +486,7 @@ export default function ChatScreen() {
 			let sourceAttachmentId: number | null = null;
 			let sourceAttachmentName = '';
 			let sourceAttachmentPage = 1;
+			let imageUrls: string[] = [];
 
 			if (systemMessageId) {
 				const chunksResponse = await fetch(
@@ -474,11 +502,49 @@ export default function ChatScreen() {
 
 				if (chunksResponse.ok) {
 					const chunks = (await chunksResponse.json()) as SourceChunkPayload[];
-					const sourceChunk = chunks[0];
+					const chunkImagePaths = chunks.flatMap((chunk) => chunk.metadata?.images || []);
+					const imageSourceChunk = chunks.find(
+						(chunk) => (chunk.metadata?.images?.length || 0) > 0,
+					);
+					const sourceChunk = imageSourceChunk || chunks[0];
 
 					if (sourceChunk?.attachment_id) {
 						sourceAttachmentId = sourceChunk.attachment_id;
 						sourceAttachmentPage = sourceChunk.metadata?.page || 1;
+
+						if (!imageUrl && chunkImagePaths.length > 0) {
+							const loadedImagePromisesByPath = new Map<
+								string,
+								Promise<string | null>
+							>();
+							const loadedImages = await Promise.all(
+								chunkImagePaths.map((imagePath) => {
+									const existingPromise =
+										loadedImagePromisesByPath.get(imagePath);
+									if (existingPromise) {
+										return existingPromise;
+									}
+
+									const imagePromise = fetchAuthorizedImageDataUrl(
+										buildChunkImageUrl(imagePath),
+										AUTH_TOKEN,
+										abortController.signal,
+									).catch((error) => {
+										if (abortController.signal.aborted) throw error;
+										console.error('Source image load error:', error);
+										return null;
+									});
+									loadedImagePromisesByPath.set(imagePath, imagePromise);
+									return imagePromise;
+								}),
+							);
+
+							imageUrls = loadedImages.filter(
+								(url): url is string => typeof url === 'string',
+							);
+							imageUrl = imageUrls[0] || null;
+						}
+
 						imageUrl =
 							imageUrl ||
 							sourceChunk.metadata?.image_url ||
@@ -515,10 +581,16 @@ export default function ChatScreen() {
 
 			// Handle potential attachments/images
 			if (imageUrl) {
+				const nextImages = imageUrls.length > 0 ? imageUrls : [imageUrl];
+
 				setSelectedPdf(null);
+				setCurrentImages(nextImages);
+				setCurrentImageIndex(0);
 				setCurrentImage(imageUrl);
 				setShowSchema(true);
 			} else if (sourceAttachmentId) {
+				setCurrentImages([]);
+				setCurrentImageIndex(0);
 				setCurrentImage(null);
 				setShowSchema(false);
 				setSelectedPdf({
@@ -738,6 +810,15 @@ export default function ChatScreen() {
 		}
 	};
 
+	const handleImageIndexChange = (nextIndex: number) => {
+		const nextImage = currentImages[nextIndex];
+		if (!nextImage) return;
+
+		setCurrentImageIndex(nextIndex);
+		setCurrentImage(nextImage);
+		setShowSchema(true);
+	};
+
 	const isBotTyping = isLoading && !messages.some((m) => m.sender === 'ai' && m.text === '');
 	const isMicProcessing = !isListening && (isLoading || isGenerating || isAudioPlaying);
 
@@ -752,6 +833,9 @@ export default function ChatScreen() {
 				isAvailableFilesLoading={isAvailableFilesLoading}
 				hasAskedQuestion={messages.length > 1}
 				currentImage={currentImage}
+				currentImages={currentImages}
+				currentImageIndex={currentImageIndex}
+				onImageIndexChange={handleImageIndexChange}
 				isLoading={isLoading}
 				selectedPdf={selectedPdf}
 				onSelectPdf={(pdf: any) => {
@@ -804,6 +888,9 @@ export default function ChatScreen() {
 				isAvailableFilesLoading={isAvailableFilesLoading}
 				hasAskedQuestion={messages.length > 1}
 				currentImage={currentImage}
+				currentImages={currentImages}
+				currentImageIndex={currentImageIndex}
+				onImageIndexChange={handleImageIndexChange}
 				isLoading={isLoading}
 				isListening={isListening}
 				onMicPress={handleMicPress}
