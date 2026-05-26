@@ -819,8 +819,13 @@ export default function HomeScreen() {
 								{micUiState === 'listening' ? (
 									<Animated.View
 										pointerEvents='none'
-										className='absolute top-0 bottom-0 left-0 right-0 rounded-[12px]'
 										style={{
+											position: 'absolute',
+											top: 0,
+											bottom: 0,
+											left: 0,
+											right: 0,
+											borderRadius: 12,
 											borderWidth: 1,
 											borderColor: LISTENING_CYAN,
 											backgroundColor: 'rgba(6, 182, 212, 0.14)',

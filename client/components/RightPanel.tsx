@@ -715,7 +715,7 @@ export default function RightPanel({
 		style: object,
 		pointerEvents: 'auto' | 'none' = 'auto',
 	) => (
-		<Animated.View className='flex-1' pointerEvents={pointerEvents} style={style}>
+		<Animated.View pointerEvents={pointerEvents} style={[{ flex: 1 }, style]}>
 			{Platform.OS === 'web' ? (
 				<View
 					style={{
@@ -1007,8 +1007,13 @@ export default function RightPanel({
 									{isListening && !isGenerating ? (
 										<Animated.View
 											pointerEvents='none'
-											className='absolute top-0 bottom-0 left-0 right-0 rounded-[12px]'
 											style={{
+												position: 'absolute',
+												top: 0,
+												bottom: 0,
+												left: 0,
+												right: 0,
+												borderRadius: 12,
 												borderWidth: 1,
 												borderColor: LISTENING_CYAN,
 												backgroundColor: 'rgba(6, 182, 212, 0.14)',
