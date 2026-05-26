@@ -146,8 +146,10 @@ const SoundWaveformIndicator = ({ soundLevel }: { soundLevel: Animated.Value }) 
 			{bars.map((i) => (
 				<Animated.View
 					key={i}
-					className='w-[3px] bg-white rounded-[1.5px]'
 					style={{
+						width: 3,
+						backgroundColor: '#FFFFFF',
+						borderRadius: 1.5,
 						transform: [{ scaleY: soundLevel }],
 						opacity: soundLevel.interpolate({
 							inputRange: [0.2, 1.5],
@@ -188,8 +190,16 @@ const ListeningPulse = () => {
 
 	return (
 		<Animated.View
-			style={{ transform: [{ scale }], opacity }}
-			className='absolute w-full h-full rounded-[12px] border-2 border-[#06B6D4]'
+			style={{
+				position: 'absolute',
+				width: '100%',
+				height: '100%',
+				borderRadius: 12,
+				borderWidth: 2,
+				borderColor: LISTENING_CYAN,
+				transform: [{ scale }],
+				opacity,
+			}}
 		/>
 	);
 };
