@@ -10,7 +10,7 @@ from sqlmodel import col, select
 from app.config import Settings, get_settings
 from app.database import get_session
 from app.models import ChatThread, ChunkMessage, Message, MessageSender
-from app.services import embedding, llm, stt
+from app.services import embedding, llm, stt, tts
 
 router = APIRouter()
 
@@ -77,6 +77,27 @@ async def delete_thread(thread_id: int, session: AsyncSession = Depends(get_sess
     await session.commit()
 
 
+def _sse(event: str, payload: object) -> str:
+    if isinstance(payload, str):
+        data = payload
+    else:
+        data = json.dumps(payload, ensure_ascii=False)
+    return f"event: {event}\ndata: {data}\n\n"
+
+
+async def _yield_tts_audio_events(answer: str, settings: Settings):
+    if not settings.gemini_api_key or not answer.strip():
+        return
+    try:
+        pcm = await tts.synthesize_pcm(answer, settings)
+    except tts.TtsError:
+        # Tekst i tak idzie do klienta; TTS opcjonalny przy błędzie
+        return
+    for payload in tts.iter_audio_chunk_payloads(pcm):
+        yield _sse("audio_chunk", payload)
+    yield _sse("audio_done", tts.audio_done_payload(total_bytes=len(pcm)))
+
+
 @router.post(
     "/{thread_id}/messages",
     summary="Send a message",
@@ -120,13 +141,11 @@ async def create_message(
 
     async def event_stream():
         answer_parts: list[str] = []
-
         async for chunk in llm.stream_query(
-            session, thread.id, body.content, context_chunks, settings
+            session, thread_id, body.content, context_chunks, settings
         ):
             answer_parts.append(chunk)
-            yield f"event: chunk\ndata: {json.dumps(chunk)}\n\n"
-
+            yield _sse("chunk", chunk)
         answer = "".join(answer_parts)
         system_message = Message(
             content=answer,
@@ -136,7 +155,6 @@ async def create_message(
         session.add(system_message)
         await session.commit()
         await session.refresh(system_message)
-
         assert system_message.id is not None
         for chunk in close_chunks:
             session.add(
@@ -144,8 +162,9 @@ async def create_message(
             )
         await session.commit()
         await session.refresh(system_message)
-
-        yield f"event: message\ndata: {system_message.model_dump_json()}\n\n"
+        async for ev in _yield_tts_audio_events(answer, settings):
+            yield ev
+        yield _sse("message", system_message.model_dump_json())
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
