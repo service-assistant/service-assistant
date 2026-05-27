@@ -60,6 +60,7 @@
 				}
 			],
 			"expo-web-browser",
+			"./plugins/withHideNavigationBar",
 			[
 				"expo-camera",
 				{

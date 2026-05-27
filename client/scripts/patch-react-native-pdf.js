@@ -1,13 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const pdfIndexPath = path.join(
-	__dirname,
-	'..',
-	'node_modules',
-	'react-native-pdf',
-	'index.js',
-);
+const pdfIndexPath = path.join(__dirname, '..', 'node_modules', 'react-native-pdf', 'index.js');
 const pdfViewPath = path.join(
 	__dirname,
 	'..',
@@ -56,10 +50,7 @@ if (fs.existsSync(pdfViewPath)) {
 		);
 	}
 
-	pdfViewSource = pdfViewSource.replace(
-		'        applyDarkPdfFilter();\n',
-		'',
-	);
+	pdfViewSource = pdfViewSource.replace('        applyDarkPdfFilter();\n', '');
 
 	pdfViewSource = pdfViewSource.replace(
 		/\n    private void applyDarkPdfFilter\(\) \{\n        Paint paint = new Paint\(\);\n        ColorMatrix matrix = new ColorMatrix\(new float\[\] \{\n            -1, 0, 0, 0, 255,\n            0, -1, 0, 0, 255,\n            0, 0, -1, 0, 255,\n            0, 0, 0, 1, 0\n        \}\);\n        paint\.setColorFilter\(new ColorMatrixColorFilter\(matrix\)\);\n        setBackgroundColor\(Color\.BLACK\);\n        setLayerType\(View\.LAYER_TYPE_HARDWARE, paint\);\n    \}\n/,

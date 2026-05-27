@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     openai_chat_model: str
     azure_openai_api_version: str
     attachments_dir: Path
+    deepgram_api_key: str | None = None
 
     gemini_api_key: str | None = None
     gemini_tts_model: str = "gemini-2.5-flash-preview-tts"
