@@ -54,19 +54,30 @@ const METHODS = `  private val hideSystemBarsHandler = Handler(Looper.getMainLoo
 `;
 
 function addImports(source) {
-  if (source.includes('import android.view.WindowInsetsController')) {
-    return source;
+  let nextSource = source;
+
+  for (const importLine of IMPORTS.split('\n')) {
+    if (!nextSource.includes(importLine)) {
+      nextSource = nextSource.replace('import android.os.Bundle', `import android.os.Bundle\n${importLine}`);
+    }
   }
 
-  return source.replace('import android.os.Bundle', `import android.os.Bundle\n${IMPORTS}`);
+  return nextSource;
 }
 
 function callFromOnCreate(source) {
-  if (source.includes('super.onCreate(null)\n    scheduleHideSystemBars()')) {
+  if (source.includes('window.decorView.setOnSystemUiVisibilityChangeListener')) {
     return source;
   }
 
-  return source.replace('super.onCreate(null)', 'super.onCreate(null)\n    scheduleHideSystemBars()');
+  return source.replace(
+    'super.onCreate(null)',
+    `super.onCreate(null)
+    window.decorView.setOnSystemUiVisibilityChangeListener {
+      scheduleHideSystemBars()
+    }
+    scheduleHideSystemBars()`
+  );
 }
 
 function addMethods(source) {
