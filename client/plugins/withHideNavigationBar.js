@@ -1,4 +1,4 @@
-const { withMainActivity } = require('@expo/config-plugins');
+const { AndroidConfig, withAndroidStyles, withMainActivity } = require('@expo/config-plugins');
 
 const IMPORTS = `import android.os.Handler
 import android.os.Build
@@ -54,49 +54,86 @@ const METHODS = `  private val hideSystemBarsHandler = Handler(Looper.getMainLoo
 `;
 
 function addImports(source) {
-  let nextSource = source;
+	let nextSource = source;
 
-  for (const importLine of IMPORTS.split('\n')) {
-    if (!nextSource.includes(importLine)) {
-      nextSource = nextSource.replace('import android.os.Bundle', `import android.os.Bundle\n${importLine}`);
-    }
-  }
+	for (const importLine of IMPORTS.split('\n')) {
+		if (!nextSource.includes(importLine)) {
+			nextSource = nextSource.replace(
+				'import android.os.Bundle',
+				`import android.os.Bundle\n${importLine}`,
+			);
+		}
+	}
 
-  return nextSource;
+	return nextSource;
 }
 
 function callFromOnCreate(source) {
-  if (source.includes('window.decorView.setOnSystemUiVisibilityChangeListener')) {
-    return source;
-  }
+	if (source.includes('window.decorView.setOnSystemUiVisibilityChangeListener')) {
+		return source;
+	}
 
-  return source.replace(
-    'super.onCreate(null)',
-    `super.onCreate(null)
+	return source.replace(
+		'super.onCreate(null)',
+		`super.onCreate(null)
     window.decorView.setOnSystemUiVisibilityChangeListener {
       scheduleHideSystemBars()
     }
-    scheduleHideSystemBars()`
-  );
+    scheduleHideSystemBars()`,
+	);
 }
 
 function addMethods(source) {
-  if (source.includes('private fun hideSystemBars()')) {
-    return source;
-  }
+	if (source.includes('private fun hideSystemBars()')) {
+		return source;
+	}
 
-  return source.replace(
-    '\n  /**\n   * Returns the name of the main component registered from JavaScript.',
-    `\n${METHODS}  /**\n   * Returns the name of the main component registered from JavaScript.`
-  );
+	return source.replace(
+		'\n  /**\n   * Returns the name of the main component registered from JavaScript.',
+		`\n${METHODS}  /**\n   * Returns the name of the main component registered from JavaScript.`,
+	);
+}
+
+function setAppThemeStyleItem(styles, name, value) {
+	return AndroidConfig.Styles.assignStylesValue(styles, {
+		add: true,
+		parent: AndroidConfig.Styles.getAppThemeGroup(),
+		name,
+		value,
+	});
+}
+
+function withSystemBarStyles(config) {
+	return withAndroidStyles(config, (config) => {
+		let styles = config.modResults;
+
+		styles = setAppThemeStyleItem(styles, 'android:enforceNavigationBarContrast', 'false');
+		styles = setAppThemeStyleItem(
+			styles,
+			'android:navigationBarColor',
+			'@android:color/transparent',
+		);
+		styles = setAppThemeStyleItem(
+			styles,
+			'android:windowLayoutInDisplayCutoutMode',
+			'shortEdges',
+		);
+
+		config.modResults = styles;
+		return config;
+	});
 }
 
 module.exports = function withHideNavigationBar(config) {
-  return withMainActivity(config, (config) => {
-    if (config.modResults.language === 'kt') {
-      config.modResults.contents = addMethods(callFromOnCreate(addImports(config.modResults.contents)));
-    }
+	config = withMainActivity(config, (config) => {
+		if (config.modResults.language === 'kt') {
+			config.modResults.contents = addMethods(
+				callFromOnCreate(addImports(config.modResults.contents)),
+			);
+		}
 
-    return config;
-  });
+		return config;
+	});
+
+	return withSystemBarStyles(config);
 };
