@@ -1,28 +1,118 @@
 import { Buffer } from 'buffer';
 import { AudioModule, RecordingPresets, useAudioPlayer, useAudioRecorder } from 'expo-audio';
+import { useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Image, Platform, useWindowDimensions, View } from 'react-native';
+import { Animated, Platform, useWindowDimensions, View } from 'react-native';
+import EventSource, { EventSourceEvent } from 'react-native-sse';
 
 import LeftPanel, { Message } from '@/components/LeftPanel';
-import RightPanel from '@/components/RightPanel';
+import RightPanel, { AvailableFile } from '@/components/RightPanel';
 import * as FileSystem from 'expo-file-system/legacy';
 
 const SERVER_URL = 'https://staging.asystent-serwisanta.pl';
 
+type StreamEvent = 'chunk';
+
+type AssistantMessagePayload = {
+	id?: number;
+	content?: string;
+	image_url?: string | null;
+};
+
+type SourceChunkPayload = {
+	attachment_id: number;
+	metadata?: {
+		images?: string[];
+		image_url?: string;
+		page?: number;
+		schema_url?: string;
+	} | null;
+};
+
+type AttachmentPayload = {
+	id?: number;
+	original_filename?: string;
+};
+
+type DeviceAttachmentPayload = {
+	id: number;
+	original_filename: string;
+};
+
+const HARDCODED_DEVICE_ID = 1;
+
+const FILE_ICON_OPTIONS = [
+	{ icon: 'file-pdf-box', color: '#EF4444' },
+	{ icon: 'file-document-outline', color: '#06B6D4' },
+	{ icon: 'lightning-bolt', color: '#EAB308' },
+	{ icon: 'cogs', color: '#A855F7' },
+	{ icon: 'wrench-outline', color: '#3B82F6' },
+	{ icon: 'shield-check-outline', color: '#22C55E' },
+];
+
+const parseStreamData = <T,>(data: string | null): T | string => {
+	if (!data) return '';
+
+	try {
+		return JSON.parse(data) as T;
+	} catch {
+		return data;
+	}
+};
+
+const buildChunkImageUrl = (imagePath: string) =>
+	`${SERVER_URL}/api/images/${encodeURIComponent(imagePath)}`;
+
+const fetchAuthorizedImageDataUrl = async (
+	imageUrl: string,
+	authToken: string,
+	signal: AbortSignal,
+) => {
+	const response = await fetch(imageUrl, {
+		headers: { Authorization: `Bearer ${authToken}` },
+		signal,
+	});
+
+	if (!response.ok) {
+		throw new Error(`Failed to load source image: ${response.status}`);
+	}
+
+	const contentType = response.headers.get('content-type') || 'image/png';
+	const arrayBuffer = await response.arrayBuffer();
+	const base64 = Buffer.from(arrayBuffer).toString('base64');
+
+	return `data:${contentType};base64,${base64}`;
+};
+
 /**
- * Main application screen.
- * Manages chat state, voice communication (STT Deepgram, TTS OpenAI),
- * streaming response logic from the custom API, and view states (right/left panel).
+ * ChatScreen Component
+ *
+ * Handles the main conversational interface, supporting both text and voice interactions.
+ * Features include:
+ * - Real-time voice recording with volume metering
+ * - Integration with Deepgram for Speech-to-Text (STT)
+ * - Integration with OpenAI for Text-to-Speech (TTS)
+ * - Managing thread-based conversation history with the backend API
+ * - Displaying attachments and schema images
  */
 export default function ChatScreen() {
 	const { width } = useWindowDimensions();
-	const isMobile = width < 768; // Breakpoint for mobile
+	const isMobile = width < 768;
+
+	// --- ROUTING PARAMETERS ---
+	const { deviceId, deviceName, logoUrl } = useLocalSearchParams<{
+		deviceId: string;
+		deviceName: string;
+		logoUrl: string;
+	}>();
 
 	// --- UI & DATA STATES ---
 	const [showSchema, setShowSchema] = useState<boolean>(true);
 	const [selectedPdf, setSelectedPdf] = useState<any>(null);
 	const [isListening, setIsListening] = useState<boolean>(false);
-	const [isLoading, setIsLoading] = useState<boolean>(false);
+	const [isLoading, setIsLoading] = useState<boolean>(true);
+	const [availableFiles, setAvailableFiles] = useState<AvailableFile[]>([]);
+	const [isAvailableFilesLoading, setIsAvailableFilesLoading] = useState<boolean>(true);
 
 	// --- STOP CONTROL STATES ---
 	const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -31,14 +121,18 @@ export default function ChatScreen() {
 	const [showTextInput, setShowTextInput] = useState<boolean>(false);
 	const [inputText, setInputText] = useState<string>('');
 	const [currentImage, setCurrentImage] = useState<string | null>(null);
-	const [currentSource, setCurrentSource] = useState<string>('02-8FGF15');
+	const [currentImages, setCurrentImages] = useState<string[]>([]);
+	const [currentImageIndex, setCurrentImageIndex] = useState<number>(0);
 	const [attachmentPage, setAttachmentPage] = useState<number>(1);
 
 	const [attachmentId, setAttachmentId] = useState<number | null>(null);
 	const [attachmentName, setAttachmentName] = useState<string>('');
 
-	// --- CHAT STATE ---
-	const initialMessage = 'Cześć. Jestem gotowy. Wybierz maszynę lub zadaj pytanie o naprawę.';
+	// --- CHAT & THREAD STATE ---
+	const [currentThreadId, setCurrentThreadId] = useState<number | null>(null);
+	const [currentSource, setCurrentSource] = useState<string>(deviceName || 'Wybierz maszynę');
+
+	const initialMessage = 'Cześć. Jestem gotowy. Zadaj pytanie o naprawę lub zgłoś usterkę.';
 	const [messages, setMessages] = useState<Message[]>([
 		{ id: 1, sender: 'ai', text: initialMessage },
 	]);
@@ -58,15 +152,17 @@ export default function ChatScreen() {
 	const hasSpoken = useRef<boolean>(false);
 
 	// --- REQUEST CANCELLATION REFERENCES ---
-	const xhrRef = useRef<XMLHttpRequest | null>(null);
+	const fetchAbortControllerRef = useRef<AbortController | null>(null);
 	const ttsAbortControllerRef = useRef<AbortController | null>(null);
 
-	// --- SILENCE CONFIGURATION (Auto-stop) ---
+	// --- SILENCE CONFIGURATION ---
 	const silenceThreshold = -50;
 	const silenceDuration = 2500;
 	const initialSilenceDuration = 5000;
 
-	/** Initialize audio module */
+	/**
+	 * Initialize audio module settings and cleanup on unmount
+	 */
 	useEffect(() => {
 		AudioModule.setAudioModeAsync({
 			playsInSilentMode: true,
@@ -75,18 +171,85 @@ export default function ChatScreen() {
 
 		return () => {
 			if (meteringIntervalRef.current) clearInterval(meteringIntervalRef.current);
-			if (xhrRef.current) xhrRef.current.abort();
+			if (fetchAbortControllerRef.current) fetchAbortControllerRef.current.abort();
 			if (ttsAbortControllerRef.current) ttsAbortControllerRef.current.abort();
 		};
 	}, []);
 
-	/** Update view upon image change */
+	useEffect(() => {
+		if (deviceName) {
+			setCurrentSource(deviceName);
+		}
+	}, [deviceName]);
+
+	useEffect(() => {
+		const abortController = new AbortController();
+		const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
+
+		const fetchAvailableFiles = async () => {
+			setIsAvailableFilesLoading(true);
+
+			try {
+				const response = await fetch(
+					`${SERVER_URL}/api/devices/${HARDCODED_DEVICE_ID}/attachments`,
+					{
+						headers: {
+							Accept: 'application/json',
+							Authorization: `Bearer ${AUTH_TOKEN}`,
+						},
+						signal: abortController.signal,
+					},
+				);
+
+				if (!response.ok) {
+					throw new Error(`Failed to load attachments: ${response.status}`);
+				}
+
+				const attachments = (await response.json()) as DeviceAttachmentPayload[];
+				setAvailableFiles(
+					attachments.map((attachment, index) => {
+						const iconOption = FILE_ICON_OPTIONS[index % FILE_ICON_OPTIONS.length];
+
+						return {
+							id: attachment.id,
+							name: attachment.original_filename || `Dokument_${attachment.id}.pdf`,
+							icon: iconOption.icon,
+							color: iconOption.color,
+							remoteUrl: `${SERVER_URL}/api/attachments/${attachment.id}/file`,
+						};
+					}),
+				);
+			} catch (error: any) {
+				if (error.name !== 'AbortError') {
+					console.error('Available files load error:', error);
+					setAvailableFiles([]);
+				}
+			} finally {
+				if (!abortController.signal.aborted) {
+					setIsAvailableFilesLoading(false);
+				}
+			}
+		};
+
+		fetchAvailableFiles();
+
+		return () => abortController.abort();
+	}, []);
+
+	/**
+	 * Initial setup for the screen.
+	 * Thread creation is deferred until the user sends the first message (lazy initialization).
+	 */
+	useEffect(() => {
+		setIsLoading(false);
+	}, [deviceId]);
+
 	useEffect(() => {
 		if (currentImage) setShowSchema(true);
 	}, [currentImage]);
 
-	/** * AUDIO PLAYER TRACKING
-	 * Periodically checks if audio is still playing.
+	/**
+	 * Track audio player state
 	 */
 	useEffect(() => {
 		const interval = setInterval(() => {
@@ -99,38 +262,31 @@ export default function ChatScreen() {
 		return () => clearInterval(interval);
 	}, [ttsPlayer]);
 
-	/** * STOPS THE AI
-	 * Halts text generation and audio playback.
+	/**
+	 * Stop AI generation and audio playback
 	 */
 	const handleStop = () => {
-		// 1. Abort text stream request
-		if (xhrRef.current) {
-			xhrRef.current.abort();
-			xhrRef.current = null;
+		if (fetchAbortControllerRef.current) {
+			fetchAbortControllerRef.current.abort();
+			fetchAbortControllerRef.current = null;
 		}
-
-		// 2. Abort audio fetching (if waiting for OpenAI response)
 		if (ttsAbortControllerRef.current) {
 			ttsAbortControllerRef.current.abort();
 			ttsAbortControllerRef.current = null;
 		}
-
-		// 3. Pause audio playback (if already playing)
 		if (ttsPlayer && ttsPlayer.playing) {
 			ttsPlayer.pause();
 		}
-
-		// 4. Reset states
 		setIsGenerating(false);
 		setIsLoading(false);
 		setIsAudioPlaying(false);
 	};
 
 	/**
-	 * Sends text to the OpenAI API to generate speech (Text-to-Speech)
+	 * Fetch TTS audio from OpenAI and play it
+	 * @param {string} text - The text to be converted to speech
 	 */
 	const playChatGptAudio = async (text: string) => {
-		// Create a new AbortController for every fetch request
 		const abortController = new AbortController();
 		ttsAbortControllerRef.current = abortController;
 
@@ -139,7 +295,7 @@ export default function ChatScreen() {
 			const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
 
 			if (!apiKey) {
-				alert('Missing API Key! Restart Expo with: npx expo start -c');
+				alert('Missing API Key!');
 				return;
 			}
 
@@ -157,14 +313,12 @@ export default function ChatScreen() {
 				signal: abortController.signal,
 			});
 
-			if (!response.ok) throw new Error(`OpenAI API connection error: ${response.status}`);
-
-			// If stopped while waiting for the HTTP response:
+			if (!response.ok) throw new Error(`OpenAI API error: ${response.status}`);
 			if (abortController.signal.aborted) return;
 
 			if (Platform.OS === 'web') {
 				const blob = await response.blob();
-				if (abortController.signal.aborted) return; // Double check abort status
+				if (abortController.signal.aborted) return;
 
 				const url = URL.createObjectURL(blob);
 				ttsPlayer.replace(url);
@@ -181,7 +335,6 @@ export default function ChatScreen() {
 					encoding: FileSystem.EncodingType.Base64,
 				});
 
-				// Final check before playing audio
 				if (abortController.signal.aborted) return;
 
 				ttsPlayer.replace(fileUri);
@@ -189,17 +342,11 @@ export default function ChatScreen() {
 				ttsPlayer.play();
 			}
 		} catch (error: any) {
-			if (error.name === 'AbortError') {
-				console.log('OpenAI audio fetch aborted by user.');
-				return; // Ignore the error if intentionally aborted
-			}
-			console.error('ChatGPT TTS playback error:', error);
-			alert('Failed to generate audio.');
+			if (error.name === 'AbortError') return;
+			console.error('ChatGPT TTS error:', error);
 		} finally {
 			setIsLoading(false);
 			setIsGenerating(false);
-
-			// Clear reference to avoid memory leaks
 			if (ttsAbortControllerRef.current === abortController) {
 				ttsAbortControllerRef.current = null;
 			}
@@ -207,127 +354,100 @@ export default function ChatScreen() {
 	};
 
 	/**
-	 * Sends a user query to the RAG backend, streams the SSE response token by token
+	 * Main function for handling message exchange with the API.
+	 * Creates a new thread if one doesn't exist.
+	 * @param {string} question - The user's input query
 	 */
 	const askAPI = async (question: string) => {
 		setIsLoading(true);
 		setIsGenerating(true);
 		const aiMessageId = Date.now() + Math.random();
-
 		const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
 
+		// Add an empty AI bubble placeholder to be populated later
 		setMessages((prev) => [...prev, { id: aiMessageId, sender: 'ai', text: '' }]);
 
-		const xhr = new XMLHttpRequest();
-		xhrRef.current = xhr;
+		const abortController = new AbortController();
+		fetchAbortControllerRef.current = abortController;
 
-		xhr.open('POST', `${SERVER_URL}/api/questions`, true);
-		xhr.setRequestHeader('Content-Type', 'application/json');
-		xhr.setRequestHeader('Accept', 'text/plain');
+		try {
+			let activeThreadId = currentThreadId;
 
-		if (AUTH_TOKEN) {
-			xhr.setRequestHeader('Authorization', `Bearer ${AUTH_TOKEN}`);
-		}
+			// 1. IF THREAD DOES NOT EXIST (first message in session) -> CREATE IT
+			if (!activeThreadId) {
+				const threadResponse = await fetch(`${SERVER_URL}/api/threads`, {
+					method: 'POST',
+					headers: {
+						Authorization: `Bearer ${AUTH_TOKEN}`,
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						device_id: HARDCODED_DEVICE_ID,
+						title: question.length > 40 ? `${question.substring(0, 40)}...` : question,
+					}),
+					signal: abortController.signal,
+				});
 
-		let fullText = '';
-		let spinnerRemoved = false;
-		let lastResponse = '';
-		let buffer = '';
-		let currentEventType = 'message';
-		let firstSourceFound = false;
+				if (!threadResponse.ok) throw new Error('Failed to create a new thread.');
+				const threadData = await threadResponse.json();
 
-		xhr.onabort = () => {
-			setIsLoading(false);
-			setIsGenerating(false);
-		};
+				activeThreadId = threadData.id;
+				setCurrentThreadId(activeThreadId);
+			}
 
-		xhr.onreadystatechange = () => {
-			if (xhr.status === 0 && xhr.readyState === 4) return;
+			// 2. SEND MESSAGE TO THE ACTIVE THREAD
+			let fullText = '';
+			let imageUrl: string | null = null;
+			let systemMessageId: number | null = null;
 
-			if (xhr.readyState === 3 || xhr.readyState === 4) {
-				const currentResponse = xhr.responseText;
-				if (!currentResponse) return;
+			await new Promise<void>((resolve, reject) => {
+				const eventSource = new EventSource<StreamEvent>(
+					`${SERVER_URL}/api/threads/${activeThreadId}/messages`,
+					{
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+							Accept: 'text/event-stream',
+							Authorization: `Bearer ${AUTH_TOKEN}`,
+						},
+						body: JSON.stringify({ content: question }),
+						pollingInterval: 0,
+						timeoutBeforeConnection: 0,
+					},
+				);
 
-				let newData = '';
-				if (lastResponse.length > 0 && currentResponse.startsWith(lastResponse)) {
-					newData = currentResponse.substring(lastResponse.length);
-				} else {
-					newData = currentResponse;
-				}
-				lastResponse = currentResponse;
+				const closeStream = () => {
+					eventSource.close();
+					abortController.signal.removeEventListener('abort', handleAbort);
+				};
 
-				buffer += newData;
-				const lines = buffer.split('\n');
+				const handleAbort = () => {
+					closeStream();
+					resolve();
+				};
 
-				if (xhr.readyState === 3) {
-					buffer = lines.pop() || '';
-				} else {
-					buffer = '';
-				}
+				const handleChunk = (event: EventSourceEvent<StreamEvent>) => {
+					const chunk = parseStreamData<string>(event.data);
+					const chunkText = typeof chunk === 'string' ? chunk : '';
 
-				let textUpdated = false;
+					if (!chunkText || abortController.signal.aborted) return;
 
-				for (const line of lines) {
-					const trimmedLine = line.trim();
+					fullText += chunkText;
+					setIsLoading(false);
+					setMessages((prev) =>
+						prev.map((msg) =>
+							msg.id === aiMessageId ? { ...msg, text: fullText } : msg,
+						),
+					);
+				};
 
-					if (!trimmedLine) {
-						currentEventType = 'message';
-						continue;
-					}
+				const handleMessage = (event: EventSourceEvent<'message'>) => {
+					const message = parseStreamData<AssistantMessagePayload>(event.data);
 
-					if (trimmedLine.startsWith('event:')) {
-						const eventName = trimmedLine.substring(6).trim();
-						if (eventName === '[DONE]') continue;
-						currentEventType = eventName;
-						continue;
-					}
-
-					if (trimmedLine.startsWith('data:')) {
-						const chunk = trimmedLine.substring(5).trim();
-						if (!chunk) continue;
-
-						if (currentEventType === 'source') {
-							if (!firstSourceFound) {
-								try {
-									const sourceData = JSON.parse(chunk);
-									if (sourceData && sourceData.attachment_id) {
-										setAttachmentId(sourceData.attachment_id);
-
-										const rawFileName = sourceData.file_name || 'Dokument.pdf';
-										const cleanFileName =
-											rawFileName.split('/').pop() || 'Dokument.pdf';
-										setAttachmentName(cleanFileName);
-										if (sourceData.page) {
-											setAttachmentPage(sourceData.page);
-										}
-										firstSourceFound = true;
-									}
-								} catch (e) {
-									console.error('Source parsing error:', e);
-								}
-							}
-						} else if (currentEventType === 'token') {
-							try {
-								const token = JSON.parse(chunk);
-								if (typeof token === 'string') {
-									fullText += token;
-									textUpdated = true;
-								} else if (token && typeof token.text === 'string') {
-									fullText += token.text;
-									textUpdated = true;
-								}
-							} catch (e) {
-								fullText += chunk;
-								textUpdated = true;
-							}
-						}
-					}
-				}
-
-				if (textUpdated || xhr.readyState === 4) {
-					if (!spinnerRemoved && fullText.length > 0) {
-						setIsLoading(false);
-						spinnerRemoved = true;
+					if (typeof message === 'object' && message !== null) {
+						fullText = message.content || fullText;
+						imageUrl = message.image_url || null;
+						systemMessageId = message.id || null;
 					}
 
 					setMessages((prev) =>
@@ -335,72 +455,190 @@ export default function ChatScreen() {
 							msg.id === aiMessageId ? { ...msg, text: fullText } : msg,
 						),
 					);
-				}
-			}
-		};
 
-		xhr.onload = () => {
-			if (xhr.status === 0) return; // Ignore if aborted
-			setIsLoading(false);
+					closeStream();
+					resolve();
+				};
 
-			if (xhr.status >= 200 && xhr.status < 300) {
-				const rawAsset = require('@/assets/schemas/schemat1.png');
-				let schemaAsset;
+				const handleError = (event: EventSourceEvent<'error'>) => {
+					closeStream();
 
-				if (Platform.OS === 'web') {
-					if (typeof rawAsset === 'string') {
-						schemaAsset = rawAsset;
-					} else if (rawAsset?.uri) {
-						schemaAsset = rawAsset.uri;
-					} else if (rawAsset?.default) {
-						schemaAsset = rawAsset.default;
-					} else {
-						schemaAsset = rawAsset;
+					if (abortController.signal.aborted) {
+						resolve();
+						return;
 					}
-				} else {
-					schemaAsset = Image.resolveAssetSource(rawAsset).uri;
-				}
 
-				setCurrentImage(schemaAsset);
-				setShowSchema(true);
+					if ('xhrStatus' in event) {
+						reject(new Error(`API server error: ${event.xhrStatus}`));
+					} else if ('message' in event) {
+						reject(new Error(event.message));
+					} else {
+						reject(new Error('SSE stream error'));
+					}
+				};
 
-				if (fullText.length > 0) {
-					playChatGptAudio(fullText);
-				} else {
-					setIsGenerating(false);
+				abortController.signal.addEventListener('abort', handleAbort);
+				eventSource.addEventListener('chunk', handleChunk);
+				eventSource.addEventListener('message', handleMessage);
+				eventSource.addEventListener('error', handleError);
+			});
+
+			let sourceAttachmentId: number | null = null;
+			let sourceAttachmentName = '';
+			let sourceAttachmentPage = 1;
+			let imageUrls: string[] = [];
+
+			if (systemMessageId) {
+				const chunksResponse = await fetch(
+					`${SERVER_URL}/api/messages/${systemMessageId}/chunks`,
+					{
+						headers: {
+							Accept: 'application/json',
+							Authorization: `Bearer ${AUTH_TOKEN}`,
+						},
+						signal: abortController.signal,
+					},
+				);
+
+				if (chunksResponse.ok) {
+					const chunks = (await chunksResponse.json()) as SourceChunkPayload[];
+					const chunkImagePaths = chunks.flatMap((chunk) => chunk.metadata?.images || []);
+					const imageSourceChunk = chunks.find(
+						(chunk) => (chunk.metadata?.images?.length || 0) > 0,
+					);
+					const sourceChunk = imageSourceChunk || chunks[0];
+
+					if (sourceChunk?.attachment_id) {
+						sourceAttachmentId = sourceChunk.attachment_id;
+						sourceAttachmentPage = sourceChunk.metadata?.page || 1;
+
+						if (!imageUrl && chunkImagePaths.length > 0) {
+							const loadedImagePromisesByPath = new Map<
+								string,
+								Promise<string | null>
+							>();
+							const loadedImages = await Promise.all(
+								chunkImagePaths.map((imagePath) => {
+									const existingPromise =
+										loadedImagePromisesByPath.get(imagePath);
+									if (existingPromise) {
+										return existingPromise;
+									}
+
+									const imagePromise = fetchAuthorizedImageDataUrl(
+										buildChunkImageUrl(imagePath),
+										AUTH_TOKEN,
+										abortController.signal,
+									).catch((error) => {
+										if (abortController.signal.aborted) throw error;
+										console.error('Source image load error:', error);
+										return null;
+									});
+									loadedImagePromisesByPath.set(imagePath, imagePromise);
+									return imagePromise;
+								}),
+							);
+
+							imageUrls = loadedImages.filter(
+								(url): url is string => typeof url === 'string',
+							);
+							imageUrl = imageUrls[0] || null;
+						}
+
+						imageUrl =
+							imageUrl ||
+							sourceChunk.metadata?.image_url ||
+							sourceChunk.metadata?.schema_url ||
+							null;
+
+						const attachmentResponse = await fetch(
+							`${SERVER_URL}/api/attachments/${sourceAttachmentId}`,
+							{
+								headers: {
+									Accept: 'application/json',
+									Authorization: `Bearer ${AUTH_TOKEN}`,
+								},
+								signal: abortController.signal,
+							},
+						);
+
+						if (attachmentResponse.ok) {
+							const attachment =
+								(await attachmentResponse.json()) as AttachmentPayload;
+							sourceAttachmentName =
+								attachment.original_filename ||
+								`Dokument_${sourceAttachmentId}.pdf`;
+						} else {
+							sourceAttachmentName = `Dokument_${sourceAttachmentId}.pdf`;
+						}
+
+						setAttachmentId(sourceAttachmentId);
+						setAttachmentName(sourceAttachmentName);
+						setAttachmentPage(sourceAttachmentPage);
+					}
 				}
-			} else {
-				handleError(`HTTP Error: ${xhr.status}`);
 			}
-		};
 
-		xhr.onerror = () => {
-			if (xhr.status === 0) return;
-			handleError('Server connection error.');
-		};
-		xhr.ontimeout = () => {
-			handleError('Response timeout exceeded.');
-		};
+			// Handle potential attachments/images
+			if (imageUrl) {
+				const nextImages = imageUrls.length > 0 ? imageUrls : [imageUrl];
 
-		const handleError = (errorDetails: string) => {
-			setIsLoading(false);
+				setSelectedPdf(null);
+				setCurrentImages(nextImages);
+				setCurrentImageIndex(0);
+				setCurrentImage(imageUrl);
+				setShowSchema(true);
+			} else if (sourceAttachmentId) {
+				setCurrentImages([]);
+				setCurrentImageIndex(0);
+				setCurrentImage(null);
+				setShowSchema(false);
+				setSelectedPdf({
+					name: sourceAttachmentName || `Dokument_${sourceAttachmentId}.pdf`,
+					icon: 'file-pdf-box',
+					color: '#EF4444',
+					source: {
+						uri: `${SERVER_URL}/api/attachments/${sourceAttachmentId}/file`,
+						headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+					},
+					page: sourceAttachmentPage,
+				});
+			}
+
+			// Play AI response audio
+			if (fullText.length > 0) {
+				playChatGptAudio(fullText);
+			} else {
+				setIsGenerating(false);
+			}
+		} catch (error: any) {
+			if (error.name === 'AbortError') {
+				console.log('Request aborted by the user.');
+			} else {
+				setMessages((prev) =>
+					prev.map((msg) =>
+						msg.id === aiMessageId
+							? { ...msg, text: `Wystąpił błąd komunikacji: ${error.message}` }
+							: msg,
+					),
+				);
+			}
 			setIsGenerating(false);
-			const errorMsg = `Sorry, an issue occurred: ${errorDetails}`;
-			setMessages((prev) =>
-				prev.map((msg) =>
-					msg.id === aiMessageId && !fullText ? { ...msg, text: errorMsg } : msg,
-				),
-			);
-		};
-
-		xhr.send(JSON.stringify({ question: question }));
+		} finally {
+			setIsLoading(false);
+			if (fetchAbortControllerRef.current === abortController) {
+				fetchAbortControllerRef.current = null;
+			}
+		}
 	};
 
-	/** Handles sending a text question */
+	/**
+	 * Handle manual text submission
+	 */
 	const handleSendText = () => {
 		if (inputText.trim().length === 0) return;
 
-		handleStop(); // Stop AI playback/generation before sending a new message
+		handleStop();
 
 		const userTempId = Date.now();
 		setMessages((prev) => [
@@ -414,7 +652,10 @@ export default function ChatScreen() {
 		setShowTextInput(false);
 	};
 
-	/** Sends the recorded audio file to the Deepgram API */
+	/**
+	 * Send recorded audio file to Deepgram for STT translation
+	 * @param {string} uri - Local URI of the audio file
+	 */
 	const sendToDeepgram = async (uri: string) => {
 		setIsLoading(true);
 		try {
@@ -462,6 +703,9 @@ export default function ChatScreen() {
 		}
 	};
 
+	/**
+	 * Stop the ongoing recording session and push data to Deepgram
+	 */
 	const stopRecordingAndSend = async () => {
 		if (meteringIntervalRef.current) {
 			clearInterval(meteringIntervalRef.current);
@@ -481,6 +725,9 @@ export default function ChatScreen() {
 		}
 	};
 
+	/**
+	 * Start tracking microphone metering to detect periods of silence
+	 */
 	const startMetering = () => {
 		lastLoudTime.current = Date.now();
 		hasSpoken.current = false;
@@ -522,9 +769,11 @@ export default function ChatScreen() {
 		}, 100);
 	};
 
-	/** Main microphone button handler. */
+	/**
+	 * Handle microphone button press
+	 */
 	const handleMicPress = async () => {
-		handleStop(); // Stop AI playback/generation when user starts speaking
+		handleStop();
 
 		if (showTextInput) setShowTextInput(false);
 
@@ -561,12 +810,18 @@ export default function ChatScreen() {
 		}
 	};
 
+	const handleImageIndexChange = (nextIndex: number) => {
+		const nextImage = currentImages[nextIndex];
+		if (!nextImage) return;
+
+		setCurrentImageIndex(nextIndex);
+		setCurrentImage(nextImage);
+		setShowSchema(true);
+	};
+
 	const isBotTyping = isLoading && !messages.some((m) => m.sender === 'ai' && m.text === '');
+	const isMicProcessing = !isListening && (isLoading || isGenerating || isAudioPlaying);
 
-	// AI is considered active if generating text or playing audio
-	const isBotActive = isGenerating || isAudioPlaying;
-
-	// --- RENDER MOBILE VIEW ---
 	if (isMobile) {
 		return (
 			<RightPanel
@@ -574,8 +829,13 @@ export default function ChatScreen() {
 				attachmentId={attachmentId}
 				attachmentName={attachmentName}
 				attachmentPage={attachmentPage}
+				availableFiles={availableFiles}
+				isAvailableFilesLoading={isAvailableFilesLoading}
 				hasAskedQuestion={messages.length > 1}
 				currentImage={currentImage}
+				currentImages={currentImages}
+				currentImageIndex={currentImageIndex}
+				onImageIndexChange={handleImageIndexChange}
 				isLoading={isLoading}
 				selectedPdf={selectedPdf}
 				onSelectPdf={(pdf: any) => {
@@ -588,16 +848,24 @@ export default function ChatScreen() {
 				isListening={isListening}
 				onMicPress={handleMicPress}
 				soundLevelAnim={soundLevelAnim}
+				isGenerating={isMicProcessing}
+				onStop={handleStop}
+				messages={messages}
+				isChatLoading={isBotTyping}
+				showTextInput={showTextInput}
+				setShowTextInput={setShowTextInput}
+				inputText={inputText}
+				setInputText={setInputText}
+				onSendText={handleSendText}
+				logoUrl={logoUrl}
 			/>
 		);
 	}
 
-	// --- RENDER TABLET / WEB VIEW ---
 	return (
 		<View className='flex-1 flex-row bg-black p-4'>
 			<LeftPanel
 				messages={messages}
-				isLoading={isBotTyping}
 				isListening={isListening}
 				onMicPress={handleMicPress}
 				soundLevelAnim={soundLevelAnim}
@@ -607,16 +875,22 @@ export default function ChatScreen() {
 				setInputText={setInputText}
 				onSendText={handleSendText}
 				currentSource={currentSource}
-				isGenerating={isBotActive}
+				isGenerating={isMicProcessing}
 				onStop={handleStop}
+				logoUrl={logoUrl}
 			/>
 			<RightPanel
 				currentSource={currentSource}
 				attachmentId={attachmentId}
 				attachmentName={attachmentName}
 				attachmentPage={attachmentPage}
+				availableFiles={availableFiles}
+				isAvailableFilesLoading={isAvailableFilesLoading}
 				hasAskedQuestion={messages.length > 1}
 				currentImage={currentImage}
+				currentImages={currentImages}
+				currentImageIndex={currentImageIndex}
+				onImageIndexChange={handleImageIndexChange}
 				isLoading={isLoading}
 				isListening={isListening}
 				onMicPress={handleMicPress}
@@ -628,7 +902,7 @@ export default function ChatScreen() {
 					setShowSchema(false);
 				}}
 				setCurrentImage={setCurrentImage}
-				isGenerating={isBotActive}
+				isGenerating={isMicProcessing}
 				onStop={handleStop}
 				soundLevelAnim={soundLevelAnim}
 			/>

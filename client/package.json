@@ -8,6 +8,7 @@
 		"android": "expo run:android",
 		"ios": "expo run:ios",
 		"web": "expo start --web",
+		"postinstall": "node ./scripts/patch-react-native-pdf.js && node ./scripts/patch-react-native-css-interop.js",
 		"format": "prettier --write .",
 		"lint": "expo lint",
 		"test": "jest"
@@ -22,6 +23,7 @@
 		"expo-asset": "~12.0.13",
 		"expo-audio": "~1.1.1",
 		"expo-blur": "~15.0.8",
+		"expo-camera": "~17.0.10",
 		"expo-constants": "~18.0.13",
 		"expo-dev-client": "~6.0.20",
 		"expo-file-system": "~19.0.21",

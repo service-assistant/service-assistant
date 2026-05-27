@@ -1,10 +1,22 @@
+from collections.abc import AsyncGenerator
 from typing import Final
 
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionMessageParam
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from ..config import Settings
+from ..models import Message
 
-SYSTEM_PROMPT: Final[str] = "Jesteś pomocnym asystentem"
+SYSTEM_PROMPT: Final[str] = """
+Jesteś pomocnym asystentem serwisowym.
+Odpowiadaj na podstawie dostarczonych fragmentów dokumentacji.
+Jeżeli dokumenty nie zawierają odpowiedzi, powiedz to wprost.
+Nie domyślaj się procedur serwisowych z własnej wiedzy.
+Odpowiadaj krótko i bezpośrednio, prodedury możesz podawać w ponumerowanych krokach.
+Nie odpowiadaj na pytania spoza serwisu/naprawy urządzeń.
+"""
 
 
 def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
@@ -22,21 +34,60 @@ def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
     return "\n".join(parts) if parts else "No relevant context found."
 
 
-async def query(question: str, chunks: list[str], settings: Settings) -> str:
+async def _recent_thread_messages(
+    session: AsyncSession, thread_id: int, limit: int
+) -> list[Message]:
+    return (
+        await session.scalars(
+            select(Message)
+            .where(Message.thread_id == thread_id)
+            .order_by(Message.created_at)
+            .limit(limit)
+        )
+    ).all()
+
+
+def _build_history_messages(
+    messages: list[Message],
+) -> list[ChatCompletionMessageParam]:
+    return [{"role": m.sender, "content": m.content} for m in messages]
+
+
+def _messages(
+    question: str, context_text: str, history_messages: list[ChatCompletionMessageParam]
+) -> list[ChatCompletionMessageParam]:
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        *history_messages,
+        {
+            "role": "user",
+            "content": f"Context:\n{context_text}\n\nQuestion:\n{question}\n\nAnswer in Polish.",
+        },
+    ]
+
+
+async def stream_query(
+    session: AsyncSession,
+    thread_id: int,
+    question: str,
+    chunks: list[str],
+    settings: Settings,
+) -> AsyncGenerator[str, None]:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     context_text = _build_context(chunks)
 
-    response = await client.chat.completions.create(
+    recent_thread_messages = await _recent_thread_messages(session, thread_id, 16)
+    history_messages = _build_history_messages(recent_thread_messages)
+    messages = _messages(question, context_text, history_messages)
+
+    stream = await client.chat.completions.create(
         model=settings.openai_chat_model,
-        stream=False,
+        stream=True,
         temperature=0.2,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": f"Context:\n{context_text}\n\nQuestion:\n{question}\n\nAnswer in Polish.",
-            },
-        ],
+        messages=messages,
     )
 
-    return response.choices[0].message.content or ""
+    async for event in stream:
+        delta = event.choices[0].delta.content
+        if delta:
+            yield delta

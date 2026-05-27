@@ -5,6 +5,8 @@ import fitz  # pymupdf
 
 from ..config import Settings
 from ..models import Chunk
+from .extract_images import extract_page_images
+from .chunking import chunk_page
 
 
 def batch_list(items, batch_size):
@@ -25,37 +27,33 @@ async def ingest_pdf_to_attachment(
     )
 
     doc = fitz.open(pdf_path)
-    rows: list[tuple[str, list[float], int]] = []
+    rows: list[tuple[str, list[float], int, list[str]]] = []
 
     for page_num, page in enumerate(doc.pages()):
-        text = str(page.get_text())
-        if not text or not text.strip():
-            continue
-        text = " ".join(text.split())
+        # extract text
+        chunks = chunk_page(pdf_path, page_num)
 
-        chunks: list[str] = []
-        start = 0
-        chunk_size = 1000
-        overlap = 200
-        while start < len(text):
-            chunks.append(text[start : start + chunk_size])
-            start += chunk_size - overlap
+        # extract images
+        page_images = extract_page_images(
+            doc, page, settings.attachments_dir / "images"
+        )
 
+        # create embeddings for text chunks
         for batch in batch_list(chunks, 32):
             response = await client.embeddings.create(
                 model=settings.azure_openai_embeddings_deployment, input=batch
             )
             embeddings = [d.embedding for d in response.data]
+
             for chunk, emb in zip(batch, embeddings):
-                rows.append((chunk, emb, page_num))
+                rows.append((chunk, emb, page_num, page_images))
 
     await insert_chunks(session, rows, attachment_id)
-    print("File ingested to base, attachment_id:", attachment_id)
 
 
 async def insert_chunks(
     session: AsyncSession,
-    rows: list[tuple[str, list[float], int]],
+    rows: list[tuple[str, list[float], int, list[str]]],
     attachment_id: int,
 ):
     objects = [
@@ -63,9 +61,9 @@ async def insert_chunks(
             content=chunk,
             embedding=embedding,
             attachment_id=attachment_id,
-            extra_metadata={"page": page_num},
+            extra_metadata={"page": page_num, "images": page_images},
         )
-        for chunk, embedding, page_num in rows
+        for chunk, embedding, page_num, page_images in rows
     ]
     session.add_all(objects)
     await session.commit()
