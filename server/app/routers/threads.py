@@ -1,7 +1,7 @@
 import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +10,7 @@ from sqlmodel import col, select
 from app.config import Settings, get_settings
 from app.database import get_session
 from app.models import ChatThread, ChunkMessage, Message, MessageSender
-from app.services import embedding, llm
+from app.services import embedding, llm, stt
 
 router = APIRouter()
 
@@ -148,6 +148,52 @@ async def create_message(
         yield f"event: message\ndata: {system_message.model_dump_json()}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+class TranscriptResponse(BaseModel):
+    transcript: str = Field(
+        description="Speech-to-text result for the uploaded audio.",
+        examples=["Jak zresetować błąd E-23?"],
+    )
+
+
+@router.post(
+    "/{thread_id}/messages/transcribe",
+    response_model=TranscriptResponse,
+    summary="Transcribe voice message",
+    description=(
+        "Accepts an audio file, runs Deepgram STT on the server, "
+        "and returns the transcript. Does not call the LLM — "
+        "send the transcript via POST /{thread_id}/messages (JSON + SSE)."
+    ),
+    responses={
+        404: {"description": "Thread not found"},
+        422: {"description": "Invalid or empty audio"},
+        502: {"description": "STT provider error"},
+    },
+)
+async def transcribe_message(
+    thread_id: int,
+    audio: UploadFile = File(..., description="Recorded audio (e.g. m4a)."),
+    settings: Annotated[Settings, Depends(get_settings)] = None,  # type: ignore
+    session: AsyncSession = Depends(get_session),
+):
+    thread = await session.get(ChatThread, thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+
+    audio_bytes = await audio.read()
+    content_type = audio.content_type or "audio/m4a"
+
+    try:
+        transcript = await stt.transcribe(audio_bytes, content_type, settings)
+    except stt.SttError as exc:
+        detail = str(exc)
+        if "Empty" in detail:
+            raise HTTPException(status_code=422, detail=detail) from exc
+        raise HTTPException(status_code=502, detail=detail) from exc
+
+    return TranscriptResponse(transcript=transcript)
 
 
 @router.get(
