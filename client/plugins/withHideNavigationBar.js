@@ -1,6 +1,7 @@
 const { withMainActivity } = require('@expo/config-plugins');
 
 const IMPORTS = `import android.os.Handler
+import android.os.Build
 import android.os.Looper
 import android.view.View
 import android.view.WindowInsets
