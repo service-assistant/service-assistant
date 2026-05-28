@@ -18,7 +18,7 @@ if (!fs.existsSync(eventSourcePath)) {
 let source = fs.readFileSync(eventSourcePath, 'utf8');
 
 const replacements = [
-	["line = parts[i].trim();", "line = parts[i].trimEnd();"],
+	['line = parts[i].trim();', 'line = parts[i].trimEnd();'],
 	["line.replace(/event:?\\s*/, '')", "line.replace(/^event:? ?/, '')"],
 	["line.replace(/retry:?\\s*/, '')", "line.replace(/^retry:? ?/, '')"],
 	["line.replace(/data:?\\s*/, '')", "line.replace(/^data:? ?/, '')"],
