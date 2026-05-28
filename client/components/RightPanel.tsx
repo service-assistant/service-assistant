@@ -468,7 +468,7 @@ export default function RightPanel({
 					icon: 'file-download',
 					color: '#22C55E',
 					source: objectUrl,
-					page: targetPage,
+					page: targetPage + 1,
 				});
 				setShowSchema(false);
 			} else {
@@ -488,7 +488,7 @@ export default function RightPanel({
 						icon: 'file-download',
 						color: '#22C55E',
 						source: { uri: result.uri },
-						page: targetPage,
+						page: targetPage + 1,
 					});
 					setShowSchema(false);
 				} else {
@@ -546,7 +546,7 @@ export default function RightPanel({
 					icon: 'file-download',
 					color: '#22C55E',
 					source: { uri: localFileUri },
-					page: attachmentPage || 1,
+					page: attachmentPage + 1 || 1,
 				});
 				setShowSchema(false);
 				return;
@@ -559,7 +559,7 @@ export default function RightPanel({
 			getLocalFilename(sourcePdfFile),
 			sourcePdfFile.name,
 			sourcePdfFile.id,
-			attachmentPage || 1,
+			attachmentPage + 1 || 1,
 		);
 	};
 
