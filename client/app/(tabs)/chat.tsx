@@ -100,11 +100,13 @@ export default function ChatScreen() {
 	const isMobile = width < 768;
 
 	// --- ROUTING PARAMETERS ---
-	const { deviceId, deviceName, logoUrl } = useLocalSearchParams<{
+	const { deviceId, deviceName, logoUrl, chatSession } = useLocalSearchParams<{
 		deviceId: string;
 		deviceName: string;
 		logoUrl: string;
+		chatSession: string;
 	}>();
+	const sessionKey = `${deviceId ?? ''}:${chatSession ?? ''}`;
 
 	// --- UI & DATA STATES ---
 	const [showSchema, setShowSchema] = useState<boolean>(true);
@@ -241,8 +243,33 @@ export default function ChatScreen() {
 	 * Thread creation is deferred until the user sends the first message (lazy initialization).
 	 */
 	useEffect(() => {
+		if (fetchAbortControllerRef.current) {
+			fetchAbortControllerRef.current.abort();
+			fetchAbortControllerRef.current = null;
+		}
+		if (ttsAbortControllerRef.current) {
+			ttsAbortControllerRef.current.abort();
+			ttsAbortControllerRef.current = null;
+		}
+		if (ttsPlayer && ttsPlayer.playing) {
+			ttsPlayer.pause();
+		}
+
+		setCurrentThreadId(null);
+		setMessages([{ id: 1, sender: 'ai', text: initialMessage }]);
+		setInputText('');
+		setCurrentImage(null);
+		setCurrentImages([]);
+		setCurrentImageIndex(0);
+		setAttachmentPage(1);
+		setAttachmentId(null);
+		setAttachmentName('');
+		setSelectedPdf(null);
+		setShowSchema(true);
+		setIsGenerating(false);
+		setIsAudioPlaying(false);
 		setIsLoading(false);
-	}, [deviceId]);
+	}, [sessionKey, ttsPlayer]);
 
 	useEffect(() => {
 		if (currentImage) setShowSchema(true);
