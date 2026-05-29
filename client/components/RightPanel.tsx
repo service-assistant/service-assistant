@@ -1,6 +1,7 @@
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -20,7 +21,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
-import type { Message } from './LeftPanel';
+import { TypingDotsIndicator, type Message } from './LeftPanel';
 import PdfViewer from './PdfViewer';
 
 const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
@@ -117,7 +118,7 @@ export default function RightPanel({
 	onSendText,
 	logoUrl,
 }: RightPanelProps) {
-	const { width } = useWindowDimensions();
+	const { width, height: windowHeight } = useWindowDimensions();
 	const isMobile = width < 768;
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
@@ -211,17 +212,30 @@ export default function RightPanel({
 				} as const)
 			: { intensity: 40 };
 	const mobileControlsHeight = bottomBar.centerBtnSize + bottomBar.paddingVertical * 2 + 56;
-	const keyboardInputOffset = Platform.OS === 'ios' ? 56 : 72;
-	const mobileControlsBottom =
-		keyboardHeight > 0 ? keyboardHeight + keyboardInputOffset : mobileBottomInset;
+	const mobileControlsBottom = keyboardHeight > 0 ? keyboardHeight : mobileBottomInset;
 	const isKeyboardTyping = showTextInput && keyboardHeight > 0;
+
+	const getKeyboardOverlapHeight = useCallback(
+		(event: { endCoordinates?: { height?: number; screenY?: number } }) => {
+			const screenY = event.endCoordinates?.screenY;
+			const reportedHeight = event.endCoordinates?.height ?? 0;
+
+			if (typeof screenY === 'number' && screenY > 0) {
+				const overlapHeight = Math.max(0, windowHeight - screenY);
+				return overlapHeight > 0 ? overlapHeight : Math.max(0, reportedHeight);
+			}
+
+			return Math.max(0, reportedHeight);
+		},
+		[windowHeight],
+	);
 
 	useEffect(() => {
 		const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
 		const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
 		const showSubscription = Keyboard.addListener(showEvent, (event) => {
-			setKeyboardHeight(event.endCoordinates.height);
+			setKeyboardHeight(getKeyboardOverlapHeight(event));
 		});
 		const hideSubscription = Keyboard.addListener(hideEvent, () => {
 			setKeyboardHeight(0);
@@ -231,7 +245,7 @@ export default function RightPanel({
 			showSubscription.remove();
 			hideSubscription.remove();
 		};
-	}, []);
+	}, [getKeyboardOverlapHeight]);
 
 	useEffect(() => {
 		return () => {
@@ -293,6 +307,17 @@ export default function RightPanel({
 		imageTransitionDirectionRef.current = 1;
 		onImageIndexChange?.(nextIndex);
 	}, [currentImageIndex, currentImages.length, hasMultipleImages, onImageIndexChange]);
+
+	const handleMicButtonPress = useCallback(() => {
+		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+
+		if (isGenerating) {
+			onStop();
+			return;
+		}
+
+		onMicPress();
+	}, [isGenerating, onMicPress, onStop]);
 
 	const imageSwipeResponder = useMemo(
 		() =>
@@ -780,11 +805,10 @@ export default function RightPanel({
 			className='flex-1'
 			contentContainerStyle={{
 				paddingTop: 18,
-				paddingBottom: mobileControlsHeight + mobileBottomInset + 24,
+				paddingBottom: mobileControlsHeight + mobileControlsBottom + 24,
 			}}
 			showsVerticalScrollIndicator={false}>
 			{messages.map((msg, index) => {
-				if (msg.sender === 'ai' && !msg.text) return null;
 				const isLastAi = msg.sender === 'ai' && index === messages.length - 1;
 
 				return msg.sender === 'ai' ? (
@@ -798,9 +822,13 @@ export default function RightPanel({
 							borderTopRightRadius: 18,
 							borderBottomRightRadius: 18,
 						}}>
-						<Text className='text-[#D8DCE2] text-[17px] leading-[22px]'>
-							{msg.text}
-						</Text>
+						{msg.text ? (
+							<Text className='text-[#D8DCE2] text-[17px] leading-[22px]'>
+								{msg.text}
+							</Text>
+						) : (
+							<TypingDotsIndicator color={PRIMARY_ORANGE} />
+						)}
 						{isLastAi ? renderMobileSourceButton() : null}
 					</View>
 				) : (
@@ -809,9 +837,17 @@ export default function RightPanel({
 						className='bg-[#B65000] self-end rounded-[18px] px-4 py-3 mb-5'
 						style={{ maxWidth: '94%' }}>
 						{msg.isSpeaking ? (
-							<View className='py-1'>
-								<MaterialCommunityIcons name='waveform' size={32} color='#FFFFFF' />
-							</View>
+							isListening ? (
+								<View className='py-1'>
+									<MaterialCommunityIcons
+										name='waveform'
+										size={32}
+										color='#FFFFFF'
+									/>
+								</View>
+							) : (
+								<TypingDotsIndicator />
+							)
 						) : (
 							<Text className='text-white text-[17px] leading-[22px]'>
 								{msg.text}
@@ -912,7 +948,7 @@ export default function RightPanel({
 							className='flex-1 mt-6 mb-4'
 							contentContainerStyle={{
 								flexGrow: 1,
-								paddingBottom: mobileControlsHeight + mobileBottomInset + 24,
+								paddingBottom: mobileControlsHeight + mobileControlsBottom + 24,
 							}}
 							showsVerticalScrollIndicator={false}>
 							{renderFileGrid(true)}
@@ -990,7 +1026,7 @@ export default function RightPanel({
 								className='items-center flex-col gap-2'
 								style={{ width: bottomBar.centerColumnWidth }}>
 								<TouchableOpacity
-									onPress={isGenerating ? onStop : onMicPress}
+									onPress={handleMicButtonPress}
 									className='rounded-[12px] items-center justify-center'
 									style={{
 										width: bottomBar.centerBtnSize,

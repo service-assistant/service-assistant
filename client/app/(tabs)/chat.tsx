@@ -63,6 +63,42 @@ const parseStreamData = <T,>(data: string | null): T | string => {
 const buildChunkImageUrl = (imagePath: string) =>
 	`${SERVER_URL}/api/images/${encodeURIComponent(imagePath)}`;
 
+const formatStreamingText = (text: string) => {
+	let result = '';
+	let cursor = 0;
+	let lastListNumber: number | null = null;
+	const markerPattern = /\d+[\.)]\s+/g;
+	let match: RegExpExecArray | null;
+
+	while ((match = markerPattern.exec(text)) !== null) {
+		const markerStart = match.index;
+		const markerNumber = Number.parseInt(match[0], 10);
+		const previousChar = markerStart > 0 ? text[markerStart - 1] : '';
+		const textSinceCursor = text.slice(cursor, markerStart);
+		const canStartList =
+			lastListNumber === null &&
+			!/\d/.test(previousChar) &&
+			textSinceCursor.trimEnd().endsWith(':');
+		const canContinueList =
+			lastListNumber !== null &&
+			!/\d/.test(previousChar) &&
+			markerNumber === lastListNumber + 1;
+
+		if (!canStartList && !canContinueList) {
+			continue;
+		}
+
+		result += textSinceCursor.trimEnd();
+		if (!result.endsWith('\n')) {
+			result += '\n';
+		}
+		cursor = markerStart;
+		lastListNumber = markerNumber;
+	}
+
+	return result + text.slice(cursor);
+};
+
 const fetchAuthorizedImageDataUrl = async (
 	imageUrl: string,
 	authToken: string,
@@ -119,6 +155,7 @@ export default function ChatScreen() {
 	// --- STOP CONTROL STATES ---
 	const [isGenerating, setIsGenerating] = useState<boolean>(false);
 	const [isAudioPlaying, setIsAudioPlaying] = useState<boolean>(false);
+	const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
 
 	const [showTextInput, setShowTextInput] = useState<boolean>(false);
 	const [inputText, setInputText] = useState<string>('');
@@ -156,6 +193,7 @@ export default function ChatScreen() {
 	// --- REQUEST CANCELLATION REFERENCES ---
 	const fetchAbortControllerRef = useRef<AbortController | null>(null);
 	const ttsAbortControllerRef = useRef<AbortController | null>(null);
+	const sttAbortControllerRef = useRef<AbortController | null>(null);
 
 	// --- SILENCE CONFIGURATION ---
 	const silenceThreshold = -50;
@@ -175,6 +213,7 @@ export default function ChatScreen() {
 			if (meteringIntervalRef.current) clearInterval(meteringIntervalRef.current);
 			if (fetchAbortControllerRef.current) fetchAbortControllerRef.current.abort();
 			if (ttsAbortControllerRef.current) ttsAbortControllerRef.current.abort();
+			if (sttAbortControllerRef.current) sttAbortControllerRef.current.abort();
 		};
 	}, []);
 
@@ -251,6 +290,10 @@ export default function ChatScreen() {
 			ttsAbortControllerRef.current.abort();
 			ttsAbortControllerRef.current = null;
 		}
+		if (sttAbortControllerRef.current) {
+			sttAbortControllerRef.current.abort();
+			sttAbortControllerRef.current = null;
+		}
 		if (ttsPlayer && ttsPlayer.playing) {
 			ttsPlayer.pause();
 		}
@@ -258,6 +301,7 @@ export default function ChatScreen() {
 		setCurrentThreadId(null);
 		setMessages([{ id: 1, sender: 'ai', text: initialMessage }]);
 		setInputText('');
+		setShowTextInput(false);
 		setCurrentImage(null);
 		setCurrentImages([]);
 		setCurrentImageIndex(0);
@@ -268,6 +312,7 @@ export default function ChatScreen() {
 		setShowSchema(true);
 		setIsGenerating(false);
 		setIsAudioPlaying(false);
+		setIsTranscribing(false);
 		setIsLoading(false);
 	}, [sessionKey, ttsPlayer]);
 
@@ -301,12 +346,19 @@ export default function ChatScreen() {
 			ttsAbortControllerRef.current.abort();
 			ttsAbortControllerRef.current = null;
 		}
+		if (sttAbortControllerRef.current) {
+			sttAbortControllerRef.current.abort();
+			sttAbortControllerRef.current = null;
+		}
 		if (ttsPlayer && ttsPlayer.playing) {
 			ttsPlayer.pause();
 		}
 		setIsGenerating(false);
 		setIsLoading(false);
 		setIsAudioPlaying(false);
+		setIsTranscribing(false);
+		setMessages((prev) => prev.filter((msg) => msg.sender !== 'ai' || msg.text.length > 0));
+		setMessages((prev) => prev.filter((msg) => !msg.isSpeaking));
 	};
 
 	/**
@@ -454,16 +506,16 @@ export default function ChatScreen() {
 				};
 
 				const handleChunk = (event: EventSourceEvent<StreamEvent>) => {
-					const chunk = parseStreamData<string>(event.data);
-					const chunkText = typeof chunk === 'string' ? chunk : '';
+					const chunkText = event.data === '' ? '\n' : (event.data ?? '');
 
-					if (!chunkText || abortController.signal.aborted) return;
+					if (abortController.signal.aborted) return;
 
 					fullText += chunkText;
+					const displayText = formatStreamingText(fullText);
 					setIsLoading(false);
 					setMessages((prev) =>
 						prev.map((msg) =>
-							msg.id === aiMessageId ? { ...msg, text: fullText } : msg,
+							msg.id === aiMessageId ? { ...msg, text: displayText } : msg,
 						),
 					);
 				};
@@ -509,6 +561,14 @@ export default function ChatScreen() {
 				eventSource.addEventListener('message', handleMessage);
 				eventSource.addEventListener('error', handleError);
 			});
+
+			if (abortController.signal.aborted) {
+				if (fullText.length === 0) {
+					setMessages((prev) => prev.filter((msg) => msg.id !== aiMessageId));
+				}
+				setIsGenerating(false);
+				return;
+			}
 
 			let sourceAttachmentId: number | null = null;
 			let sourceAttachmentName = '';
@@ -633,7 +693,7 @@ export default function ChatScreen() {
 			}
 
 			// Play AI response audio
-			if (fullText.length > 0) {
+			if (!abortController.signal.aborted && fullText.length > 0) {
 				playChatGptAudio(fullText);
 			} else {
 				setIsGenerating(false);
@@ -641,6 +701,9 @@ export default function ChatScreen() {
 		} catch (error: any) {
 			if (error.name === 'AbortError') {
 				console.log('Request aborted by the user.');
+				setMessages((prev) =>
+					prev.filter((msg) => msg.id !== aiMessageId || msg.text.length > 0),
+				);
 			} else {
 				setMessages((prev) =>
 					prev.map((msg) =>
@@ -684,9 +747,12 @@ export default function ChatScreen() {
 	 * @param {string} uri - Local URI of the audio file
 	 */
 	const sendToDeepgram = async (uri: string) => {
+		const abortController = new AbortController();
+		sttAbortControllerRef.current = abortController;
 		setIsLoading(true);
+		setIsTranscribing(true);
 		try {
-			const responseFile = await fetch(uri);
+			const responseFile = await fetch(uri, { signal: abortController.signal });
 			const audioBlob = await responseFile.blob();
 
 			const response = await fetch(
@@ -698,12 +764,15 @@ export default function ChatScreen() {
 						'Content-Type': 'audio/m4a',
 					},
 					body: audioBlob,
+					signal: abortController.signal,
 				},
 			);
 
 			if (!response.ok) throw new Error(`Deepgram Error ${response.status}`);
+			if (abortController.signal.aborted) return;
 
 			const data = await response.json();
+			if (abortController.signal.aborted) return;
 			const transcript = data.results?.channels[0]?.alternatives[0]?.transcript || '';
 
 			if (transcript.trim().length > 0) {
@@ -715,18 +784,31 @@ export default function ChatScreen() {
 					),
 				);
 				askAPI(transcript);
+				setIsTranscribing(false);
 			} else {
 				setMessages((prev) =>
 					prev.filter((msg) => msg.id !== userSpeakingMessageIdRef.current),
 				);
 				setIsLoading(false);
+				setIsTranscribing(false);
 			}
-		} catch (error) {
+		} catch (error: any) {
+			if (error.name === 'AbortError') {
+				setMessages((prev) =>
+					prev.filter((msg) => msg.id !== userSpeakingMessageIdRef.current),
+				);
+				return;
+			}
 			console.error('Deepgram Error:', error);
 			setMessages((prev) =>
 				prev.filter((msg) => msg.id !== userSpeakingMessageIdRef.current),
 			);
 			setIsLoading(false);
+			setIsTranscribing(false);
+		} finally {
+			if (sttAbortControllerRef.current === abortController) {
+				sttAbortControllerRef.current = null;
+			}
 		}
 	};
 
@@ -739,16 +821,28 @@ export default function ChatScreen() {
 			meteringIntervalRef.current = null;
 		}
 
+		setIsTranscribing(true);
+		setIsLoading(true);
 		setIsListening(false);
 
 		if (audioRecorder.isRecording) {
 			try {
 				await audioRecorder.stop();
 				const uri = audioRecorder.uri;
-				if (uri) sendToDeepgram(uri);
+				if (uri) {
+					sendToDeepgram(uri);
+				} else {
+					setIsLoading(false);
+					setIsTranscribing(false);
+				}
 			} catch (error) {
 				console.error('Error while stopping recording:', error);
+				setIsLoading(false);
+				setIsTranscribing(false);
 			}
+		} else {
+			setIsLoading(false);
+			setIsTranscribing(false);
 		}
 	};
 
@@ -800,13 +894,13 @@ export default function ChatScreen() {
 	 * Handle microphone button press
 	 */
 	const handleMicPress = async () => {
-		handleStop();
-
 		if (showTextInput) setShowTextInput(false);
 
 		if (isListening) {
 			await stopRecordingAndSend();
+			return;
 		} else {
+			handleStop();
 			setIsListening(true);
 
 			const userTempId = Date.now();
@@ -847,7 +941,10 @@ export default function ChatScreen() {
 	};
 
 	const isBotTyping = isLoading && !messages.some((m) => m.sender === 'ai' && m.text === '');
-	const isMicProcessing = !isListening && (isLoading || isGenerating || isAudioPlaying);
+	const hasPendingVoiceInput = messages.some((m) => m.isSpeaking);
+	const isMicProcessing =
+		!isListening &&
+		(hasPendingVoiceInput || isTranscribing || isLoading || isGenerating || isAudioPlaying);
 
 	if (isMobile) {
 		return (
