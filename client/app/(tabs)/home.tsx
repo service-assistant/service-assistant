@@ -394,6 +394,7 @@ export default function HomeScreen() {
 			params: {
 				deviceId: vehicle.id,
 				deviceName: vehicle.name,
+				chatSession: Date.now().toString(),
 				...(logoUrl ? { logoUrl } : {}),
 			},
 		});
