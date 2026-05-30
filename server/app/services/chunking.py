@@ -8,7 +8,7 @@ from langchain_text_splitters import (
 
 def split_text_from_tables(text: str) -> list[tuple[bool, str]]:
     """
-    Splits sections containing text from sections containing markdown tables
+    Splits sections containing text from sections containing markdown tables.\n
     Returns a list of tuples (is_table, content) where is_table is a boolean indicating whether the content is a table or not
     """
 
@@ -49,27 +49,31 @@ def split_text_from_tables(text: str) -> list[tuple[bool, str]]:
     return parts
 
 
-def split_table_header_content(text: str) -> tuple[str, str]:
+def split_table_header_content(text: str) -> tuple[list[str], list[list[str]]]:
     """
-    Splits the header of a markdown table from the rest of the table content
-    Returns a tuple (header, content)
+    Splits the header of a markdown table from the rest of the table content.\n
+    Headers and content are split into table cells and returned as lists.\n
+    Omits empty table rows (rows that contain only '|' characters).\n
+    Returns a tuple (headers, content)
     """
 
     lines = text.splitlines()
 
     if len(lines) < 2:
-        return "", ""
+        return [], []
 
     if "|---|" in lines[1]:
-        return "\n".join(lines[:2]), "\n".join(lines[2:])
+        headers = lines[0][1:-1].split("|")
+        table_content = [line[1:-1].split("|") for line in lines[2:] if not set(line.strip()) == {"|"}]
+        return headers, table_content
 
-    return "", ""
+    return [], []
 
 
 def remove_picture_text(text: str) -> str:
     """
-    Removes text that indicates a picture is intentionally omitted,
-    as well as text between markers indicating picture text
+    Removes text that indicates a picture is intentionally omitted,\n
+    as well as text between markers indicating picture text.\n
     Returns the cleaned text
     """
 
@@ -97,7 +101,7 @@ def chunk_page(
     path: str, page_num: int, chunk_size: int = 1000, overlap: int = 200
 ) -> list[str]:
     """
-    Chunks a PDF page into smaller sections using markdown headers and table structure as delimiters
+    Chunks a PDF page into smaller sections using markdown headers and table structure as delimiters.\n
     Returns a list of text chunks
     """
 
@@ -160,21 +164,34 @@ def chunk_page(
             subchunks = list[str]()
 
             if is_table:
-                table_header, table_content = split_table_header_content(subsection)
+                table_headers, table_content = split_table_header_content(subsection)
 
-                chunk = table_header + "\n"
-                lines = table_content.splitlines()
+                chunk = ""
+                prev_row = None
 
-                for line in lines:
-                    # omit lines that contain only '|' characters (empty table rows)
-                    if set(line.strip()) == {"|"}:
-                        continue
+                for row in table_content:
+                    line = ""
+                    copy_prev = True
+                    for i, (header, cell) in enumerate(zip(table_headers, row)):
+                        if line:
+                            line += "; "
+                        if cell.strip():
+                            line += header + ": " + cell
+                            copy_prev = False
+                        else:
+                            if copy_prev:
+                                if prev_row is not None:
+                                    line += header + ": " + prev_row[i]
+                            else:
+                                line += header + ": "
+                    prev_row = row
 
+                    
                     if len(chunk + line) > chunk_size:
                         if chunk.strip():
                             subchunks.append(chunk.strip())
 
-                        chunk = table_header + "\n"
+                        chunk = ""
 
                     chunk += line + "\n"
 
