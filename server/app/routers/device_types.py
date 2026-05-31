@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -89,7 +89,7 @@ async def update_device_type(
         raise HTTPException(status_code=404, detail="Device type not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(device_type, field, value)
-    device_type.updated_at = datetime.utcnow()
+    device_type.updated_at = datetime.now(timezone.utc)
     session.add(device_type)
     await session.commit()
     await session.refresh(device_type)

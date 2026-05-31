@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 from app.models import Brand
@@ -11,8 +11,8 @@ def make_brand(**kwargs) -> Brand:
         id=1,
         name="Toyota",
         logo_url=None,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     defaults.update(kwargs)
     return Brand(**defaults)

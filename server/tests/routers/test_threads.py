@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models import ChatThread, Message, MessageSender
@@ -12,8 +12,8 @@ def make_thread(**kwargs) -> ChatThread:
         id=1,
         device_id=1,
         title="Mast won't lift",
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     defaults.update(kwargs)
     return ChatThread(**defaults)
@@ -25,8 +25,8 @@ def make_message(**kwargs) -> Message:
         content="Test content",
         thread_id=1,
         sender=MessageSender.system,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     defaults.update(kwargs)
     return Message(**defaults)

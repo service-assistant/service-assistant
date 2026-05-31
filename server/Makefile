@@ -6,7 +6,7 @@ GREEN  := \033[32m
 YELLOW := \033[33m
 GRAY   := \033[90m
 
-.PHONY: help dev staging production docs test lint format format-check
+.PHONY: help dev staging production docs test lint format format-check migrations reset-db
 
 help:
 	@echo ""
@@ -22,6 +22,8 @@ help:
 	@echo "  $(GREEN)format$(RESET)            $(GRAY)-$(RESET) Format code"
 	@echo "  $(GREEN)format-check$(RESET)      $(GRAY)-$(RESET) Check formatting without applying"
 	@echo "  $(GREEN)docs$(RESET)              $(GRAY)-$(RESET) Open documentation page $(GRAY)(port 8000)$(RESET)"
+	@echo "  $(GREEN)migrations$(RESET)        $(GRAY)-$(RESET) Lists all Alembic migrations"
+	@echo "  $(GREEN)reset-db$(RESET)          $(GRAY)-$(RESET) Compose down & remove postgres data volume"
 	@echo ""
 	@echo "  $(YELLOW)NOTE:$(RESET) All commands used to start the application also run all migrations before."
 	@echo ""
@@ -44,3 +46,8 @@ format:
 	poetry run ruff format app tests
 format-check:
 	poetry run ruff format --check app tests
+migrations:
+	poetry run alembic history --verbose
+reset-db:
+	docker compose -f docker-compose.dev.yml down
+	docker volume rm service-assistant-dev_pgdata_dev
