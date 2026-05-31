@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 AUTH_HEADERS = {"Authorization": "Bearer CHANGEMELATER"}
 
 
 def test_should_return_chunks_for_system_message(client, mock_session):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     mock_exists = MagicMock()
     mock_exists.fetchone.return_value = (1,)
     mock_chunks = MagicMock()

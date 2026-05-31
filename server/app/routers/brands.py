@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -90,7 +90,7 @@ async def update_brand(
         raise HTTPException(status_code=404, detail="Brand not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(brand, field, value)
-    brand.updated_at = datetime.utcnow()
+    brand.updated_at = datetime.now(timezone.utc)
     session.add(brand)
     await session.commit()
     await session.refresh(brand)

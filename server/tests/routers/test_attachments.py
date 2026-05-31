@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -17,8 +17,8 @@ def make_attachment(path: str, **kwargs) -> Attachment:
         id=1,
         file_global_path=path,
         original_filename="manual.pdf",
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     defaults.update(kwargs)
     return Attachment(**defaults)

@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 from app.models import Brand, Device, DeviceType
@@ -8,7 +8,10 @@ AUTH_HEADERS = {"Authorization": "Bearer CHANGEMELATER"}
 
 def make_brand(**kwargs) -> Brand:
     defaults = dict(
-        id=1, name="Toyota", created_at=datetime.utcnow(), updated_at=datetime.utcnow()
+        id=1,
+        name="Toyota",
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     defaults.update(kwargs)
     return Brand(**defaults)
@@ -18,8 +21,8 @@ def make_device_type(**kwargs) -> DeviceType:
     defaults = dict(
         id=1,
         name="Counterbalance Forklift",
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     defaults.update(kwargs)
     return DeviceType(**defaults)
@@ -33,8 +36,8 @@ def make_device(**kwargs) -> Device:
         name="Toyota 8FBE20",
         model_serial_code=None,
         image_url=None,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     defaults.update(kwargs)
     return Device(**defaults)
