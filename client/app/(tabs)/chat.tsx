@@ -39,6 +39,12 @@ type DeviceAttachmentPayload = {
 	original_filename: string;
 };
 
+type ThreadMessagePayload = {
+	id: number;
+	content: string;
+	sender: 'user' | 'system';
+};
+
 const HARDCODED_DEVICE_ID = 1;
 
 const FILE_ICON_OPTIONS = [
@@ -136,13 +142,14 @@ export default function ChatScreen() {
 	const isMobile = width < 768;
 
 	// --- ROUTING PARAMETERS ---
-	const { deviceId, deviceName, logoUrl, chatSession } = useLocalSearchParams<{
+	const { deviceId, deviceName, logoUrl, chatSession, threadId } = useLocalSearchParams<{
 		deviceId: string;
 		deviceName: string;
 		logoUrl: string;
 		chatSession: string;
+		threadId?: string;
 	}>();
-	const sessionKey = `${deviceId ?? ''}:${chatSession ?? ''}`;
+	const sessionKey = `${deviceId ?? ''}:${chatSession ?? ''}:${threadId ?? ''}`;
 
 	// --- UI & DATA STATES ---
 	const [showSchema, setShowSchema] = useState<boolean>(true);
@@ -282,6 +289,8 @@ export default function ChatScreen() {
 	 * Thread creation is deferred until the user sends the first message (lazy initialization).
 	 */
 	useEffect(() => {
+		const abortController = new AbortController();
+
 		if (fetchAbortControllerRef.current) {
 			fetchAbortControllerRef.current.abort();
 			fetchAbortControllerRef.current = null;
@@ -313,8 +322,59 @@ export default function ChatScreen() {
 		setIsGenerating(false);
 		setIsAudioPlaying(false);
 		setIsTranscribing(false);
-		setIsLoading(false);
-	}, [sessionKey, ttsPlayer]);
+		setIsLoading(Boolean(threadId));
+
+		const loadThreadMessages = async () => {
+			if (!threadId) return;
+
+			const parsedThreadId = Number(threadId);
+			if (!Number.isFinite(parsedThreadId)) {
+				setIsLoading(false);
+				return;
+			}
+
+			try {
+				const authToken = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
+				const response = await fetch(
+					`${SERVER_URL}/api/threads/${parsedThreadId}/messages`,
+					{
+						headers: {
+							Accept: 'application/json',
+							Authorization: `Bearer ${authToken}`,
+						},
+						signal: abortController.signal,
+					},
+				);
+
+				if (!response.ok) {
+					throw new Error(`Failed to load thread messages: ${response.status}`);
+				}
+
+				const threadMessages = (await response.json()) as ThreadMessagePayload[];
+
+				setCurrentThreadId(parsedThreadId);
+				setMessages(
+					threadMessages.map((message) => ({
+						id: message.id,
+						sender: message.sender === 'user' ? 'user' : 'ai',
+						text: message.content,
+					})),
+				);
+			} catch (error: any) {
+				if (error.name !== 'AbortError') {
+					console.error('Thread messages load error:', error);
+				}
+			} finally {
+				if (!abortController.signal.aborted) {
+					setIsLoading(false);
+				}
+			}
+		};
+
+		loadThreadMessages();
+
+		return () => abortController.abort();
+	}, [sessionKey, threadId, ttsPlayer]);
 
 	useEffect(() => {
 		if (currentImage) setShowSchema(true);
