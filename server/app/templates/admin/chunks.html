@@ -79,6 +79,12 @@
             {% if row.chunk.extra_metadata and row.chunk.extra_metadata.page is not none %}
             <span class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded">page {{ row.chunk.extra_metadata.page + 1 }}</span>
             {% endif %}
+            <form method="post" action="/admin/chunks/{{ row.chunk.id }}/delete" class="ml-auto"
+                  onsubmit="return confirm('Delete this chunk?')">
+                <input type="hidden" name="attachment_id" value="{{ selected_attachment_id or '' }}" />
+                <input type="hidden" name="page" value="{{ page }}" />
+                <button type="submit" class="text-red-600 hover:text-red-800 text-xs">Delete</button>
+            </form>
         </div>
 
         <div class="px-5 py-4 grid {% if row.chunk.extra_metadata and row.chunk.extra_metadata.images %}grid-cols-2{% else %}grid-cols-1{% endif %} gap-6">
