@@ -5,8 +5,7 @@
 
 {% block content %}
 
-<!-- Thread metadata -->
-<section class="bg-white border border-gray-200 rounded-lg p-5 mb-6 grid grid-cols-3 gap-4 text-sm">
+<section class="bg-white border border-gray-200 rounded-lg p-5 mb-4 grid grid-cols-3 gap-4 text-sm">
     <div>
         <p class="text-gray-500 mb-0.5">Device</p>
         <p class="font-medium">{{ device_name }}</p>
@@ -17,17 +16,270 @@
     </div>
     <div>
         <p class="text-gray-500 mb-0.5">Messages</p>
-        <p class="font-medium">{{ messages | length }}</p>
+        <p class="font-medium" id="msg-count">{{ message_rows | length }}</p>
     </div>
 </section>
 
-<!-- Messages as JSON -->
-<section class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-    <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
-        <h2 class="text-sm font-semibold text-gray-700">Messages</h2>
+<section class="bg-white border border-gray-200 rounded-lg flex flex-col" style="height:72vh">
+    <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+        <span class="text-sm font-semibold text-gray-700">Chat</span>
         <a href="/admin/threads" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to threads</a>
     </div>
-    <pre class="p-5 text-xs leading-relaxed overflow-x-auto bg-gray-50 text-gray-800 whitespace-pre-wrap">{{ messages_json }}</pre>
+
+    <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-4">
+        {% for row in message_rows %}
+
+        {% if row.message.sender.value == 'user' %}
+        <div class="flex justify-end">
+            <div class="max-w-[70%] bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm shadow-sm">
+                <p class="whitespace-pre-wrap break-words">{{ row.message.content }}</p>
+                <p class="text-xs text-blue-200 mt-1 text-right">{{ row.message.created_at.strftime('%H:%M') }}</p>
+            </div>
+        </div>
+        {% else %}
+        <div class="flex justify-start">
+            <div class="max-w-[70%] space-y-1.5">
+                <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm shadow-sm">
+                    <p class="whitespace-pre-wrap break-words">{{ row.message.content }}</p>
+                    <p class="text-xs text-gray-400 mt-1">{{ row.message.created_at.strftime('%H:%M') }}</p>
+                </div>
+                {% if row.chunks %}
+                <div class="space-y-1 pl-1">
+                    {% for chunk in row.chunks %}
+                    <details class="text-xs bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                        <summary class="px-3 py-2 cursor-pointer text-gray-500 hover:bg-gray-50 flex items-center gap-2 select-none">
+                            <span class="font-mono text-gray-400">#{{ chunk.id }}</span>
+                            <span class="text-gray-600 font-medium truncate">{{ chunk.attachment_filename }}</span>
+                            {% if chunk.page is not none %}
+                            <span class="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded flex-shrink-0">p.{{ chunk.page + 1 }}</span>
+                            {% endif %}
+                            <a href="/admin/chunks?attachment_id={{ chunk.attachment_id }}" target="_blank"
+                               class="ml-auto text-blue-600 hover:underline flex-shrink-0" onclick="event.stopPropagation()">
+                                View doc
+                            </a>
+                        </summary>
+                        <div class="px-3 py-2 border-t border-gray-100 text-gray-700 whitespace-pre-wrap leading-relaxed">{{ chunk.content }}</div>
+                        {% if chunk.images %}
+                        <div class="px-3 pb-3 pt-2 border-t border-gray-100 flex flex-wrap gap-2">
+                            {% for img_path in chunk.images %}
+                            <a href="/admin/images/{{ img_path.lstrip('/') }}" target="_blank" class="block">
+                                <img src="/admin/images/{{ img_path.lstrip('/') }}"
+                                     alt="Source image"
+                                     class="max-h-32 max-w-xs rounded border border-gray-200 object-contain hover:opacity-80 transition-opacity" />
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </details>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <p class="text-center text-gray-400 text-sm py-8">No messages yet. Start the conversation.</p>
+        {% endfor %}
+
+        <!-- streaming placeholder -->
+        <div id="streaming-wrap" class="hidden flex justify-start">
+            <div class="max-w-[70%] bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm shadow-sm">
+                <p id="streaming-text" class="whitespace-pre-wrap break-words"></p>
+                <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style="animation-delay:0ms"></span>
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style="animation-delay:150ms"></span>
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style="animation-delay:300ms"></span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="border-t border-gray-200 p-3 flex gap-2 items-end">
+        <textarea id="message-input" rows="2"
+                  placeholder="Type a message… (Ctrl+Enter to send)"
+                  class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+        <button id="send-btn"
+                class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2 rounded-lg self-end disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            Send
+        </button>
+    </div>
 </section>
+
+<script>
+(function () {
+    const THREAD_ID = {{ thread.id }};
+    const AUTH_TOKEN = {{ auth_token | tojson }};
+
+    const messagesEl = document.getElementById("messages");
+    const input = document.getElementById("message-input");
+    const sendBtn = document.getElementById("send-btn");
+    const streamingWrap = document.getElementById("streaming-wrap");
+    const streamingText = document.getElementById("streaming-text");
+    const msgCount = document.getElementById("msg-count");
+
+    function scrollBottom() {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function esc(text) {
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+    }
+
+    function fmtTime(iso) {
+        return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function chunkHtml(chunk) {
+        const page = chunk.metadata?.page;
+        const images = chunk.metadata?.images || [];
+        const imgsHtml = images.map(p =>
+            `<a href="/admin/images/${p.replace(/^\//,'')}" target="_blank" class="block">
+                <img src="/admin/images/${p.replace(/^\//,'')}" alt="Source image"
+                     class="max-h-32 max-w-xs rounded border border-gray-200 object-contain hover:opacity-80 transition-opacity" />
+             </a>`
+        ).join("");
+
+        return `<details class="text-xs bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+            <summary class="px-3 py-2 cursor-pointer text-gray-500 hover:bg-gray-50 flex items-center gap-2 select-none">
+                <span class="font-mono text-gray-400">#${chunk.id}</span>
+                <span class="text-gray-600 font-medium truncate">attachment #${chunk.attachment_id}</span>
+                ${page != null ? `<span class="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded flex-shrink-0">p.${page + 1}</span>` : ""}
+                <a href="/admin/chunks?attachment_id=${chunk.attachment_id}" target="_blank"
+                   class="ml-auto text-blue-600 hover:underline flex-shrink-0" onclick="event.stopPropagation()">
+                    View doc
+                </a>
+            </summary>
+            <div class="px-3 py-2 border-t border-gray-100 text-gray-700 whitespace-pre-wrap leading-relaxed">${esc(chunk.content)}</div>
+            ${images.length ? `<div class="px-3 pb-3 pt-2 border-t border-gray-100 flex flex-wrap gap-2">${imgsHtml}</div>` : ""}
+        </details>`;
+    }
+
+    function insertUserBubble(content) {
+        const div = document.createElement("div");
+        div.className = "flex justify-end";
+        div.innerHTML = `
+            <div class="max-w-[70%] bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm shadow-sm">
+                <p class="whitespace-pre-wrap break-words">${esc(content)}</p>
+                <p class="text-xs text-blue-200 mt-1 text-right">just now</p>
+            </div>`;
+        messagesEl.insertBefore(div, streamingWrap);
+        scrollBottom();
+    }
+
+    async function fetchChunks(messageId) {
+        try {
+            const r = await fetch(`/api/messages/${messageId}/chunks`, {
+                headers: { "Authorization": `Bearer ${AUTH_TOKEN}` }
+            });
+            return r.ok ? await r.json() : [];
+        } catch { return []; }
+    }
+
+    async function finalizeAssistantBubble(message) {
+        streamingWrap.classList.add("hidden");
+        streamingText.textContent = "";
+
+        const chunks = await fetchChunks(message.id);
+        const chunksHtml = chunks.length
+            ? `<div class="space-y-1 pl-1">${chunks.map(chunkHtml).join("")}</div>`
+            : "";
+
+        const div = document.createElement("div");
+        div.className = "flex justify-start";
+        div.innerHTML = `
+            <div class="max-w-[70%] space-y-1.5">
+                <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm shadow-sm">
+                    <p class="whitespace-pre-wrap break-words">${esc(message.content)}</p>
+                    <p class="text-xs text-gray-400 mt-1">${fmtTime(message.created_at)}</p>
+                </div>
+                ${chunksHtml}
+            </div>`;
+        messagesEl.insertBefore(div, streamingWrap);
+        msgCount.textContent = parseInt(msgCount.textContent) + 1;
+        scrollBottom();
+    }
+
+    async function sendMessage() {
+        const content = input.value.trim();
+        if (!content) return;
+
+        input.value = "";
+        input.disabled = true;
+        sendBtn.disabled = true;
+
+        insertUserBubble(content);
+        msgCount.textContent = parseInt(msgCount.textContent) + 1;
+
+        streamingWrap.classList.remove("hidden");
+        streamingText.textContent = "";
+        scrollBottom();
+
+        try {
+            const resp = await fetch(`/api/threads/${THREAD_ID}/messages`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${AUTH_TOKEN}`,
+                },
+                body: JSON.stringify({ content }),
+            });
+
+            if (!resp.ok || !resp.body) {
+                streamingWrap.classList.add("hidden");
+                alert("Error: " + resp.status);
+                return;
+            }
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                const parts = buffer.split("\n\n");
+                buffer = parts.pop();
+
+                for (const part of parts) {
+                    const lines = part.trim().split("\n");
+                    const eLine = lines.find(l => l.startsWith("event: "));
+                    const dLine = lines.find(l => l.startsWith("data: "));
+                    if (!eLine || !dLine) continue;
+                    const evType = eLine.slice(7).trim();
+                    const data = dLine.slice(6);
+
+                    if (evType === "chunk") {
+                        streamingText.textContent += data;
+                        scrollBottom();
+                    } else if (evType === "message") {
+                        await finalizeAssistantBubble(JSON.parse(data));
+                    }
+                }
+            }
+        } finally {
+            input.disabled = false;
+            sendBtn.disabled = false;
+            input.focus();
+        }
+    }
+
+    sendBtn.addEventListener("click", sendMessage);
+    input.addEventListener("keydown", e => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    scrollBottom();
+})();
+</script>
 
 {% endblock %}

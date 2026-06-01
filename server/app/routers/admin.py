@@ -1,4 +1,3 @@
-import json
 import mimetypes
 import shutil
 from dataclasses import dataclass
@@ -29,6 +28,7 @@ from app.models import (
     Brand,
     ChatThread,
     Chunk,
+    ChunkMessage,
     Device,
     DeviceType,
     Message,
@@ -527,6 +527,22 @@ async def post_threads(
     return _redirect("/admin/threads", success=f"Thread '{title}' created.")
 
 
+@dataclass
+class ChunkInfo:
+    id: int
+    attachment_id: int
+    attachment_filename: str
+    content: str
+    page: int | None
+    images: list[str]
+
+
+@dataclass
+class MessageRow:
+    message: Message
+    chunks: list[ChunkInfo]
+
+
 @router.get("/threads/{thread_id}", response_class=HTMLResponse)
 async def get_thread_detail(
     thread_id: int,
@@ -545,23 +561,33 @@ async def get_thread_detail(
     device_map = {d.id: d.name for d in devices_result.scalars().all()}
 
     messages_result = await session.execute(
-        select(Message).where(Message.thread_id == thread_id)
+        select(Message).where(Message.thread_id == thread_id).order_by(Message.created_at)
     )
     messages = messages_result.scalars().all()
 
-    messages_json = json.dumps(
-        [
-            {
-                "id": m.id,
-                "sender": m.sender,
-                "content": m.content,
-                "created_at": m.created_at.isoformat(),
-            }
-            for m in messages
-        ],
-        indent=2,
-        ensure_ascii=False,
-    )
+    attachments_result = await session.execute(select(Attachment))
+    attachment_map = {a.id: a.original_filename for a in attachments_result.scalars().all()}
+
+    message_rows: list[MessageRow] = []
+    for msg in messages:
+        chunks_result = await session.execute(
+            select(Chunk).join(ChunkMessage, Chunk.id == ChunkMessage.chunk_id).where(
+                ChunkMessage.message_id == msg.id
+            )
+        )
+        chunks = chunks_result.scalars().all()
+        chunk_infos = [
+            ChunkInfo(
+                id=c.id,
+                attachment_id=c.attachment_id,
+                attachment_filename=attachment_map.get(c.attachment_id, f"#{c.attachment_id}"),
+                content=c.content,
+                page=c.extra_metadata.get("page") if c.extra_metadata else None,
+                images=c.extra_metadata.get("images", []) if c.extra_metadata else [],
+            )
+            for c in chunks
+        ]
+        message_rows.append(MessageRow(message=msg, chunks=chunk_infos))
 
     return templates.TemplateResponse(
         "admin/thread_detail.html",
@@ -570,8 +596,8 @@ async def get_thread_detail(
             "active": "threads",
             "thread": thread,
             "device_name": device_map.get(thread.device_id, "?"),
-            "messages": messages,
-            "messages_json": messages_json,
+            "message_rows": message_rows,
+            "auth_token": settings.auth_token,
         },
     )
 
