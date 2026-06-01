@@ -34,7 +34,7 @@ from app.models import (
     Message,
 )
 from app.routers.attachments import get_unique_filepath
-from app.services.ingest import ingest_pdf_to_attachment
+from app.services.ingest import delete_attachment_chunks, ingest_pdf_to_attachment
 
 router = APIRouter()
 
@@ -245,6 +245,130 @@ async def delete_document(
     return _redirect("/admin/documents", success="Document deleted.")
 
 
+@router.post("/documents/{attachment_id}/reingest")
+async def reingest_document(
+    attachment_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    attachment = await session.get(Attachment, attachment_id)
+    if not attachment:
+        return _redirect("/admin/documents", error="Document not found.")
+
+    await delete_attachment_chunks(session, attachment_id)
+    await ingest_pdf_to_attachment(
+        session=session,
+        pdf_path=attachment.file_global_path,
+        attachment_id=attachment_id,
+        settings=settings,
+    )
+    return _redirect(
+        "/admin/documents",
+        success=f"'{attachment.original_filename}' re-ingested successfully.",
+    )
+
+
+@router.get("/documents/{attachment_id}", response_class=HTMLResponse)
+async def get_document_detail(
+    attachment_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    attachment = await session.get(Attachment, attachment_id)
+    if not attachment:
+        return _redirect("/admin/documents", error="Document not found.")
+
+    links_result = await session.execute(
+        select(AttachmentDevice).where(AttachmentDevice.attachment_id == attachment_id)
+    )
+    linked_device_ids = {lnk.device_id for lnk in links_result.scalars().all()}
+
+    devices_result = await session.execute(select(Device))
+    all_devices = devices_result.scalars().all()
+    linked_devices = [d for d in all_devices if d.id in linked_device_ids]
+    available_devices = [d for d in all_devices if d.id not in linked_device_ids]
+
+    chunk_count_result = await session.execute(
+        select(func.count()).select_from(
+            select(Chunk).where(Chunk.attachment_id == attachment_id).subquery()
+        )
+    )
+    chunk_count = chunk_count_result.scalar_one()
+
+    return templates.TemplateResponse(
+        "admin/document_detail.html",
+        {
+            "request": request,
+            "active": "documents",
+            "attachment": attachment,
+            "linked_devices": linked_devices,
+            "available_devices": available_devices,
+            "chunk_count": chunk_count,
+        },
+    )
+
+
+@router.post("/documents/{attachment_id}/link")
+async def link_document_device(
+    attachment_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    device_id: int = Form(...),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    attachment = await session.get(Attachment, attachment_id)
+    if not attachment:
+        return _redirect("/admin/documents", error="Document not found.")
+
+    existing = await session.execute(
+        select(AttachmentDevice).where(
+            AttachmentDevice.attachment_id == attachment_id,
+            AttachmentDevice.device_id == device_id,
+        )
+    )
+    if not existing.scalars().first():
+        session.add(AttachmentDevice(attachment_id=attachment_id, device_id=device_id))
+        await session.commit()
+
+    return _redirect(f"/admin/documents/{attachment_id}", success="Device linked.")
+
+
+@router.post("/documents/{attachment_id}/unlink/{device_id}")
+async def unlink_document_device(
+    attachment_id: int,
+    device_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    result = await session.execute(
+        select(AttachmentDevice).where(
+            AttachmentDevice.attachment_id == attachment_id,
+            AttachmentDevice.device_id == device_id,
+        )
+    )
+    link = result.scalars().first()
+    if link:
+        await session.delete(link)
+        await session.commit()
+
+    return _redirect(f"/admin/documents/{attachment_id}", success="Device unlinked.")
+
+
 # ---------------------------------------------------------------------------
 # Devices
 # ---------------------------------------------------------------------------
@@ -340,6 +464,61 @@ async def delete_device(
     return _redirect("/admin/devices", success="Device deleted.")
 
 
+@router.get("/devices/{device_id}/edit", response_class=HTMLResponse)
+async def get_edit_device(
+    device_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    device = await session.get(Device, device_id)
+    if not device:
+        return _redirect("/admin/devices", error="Device not found.")
+
+    brands_result = await session.execute(select(Brand))
+    device_types_result = await session.execute(select(DeviceType))
+    return templates.TemplateResponse(
+        "admin/device_edit.html",
+        {
+            "request": request,
+            "active": "devices",
+            "device": device,
+            "brands": brands_result.scalars().all(),
+            "device_types": device_types_result.scalars().all(),
+        },
+    )
+
+
+@router.post("/devices/{device_id}/edit")
+async def post_edit_device(
+    device_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    name: str = Form(...),
+    brand_id: int = Form(...),
+    device_type_id: int = Form(...),
+    model_serial_code: str = Form(default=""),
+    image_url: str = Form(default=""),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    device = await session.get(Device, device_id)
+    if not device:
+        return _redirect("/admin/devices", error="Device not found.")
+    device.name = name
+    device.brand_id = brand_id
+    device.device_type_id = device_type_id
+    device.model_serial_code = model_serial_code or None
+    device.image_url = image_url or None
+    await session.commit()
+    return _redirect("/admin/devices", success=f"Device '{name}' updated.")
+
+
 # ---------------------------------------------------------------------------
 # Brands
 # ---------------------------------------------------------------------------
@@ -394,6 +573,46 @@ async def delete_brand(
     await session.delete(brand)
     await session.commit()
     return _redirect("/admin/brands", success="Brand deleted.")
+
+
+@router.get("/brands/{brand_id}/edit", response_class=HTMLResponse)
+async def get_edit_brand(
+    brand_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    brand = await session.get(Brand, brand_id)
+    if not brand:
+        return _redirect("/admin/brands", error="Brand not found.")
+    return templates.TemplateResponse(
+        "admin/brand_edit.html",
+        {"request": request, "active": "brands", "brand": brand},
+    )
+
+
+@router.post("/brands/{brand_id}/edit")
+async def post_edit_brand(
+    brand_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    name: str = Form(...),
+    logo_url: str = Form(default=""),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    brand = await session.get(Brand, brand_id)
+    if not brand:
+        return _redirect("/admin/brands", error="Brand not found.")
+    brand.name = name
+    brand.logo_url = logo_url or None
+    await session.commit()
+    return _redirect("/admin/brands", success=f"Brand '{name}' updated.")
 
 
 # ---------------------------------------------------------------------------
@@ -453,6 +672,44 @@ async def delete_device_type(
     await session.delete(dt)
     await session.commit()
     return _redirect("/admin/device_types", success="Device type deleted.")
+
+
+@router.get("/device_types/{device_type_id}/edit", response_class=HTMLResponse)
+async def get_edit_device_type(
+    device_type_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    dt = await session.get(DeviceType, device_type_id)
+    if not dt:
+        return _redirect("/admin/device_types", error="Device type not found.")
+    return templates.TemplateResponse(
+        "admin/device_type_edit.html",
+        {"request": request, "active": "device_types", "device_type": dt},
+    )
+
+
+@router.post("/device_types/{device_type_id}/edit")
+async def post_edit_device_type(
+    device_type_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    name: str = Form(...),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    dt = await session.get(DeviceType, device_type_id)
+    if not dt:
+        return _redirect("/admin/device_types", error="Device type not found.")
+    dt.name = name
+    await session.commit()
+    return _redirect("/admin/device_types", success=f"Device type '{name}' updated.")
 
 
 # ---------------------------------------------------------------------------
@@ -670,3 +927,30 @@ async def get_chunks(
             "total": total,
         },
     )
+
+
+@router.post("/chunks/{chunk_id}/delete")
+async def delete_chunk(
+    chunk_id: int,
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    attachment_id: int | None = Form(default=None),
+    page: int = Form(default=1),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    chunk = await session.get(Chunk, chunk_id)
+    if not chunk:
+        return _redirect("/admin/chunks", error="Chunk not found.")
+    await session.delete(chunk)
+    await session.commit()
+
+    qs_parts = []
+    if attachment_id:
+        qs_parts.append(f"attachment_id={attachment_id}")
+    if page > 1:
+        qs_parts.append(f"page={page}")
+    qs = ("?" + "&".join(qs_parts)) if qs_parts else ""
+    return _redirect(f"/admin/chunks{qs}", success="Chunk deleted.")
