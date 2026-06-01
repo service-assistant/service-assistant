@@ -480,7 +480,8 @@ async def get_threads(
     all_threads = threads_result.scalars().all()
 
     devices_result = await session.execute(select(Device))
-    device_map = {d.id: d.name for d in devices_result.scalars().all()}
+    all_devices = devices_result.scalars().all()
+    device_map = {d.id: d.name for d in all_devices}
 
     rows: list[ThreadRow] = []
     for thread in all_threads:
@@ -498,8 +499,32 @@ async def get_threads(
 
     return templates.TemplateResponse(
         "admin/threads.html",
-        {"request": request, "active": "threads", "threads": rows},
+        {
+            "request": request,
+            "active": "threads",
+            "threads": rows,
+            "devices": all_devices,
+            "success": request.query_params.get("success"),
+            "error": request.query_params.get("error"),
+        },
     )
+
+
+@router.post("/threads")
+async def post_threads(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    title: str = Form(...),
+    device_id: int = Form(...),
+):
+    if redirect := _check_auth(request, settings):
+        return redirect
+
+    thread = ChatThread(title=title, device_id=device_id)
+    session.add(thread)
+    await session.commit()
+    return _redirect("/admin/threads", success=f"Thread '{title}' created.")
 
 
 @router.get("/threads/{thread_id}", response_class=HTMLResponse)
