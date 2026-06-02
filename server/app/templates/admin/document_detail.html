@@ -38,7 +38,7 @@
                 <td class="px-6 py-3 font-medium">{{ device.name }}</td>
                 <td class="px-6 py-3 text-right">
                     <form method="post" action="/admin/documents/{{ attachment.id }}/unlink/{{ device.id }}"
-                          onsubmit="return confirm('Unlink this device?')">
+                          data-confirm="Unlink this device?">
                         <button type="submit" class="text-red-600 hover:text-red-800 text-sm">Unlink</button>
                     </form>
                 </td>

@@ -77,7 +77,7 @@
                     <div class="flex items-center justify-end gap-4">
                         <a href="/admin/devices/{{ row.device.id }}/edit" class="text-blue-600 hover:text-blue-800 text-sm">Edit</a>
                         <form method="post" action="/admin/devices/{{ row.device.id }}/delete"
-                              onsubmit="return confirm('Delete this device?')">
+                              data-confirm="Delete this device?">
                             <button type="submit" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
                         </form>
                     </div>
