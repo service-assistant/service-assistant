@@ -1,6 +1,6 @@
+import { AudioModule } from 'expo-audio';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
-import { AudioModule } from 'expo-audio';
 
 import {
 	addWakeWordListener,

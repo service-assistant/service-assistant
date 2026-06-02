@@ -998,12 +998,7 @@ export default function ChatScreen() {
 		void handleMicPressRef.current();
 	}, []);
 	useWakeWord({
-		enabled:
-			!isListening &&
-			!isLoading &&
-			!isTranscribing &&
-			!isGenerating &&
-			!isAudioPlaying,
+		enabled: !isListening && !isLoading && !isTranscribing && !isGenerating && !isAudioPlaying,
 		onDetected: handleWakeWordDetected,
 	});
 
