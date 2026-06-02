@@ -1,12 +1,13 @@
 import { Buffer } from 'buffer';
 import { AudioModule, RecordingPresets, useAudioPlayer, useAudioRecorder } from 'expo-audio';
 import { useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Platform, useWindowDimensions, View } from 'react-native';
 import EventSource, { EventSourceEvent } from 'react-native-sse';
 
 import LeftPanel, { Message } from '@/components/LeftPanel';
 import RightPanel, { AvailableFile } from '@/components/RightPanel';
+import { useWakeWord } from '@/hooks/use-wake-word';
 import * as FileSystem from 'expo-file-system/legacy';
 
 const SERVER_URL = 'https://staging.asystent-serwisanta.pl';
@@ -201,6 +202,7 @@ export default function ChatScreen() {
 	const fetchAbortControllerRef = useRef<AbortController | null>(null);
 	const ttsAbortControllerRef = useRef<AbortController | null>(null);
 	const sttAbortControllerRef = useRef<AbortController | null>(null);
+	const handleMicPressRef = useRef<() => Promise<void>>(async () => undefined);
 
 	// --- SILENCE CONFIGURATION ---
 	const silenceThreshold = -50;
@@ -990,6 +992,15 @@ export default function ChatScreen() {
 			}
 		}
 	};
+	handleMicPressRef.current = handleMicPress;
+
+	const handleWakeWordDetected = useCallback(() => {
+		void handleMicPressRef.current();
+	}, []);
+	useWakeWord({
+		enabled: !isListening && !isLoading && !isTranscribing && !isGenerating && !isAudioPlaying,
+		onDetected: handleWakeWordDetected,
+	});
 
 	const handleImageIndexChange = (nextIndex: number) => {
 		const nextImage = currentImages[nextIndex];
