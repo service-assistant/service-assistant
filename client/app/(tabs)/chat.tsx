@@ -47,6 +47,9 @@ type ThreadMessagePayload = {
 };
 
 const HARDCODED_DEVICE_ID = 1;
+const MIN_RECORDING_DURATION_MS = 500;
+const MIC_RESTART_COOLDOWN_MS = 500;
+const SHORT_MIC_PROCESSING_DURATION_MS = 2000;
 
 const FILE_ICON_OPTIONS = [
 	{ icon: 'file-pdf-box', color: '#EF4444' },
@@ -164,6 +167,7 @@ export default function ChatScreen() {
 	const [isGenerating, setIsGenerating] = useState<boolean>(false);
 	const [isAudioPlaying, setIsAudioPlaying] = useState<boolean>(false);
 	const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
+	const [isMicRestartBlocked, setIsMicRestartBlocked] = useState<boolean>(false);
 
 	const [showTextInput, setShowTextInput] = useState<boolean>(false);
 	const [inputText, setInputText] = useState<string>('');
@@ -203,6 +207,14 @@ export default function ChatScreen() {
 	const ttsAbortControllerRef = useRef<AbortController | null>(null);
 	const sttAbortControllerRef = useRef<AbortController | null>(null);
 	const handleMicPressRef = useRef<() => Promise<void>>(async () => undefined);
+	const isStartingRecordingRef = useRef<boolean>(false);
+	const isStoppingRecordingRef = useRef<boolean>(false);
+	const shouldStopAfterStartRef = useRef<boolean>(false);
+	const recordingStartedAtRef = useRef<number | null>(null);
+	const micRestartBlockedUntilRef = useRef<number>(0);
+	const micRestartCooldownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const wasMicProcessingRef = useRef<boolean>(false);
+	const micProcessingStartedAtRef = useRef<number | null>(null);
 
 	// --- SILENCE CONFIGURATION ---
 	const silenceThreshold = -50;
@@ -223,6 +235,9 @@ export default function ChatScreen() {
 			if (fetchAbortControllerRef.current) fetchAbortControllerRef.current.abort();
 			if (ttsAbortControllerRef.current) ttsAbortControllerRef.current.abort();
 			if (sttAbortControllerRef.current) sttAbortControllerRef.current.abort();
+			if (micRestartCooldownTimeoutRef.current) {
+				clearTimeout(micRestartCooldownTimeoutRef.current);
+			}
 		};
 	}, []);
 
@@ -883,28 +898,57 @@ export default function ChatScreen() {
 			meteringIntervalRef.current = null;
 		}
 
+		if (isStoppingRecordingRef.current) return;
+
+		if (isStartingRecordingRef.current && !audioRecorder.isRecording) {
+			shouldStopAfterStartRef.current = true;
+			setIsListening(false);
+			return;
+		}
+
+		if (!audioRecorder.isRecording) {
+			setIsListening(false);
+			setIsLoading(false);
+			setIsTranscribing(false);
+			return;
+		}
+
+		isStoppingRecordingRef.current = true;
 		setIsTranscribing(true);
 		setIsLoading(true);
 		setIsListening(false);
 
-		if (audioRecorder.isRecording) {
-			try {
-				await audioRecorder.stop();
-				const uri = audioRecorder.uri;
-				if (uri) {
-					sendToDeepgram(uri);
-				} else {
-					setIsLoading(false);
-					setIsTranscribing(false);
+		try {
+			const recordingStartedAt = recordingStartedAtRef.current;
+			if (recordingStartedAt) {
+				const remainingRecordingTime =
+					MIN_RECORDING_DURATION_MS - (Date.now() - recordingStartedAt);
+				if (remainingRecordingTime > 0) {
+					await new Promise((resolve) => setTimeout(resolve, remainingRecordingTime));
 				}
-			} catch (error) {
-				console.error('Error while stopping recording:', error);
+			}
+
+			await audioRecorder.stop();
+			const uri = audioRecorder.uri;
+			if (uri) {
+				sendToDeepgram(uri);
+			} else {
+				setMessages((prev) =>
+					prev.filter((msg) => msg.id !== userSpeakingMessageIdRef.current),
+				);
 				setIsLoading(false);
 				setIsTranscribing(false);
 			}
-		} else {
+		} catch (error) {
+			console.error('Error while stopping recording:', error);
+			setMessages((prev) =>
+				prev.filter((msg) => msg.id !== userSpeakingMessageIdRef.current),
+			);
 			setIsLoading(false);
 			setIsTranscribing(false);
+		} finally {
+			isStoppingRecordingRef.current = false;
+			recordingStartedAtRef.current = null;
 		}
 	};
 
@@ -952,17 +996,74 @@ export default function ChatScreen() {
 		}, 100);
 	};
 
+	const hasPendingVoiceInput = messages.some((m) => m.isSpeaking);
+	const isMicProcessing =
+		!isListening &&
+		(hasPendingVoiceInput || isTranscribing || isLoading || isGenerating || isAudioPlaying);
+
+	const blockMicRestart = useCallback(() => {
+		micRestartBlockedUntilRef.current = Date.now() + MIC_RESTART_COOLDOWN_MS;
+		setIsMicRestartBlocked(true);
+
+		if (micRestartCooldownTimeoutRef.current) {
+			clearTimeout(micRestartCooldownTimeoutRef.current);
+		}
+
+		micRestartCooldownTimeoutRef.current = setTimeout(() => {
+			micRestartBlockedUntilRef.current = 0;
+			micRestartCooldownTimeoutRef.current = null;
+			setIsMicRestartBlocked(false);
+		}, MIC_RESTART_COOLDOWN_MS);
+	}, []);
+
+	useEffect(() => {
+		if (!wasMicProcessingRef.current && isMicProcessing) {
+			micProcessingStartedAtRef.current = Date.now();
+		}
+
+		if (wasMicProcessingRef.current && !isMicProcessing) {
+			const processingStartedAt = micProcessingStartedAtRef.current;
+			if (
+				processingStartedAt &&
+				Date.now() - processingStartedAt < SHORT_MIC_PROCESSING_DURATION_MS
+			) {
+				blockMicRestart();
+			}
+			micProcessingStartedAtRef.current = null;
+		}
+
+		wasMicProcessingRef.current = isMicProcessing;
+	}, [blockMicRestart, isMicProcessing]);
+
 	/**
 	 * Handle microphone button press
 	 */
 	const handleMicPress = async () => {
 		if (showTextInput) setShowTextInput(false);
 
-		if (isListening) {
+		if (isStoppingRecordingRef.current) return;
+
+		if (isListening || isStartingRecordingRef.current || audioRecorder.isRecording) {
 			await stopRecordingAndSend();
+			return;
+		}
+
+		if (isMicRestartBlocked || Date.now() < micRestartBlockedUntilRef.current) return;
+
+		if (isMicProcessing) {
+			handleStop();
+			const processingStartedAt = micProcessingStartedAtRef.current;
+			if (
+				processingStartedAt &&
+				Date.now() - processingStartedAt < SHORT_MIC_PROCESSING_DURATION_MS
+			) {
+				blockMicRestart();
+			}
 			return;
 		} else {
 			handleStop();
+			isStartingRecordingRef.current = true;
+			shouldStopAfterStartRef.current = false;
 			setIsListening(true);
 
 			const userTempId = Date.now();
@@ -982,13 +1083,27 @@ export default function ChatScreen() {
 					return;
 				}
 
+				if (shouldStopAfterStartRef.current) {
+					setMessages((prev) => prev.filter((msg) => msg.id !== userTempId));
+					return;
+				}
+
 				await audioRecorder.prepareToRecordAsync();
 				audioRecorder.record();
-				startMetering();
+				recordingStartedAtRef.current = Date.now();
+				isStartingRecordingRef.current = false;
+
+				if (shouldStopAfterStartRef.current) {
+					await stopRecordingAndSend();
+				} else {
+					startMetering();
+				}
 			} catch (err) {
 				console.error('Error starting recording:', err);
 				setIsListening(false);
 				setMessages((prev) => prev.filter((msg) => msg.id !== userTempId));
+			} finally {
+				isStartingRecordingRef.current = false;
 			}
 		}
 	};
@@ -998,7 +1113,13 @@ export default function ChatScreen() {
 		void handleMicPressRef.current();
 	}, []);
 	useWakeWord({
-		enabled: !isListening && !isLoading && !isTranscribing && !isGenerating && !isAudioPlaying,
+		enabled:
+			!isListening &&
+			!isLoading &&
+			!isTranscribing &&
+			!isGenerating &&
+			!isAudioPlaying &&
+			!isMicRestartBlocked,
 		onDetected: handleWakeWordDetected,
 	});
 
@@ -1012,10 +1133,6 @@ export default function ChatScreen() {
 	};
 
 	const isBotTyping = isLoading && !messages.some((m) => m.sender === 'ai' && m.text === '');
-	const hasPendingVoiceInput = messages.some((m) => m.isSpeaking);
-	const isMicProcessing =
-		!isListening &&
-		(hasPendingVoiceInput || isTranscribing || isLoading || isGenerating || isAudioPlaying);
 
 	if (isMobile) {
 		return (
@@ -1044,6 +1161,7 @@ export default function ChatScreen() {
 				onMicPress={handleMicPress}
 				soundLevelAnim={soundLevelAnim}
 				isGenerating={isMicProcessing}
+				isMicRestartBlocked={isMicRestartBlocked}
 				onStop={handleStop}
 				messages={messages}
 				isChatLoading={isBotTyping}
@@ -1071,6 +1189,7 @@ export default function ChatScreen() {
 				onSendText={handleSendText}
 				currentSource={currentSource}
 				isGenerating={isMicProcessing}
+				isMicRestartBlocked={isMicRestartBlocked}
 				onStop={handleStop}
 				logoUrl={logoUrl}
 			/>
@@ -1098,6 +1217,7 @@ export default function ChatScreen() {
 				}}
 				setCurrentImage={setCurrentImage}
 				isGenerating={isMicProcessing}
+				isMicRestartBlocked={isMicRestartBlocked}
 				onStop={handleStop}
 				soundLevelAnim={soundLevelAnim}
 			/>

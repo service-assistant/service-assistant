@@ -25,6 +25,7 @@
 			},
 			"permissions": ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"],
 			"edgeToEdgeEnabled": true,
+			"softwareKeyboardLayoutMode": "resize",
 			"predictiveBackGestureEnabled": false,
 			"package": "com.ziemnio.client"
 		},

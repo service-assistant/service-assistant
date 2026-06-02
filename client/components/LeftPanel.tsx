@@ -65,6 +65,7 @@ interface LeftPanelProps {
 	onSendText: () => void;
 	currentSource: string;
 	isGenerating: boolean;
+	isMicRestartBlocked: boolean;
 	onStop: () => void;
 	logoUrl?: string;
 }
@@ -300,6 +301,7 @@ export default function LeftPanel({
 	onSendText,
 	currentSource,
 	isGenerating,
+	isMicRestartBlocked,
 	onStop,
 	logoUrl,
 }: LeftPanelProps) {
@@ -405,6 +407,8 @@ export default function LeftPanel({
 	}, []);
 
 	const handleMicButtonPress = useCallback(() => {
+		if (isMicRestartBlocked) return;
+
 		triggerMicHaptic();
 
 		if (isGenerating) {
@@ -413,7 +417,7 @@ export default function LeftPanel({
 		}
 
 		onMicPress();
-	}, [isGenerating, onMicPress, onStop, triggerMicHaptic]);
+	}, [isGenerating, isMicRestartBlocked, onMicPress, onStop, triggerMicHaptic]);
 
 	const getKeyboardOverlapHeight = useCallback(
 		(event: { endCoordinates?: { height?: number; screenY?: number } }) => {
@@ -787,6 +791,7 @@ export default function LeftPanel({
 							style={{ width: bottomBar.centerColumnWidth }}>
 							<TouchableOpacity
 								onPress={handleMicButtonPress}
+								disabled={isMicRestartBlocked}
 								className='rounded-[12px] items-center justify-center'
 								style={{
 									width: bottomBar.centerBtnSize,

@@ -19,6 +19,7 @@ import {
 	View,
 	useWindowDimensions,
 } from 'react-native';
+import Reanimated, { useAnimatedKeyboard, useAnimatedStyle } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
 import { TypingDotsIndicator, type Message } from './LeftPanel';
@@ -69,6 +70,7 @@ export interface RightPanelProps {
 	onMicPress: () => void;
 	soundLevelAnim: Animated.Value;
 	isGenerating: boolean;
+	isMicRestartBlocked: boolean;
 	onStop: () => void;
 	messages?: Message[];
 	isChatLoading?: boolean;
@@ -108,6 +110,7 @@ export default function RightPanel({
 	onMicPress,
 	soundLevelAnim,
 	isGenerating,
+	isMicRestartBlocked,
 	onStop,
 	messages = [],
 	isChatLoading = false,
@@ -118,7 +121,7 @@ export default function RightPanel({
 	onSendText,
 	logoUrl,
 }: RightPanelProps) {
-	const { width, height: windowHeight } = useWindowDimensions();
+	const { width } = useWindowDimensions();
 	const isMobile = width < 768;
 	const router = useRouter();
 	const insets = useSafeAreaInsets();
@@ -130,7 +133,9 @@ export default function RightPanel({
 	const [downloadedFileIds, setDownloadedFileIds] = useState<Set<number>>(new Set());
 	const [isShowingFileGrid, setIsShowingFileGrid] = useState<boolean>(false);
 	const [mobileMode, setMobileMode] = useState<'chat' | 'sources'>('chat');
-	const [keyboardHeight, setKeyboardHeight] = useState(0);
+	const animatedKeyboard = useAnimatedKeyboard({
+		isNavigationBarTranslucentAndroid: true,
+	});
 	const imageFadeAnim = useRef(new Animated.Value(1)).current;
 	const imageSlideAnim = useRef(new Animated.Value(0)).current;
 	const previousImageIndexRef = useRef(currentImageIndex);
@@ -212,40 +217,21 @@ export default function RightPanel({
 				} as const)
 			: { intensity: 40 };
 	const mobileControlsHeight = bottomBar.centerBtnSize + bottomBar.paddingVertical * 2 + 56;
-	const mobileControlsBottom = keyboardHeight > 0 ? keyboardHeight : mobileBottomInset;
-	const isKeyboardTyping = showTextInput && keyboardHeight > 0;
+	const mobileControlsBottom = mobileBottomInset;
+	const isKeyboardTyping = showTextInput;
+	const mobileKeyboardLiftStyle = useAnimatedStyle(() => ({
+		bottom: mobileControlsBottom + animatedKeyboard.height.value,
+	}));
 
-	const getKeyboardOverlapHeight = useCallback(
-		(event: { endCoordinates?: { height?: number; screenY?: number } }) => {
-			const screenY = event.endCoordinates?.screenY;
-			const reportedHeight = event.endCoordinates?.height ?? 0;
+	const handleMobileTextInputToggle = useCallback(() => {
+		if (showTextInput) {
+			Keyboard.dismiss();
+			setShowTextInput?.(false);
+			return;
+		}
 
-			if (typeof screenY === 'number' && screenY > 0) {
-				const overlapHeight = Math.max(0, windowHeight - screenY);
-				return overlapHeight > 0 ? overlapHeight : Math.max(0, reportedHeight);
-			}
-
-			return Math.max(0, reportedHeight);
-		},
-		[windowHeight],
-	);
-
-	useEffect(() => {
-		const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-		const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-		const showSubscription = Keyboard.addListener(showEvent, (event) => {
-			setKeyboardHeight(getKeyboardOverlapHeight(event));
-		});
-		const hideSubscription = Keyboard.addListener(hideEvent, () => {
-			setKeyboardHeight(0);
-		});
-
-		return () => {
-			showSubscription.remove();
-			hideSubscription.remove();
-		};
-	}, [getKeyboardOverlapHeight]);
+		setShowTextInput?.(true);
+	}, [setShowTextInput, showTextInput]);
 
 	useEffect(() => {
 		return () => {
@@ -309,6 +295,8 @@ export default function RightPanel({
 	}, [currentImageIndex, currentImages.length, hasMultipleImages, onImageIndexChange]);
 
 	const handleMicButtonPress = useCallback(() => {
+		if (isMicRestartBlocked) return;
+
 		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
 
 		if (isGenerating) {
@@ -317,7 +305,7 @@ export default function RightPanel({
 		}
 
 		onMicPress();
-	}, [isGenerating, onMicPress, onStop]);
+	}, [isGenerating, isMicRestartBlocked, onMicPress, onStop]);
 
 	const imageSwipeResponder = useMemo(
 		() =>
@@ -956,9 +944,9 @@ export default function RightPanel({
 					)}
 
 					{/* Bottom Bar: Chat / Mic Controls */}
-					<View
+					<Reanimated.View
 						className='absolute left-0 right-0 items-center px-4'
-						style={{ bottom: mobileControlsBottom }}>
+						style={mobileKeyboardLiftStyle}>
 						{showTextInput ? (
 							<View
 								className='flex-row w-full items-center gap-2'
@@ -1027,6 +1015,7 @@ export default function RightPanel({
 								style={{ width: bottomBar.centerColumnWidth }}>
 								<TouchableOpacity
 									onPress={handleMicButtonPress}
+									disabled={isMicRestartBlocked}
 									className='rounded-[12px] items-center justify-center'
 									style={{
 										width: bottomBar.centerBtnSize,
@@ -1100,7 +1089,7 @@ export default function RightPanel({
 							</View>
 
 							<TouchableOpacity
-								onPress={() => setShowTextInput?.(!showTextInput)}
+								onPress={handleMobileTextInputToggle}
 								className='rounded-[12px] items-center justify-center'
 								style={{
 									width: bottomBar.sideBtnSize,
@@ -1120,7 +1109,7 @@ export default function RightPanel({
 								/>
 							</TouchableOpacity>
 						</BlurView>
-					</View>
+					</Reanimated.View>
 				</View>
 			</SafeAreaView>
 		);
