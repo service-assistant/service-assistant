@@ -40,6 +40,111 @@
         </div>
     </aside>
 
+    <!-- Confirm dialog -->
+    <div id="confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center">
+        <div id="confirm-backdrop" class="absolute inset-0 bg-black/50"></div>
+        <div id="confirm-box" class="relative bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4 transform scale-95 opacity-0 transition-all duration-150">
+            <p id="confirm-message" class="text-sm text-gray-700 mb-5"></p>
+            <div class="flex justify-end gap-3">
+                <button id="confirm-cancel" type="button" class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-md transition-colors">Cancel</button>
+                <button id="confirm-ok" type="button" class="px-3 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function showInlineBanner(message, type) {
+        const isError = type === 'error';
+        let banner = document.getElementById('js-flash-banner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'js-flash-banner';
+            const main = document.querySelector('main');
+            main.insertBefore(banner, main.firstChild);
+        }
+        banner.className = isError
+            ? 'mb-5 px-4 py-3 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm'
+            : 'mb-5 px-4 py-3 rounded-md bg-green-50 border border-green-200 text-green-800 text-sm';
+        banner.textContent = message;
+        banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function showInlineError(message) { showInlineBanner(message, 'error'); }
+
+    (function () {
+        const msg = sessionStorage.getItem('admin_flash_success');
+        if (msg) {
+            sessionStorage.removeItem('admin_flash_success');
+            showInlineBanner(msg, 'success');
+        }
+    })();
+
+    async function submitFormAjax(form) {
+        const resp = await fetch(form.action || window.location.href, {
+            method: (form.method || 'GET').toUpperCase(),
+            body: new FormData(form),
+            redirect: 'follow',
+        });
+        const ct = resp.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+            const data = await resp.json();
+            if (data.error) {
+                showInlineError(data.error);
+            } else if (data.success) {
+                if (data.redirect) {
+                    sessionStorage.setItem('admin_flash_success', data.success);
+                    window.location.href = data.redirect;
+                } else {
+                    showInlineBanner(data.success, 'success');
+                    form.closest('tr')?.remove();
+                }
+            }
+        } else {
+            window.location.href = resp.url;
+        }
+    }
+
+    document.addEventListener('submit', function (e) {
+        e.preventDefault();
+        const form = e.target;
+        const confirmMsg = form.dataset.confirm;
+        if (confirmMsg) {
+            showConfirm(form, confirmMsg);
+        } else {
+            submitFormAjax(form);
+        }
+    });
+
+    function showConfirm(form, message) {
+        const modal = document.getElementById('confirm-modal');
+        const box = document.getElementById('confirm-box');
+        document.getElementById('confirm-message').textContent = message;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        requestAnimationFrame(() => {
+            box.classList.remove('scale-95', 'opacity-0');
+            box.classList.add('scale-100', 'opacity-100');
+        });
+
+        function close() {
+            box.classList.remove('scale-100', 'opacity-100');
+            box.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }, 150);
+        }
+
+        document.getElementById('confirm-cancel').onclick = close;
+        document.getElementById('confirm-backdrop').onclick = close;
+        document.getElementById('confirm-ok').onclick = function () {
+            close();
+            setTimeout(() => submitFormAjax(form), 150);
+        };
+        return false;
+    }
+    </script>
+
     <!-- Main content -->
     <div class="flex-1 flex flex-col min-w-0">
         <header class="bg-white border-b border-gray-200 px-8 py-4">
@@ -47,18 +152,6 @@
         </header>
 
         <main class="flex-1 px-8 py-6 max-w-5xl">
-
-            {% if request.query_params.get('success') %}
-            <div class="mb-5 px-4 py-3 rounded-md bg-green-50 border border-green-200 text-green-800 text-sm">
-                {{ request.query_params.get('success') }}
-            </div>
-            {% endif %}
-
-            {% if request.query_params.get('error') %}
-            <div class="mb-5 px-4 py-3 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm">
-                {{ request.query_params.get('error') }}
-            </div>
-            {% endif %}
 
             {% block content %}{% endblock %}
         </main>

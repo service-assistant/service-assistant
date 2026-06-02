@@ -5,30 +5,24 @@
 
 {% block content %}
 
-{% if success %}
-<div class="mb-4 px-4 py-3 rounded bg-green-50 border border-green-200 text-green-800 text-sm">{{ success }}</div>
-{% endif %}
-{% if error %}
-<div class="mb-4 px-4 py-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm">{{ error }}</div>
-{% endif %}
 
-<section class="bg-white border border-gray-200 rounded-lg p-4 mb-6">
-    <h2 class="text-sm font-semibold text-gray-700 mb-3">New Thread</h2>
-    <form method="post" action="/admin/threads" class="flex flex-wrap gap-3 items-end">
+<section class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">New Thread</h2>
+    <form method="post" action="/admin/threads" class="flex flex-wrap gap-4 items-end">
         <div>
-            <label class="block text-xs text-gray-500 mb-1">Title</label>
-            <input name="title" required class="border border-gray-300 rounded px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Thread title" />
+            <label class="block text-sm font-medium text-gray-700 mb-1">Title</label>
+            <input name="title" required class="border border-gray-300 rounded-md px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Thread title" />
         </div>
         <div>
-            <label class="block text-xs text-gray-500 mb-1">Device</label>
-            <select name="device_id" required class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Device</label>
+            <select name="device_id" required class="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="" disabled selected>Select device</option>
                 {% for device in devices %}
                 <option value="{{ device.id }}">{{ device.name }}</option>
                 {% endfor %}
             </select>
         </div>
-        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded">Create</button>
+        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-md transition-colors whitespace-nowrap">Create</button>
     </form>
 </section>
 
@@ -53,7 +47,13 @@
                 <td class="px-4 py-3 text-gray-500">{{ row.message_count }}</td>
                 <td class="px-4 py-3 text-gray-500">{{ row.thread.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
                 <td class="px-4 py-3 text-right">
-                    <a href="/admin/threads/{{ row.thread.id }}" class="text-blue-600 hover:underline text-sm">View</a>
+                    <div class="flex items-center justify-end gap-4">
+                        <a href="/admin/threads/{{ row.thread.id }}" class="text-blue-600 hover:text-blue-800 text-sm">View</a>
+                        <form method="post" action="/admin/threads/{{ row.thread.id }}/delete"
+                              data-confirm="Delete this thread and all its messages?">
+                            <button type="submit" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                        </form>
+                    </div>
                 </td>
             </tr>
             {% else %}
