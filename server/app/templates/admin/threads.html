@@ -5,6 +5,33 @@
 
 {% block content %}
 
+{% if success %}
+<div class="mb-4 px-4 py-3 rounded bg-green-50 border border-green-200 text-green-800 text-sm">{{ success }}</div>
+{% endif %}
+{% if error %}
+<div class="mb-4 px-4 py-3 rounded bg-red-50 border border-red-200 text-red-800 text-sm">{{ error }}</div>
+{% endif %}
+
+<section class="bg-white border border-gray-200 rounded-lg p-4 mb-6">
+    <h2 class="text-sm font-semibold text-gray-700 mb-3">New Thread</h2>
+    <form method="post" action="/admin/threads" class="flex flex-wrap gap-3 items-end">
+        <div>
+            <label class="block text-xs text-gray-500 mb-1">Title</label>
+            <input name="title" required class="border border-gray-300 rounded px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Thread title" />
+        </div>
+        <div>
+            <label class="block text-xs text-gray-500 mb-1">Device</label>
+            <select name="device_id" required class="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="" disabled selected>Select device</option>
+                {% for device in devices %}
+                <option value="{{ device.id }}">{{ device.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-4 py-2 rounded">Create</button>
+    </form>
+</section>
+
 <section class="bg-white border border-gray-200 rounded-lg overflow-hidden">
     <table class="w-full text-sm">
         <thead class="bg-gray-50 border-b border-gray-200">

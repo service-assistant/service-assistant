@@ -1,5 +1,6 @@
 from openai import AsyncAzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlmodel import delete as sql_delete
 
 import fitz  # pymupdf
 
@@ -7,6 +8,11 @@ from ..config import Settings
 from ..models import Chunk
 from .extract_images import extract_page_images
 from .chunking import chunk_page
+
+
+async def delete_attachment_chunks(session: AsyncSession, attachment_id: int) -> None:
+    await session.execute(sql_delete(Chunk).where(Chunk.attachment_id == attachment_id))
+    await session.commit()
 
 
 def batch_list(items, batch_size):
