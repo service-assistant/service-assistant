@@ -818,26 +818,32 @@ async def get_thread_detail(
     device_map = {d.id: d.name for d in devices_result.scalars().all()}
 
     messages_result = await session.execute(
-        select(Message).where(Message.thread_id == thread_id).order_by(Message.created_at)
+        select(Message)
+        .where(Message.thread_id == thread_id)
+        .order_by(Message.created_at)
     )
     messages = messages_result.scalars().all()
 
     attachments_result = await session.execute(select(Attachment))
-    attachment_map = {a.id: a.original_filename for a in attachments_result.scalars().all()}
+    attachment_map = {
+        a.id: a.original_filename for a in attachments_result.scalars().all()
+    }
 
     message_rows: list[MessageRow] = []
     for msg in messages:
         chunks_result = await session.execute(
-            select(Chunk).join(ChunkMessage, Chunk.id == ChunkMessage.chunk_id).where(
-                ChunkMessage.message_id == msg.id
-            )
+            select(Chunk)
+            .join(ChunkMessage, Chunk.id == ChunkMessage.chunk_id)
+            .where(ChunkMessage.message_id == msg.id)
         )
         chunks = chunks_result.scalars().all()
         chunk_infos = [
             ChunkInfo(
                 id=c.id,
                 attachment_id=c.attachment_id,
-                attachment_filename=attachment_map.get(c.attachment_id, f"#{c.attachment_id}"),
+                attachment_filename=attachment_map.get(
+                    c.attachment_id, f"#{c.attachment_id}"
+                ),
                 content=c.content,
                 page=c.extra_metadata.get("page") if c.extra_metadata else None,
                 images=c.extra_metadata.get("images", []) if c.extra_metadata else [],
