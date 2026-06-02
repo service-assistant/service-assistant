@@ -1,13 +1,13 @@
 {
 	"expo": {
-		"name": "client",
+		"name": "Fixo",
 		"slug": "client",
 		"version": "1.0.0",
 		"orientation": "default",
 		"icon": "./assets/images/icon.png",
 		"scheme": "client",
 		"userInterfaceStyle": "automatic",
-		"newArchEnabled": false,
+		"newArchEnabled": true,
 		"ios": {
 			"supportsTablet": true,
 			"infoPlist": {

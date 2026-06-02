@@ -1,0 +1,4 @@
+numpy>=1.26,<3
+torch>=2.4,<3
+sounddevice>=0.5,<1
+
