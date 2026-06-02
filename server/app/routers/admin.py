@@ -68,7 +68,9 @@ async def post_login(
     token: str = Form(...),
 ):
     if token != settings.auth_token:
-        return JSONResponse({"error": "Invalid token."}, status_code=status.HTTP_401_UNAUTHORIZED)
+        return JSONResponse(
+            {"error": "Invalid token."}, status_code=status.HTTP_401_UNAUTHORIZED
+        )
     response = JSONResponse({"success": "Logged in.", "redirect": "/admin/documents"})
     response.set_cookie("admin_token", token, httponly=True, samesite="lax")
     return response
@@ -192,7 +194,12 @@ async def post_documents(
         settings=settings,
     )
 
-    return JSONResponse({"success": f"'{original_name}' uploaded and indexed.", "redirect": "/admin/documents"})
+    return JSONResponse(
+        {
+            "success": f"'{original_name}' uploaded and indexed.",
+            "redirect": "/admin/documents",
+        }
+    )
 
 
 @router.post("/documents/{attachment_id}/delete", dependencies=[Depends(_require_auth)])
@@ -211,10 +218,14 @@ async def delete_document(
     if file_path.exists():
         file_path.unlink()
 
-    return JSONResponse({"success": "Document deleted.", "redirect": "/admin/documents"})
+    return JSONResponse(
+        {"success": "Document deleted.", "redirect": "/admin/documents"}
+    )
 
 
-@router.post("/documents/{attachment_id}/reingest", dependencies=[Depends(_require_auth)])
+@router.post(
+    "/documents/{attachment_id}/reingest", dependencies=[Depends(_require_auth)]
+)
 async def reingest_document(
     attachment_id: int,
     settings: Settings = Depends(get_settings),
@@ -231,7 +242,12 @@ async def reingest_document(
         attachment_id=attachment_id,
         settings=settings,
     )
-    return JSONResponse({"success": f"'{attachment.original_filename}' re-ingested successfully.", "redirect": "/admin/documents"})
+    return JSONResponse(
+        {
+            "success": f"'{attachment.original_filename}' re-ingested successfully.",
+            "redirect": "/admin/documents",
+        }
+    )
 
 
 @router.get(
@@ -298,7 +314,9 @@ async def link_document_device(
         session.add(AttachmentDevice(attachment_id=attachment_id, device_id=device_id))
         await session.commit()
 
-    return JSONResponse({"success": "Device linked.", "redirect": f"/admin/documents/{attachment_id}"})
+    return JSONResponse(
+        {"success": "Device linked.", "redirect": f"/admin/documents/{attachment_id}"}
+    )
 
 
 @router.post(
@@ -321,7 +339,9 @@ async def unlink_document_device(
         await session.delete(link)
         await session.commit()
 
-    return JSONResponse({"success": "Device unlinked.", "redirect": f"/admin/documents/{attachment_id}"})
+    return JSONResponse(
+        {"success": "Device unlinked.", "redirect": f"/admin/documents/{attachment_id}"}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -396,8 +416,12 @@ async def post_devices(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        return JSONResponse({"error": "Invalid brand or device type ID."}, status_code=422)
-    return JSONResponse({"success": f"Device '{name}' created.", "redirect": "/admin/devices"})
+        return JSONResponse(
+            {"error": "Invalid brand or device type ID."}, status_code=422
+        )
+    return JSONResponse(
+        {"success": f"Device '{name}' created.", "redirect": "/admin/devices"}
+    )
 
 
 @router.post("/devices/{device_id}/delete", dependencies=[Depends(_require_auth)])
@@ -413,7 +437,10 @@ async def delete_device(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        return JSONResponse({"error": "Cannot delete device: one or more chat threads reference it."}, status_code=422)
+        return JSONResponse(
+            {"error": "Cannot delete device: one or more chat threads reference it."},
+            status_code=422,
+        )
     return JSONResponse({"success": "Device deleted.", "redirect": "/admin/devices"})
 
 
@@ -464,7 +491,9 @@ async def post_edit_device(
     device.model_serial_code = model_serial_code or None
     device.image_url = image_url or None
     await session.commit()
-    return JSONResponse({"success": f"Device '{name}' updated.", "redirect": "/admin/devices"})
+    return JSONResponse(
+        {"success": f"Device '{name}' updated.", "redirect": "/admin/devices"}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -497,7 +526,9 @@ async def post_brands(
     brand = Brand(name=name, logo_url=logo_url or None)
     session.add(brand)
     await session.commit()
-    return JSONResponse({"success": f"Brand '{name}' created.", "redirect": "/admin/brands"})
+    return JSONResponse(
+        {"success": f"Brand '{name}' created.", "redirect": "/admin/brands"}
+    )
 
 
 @router.post("/brands/{brand_id}/delete", dependencies=[Depends(_require_auth)])
@@ -513,7 +544,10 @@ async def delete_brand(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        return JSONResponse({"error": "Cannot delete brand: one or more devices reference it."}, status_code=422)
+        return JSONResponse(
+            {"error": "Cannot delete brand: one or more devices reference it."},
+            status_code=422,
+        )
     return JSONResponse({"success": "Brand deleted.", "redirect": "/admin/brands"})
 
 
@@ -549,7 +583,9 @@ async def post_edit_brand(
     brand.name = name
     brand.logo_url = logo_url or None
     await session.commit()
-    return JSONResponse({"success": f"Brand '{name}' updated.", "redirect": "/admin/brands"})
+    return JSONResponse(
+        {"success": f"Brand '{name}' updated.", "redirect": "/admin/brands"}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -585,10 +621,14 @@ async def post_device_types(
     dt = DeviceType(name=name)
     session.add(dt)
     await session.commit()
-    return JSONResponse({"success": f"Device type '{name}' created.", "redirect": "/admin/device_types"})
+    return JSONResponse(
+        {"success": f"Device type '{name}' created.", "redirect": "/admin/device_types"}
+    )
 
 
-@router.post("/device_types/{device_type_id}/delete", dependencies=[Depends(_require_auth)])
+@router.post(
+    "/device_types/{device_type_id}/delete", dependencies=[Depends(_require_auth)]
+)
 async def delete_device_type(
     device_type_id: int,
     session: AsyncSession = Depends(get_session),
@@ -601,7 +641,10 @@ async def delete_device_type(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        return JSONResponse({"error": "Cannot delete device type: one or more devices reference it."}, status_code=422)
+        return JSONResponse(
+            {"error": "Cannot delete device type: one or more devices reference it."},
+            status_code=422,
+        )
     return JSONResponse({"success": "Device type deleted."})
 
 
@@ -624,7 +667,9 @@ async def get_edit_device_type(
     )
 
 
-@router.post("/device_types/{device_type_id}/edit", dependencies=[Depends(_require_auth)])
+@router.post(
+    "/device_types/{device_type_id}/edit", dependencies=[Depends(_require_auth)]
+)
 async def post_edit_device_type(
     device_type_id: int,
     session: AsyncSession = Depends(get_session),
@@ -635,7 +680,9 @@ async def post_edit_device_type(
         return JSONResponse({"error": "Device type not found."}, status_code=422)
     dt.name = name
     await session.commit()
-    return JSONResponse({"success": f"Device type '{name}' updated.", "redirect": "/admin/device_types"})
+    return JSONResponse(
+        {"success": f"Device type '{name}' updated.", "redirect": "/admin/device_types"}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -704,7 +751,9 @@ async def post_threads(
     except IntegrityError:
         await session.rollback()
         return JSONResponse({"error": "Invalid device ID."}, status_code=422)
-    return JSONResponse({"success": f"Thread '{title}' created.", "redirect": "/admin/threads"})
+    return JSONResponse(
+        {"success": f"Thread '{title}' created.", "redirect": "/admin/threads"}
+    )
 
 
 @router.post("/threads/{thread_id}/delete", dependencies=[Depends(_require_auth)])

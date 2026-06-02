@@ -186,7 +186,10 @@ class ChatThread(SQLModel, table=True):
     device: Device = Relationship(back_populates="threads")
     messages: list["Message"] = Relationship(
         back_populates="thread",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan", "passive_deletes": True},
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "passive_deletes": True,
+        },
     )
 
 
