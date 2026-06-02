@@ -9,7 +9,7 @@ from sqlmodel import col, select
 
 from app.config import Settings, get_settings
 from app.database import get_session
-from app.models import ChatThread, ChunkMessage, Message, MessageSender
+from app.models import ChatThread, ChunkMessage, Device, Message, MessageSender
 from app.services import embedding, llm, stt, tts
 
 router = APIRouter()
@@ -39,11 +39,15 @@ class MessageCreate(BaseModel):
     response_model=ChatThread,
     summary="Create a chat thread",
     description="Creates a new chat thread for a specific device. Each thread holds an independent conversation history.",
+    responses={404: {"description": "Device not found"}},
 )
 async def create_thread(
     body: ThreadCreate,
     session: AsyncSession = Depends(get_session),
 ):
+    device = await session.get(Device, body.device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
     thread = ChatThread(**body.model_dump())
     session.add(thread)
     await session.commit()
@@ -100,6 +104,7 @@ async def _yield_tts_audio_events(answer: str, settings: Settings):
 
 @router.post(
     "/{thread_id}/messages",
+    response_class=StreamingResponse,
     summary="Send a message",
     description=(
         "Appends a user message to the thread, then runs a RAG pipeline: "

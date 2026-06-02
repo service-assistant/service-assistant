@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -101,7 +102,10 @@ async def update_device_type(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a device type",
     description="Permanently deletes a device type. Fails with 409 if any devices still reference this type.",
-    responses={404: {"description": "Device type not found"}},
+    responses={
+        404: {"description": "Device type not found"},
+        409: {"description": "Device type is referenced by one or more devices"},
+    },
 )
 async def delete_device_type(
     device_type_id: int,
@@ -110,5 +114,12 @@ async def delete_device_type(
     device_type = await session.get(DeviceType, device_type_id)
     if not device_type:
         raise HTTPException(status_code=404, detail="Device type not found")
-    await session.delete(device_type)
-    await session.commit()
+    try:
+        await session.delete(device_type)
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete device type: one or more devices reference it",
+        )

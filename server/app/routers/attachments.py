@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
 from app.database import get_session
-from app.models import Attachment, AttachmentDevice
+from app.models import Attachment, AttachmentDevice, Device
 from app.services.ingest import ingest_pdf_to_attachment
 
 router = APIRouter()
@@ -39,6 +39,7 @@ def get_unique_filepath(base_path: Path) -> Path:
         "After saving the file, the PDF is automatically chunked and ingested "
         "into the vector store so it can be retrieved during RAG queries."
     ),
+    responses={404: {"description": "One or more device IDs not found"}},
 )
 async def create_attachment(
     settings: Annotated[Settings, Depends(get_settings)],
@@ -48,6 +49,10 @@ async def create_attachment(
         ..., description="List of device IDs this attachment belongs to."
     ),
 ):
+    for device_id in device_ids:
+        if not await session.get(Device, device_id):
+            raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
     original_name = Path(str(file.filename)).name
     saved_path = get_unique_filepath(settings.attachments_dir / original_name)
     with open(saved_path, "wb") as f:
@@ -97,6 +102,7 @@ async def get_attachment(
 
 @router.get(
     "/{attachment_id}/file",
+    response_class=FileResponse,
     summary="Download attachment file",
     description=(
         "Streams the raw file associated with the attachment. "

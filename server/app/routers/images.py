@@ -8,6 +8,7 @@ router = APIRouter()
 
 @router.get(
     "/{image_path:path}",
+    response_class=FileResponse,
     summary="Get image by path",
     description=(
         "Requested path should be taken from `chunk.metadata.images[]`. "

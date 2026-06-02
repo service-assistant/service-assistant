@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import col, select
 
@@ -180,12 +181,22 @@ async def update_device(
     "/{device_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a device",
-    description="Permanently deletes a device. Associated chat threads will be blocked by the foreign-key constraint.",
-    responses={404: {"description": "Device not found"}},
+    description="Permanently deletes a device. Fails with 409 if any chat threads still reference this device.",
+    responses={
+        404: {"description": "Device not found"},
+        409: {"description": "Device is referenced by one or more chat threads"},
+    },
 )
 async def delete_device(device_id: int, session: AsyncSession = Depends(get_session)):
     device = await session.get(Device, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-    await session.delete(device)
-    await session.commit()
+    try:
+        await session.delete(device)
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete device: one or more chat threads reference it",
+        )
