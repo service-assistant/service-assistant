@@ -1,16 +1,19 @@
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
 	Animated,
 	Image,
+	Keyboard,
 	Platform,
 	ScrollView,
 	Text,
 	TextInput,
 	TouchableOpacity,
 	View,
+	useWindowDimensions,
 } from 'react-native';
 
 const PRIMARY_ORANGE = '#FF7A00';
@@ -62,6 +65,7 @@ interface LeftPanelProps {
 	onSendText: () => void;
 	currentSource: string;
 	isGenerating: boolean;
+	isMicRestartBlocked: boolean;
 	onStop: () => void;
 	logoUrl?: string;
 }
@@ -73,6 +77,12 @@ const sectionTitleStyle = {
 	fontWeight: '800' as const,
 	marginTop: 10,
 	marginBottom: 4,
+};
+const listMarkerStyle = {
+	color: '#E7E9EF',
+	fontSize: 14,
+	lineHeight: 20,
+	minWidth: 24,
 };
 
 const renderInlineFormattedText = (
@@ -97,7 +107,18 @@ const renderInlineFormattedText = (
 	);
 };
 
-const isListItem = (line: string) => /^(\d+[\.)]|[-•])\s+/.test(line.trim());
+const parseListItem = (line: string) => {
+	const match = line.match(/^\s*((?:\d+[\.)])|[-•])(?:\s+|$)(.*)$/);
+
+	if (!match) return null;
+
+	return {
+		marker: match[1],
+		content: match[2] ?? '',
+	};
+};
+
+const isListItem = (line: string) => parseListItem(line) !== null;
 const isSectionTitle = (line: string, nextLine?: string) => {
 	const trimmed = line.trim().replace(/\*\*/g, '');
 	const nextTrimmed = nextLine?.trim() || '';
@@ -119,6 +140,18 @@ const renderFormattedText = (text: string) => {
 				if (!line.trim()) return <View key={index} style={{ height: 8 }} />;
 
 				const sectionTitle = isSectionTitle(line, lines[index + 1]);
+				const listItem = parseListItem(line);
+
+				if (listItem) {
+					return (
+						<View key={index} className='flex-row items-start'>
+							<Text style={listMarkerStyle}>{listItem.marker}</Text>
+							<View style={{ flex: 1 }}>
+								{renderInlineFormattedText(listItem.content, messageTextStyle)}
+							</View>
+						</View>
+					);
+				}
 
 				return (
 					<View key={index}>
@@ -204,6 +237,55 @@ const ListeningPulse = () => {
 	);
 };
 
+export const TypingDotsIndicator = ({ color = '#FFFFFF' }: { color?: string }) => {
+	const progress = useRef(new Animated.Value(0)).current;
+
+	useEffect(() => {
+		const animation = Animated.loop(
+			Animated.timing(progress, {
+				toValue: 3,
+				duration: 1800,
+				useNativeDriver: true,
+			}),
+		);
+
+		animation.start();
+
+		return () => animation.stop();
+	}, [progress]);
+
+	return (
+		<View className='flex-row items-center justify-center py-1 gap-1.5'>
+			{[0, 1, 2].map((index) => {
+				const opacity = progress.interpolate({
+					inputRange: [index, index + 0.25, index + 0.75, index + 1, 3],
+					outputRange: [0.35, 1, 1, 0.35, 0.35],
+					extrapolate: 'clamp',
+				});
+				const translateY = progress.interpolate({
+					inputRange: [index, index + 0.25, index + 0.5, index + 0.75, 3],
+					outputRange: [0, -3, -3, 0, 0],
+					extrapolate: 'clamp',
+				});
+
+				return (
+					<Animated.View
+						key={index}
+						style={{
+							width: 6,
+							height: 6,
+							borderRadius: 3,
+							backgroundColor: color,
+							opacity,
+							transform: [{ translateY }],
+						}}
+					/>
+				);
+			})}
+		</View>
+	);
+};
+
 /**
  * Sidebar component containing the chat interface, controls, and active device header.
  */
@@ -219,11 +301,15 @@ export default function LeftPanel({
 	onSendText,
 	currentSource,
 	isGenerating,
+	isMicRestartBlocked,
 	onStop,
 	logoUrl,
 }: LeftPanelProps) {
+	const { height: windowHeight } = useWindowDimensions();
 	const scrollViewRef = useRef<ScrollView>(null);
+	const textInputRef = useRef<TextInput>(null);
 	const [logoAspectRatio, setLogoAspectRatio] = useState<number | null>(null);
+	const [keyboardHeight, setKeyboardHeight] = useState(0);
 	const router = useRouter();
 	const micState = isGenerating ? 'processing' : isListening ? 'listening' : 'idle';
 	const micStyle =
@@ -282,15 +368,88 @@ export default function LeftPanel({
 	const controlsHeight = showTextInput
 		? controlsBarHeight + textInputTopMargin + textInputRowHeight
 		: controlsBarHeight;
-	const quickPromptsBottom = controlsBottom + controlsHeight + (showTextInput ? 26 : 22);
+	const inputBottom =
+		keyboardHeight > 0
+			? keyboardHeight + controlsBottom
+			: controlsBottom + controlsBarHeight + textInputTopMargin;
+	const visibleControlsHeight = showTextInput
+		? inputBottom + textInputRowHeight - controlsBottom
+		: controlsBarHeight;
+	const quickPromptsBottom = controlsBottom + visibleControlsHeight + (showTextInput ? 26 : 22);
 	const bottomFadeHeight = controlsHeight + controlsBottom * 2;
 	const messagesBottomPadding =
-		messages.length <= 1 ? quickPromptsBottom + 40 : bottomFadeHeight + 12;
+		messages.length <= 1
+			? quickPromptsBottom + 40
+			: controlsBottom + visibleControlsHeight + 12;
 	const sideButtonTopOffset = bottomBar.centerBtnSize - bottomBar.sideBtnSize;
 	const chatHeaderHeight = 56;
 	const headerLogoWidth = logoAspectRatio
 		? HEADER_LOGO_HEIGHT * logoAspectRatio
 		: HEADER_LOGO_FALLBACK_WIDTH;
+
+	const focusTextInput = useCallback(() => {
+		setTimeout(() => textInputRef.current?.focus(), 0);
+	}, []);
+
+	const startTyping = useCallback(
+		(nextText?: string) => {
+			if (typeof nextText === 'string') {
+				setInputText(nextText);
+			}
+			setShowTextInput(true);
+			focusTextInput();
+		},
+		[focusTextInput, setInputText, setShowTextInput],
+	);
+
+	const triggerMicHaptic = useCallback(() => {
+		Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+	}, []);
+
+	const handleMicButtonPress = useCallback(() => {
+		if (isMicRestartBlocked) return;
+
+		triggerMicHaptic();
+
+		if (isGenerating) {
+			onStop();
+			return;
+		}
+
+		onMicPress();
+	}, [isGenerating, isMicRestartBlocked, onMicPress, onStop, triggerMicHaptic]);
+
+	const getKeyboardOverlapHeight = useCallback(
+		(event: { endCoordinates?: { height?: number; screenY?: number } }) => {
+			const screenY = event.endCoordinates?.screenY;
+			const reportedHeight = event.endCoordinates?.height ?? 0;
+
+			if (typeof screenY === 'number' && screenY > 0) {
+				const overlapHeight = Math.max(0, windowHeight - screenY);
+				return overlapHeight > 0 ? overlapHeight : Math.max(0, reportedHeight);
+			}
+
+			return Math.max(0, reportedHeight);
+		},
+		[windowHeight],
+	);
+
+	useEffect(() => {
+		const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+		const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+		const showSubscription = Keyboard.addListener(showEvent, (event) => {
+			setKeyboardHeight(getKeyboardOverlapHeight(event));
+		});
+		const hideSubscription = Keyboard.addListener(hideEvent, () => {
+			setKeyboardHeight(0);
+		});
+
+		return () => {
+			showSubscription.remove();
+			hideSubscription.remove();
+		};
+	}, [getKeyboardOverlapHeight]);
 
 	useEffect(() => {
 		if (!logoUrl) {
@@ -443,14 +602,13 @@ export default function LeftPanel({
 						}}>
 						<View className='flex flex-col gap-4'>
 							{messages.map((msg) => {
-								if (msg.sender === 'ai' && !msg.text) return null;
-
 								return msg.sender === 'ai' ? (
 									<View
 										key={msg.id}
 										className='self-start'
 										style={{
 											maxWidth: '86%',
+											width: msg.text ? '86%' : undefined,
 											marginLeft: 16,
 											backgroundColor: 'rgba(24, 25, 31, 0.96)',
 											borderRadius: 14,
@@ -459,7 +617,11 @@ export default function LeftPanel({
 											borderWidth: 1,
 											borderColor: 'rgba(255,255,255,0.055)',
 										}}>
-										{renderFormattedText(msg.text)}
+										{msg.text ? (
+											renderFormattedText(msg.text)
+										) : (
+											<TypingDotsIndicator color={PRIMARY_ORANGE} />
+										)}
 									</View>
 								) : (
 									<View
@@ -474,7 +636,13 @@ export default function LeftPanel({
 											paddingVertical: 10,
 										}}>
 										{msg.isSpeaking ? (
-											<SoundWaveformIndicator soundLevel={soundLevelAnim} />
+											isListening ? (
+												<SoundWaveformIndicator
+													soundLevel={soundLevelAnim}
+												/>
+											) : (
+												<TypingDotsIndicator />
+											)
 										) : (
 											<Text
 												style={{
@@ -539,8 +707,7 @@ export default function LeftPanel({
 								<TouchableOpacity
 									key={prompt}
 									onPress={() => {
-										setInputText(prompt);
-										setShowTextInput(true);
+										startTyping(prompt);
 									}}
 									className='px-3 py-2 rounded-xl border border-white/10 bg-[#18181C]'>
 									<Text className='text-slate-300 text-[11px] font-semibold'>
@@ -553,13 +720,35 @@ export default function LeftPanel({
 				) : null}
 
 				{/* Input controls */}
+				{showTextInput ? (
+					<View
+						className='absolute left-6 right-6 flex-row items-center gap-2'
+						style={{ bottom: inputBottom, height: textInputRowHeight }}>
+						<TextInput
+							ref={textInputRef}
+							className='flex-1 bg-[#1A1A1D] border border-neutral-800 text-slate-200 px-4 py-3 rounded-xl text-sm'
+							placeholder='Wpisz swoje pytanie...'
+							placeholderTextColor='#666'
+							value={inputText}
+							onChangeText={setInputText}
+							onSubmitEditing={onSendText}
+							autoFocus
+						/>
+						<TouchableOpacity
+							className='bg-[#CC5500] w-[46px] h-[46px] rounded-xl items-center justify-center'
+							onPress={onSendText}>
+							<Feather name='send' size={18} color='white' />
+						</TouchableOpacity>
+					</View>
+				) : null}
+
 				<View
 					className='absolute flex-col items-center justify-start'
 					style={{
 						left: 24,
 						right: 24,
 						bottom: controlsBottom,
-						height: controlsHeight,
+						height: controlsBarHeight,
 						borderRadius: 56,
 					}}>
 					<View
@@ -601,8 +790,8 @@ export default function LeftPanel({
 							className='items-center flex-col gap-2'
 							style={{ width: bottomBar.centerColumnWidth }}>
 							<TouchableOpacity
-								onPressIn={!isGenerating ? onMicPress : undefined}
-								onPress={isGenerating ? onStop : undefined}
+								onPress={handleMicButtonPress}
+								disabled={isMicRestartBlocked}
 								className='rounded-[12px] items-center justify-center'
 								style={{
 									width: bottomBar.centerBtnSize,
@@ -644,20 +833,29 @@ export default function LeftPanel({
 									className='text-center text-[11px] font-bold'
 									style={{
 										color: micStyle.labelColor,
-										letterSpacing: 0.8,
+										fontSize: isGenerating ? 10 : 11,
+										letterSpacing: isGenerating ? 0.2 : 0.8,
 										textShadowColor: 'rgba(0, 0, 0, 0.8)',
 										textShadowOffset: { width: 0, height: 1 },
 										textShadowRadius: 3,
+										width: isGenerating ? '100%' : undefined,
 									}}
 									numberOfLines={1}
-									ellipsizeMode='clip'>
+									adjustsFontSizeToFit
+									minimumFontScale={0.72}>
 									{isGenerating ? 'NACIŚNIJ ABY ZATRZYMAĆ' : micStyle.label}
 								</Text>
 							</View>
 						</View>
 
 						<TouchableOpacity
-							onPress={() => setShowTextInput(!showTextInput)}
+							onPress={() => {
+								if (showTextInput) {
+									setShowTextInput(false);
+								} else {
+									startTyping();
+								}
+							}}
 							activeOpacity={1}
 							className='rounded-[12px] items-center justify-center'
 							style={{
@@ -683,27 +881,6 @@ export default function LeftPanel({
 							/>
 						</TouchableOpacity>
 					</View>
-
-					{showTextInput ? (
-						<View
-							className='flex-row w-full items-center gap-2'
-							style={{ marginTop: textInputTopMargin }}>
-							<TextInput
-								className='flex-1 bg-[#1A1A1D] border border-neutral-800 text-slate-200 px-4 py-3 rounded-xl text-sm'
-								placeholder='Wpisz swoje pytanie...'
-								placeholderTextColor='#666'
-								value={inputText}
-								onChangeText={setInputText}
-								onSubmitEditing={onSendText}
-								autoFocus
-							/>
-							<TouchableOpacity
-								className='bg-[#CC5500] w-[46px] h-[46px] rounded-xl items-center justify-center'
-								onPress={onSendText}>
-								<Feather name='send' size={18} color='white' />
-							</TouchableOpacity>
-						</View>
-					) : null}
 				</View>
 			</View>
 		</View>

@@ -8,7 +8,7 @@
 		"android": "expo run:android",
 		"ios": "expo run:ios",
 		"web": "expo start --web",
-		"postinstall": "node ./scripts/patch-react-native-pdf.js && node ./scripts/patch-react-native-css-interop.js",
+		"postinstall": "node ./scripts/patch-react-native-pdf.js && node ./scripts/patch-react-native-css-interop.js && node ./scripts/patch-react-native-sse.js",
 		"format": "prettier --write .",
 		"lint": "expo lint",
 		"test": "jest"

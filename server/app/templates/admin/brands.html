@@ -49,10 +49,13 @@
                 </td>
                 <td class="px-4 py-3 text-gray-500">{{ brand.created_at.strftime('%Y-%m-%d') }}</td>
                 <td class="px-4 py-3 text-right">
-                    <form method="post" action="/admin/brands/{{ brand.id }}/delete"
-                          onsubmit="return confirm('Delete this brand?')">
-                        <button type="submit" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
-                    </form>
+                    <div class="flex items-center justify-end gap-4">
+                        <a href="/admin/brands/{{ brand.id }}/edit" class="text-blue-600 hover:text-blue-800 text-sm">Edit</a>
+                        <form method="post" action="/admin/brands/{{ brand.id }}/delete"
+                              data-confirm="Delete this brand?">
+                            <button type="submit" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                        </form>
+                    </div>
                 </td>
             </tr>
             {% else %}

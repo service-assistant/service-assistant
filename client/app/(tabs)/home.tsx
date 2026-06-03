@@ -394,6 +394,7 @@ export default function HomeScreen() {
 			params: {
 				deviceId: vehicle.id,
 				deviceName: vehicle.name,
+				chatSession: Date.now().toString(),
 				...(logoUrl ? { logoUrl } : {}),
 			},
 		});
@@ -600,8 +601,8 @@ export default function HomeScreen() {
 						zIndex: 10,
 						backgroundColor: '#09090b',
 					}}>
-					<View className='flex-row justify-between items-center mb-4'>
-						<View className='flex-row items-center'>
+					<View className='flex-row justify-between items-center gap-3 mb-4'>
+						<View className='flex-row items-center flex-1 min-w-0'>
 							<Image
 								source={require('../../assets/images/fixo3.png')}
 								className='mr-3'
@@ -615,6 +616,20 @@ export default function HomeScreen() {
 								Wybierz Pojazd
 							</Text>
 						</View>
+						<TouchableOpacity
+							onPress={() => router.push('/history')}
+							accessibilityRole='button'
+							accessibilityLabel='Historia czatów'
+							className='flex-row items-center justify-center border border-[#FF7A00]/40 bg-[#0a0a0a] px-4 py-3 rounded-md'>
+							<MaterialCommunityIcons
+								name='history'
+								size={18}
+								color={PRIMARY_ORANGE}
+							/>
+							<Text className='text-[#FF7A00] font-bold ml-2 tracking-widest text-[11px] uppercase'>
+								Historia czatów
+							</Text>
+						</TouchableOpacity>
 					</View>
 
 					<View className='mb-3'>

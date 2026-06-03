@@ -1,12 +1,13 @@
 import { Buffer } from 'buffer';
 import { AudioModule, RecordingPresets, useAudioPlayer, useAudioRecorder } from 'expo-audio';
 import { useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Platform, useWindowDimensions, View } from 'react-native';
 import EventSource, { EventSourceEvent } from 'react-native-sse';
 
 import LeftPanel, { Message } from '@/components/LeftPanel';
 import RightPanel, { AvailableFile } from '@/components/RightPanel';
+import { useWakeWord } from '@/hooks/use-wake-word';
 import * as FileSystem from 'expo-file-system/legacy';
 
 const SERVER_URL = 'https://staging.asystent-serwisanta.pl';
@@ -39,7 +40,16 @@ type DeviceAttachmentPayload = {
 	original_filename: string;
 };
 
+type ThreadMessagePayload = {
+	id: number;
+	content: string;
+	sender: 'user' | 'system';
+};
+
 const HARDCODED_DEVICE_ID = 1;
+const MIN_RECORDING_DURATION_MS = 500;
+const MIC_RESTART_COOLDOWN_MS = 500;
+const SHORT_MIC_PROCESSING_DURATION_MS = 2000;
 
 const FILE_ICON_OPTIONS = [
 	{ icon: 'file-pdf-box', color: '#EF4444' },
@@ -62,6 +72,42 @@ const parseStreamData = <T,>(data: string | null): T | string => {
 
 const buildChunkImageUrl = (imagePath: string) =>
 	`${SERVER_URL}/api/images/${encodeURIComponent(imagePath)}`;
+
+const formatStreamingText = (text: string) => {
+	let result = '';
+	let cursor = 0;
+	let lastListNumber: number | null = null;
+	const markerPattern = /\d+[\.)]\s+/g;
+	let match: RegExpExecArray | null;
+
+	while ((match = markerPattern.exec(text)) !== null) {
+		const markerStart = match.index;
+		const markerNumber = Number.parseInt(match[0], 10);
+		const previousChar = markerStart > 0 ? text[markerStart - 1] : '';
+		const textSinceCursor = text.slice(cursor, markerStart);
+		const canStartList =
+			lastListNumber === null &&
+			!/\d/.test(previousChar) &&
+			textSinceCursor.trimEnd().endsWith(':');
+		const canContinueList =
+			lastListNumber !== null &&
+			!/\d/.test(previousChar) &&
+			markerNumber === lastListNumber + 1;
+
+		if (!canStartList && !canContinueList) {
+			continue;
+		}
+
+		result += textSinceCursor.trimEnd();
+		if (!result.endsWith('\n')) {
+			result += '\n';
+		}
+		cursor = markerStart;
+		lastListNumber = markerNumber;
+	}
+
+	return result + text.slice(cursor);
+};
 
 const fetchAuthorizedImageDataUrl = async (
 	imageUrl: string,
@@ -100,11 +146,14 @@ export default function ChatScreen() {
 	const isMobile = width < 768;
 
 	// --- ROUTING PARAMETERS ---
-	const { deviceId, deviceName, logoUrl } = useLocalSearchParams<{
+	const { deviceId, deviceName, logoUrl, chatSession, threadId } = useLocalSearchParams<{
 		deviceId: string;
 		deviceName: string;
 		logoUrl: string;
+		chatSession: string;
+		threadId?: string;
 	}>();
+	const sessionKey = `${deviceId ?? ''}:${chatSession ?? ''}:${threadId ?? ''}`;
 
 	// --- UI & DATA STATES ---
 	const [showSchema, setShowSchema] = useState<boolean>(true);
@@ -117,6 +166,8 @@ export default function ChatScreen() {
 	// --- STOP CONTROL STATES ---
 	const [isGenerating, setIsGenerating] = useState<boolean>(false);
 	const [isAudioPlaying, setIsAudioPlaying] = useState<boolean>(false);
+	const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
+	const [isMicRestartBlocked, setIsMicRestartBlocked] = useState<boolean>(false);
 
 	const [showTextInput, setShowTextInput] = useState<boolean>(false);
 	const [inputText, setInputText] = useState<string>('');
@@ -154,6 +205,16 @@ export default function ChatScreen() {
 	// --- REQUEST CANCELLATION REFERENCES ---
 	const fetchAbortControllerRef = useRef<AbortController | null>(null);
 	const ttsAbortControllerRef = useRef<AbortController | null>(null);
+	const sttAbortControllerRef = useRef<AbortController | null>(null);
+	const handleMicPressRef = useRef<() => Promise<void>>(async () => undefined);
+	const isStartingRecordingRef = useRef<boolean>(false);
+	const isStoppingRecordingRef = useRef<boolean>(false);
+	const shouldStopAfterStartRef = useRef<boolean>(false);
+	const recordingStartedAtRef = useRef<number | null>(null);
+	const micRestartBlockedUntilRef = useRef<number>(0);
+	const micRestartCooldownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const wasMicProcessingRef = useRef<boolean>(false);
+	const micProcessingStartedAtRef = useRef<number | null>(null);
 
 	// --- SILENCE CONFIGURATION ---
 	const silenceThreshold = -50;
@@ -173,6 +234,10 @@ export default function ChatScreen() {
 			if (meteringIntervalRef.current) clearInterval(meteringIntervalRef.current);
 			if (fetchAbortControllerRef.current) fetchAbortControllerRef.current.abort();
 			if (ttsAbortControllerRef.current) ttsAbortControllerRef.current.abort();
+			if (sttAbortControllerRef.current) sttAbortControllerRef.current.abort();
+			if (micRestartCooldownTimeoutRef.current) {
+				clearTimeout(micRestartCooldownTimeoutRef.current);
+			}
 		};
 	}, []);
 
@@ -241,8 +306,92 @@ export default function ChatScreen() {
 	 * Thread creation is deferred until the user sends the first message (lazy initialization).
 	 */
 	useEffect(() => {
-		setIsLoading(false);
-	}, [deviceId]);
+		const abortController = new AbortController();
+
+		if (fetchAbortControllerRef.current) {
+			fetchAbortControllerRef.current.abort();
+			fetchAbortControllerRef.current = null;
+		}
+		if (ttsAbortControllerRef.current) {
+			ttsAbortControllerRef.current.abort();
+			ttsAbortControllerRef.current = null;
+		}
+		if (sttAbortControllerRef.current) {
+			sttAbortControllerRef.current.abort();
+			sttAbortControllerRef.current = null;
+		}
+		if (ttsPlayer && ttsPlayer.playing) {
+			ttsPlayer.pause();
+		}
+
+		setCurrentThreadId(null);
+		setMessages([{ id: 1, sender: 'ai', text: initialMessage }]);
+		setInputText('');
+		setShowTextInput(false);
+		setCurrentImage(null);
+		setCurrentImages([]);
+		setCurrentImageIndex(0);
+		setAttachmentPage(1);
+		setAttachmentId(null);
+		setAttachmentName('');
+		setSelectedPdf(null);
+		setShowSchema(true);
+		setIsGenerating(false);
+		setIsAudioPlaying(false);
+		setIsTranscribing(false);
+		setIsLoading(Boolean(threadId));
+
+		const loadThreadMessages = async () => {
+			if (!threadId) return;
+
+			const parsedThreadId = Number(threadId);
+			if (!Number.isFinite(parsedThreadId)) {
+				setIsLoading(false);
+				return;
+			}
+
+			try {
+				const authToken = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
+				const response = await fetch(
+					`${SERVER_URL}/api/threads/${parsedThreadId}/messages`,
+					{
+						headers: {
+							Accept: 'application/json',
+							Authorization: `Bearer ${authToken}`,
+						},
+						signal: abortController.signal,
+					},
+				);
+
+				if (!response.ok) {
+					throw new Error(`Failed to load thread messages: ${response.status}`);
+				}
+
+				const threadMessages = (await response.json()) as ThreadMessagePayload[];
+
+				setCurrentThreadId(parsedThreadId);
+				setMessages(
+					threadMessages.map((message) => ({
+						id: message.id,
+						sender: message.sender === 'user' ? 'user' : 'ai',
+						text: message.content,
+					})),
+				);
+			} catch (error: any) {
+				if (error.name !== 'AbortError') {
+					console.error('Thread messages load error:', error);
+				}
+			} finally {
+				if (!abortController.signal.aborted) {
+					setIsLoading(false);
+				}
+			}
+		};
+
+		loadThreadMessages();
+
+		return () => abortController.abort();
+	}, [sessionKey, threadId, ttsPlayer]);
 
 	useEffect(() => {
 		if (currentImage) setShowSchema(true);
@@ -274,12 +423,19 @@ export default function ChatScreen() {
 			ttsAbortControllerRef.current.abort();
 			ttsAbortControllerRef.current = null;
 		}
+		if (sttAbortControllerRef.current) {
+			sttAbortControllerRef.current.abort();
+			sttAbortControllerRef.current = null;
+		}
 		if (ttsPlayer && ttsPlayer.playing) {
 			ttsPlayer.pause();
 		}
 		setIsGenerating(false);
 		setIsLoading(false);
 		setIsAudioPlaying(false);
+		setIsTranscribing(false);
+		setMessages((prev) => prev.filter((msg) => msg.sender !== 'ai' || msg.text.length > 0));
+		setMessages((prev) => prev.filter((msg) => !msg.isSpeaking));
 	};
 
 	/**
@@ -427,16 +583,16 @@ export default function ChatScreen() {
 				};
 
 				const handleChunk = (event: EventSourceEvent<StreamEvent>) => {
-					const chunk = parseStreamData<string>(event.data);
-					const chunkText = typeof chunk === 'string' ? chunk : '';
+					const chunkText = event.data === '' ? '\n' : (event.data ?? '');
 
-					if (!chunkText || abortController.signal.aborted) return;
+					if (abortController.signal.aborted) return;
 
 					fullText += chunkText;
+					const displayText = formatStreamingText(fullText);
 					setIsLoading(false);
 					setMessages((prev) =>
 						prev.map((msg) =>
-							msg.id === aiMessageId ? { ...msg, text: fullText } : msg,
+							msg.id === aiMessageId ? { ...msg, text: displayText } : msg,
 						),
 					);
 				};
@@ -482,6 +638,14 @@ export default function ChatScreen() {
 				eventSource.addEventListener('message', handleMessage);
 				eventSource.addEventListener('error', handleError);
 			});
+
+			if (abortController.signal.aborted) {
+				if (fullText.length === 0) {
+					setMessages((prev) => prev.filter((msg) => msg.id !== aiMessageId));
+				}
+				setIsGenerating(false);
+				return;
+			}
 
 			let sourceAttachmentId: number | null = null;
 			let sourceAttachmentName = '';
@@ -606,7 +770,7 @@ export default function ChatScreen() {
 			}
 
 			// Play AI response audio
-			if (fullText.length > 0) {
+			if (!abortController.signal.aborted && fullText.length > 0) {
 				playChatGptAudio(fullText);
 			} else {
 				setIsGenerating(false);
@@ -614,6 +778,9 @@ export default function ChatScreen() {
 		} catch (error: any) {
 			if (error.name === 'AbortError') {
 				console.log('Request aborted by the user.');
+				setMessages((prev) =>
+					prev.filter((msg) => msg.id !== aiMessageId || msg.text.length > 0),
+				);
 			} else {
 				setMessages((prev) =>
 					prev.map((msg) =>
@@ -657,9 +824,12 @@ export default function ChatScreen() {
 	 * @param {string} uri - Local URI of the audio file
 	 */
 	const sendToDeepgram = async (uri: string) => {
+		const abortController = new AbortController();
+		sttAbortControllerRef.current = abortController;
 		setIsLoading(true);
+		setIsTranscribing(true);
 		try {
-			const responseFile = await fetch(uri);
+			const responseFile = await fetch(uri, { signal: abortController.signal });
 			const audioBlob = await responseFile.blob();
 
 			const response = await fetch(
@@ -671,12 +841,15 @@ export default function ChatScreen() {
 						'Content-Type': 'audio/m4a',
 					},
 					body: audioBlob,
+					signal: abortController.signal,
 				},
 			);
 
 			if (!response.ok) throw new Error(`Deepgram Error ${response.status}`);
+			if (abortController.signal.aborted) return;
 
 			const data = await response.json();
+			if (abortController.signal.aborted) return;
 			const transcript = data.results?.channels[0]?.alternatives[0]?.transcript || '';
 
 			if (transcript.trim().length > 0) {
@@ -688,18 +861,31 @@ export default function ChatScreen() {
 					),
 				);
 				askAPI(transcript);
+				setIsTranscribing(false);
 			} else {
 				setMessages((prev) =>
 					prev.filter((msg) => msg.id !== userSpeakingMessageIdRef.current),
 				);
 				setIsLoading(false);
+				setIsTranscribing(false);
 			}
-		} catch (error) {
+		} catch (error: any) {
+			if (error.name === 'AbortError') {
+				setMessages((prev) =>
+					prev.filter((msg) => msg.id !== userSpeakingMessageIdRef.current),
+				);
+				return;
+			}
 			console.error('Deepgram Error:', error);
 			setMessages((prev) =>
 				prev.filter((msg) => msg.id !== userSpeakingMessageIdRef.current),
 			);
 			setIsLoading(false);
+			setIsTranscribing(false);
+		} finally {
+			if (sttAbortControllerRef.current === abortController) {
+				sttAbortControllerRef.current = null;
+			}
 		}
 	};
 
@@ -712,16 +898,57 @@ export default function ChatScreen() {
 			meteringIntervalRef.current = null;
 		}
 
+		if (isStoppingRecordingRef.current) return;
+
+		if (isStartingRecordingRef.current && !audioRecorder.isRecording) {
+			shouldStopAfterStartRef.current = true;
+			setIsListening(false);
+			return;
+		}
+
+		if (!audioRecorder.isRecording) {
+			setIsListening(false);
+			setIsLoading(false);
+			setIsTranscribing(false);
+			return;
+		}
+
+		isStoppingRecordingRef.current = true;
+		setIsTranscribing(true);
+		setIsLoading(true);
 		setIsListening(false);
 
-		if (audioRecorder.isRecording) {
-			try {
-				await audioRecorder.stop();
-				const uri = audioRecorder.uri;
-				if (uri) sendToDeepgram(uri);
-			} catch (error) {
-				console.error('Error while stopping recording:', error);
+		try {
+			const recordingStartedAt = recordingStartedAtRef.current;
+			if (recordingStartedAt) {
+				const remainingRecordingTime =
+					MIN_RECORDING_DURATION_MS - (Date.now() - recordingStartedAt);
+				if (remainingRecordingTime > 0) {
+					await new Promise((resolve) => setTimeout(resolve, remainingRecordingTime));
+				}
 			}
+
+			await audioRecorder.stop();
+			const uri = audioRecorder.uri;
+			if (uri) {
+				sendToDeepgram(uri);
+			} else {
+				setMessages((prev) =>
+					prev.filter((msg) => msg.id !== userSpeakingMessageIdRef.current),
+				);
+				setIsLoading(false);
+				setIsTranscribing(false);
+			}
+		} catch (error) {
+			console.error('Error while stopping recording:', error);
+			setMessages((prev) =>
+				prev.filter((msg) => msg.id !== userSpeakingMessageIdRef.current),
+			);
+			setIsLoading(false);
+			setIsTranscribing(false);
+		} finally {
+			isStoppingRecordingRef.current = false;
+			recordingStartedAtRef.current = null;
 		}
 	};
 
@@ -769,17 +996,74 @@ export default function ChatScreen() {
 		}, 100);
 	};
 
+	const hasPendingVoiceInput = messages.some((m) => m.isSpeaking);
+	const isMicProcessing =
+		!isListening &&
+		(hasPendingVoiceInput || isTranscribing || isLoading || isGenerating || isAudioPlaying);
+
+	const blockMicRestart = useCallback(() => {
+		micRestartBlockedUntilRef.current = Date.now() + MIC_RESTART_COOLDOWN_MS;
+		setIsMicRestartBlocked(true);
+
+		if (micRestartCooldownTimeoutRef.current) {
+			clearTimeout(micRestartCooldownTimeoutRef.current);
+		}
+
+		micRestartCooldownTimeoutRef.current = setTimeout(() => {
+			micRestartBlockedUntilRef.current = 0;
+			micRestartCooldownTimeoutRef.current = null;
+			setIsMicRestartBlocked(false);
+		}, MIC_RESTART_COOLDOWN_MS);
+	}, []);
+
+	useEffect(() => {
+		if (!wasMicProcessingRef.current && isMicProcessing) {
+			micProcessingStartedAtRef.current = Date.now();
+		}
+
+		if (wasMicProcessingRef.current && !isMicProcessing) {
+			const processingStartedAt = micProcessingStartedAtRef.current;
+			if (
+				processingStartedAt &&
+				Date.now() - processingStartedAt < SHORT_MIC_PROCESSING_DURATION_MS
+			) {
+				blockMicRestart();
+			}
+			micProcessingStartedAtRef.current = null;
+		}
+
+		wasMicProcessingRef.current = isMicProcessing;
+	}, [blockMicRestart, isMicProcessing]);
+
 	/**
 	 * Handle microphone button press
 	 */
 	const handleMicPress = async () => {
-		handleStop();
-
 		if (showTextInput) setShowTextInput(false);
 
-		if (isListening) {
+		if (isStoppingRecordingRef.current) return;
+
+		if (isListening || isStartingRecordingRef.current || audioRecorder.isRecording) {
 			await stopRecordingAndSend();
+			return;
+		}
+
+		if (isMicRestartBlocked || Date.now() < micRestartBlockedUntilRef.current) return;
+
+		if (isMicProcessing) {
+			handleStop();
+			const processingStartedAt = micProcessingStartedAtRef.current;
+			if (
+				processingStartedAt &&
+				Date.now() - processingStartedAt < SHORT_MIC_PROCESSING_DURATION_MS
+			) {
+				blockMicRestart();
+			}
+			return;
 		} else {
+			handleStop();
+			isStartingRecordingRef.current = true;
+			shouldStopAfterStartRef.current = false;
 			setIsListening(true);
 
 			const userTempId = Date.now();
@@ -799,16 +1083,45 @@ export default function ChatScreen() {
 					return;
 				}
 
+				if (shouldStopAfterStartRef.current) {
+					setMessages((prev) => prev.filter((msg) => msg.id !== userTempId));
+					return;
+				}
+
 				await audioRecorder.prepareToRecordAsync();
 				audioRecorder.record();
-				startMetering();
+				recordingStartedAtRef.current = Date.now();
+				isStartingRecordingRef.current = false;
+
+				if (shouldStopAfterStartRef.current) {
+					await stopRecordingAndSend();
+				} else {
+					startMetering();
+				}
 			} catch (err) {
 				console.error('Error starting recording:', err);
 				setIsListening(false);
 				setMessages((prev) => prev.filter((msg) => msg.id !== userTempId));
+			} finally {
+				isStartingRecordingRef.current = false;
 			}
 		}
 	};
+	handleMicPressRef.current = handleMicPress;
+
+	const handleWakeWordDetected = useCallback(() => {
+		void handleMicPressRef.current();
+	}, []);
+	useWakeWord({
+		enabled:
+			!isListening &&
+			!isLoading &&
+			!isTranscribing &&
+			!isGenerating &&
+			!isAudioPlaying &&
+			!isMicRestartBlocked,
+		onDetected: handleWakeWordDetected,
+	});
 
 	const handleImageIndexChange = (nextIndex: number) => {
 		const nextImage = currentImages[nextIndex];
@@ -820,7 +1133,6 @@ export default function ChatScreen() {
 	};
 
 	const isBotTyping = isLoading && !messages.some((m) => m.sender === 'ai' && m.text === '');
-	const isMicProcessing = !isListening && (isLoading || isGenerating || isAudioPlaying);
 
 	if (isMobile) {
 		return (
@@ -849,6 +1161,7 @@ export default function ChatScreen() {
 				onMicPress={handleMicPress}
 				soundLevelAnim={soundLevelAnim}
 				isGenerating={isMicProcessing}
+				isMicRestartBlocked={isMicRestartBlocked}
 				onStop={handleStop}
 				messages={messages}
 				isChatLoading={isBotTyping}
@@ -876,6 +1189,7 @@ export default function ChatScreen() {
 				onSendText={handleSendText}
 				currentSource={currentSource}
 				isGenerating={isMicProcessing}
+				isMicRestartBlocked={isMicRestartBlocked}
 				onStop={handleStop}
 				logoUrl={logoUrl}
 			/>
@@ -903,6 +1217,7 @@ export default function ChatScreen() {
 				}}
 				setCurrentImage={setCurrentImage}
 				isGenerating={isMicProcessing}
+				isMicRestartBlocked={isMicRestartBlocked}
 				onStop={handleStop}
 				soundLevelAnim={soundLevelAnim}
 			/>

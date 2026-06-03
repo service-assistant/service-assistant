@@ -1,7 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
@@ -90,7 +91,7 @@ async def update_brand(
         raise HTTPException(status_code=404, detail="Brand not found")
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(brand, field, value)
-    brand.updated_at = datetime.utcnow()
+    brand.updated_at = datetime.now(timezone.utc)
     session.add(brand)
     await session.commit()
     await session.refresh(brand)
@@ -102,11 +103,21 @@ async def update_brand(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a brand",
     description="Permanently deletes a brand. Fails with 409 if any devices still reference this brand.",
-    responses={404: {"description": "Brand not found"}},
+    responses={
+        404: {"description": "Brand not found"},
+        409: {"description": "Brand is referenced by one or more devices"},
+    },
 )
 async def delete_brand(brand_id: int, session: AsyncSession = Depends(get_session)):
     brand = await session.get(Brand, brand_id)
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
-    await session.delete(brand)
-    await session.commit()
+    try:
+        await session.delete(brand)
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete brand: one or more devices reference it",
+        )

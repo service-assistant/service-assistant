@@ -3,16 +3,11 @@ from enum import Enum
 from typing import Any
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column
-from sqlalchemy import Enum as SAEnum
+from sqlalchemy import Column, DateTime, Enum as SAEnum, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
 
 EMBEDDING_DIMENSIONS = 1536
-
-
-def utcnow() -> datetime:
-    return datetime.utcnow()
 
 
 class MessageSender(str, Enum):
@@ -46,8 +41,18 @@ class Brand(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str
     logo_url: str | None = None
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
+    created_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
+    updated_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
 
     devices: list["Device"] = Relationship(back_populates="brand")
 
@@ -57,8 +62,18 @@ class DeviceType(SQLModel, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     name: str
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
+    created_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
+    updated_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
 
     devices: list["Device"] = Relationship(back_populates="device_type")
 
@@ -72,8 +87,18 @@ class Device(SQLModel, table=True):
     name: str
     model_serial_code: str | None = None
     image_url: str | None = None
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
+    created_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
+    updated_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
 
     brand: Brand = Relationship(back_populates="devices")
     device_type: DeviceType = Relationship(back_populates="devices")
@@ -89,8 +114,18 @@ class Attachment(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     file_global_path: str
     original_filename: str
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
+    created_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
+    updated_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
 
     chunks: list["Chunk"] = Relationship(back_populates="attachment")
     devices: list[Device] = Relationship(
@@ -110,8 +145,18 @@ class Chunk(SQLModel, table=True):
     extra_metadata: dict | None = Field(
         default=None, sa_column=Column("metadata", JSONB, nullable=True)
     )
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
+    created_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
+    updated_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
 
     attachment: Attachment = Relationship(back_populates="chunks")
     messages: list["Message"] = Relationship(
@@ -125,11 +170,27 @@ class ChatThread(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     title: str
     device_id: int = Field(foreign_key="devices.id", ondelete="RESTRICT")
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
+    created_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
+    updated_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
 
     device: Device = Relationship(back_populates="threads")
-    messages: list["Message"] = Relationship(back_populates="thread")
+    messages: list["Message"] = Relationship(
+        back_populates="thread",
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "passive_deletes": True,
+        },
+    )
 
 
 class Message(SQLModel, table=True):
@@ -141,8 +202,18 @@ class Message(SQLModel, table=True):
     sender: MessageSender = Field(
         sa_column=Column(SAEnum(MessageSender, native_enum=False))
     )
-    created_at: datetime = Field(default_factory=utcnow)
-    updated_at: datetime = Field(default_factory=utcnow)
+    created_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
+    updated_at: datetime = Field(
+        default=None,
+        sa_column=Column(
+            DateTime(timezone=True), nullable=False, server_default=text("NOW()")
+        ),
+    )
 
     thread: ChatThread = Relationship(back_populates="messages")
     chunks: list[Chunk] = Relationship(

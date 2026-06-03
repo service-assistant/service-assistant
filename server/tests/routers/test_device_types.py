@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 from app.models import DeviceType
@@ -10,8 +10,8 @@ def make_device_type(**kwargs) -> DeviceType:
     defaults = dict(
         id=1,
         name="Counterbalance Forklift",
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
     defaults.update(kwargs)
     return DeviceType(**defaults)
