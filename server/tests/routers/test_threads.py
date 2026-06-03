@@ -122,11 +122,7 @@ def test_should_send_message_and_return_system_reply(client, mock_session):
 
     with (
         patch(
-            "app.routers.threads.embedding.embed_question",
-            new=AsyncMock(return_value=[0.1, 0.2, 0.3]),
-        ),
-        patch(
-            "app.routers.threads.embedding.get_close_chunks",
+            "app.routers.threads.retrieval.retrieve_context_chunks",
             new=AsyncMock(return_value=fake_chunks),
         ),
         patch("app.routers.threads.llm.stream_query", new=mock_stream),
@@ -164,11 +160,7 @@ def test_should_store_user_message_before_reply(client, mock_session):
 
     with (
         patch(
-            "app.routers.threads.embedding.embed_question",
-            new=AsyncMock(return_value=[0.1]),
-        ),
-        patch(
-            "app.routers.threads.embedding.get_close_chunks",
+            "app.routers.threads.retrieval.retrieve_context_chunks",
             new=AsyncMock(return_value=[]),
         ),
         patch("app.routers.threads.llm.stream_query", new=mock_stream),
