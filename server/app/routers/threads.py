@@ -10,7 +10,7 @@ from sqlmodel import col, select
 from app.config import Settings, get_settings
 from app.database import get_session
 from app.models import ChatThread, ChunkMessage, Message, MessageSender
-from app.services import embedding, llm, stt, tts
+from app.services import retrieval, llm, stt, tts
 
 router = APIRouter()
 
@@ -133,11 +133,10 @@ async def create_message(
     session.add(user_message)
     await session.flush()
 
-    embedded_question = await embedding.embed_question(body.content, settings)
-    close_chunks = await embedding.get_close_chunks(
-        session, embedded_question, device_id=device_id
+    retrieved_chunks = await retrieval.retrieve_context_chunks(
+        session, body.content, device_id=device_id, settings=settings
     )
-    context_chunks = [chunk["content"] for chunk in close_chunks]
+    context_chunks = [chunk["content"] for chunk in retrieved_chunks]
 
     async def event_stream():
         answer_parts: list[str] = []
@@ -156,7 +155,7 @@ async def create_message(
         await session.commit()
         await session.refresh(system_message)
         assert system_message.id is not None
-        for chunk in close_chunks:
+        for chunk in retrieved_chunks:
             session.add(
                 ChunkMessage(message_id=system_message.id, chunk_id=chunk["id"])
             )
