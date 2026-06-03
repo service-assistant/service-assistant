@@ -147,20 +147,9 @@ def chunk_page(
         if not content:
             continue
 
-        if len(content) <= chunk_size:
-            chunks.append(content)
-            continue
-
-        # if chunk is too long, split it
-        # (tables are split separately to avoid breaking their structure)
-
         subsections = split_text_from_tables(content)
 
         for is_table, subsection in subsections:
-            if len(subsection) <= chunk_size:
-                chunks.append(subsection)
-                continue
-
             subchunks = list[str]()
 
             if is_table:
@@ -201,6 +190,10 @@ def chunk_page(
             else:
                 subchunks = recursive_splitter.split_text(subsection)
 
-            chunks.extend(subchunks)
+
+            if len('\n'.join(subchunks)) <= chunk_size:
+                chunks.append('\n'.join(subchunks))
+            else:
+                chunks.extend(subchunks)
 
     return chunks
