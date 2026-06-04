@@ -5,6 +5,11 @@ from langchain_text_splitters import (
     RecursiveCharacterTextSplitter,
 )
 
+# if False the tables are saved as markdown
+# if True the tables are saved as text, with each row on a new line and cells separated by '; ',
+# and with the header of each cell included in the text (e.g. 'Header: Cell content')
+TABLES_TO_TEXT = False
+
 
 def split_text_from_tables(text: str) -> list[tuple[bool, str]]:
     """
@@ -49,10 +54,9 @@ def split_text_from_tables(text: str) -> list[tuple[bool, str]]:
     return parts
 
 
-def split_table_header_content(text: str) -> tuple[list[str], list[list[str]]]:
+def split_table_header_content(text: str) -> tuple[str, list[str]]:
     """
     Splits the header of a markdown table from the rest of the table content.\n
-    Headers and content are split into table cells and returned as lists.\n
     Omits empty table rows (rows that contain only '|' characters).\n
     Returns a tuple (headers, content)
     """
@@ -60,14 +64,39 @@ def split_table_header_content(text: str) -> tuple[list[str], list[list[str]]]:
     lines = text.splitlines()
 
     if len(lines) < 2:
-        return [], []
+        return "", []
 
     if "|---|" in lines[1]:
-        headers = lines[0][1:-1].split("|")
-        table_content = [line[1:-1].split("|") for line in lines[2:] if not set(line.strip()) == {"|"}]
+        headers = lines[0]
+        table_content = [line for line in lines[2:] if not set(line.strip()) == {"|"}]
         return headers, table_content
 
-    return [], []
+    return "", []
+
+
+def split_table_cells(
+    headers: str, content: list[str]
+) -> tuple[list[str], list[list[str]]]:
+    """
+    Splits the header and content of a markdown table into individual cells.\n
+    Returns a tuple (headers, content) where headers is a list of header cells
+    and content is a list of rows, where each row is a list of cells
+    """
+
+    split_headers = headers[1:-1].split("|")
+    split_content = [line[1:-1].split("|") for line in content]
+
+    return split_headers, split_content
+
+
+def change_table_row_format(table_headers: list[str], row: list[str]) -> str:
+    line = ""
+    for header, cell in zip(table_headers, row):
+        if line:
+            line += "; "
+        line += header + ": " + cell.strip()
+
+    return line
 
 
 def remove_picture_text(text: str) -> str:
@@ -154,35 +183,39 @@ def chunk_page(
 
             if is_table:
                 table_headers, table_content = split_table_header_content(subsection)
-
                 chunk = ""
-                prev_row = None
 
-                for row in table_content:
-                    line = ""
-                    copy_prev = True
-                    for i, (header, cell) in enumerate(zip(table_headers, row)):
-                        if line:
-                            line += "; "
-                        if cell.strip():
-                            line += header + ": " + cell
-                            copy_prev = False
-                        else:
-                            if copy_prev:
-                                if prev_row is not None:
-                                    line += header + ": " + prev_row[i]
-                            else:
-                                line += header + ": "
-                    prev_row = row
+                if TABLES_TO_TEXT:
+                    table_headers, table_content = split_table_cells(
+                        table_headers, table_content
+                    )
 
-                    
-                    if len(chunk + line) > chunk_size:
-                        if chunk.strip():
-                            subchunks.append(chunk.strip())
+                    for i in range(len(table_content)):
+                        if i > 0:
+                            for j in range(len(table_content[i])):
+                                if not table_content[i][j].strip():
+                                    table_content[i][j] = table_content[i - 1][j]
+                                else:
+                                    break
 
-                        chunk = ""
+                    for row in table_content:
+                        line = change_table_row_format(table_headers, row)
 
-                    chunk += line + "\n"
+                        if len(chunk + line) > chunk_size:
+                            if chunk.strip():
+                                subchunks.append(chunk.strip())
+                            chunk = ""
+
+                        chunk += line + "\n"
+
+                else:  # markdown table
+                    for line in table_content:
+                        if len(chunk + line) > chunk_size:
+                            if chunk.strip():
+                                subchunks.append(chunk.strip())
+                            chunk = ""
+
+                        chunk += line + "\n"
 
                 if chunk.strip():
                     subchunks.append(chunk.strip())
@@ -190,9 +223,8 @@ def chunk_page(
             else:
                 subchunks = recursive_splitter.split_text(subsection)
 
-
-            if len('\n'.join(subchunks)) <= chunk_size:
-                chunks.append('\n'.join(subchunks))
+            if len("\n".join(subchunks)) <= chunk_size:
+                chunks.append("\n".join(subchunks))
             else:
                 chunks.extend(subchunks)
 
