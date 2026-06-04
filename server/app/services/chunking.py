@@ -183,7 +183,7 @@ def chunk_page(
 
             if is_table:
                 table_headers, table_content = split_table_header_content(subsection)
-                chunk = ""
+                chunk = table_headers if table_headers else ""
 
                 if TABLES_TO_TEXT:
                     table_headers, table_content = split_table_cells(
@@ -213,7 +213,7 @@ def chunk_page(
                         if len(chunk + line) > chunk_size:
                             if chunk.strip():
                                 subchunks.append(chunk.strip())
-                            chunk = ""
+                            chunk = table_headers if table_headers else ""
 
                         chunk += line + "\n"
 
