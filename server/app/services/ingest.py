@@ -36,6 +36,7 @@ async def ingest_pdf_to_attachment(
     doc = fitz.open(pdf_path)
     rows: list[tuple[str, list[float], int, list[str]]] = []
     pending: list[tuple[str, int, list[str]]] = []
+    seen_chunks: set[str] = set()
 
     for page_num, page in enumerate(doc.pages()):
         # extract text
@@ -47,6 +48,10 @@ async def ingest_pdf_to_attachment(
         )
 
         for chunk in chunks:
+            if chunk in seen_chunks:
+                continue
+            
+            seen_chunks.add(chunk)
             pending.append((chunk, page_num, page_images))
 
             # if there are enough pending chunks, embed them and add to rows
