@@ -50,7 +50,7 @@ async def ingest_pdf_to_attachment(
         for chunk in chunks:
             if chunk in seen_chunks:
                 continue
-            
+
             seen_chunks.add(chunk)
             pending.append((chunk, page_num, page_images))
 
