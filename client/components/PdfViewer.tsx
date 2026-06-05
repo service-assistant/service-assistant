@@ -8,7 +8,15 @@ const PRIMARY_ORANGE = '#CC5500';
  * PDF Viewer Component.
  * NOTE: This component/view is primarily targeted and tested for Android.
  */
-export default function PdfViewer({ source, page }: { source: any; page: number }) {
+export default function PdfViewer({
+	source,
+	page,
+	preserveTop = false,
+}: {
+	source: any;
+	page: number;
+	preserveTop?: boolean;
+}) {
 	const [isLoading, setIsLoading] = useState(true);
 	const sourceKey = useMemo(() => {
 		if (typeof source === 'string') return source;
@@ -61,7 +69,7 @@ export default function PdfViewer({ source, page }: { source: any; page: number 
 					height: '100%',
 					backgroundColor: '#000000',
 					// Scale 1.06 is used to eliminate extra margins/borders on Android
-					transform: [{ scale: 1.06 }, { translateX: 0 }],
+					transform: preserveTop ? [{ scale: 1 }] : [{ scale: 1.06 }, { translateX: 0 }],
 				}}
 			/>
 			{isLoading ? (

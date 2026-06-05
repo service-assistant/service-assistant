@@ -63,6 +63,7 @@ const LISTENING_CYAN = '#06B6D4';
 const PROCESSING_VIOLET = '#8B5CF6';
 const SUCCESS_GREEN = '#22C55E';
 const ERROR_RED = '#EF4444';
+const HARDCODED_DEVICE_ID = '1';
 
 type MicUiState = 'idle' | 'listening' | 'processing' | 'success' | 'error' | 'disabled';
 
@@ -198,8 +199,9 @@ const BrandLogoOrText: React.FC<{ brandName: string; logoUrl: string | null; act
 
 export default function HomeScreen() {
 	const router = useRouter();
-	const { width: CURRENT_SCREEN_WIDTH } = useWindowDimensions();
+	const { width: CURRENT_SCREEN_WIDTH, height: CURRENT_SCREEN_HEIGHT } = useWindowDimensions();
 	const isTablet = CURRENT_SCREEN_WIDTH >= 768;
+	const isPortrait = CURRENT_SCREEN_HEIGHT > CURRENT_SCREEN_WIDTH;
 	const insets = useSafeAreaInsets();
 	const isWeb = Platform.OS === 'web';
 
@@ -390,9 +392,9 @@ export default function HomeScreen() {
 		const logoUrl = getRemoteBrandLogo(vehicle.brand);
 
 		router.push({
-			pathname: '/chat',
+			pathname: '/newChat',
 			params: {
-				deviceId: vehicle.id,
+				deviceId: HARDCODED_DEVICE_ID,
 				deviceName: vehicle.name,
 				chatSession: Date.now().toString(),
 				...(logoUrl ? { logoUrl } : {}),
@@ -551,13 +553,16 @@ export default function HomeScreen() {
 	};
 
 	const bottomBar = {
-		gap: isTablet ? 10 : 6,
-		paddingHorizontal: isTablet ? 18 : 12,
-		paddingVertical: isTablet ? 11 : 8,
-		sideBtnSize: isTablet ? 76 : 58,
-		centerBtnSize: isTablet ? 96 : 76,
-		sideIconSize: isTablet ? 34 : 26,
-		centerIconSize: isTablet ? 50 : 38,
+		gap: isPortrait ? 0 : isTablet ? 10 : 6,
+		paddingHorizontal: isPortrait ? 12 : isTablet ? 18 : 12,
+		paddingVertical: isPortrait ? 8 : isTablet ? 11 : 8,
+		sideBtnSize: isPortrait ? 60 : isTablet ? 76 : 58,
+		centerBtnSize: isPortrait ? 96 : isTablet ? 96 : 76,
+		sideIconSize: isPortrait ? 28 : isTablet ? 34 : 26,
+		centerIconSize: isPortrait ? 50 : isTablet ? 50 : 38,
+		centerColumnWidth: isPortrait ? 140 : isTablet ? 140 : 120,
+		panelWidth: isPortrait ? 284 : undefined,
+		panelHeight: isPortrait ? 140 : undefined,
 	};
 	const bottomBarBlurProps =
 		Platform.OS === 'android'
@@ -570,7 +575,9 @@ export default function HomeScreen() {
 	const micUiState: MicUiState = isListening ? 'listening' : 'idle';
 	const micStyle = MIC_STATE_STYLES[micUiState];
 	const bottomListPadding =
-		bottomBar.centerBtnSize + bottomBar.paddingVertical * 2 + (insets.bottom || 0) + 96;
+		(bottomBar.panelHeight || bottomBar.centerBtnSize + bottomBar.paddingVertical * 2) +
+		(insets.bottom || 0) +
+		96;
 	const listeningPulseScale = listeningPulseAnim.interpolate({
 		inputRange: [0, 1],
 		outputRange: [1, 1.18],
@@ -620,13 +627,28 @@ export default function HomeScreen() {
 							onPress={() => router.push('/history')}
 							accessibilityRole='button'
 							accessibilityLabel='Historia czatów'
-							className='flex-row items-center justify-center border border-[#FF7A00]/40 bg-[#0a0a0a] px-4 py-3 rounded-md'>
+							className='flex-row items-center justify-center'
+							style={{
+								height: 54,
+								paddingHorizontal: 20,
+								borderRadius: 10,
+								backgroundColor: '#111111',
+								borderWidth: 1,
+								borderColor: '#333333',
+							}}>
 							<MaterialCommunityIcons
 								name='history'
-								size={18}
+								size={22}
 								color={PRIMARY_ORANGE}
 							/>
-							<Text className='text-[#FF7A00] font-bold ml-2 tracking-widest text-[11px] uppercase'>
+							<Text
+								className='font-bold uppercase'
+								style={{
+									marginLeft: 10,
+									color: '#E6E6E6',
+									fontSize: 15,
+									letterSpacing: 0.45,
+								}}>
 								Historia czatów
 							</Text>
 						</TouchableOpacity>
@@ -758,7 +780,12 @@ export default function HomeScreen() {
 					bottom: insets.bottom > 0 ? insets.bottom + 14 : 24,
 				}}
 				className='absolute left-0 right-0 w-full items-center z-50'>
-				<View className='relative' style={{}}>
+				<View
+					className='relative'
+					style={{
+						width: bottomBar.panelWidth,
+						height: bottomBar.panelHeight,
+					}}>
 					<BlurView
 						{...bottomBarBlurProps}
 						tint='dark'
@@ -783,10 +810,13 @@ export default function HomeScreen() {
 					<View
 						className='flex-row items-center justify-center'
 						style={{
+							width: bottomBar.panelWidth,
+							height: bottomBar.panelHeight,
 							paddingHorizontal: bottomBar.paddingHorizontal,
 							paddingVertical: bottomBar.paddingVertical,
 							gap: bottomBar.gap,
 							zIndex: 1,
+							justifyContent: isPortrait ? 'space-between' : 'center',
 						}}>
 						<TouchableOpacity
 							onPress={openCamera}
@@ -815,7 +845,7 @@ export default function HomeScreen() {
 
 						<View
 							className='items-center flex-col gap-2'
-							style={{ width: isTablet ? 140 : 120 }}>
+							style={{ width: bottomBar.centerColumnWidth }}>
 							<TouchableOpacity
 								onPressIn={onMicPress}
 								className='rounded-[12px] items-center justify-center'
@@ -867,16 +897,19 @@ export default function HomeScreen() {
 									/>
 								) : null}
 								<Text
-									className='text-center text-[11px] sm:text-xs font-bold'
+									className='text-center text-[11px] font-bold'
 									style={{
+										width: bottomBar.centerColumnWidth,
+										height: 14,
+										fontSize: 11,
+										lineHeight: 14,
 										letterSpacing: 0.8,
 										color: micStyle.textColor,
 										textShadowColor: 'rgba(0, 0, 0, 0.8)',
 										textShadowOffset: { width: 0, height: 1 },
 										textShadowRadius: 3,
 									}}
-									numberOfLines={1}
-									adjustsFontSizeToFit>
+									numberOfLines={1}>
 									{micStyle.label}
 								</Text>
 							</View>

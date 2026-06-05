@@ -345,7 +345,7 @@ export default function HistoryScreen() {
 								key={item.id}
 								onPress={() =>
 									router.push({
-										pathname: '/chat',
+										pathname: '/newChat',
 										params: {
 											deviceId: item.device_id.toString(),
 											deviceName: item.deviceName,
