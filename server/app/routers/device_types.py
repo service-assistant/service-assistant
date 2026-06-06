@@ -1,36 +1,21 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
+from sqlalchemy import select
 
 from app.database import get_session
 from app.models import DeviceType
+from app.schemas import DeviceTypeCreate, DeviceTypeRead, DeviceTypeUpdate
 
 router = APIRouter()
-
-
-class DeviceTypeCreate(BaseModel):
-    name: str = Field(
-        description="Display name of the device type.",
-        examples=["Counterbalance Forklift"],
-    )
-
-
-class DeviceTypeUpdate(BaseModel):
-    name: str | None = Field(
-        default=None,
-        description="New display name for the device type.",
-        examples=["Counterbalance Forklift"],
-    )
 
 
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    response_model=DeviceType,
+    response_model=DeviceTypeRead,
     summary="Create a device type",
     description="Creates a new device type category (e.g. Counterbalance Forklift, Reach Truck, Pallet Jack).",
 )
@@ -47,7 +32,7 @@ async def create_device_type(
 
 @router.get(
     "",
-    response_model=list[DeviceType],
+    response_model=list[DeviceTypeRead],
     summary="List device types",
     description="Returns all device types.",
 )
@@ -58,7 +43,7 @@ async def list_device_types(session: AsyncSession = Depends(get_session)):
 
 @router.get(
     "/{device_type_id}",
-    response_model=DeviceType,
+    response_model=DeviceTypeRead,
     summary="Get a device type",
     description="Returns a single device type by its ID.",
     responses={404: {"description": "Device type not found"}},
@@ -75,7 +60,7 @@ async def get_device_type(
 
 @router.patch(
     "/{device_type_id}",
-    response_model=DeviceType,
+    response_model=DeviceTypeRead,
     summary="Update a device type",
     description="Partially updates a device type. Only provided fields are changed.",
     responses={404: {"description": "Device type not found"}},

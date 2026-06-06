@@ -3,40 +3,28 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import col, select
+from sqlalchemy import select
 
 from app.config import Settings, get_settings
 from app.database import get_session
 from app.models import ChatThread, ChunkMessage, Device, Message, MessageSender
+from app.schemas import (
+    ChatThreadRead,
+    MessageCreate,
+    MessageRead,
+    ThreadCreate,
+    TranscriptResponse,
+)
 from app.services import retrieval, llm, stt, tts
 
 router = APIRouter()
 
 
-class ThreadCreate(BaseModel):
-    device_id: int = Field(
-        description="ID of the device this chat thread is about.",
-        examples=[1],
-    )
-    title: str = Field(
-        description="Short descriptive title for the thread.",
-        examples=["Mast won't lift under load"],
-    )
-
-
-class MessageCreate(BaseModel):
-    content: str = Field(
-        description="Text of the user message.",
-        examples=["What does fault code E-23 mean and how do I clear it?"],
-    )
-
-
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    response_model=ChatThread,
+    response_model=ChatThreadRead,
     summary="Create a chat thread",
     description="Creates a new chat thread for a specific device. Each thread holds an independent conversation history.",
     responses={404: {"description": "Device not found"}},
@@ -57,7 +45,7 @@ async def create_thread(
 
 @router.get(
     "",
-    response_model=list[ChatThread],
+    response_model=list[ChatThreadRead],
     summary="List chat threads",
     description="Returns all chat threads across all devices.",
 )
@@ -168,16 +156,11 @@ async def create_message(
         await session.refresh(system_message)
         async for ev in _yield_tts_audio_events(answer, settings):
             yield ev
-        yield _sse("message", system_message.model_dump_json())
+        yield _sse(
+            "message", MessageRead.model_validate(system_message).model_dump_json()
+        )
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
-
-
-class TranscriptResponse(BaseModel):
-    transcript: str = Field(
-        description="Speech-to-text result for the uploaded audio.",
-        examples=["Jak zresetować błąd E-23?"],
-    )
 
 
 @router.post(
@@ -221,7 +204,7 @@ async def transcribe_message(
 
 @router.get(
     "/{thread_id}/messages",
-    response_model=list[Message],
+    response_model=list[MessageRead],
     summary="List messages in a thread",
     description="Returns all messages in a thread ordered chronologically (oldest first).",
     responses={404: {"description": "Thread not found"}},
@@ -234,6 +217,6 @@ async def list_messages(thread_id: int, session: AsyncSession = Depends(get_sess
         await session.scalars(
             select(Message)
             .where(Message.thread_id == thread_id)
-            .order_by(col(Message.created_at))
+            .order_by(Message.created_at)
         )
     ).all()

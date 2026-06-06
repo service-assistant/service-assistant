@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
 from app.database import get_session
 from app.models import Attachment, AttachmentDevice, Device
+from app.schemas import AttachmentRead
 from app.services.ingest import ingest_pdf_to_attachment
 
 router = APIRouter()
@@ -32,7 +33,7 @@ def get_unique_filepath(base_path: Path) -> Path:
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    response_model=Attachment,
+    response_model=AttachmentRead,
     summary="Upload an attachment",
     description=(
         "Uploads a PDF file and associates it with one or more devices. "
@@ -80,12 +81,13 @@ async def create_attachment(
     )
 
     await session.refresh(attachment)
+
     return attachment
 
 
 @router.get(
     "/{attachment_id}",
-    response_model=Attachment,
+    response_model=AttachmentRead,
     summary="Get an attachment",
     description="Returns attachment metadata by ID. Does not return the file content — use the `/file` sub-resource for that.",
     responses={404: {"description": "Attachment not found"}},

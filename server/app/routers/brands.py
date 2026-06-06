@@ -1,43 +1,21 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import select
+from sqlalchemy import select
 
 from app.database import get_session
 from app.models import Brand
+from app.schemas import BrandCreate, BrandRead, BrandUpdate
 
 router = APIRouter()
-
-
-class BrandCreate(BaseModel):
-    name: str = Field(description="Display name of the brand.", examples=["Toyota"])
-    logo_url: str | None = Field(
-        default=None,
-        description="Publicly accessible URL of the brand logo image.",
-        examples=["https://example.com/logos/toyota.png"],
-    )
-
-
-class BrandUpdate(BaseModel):
-    name: str | None = Field(
-        default=None,
-        description="New display name.",
-        examples=["Toyota Material Handling"],
-    )
-    logo_url: str | None = Field(
-        default=None,
-        description="New logo URL. Pass `null` to clear the existing value.",
-        examples=["https://example.com/logos/toyota_v2.png"],
-    )
 
 
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    response_model=Brand,
+    response_model=BrandRead,
     summary="Create a brand",
     description="Creates a new device brand. The brand name must be unique.",
 )
@@ -51,7 +29,7 @@ async def create_brand(body: BrandCreate, session: AsyncSession = Depends(get_se
 
 @router.get(
     "",
-    response_model=list[Brand],
+    response_model=list[BrandRead],
     summary="List brands",
     description="Returns all brands ordered by insertion order.",
 )
@@ -62,7 +40,7 @@ async def list_brands(session: AsyncSession = Depends(get_session)):
 
 @router.get(
     "/{brand_id}",
-    response_model=Brand,
+    response_model=BrandRead,
     summary="Get a brand",
     description="Returns a single brand by its ID.",
     responses={404: {"description": "Brand not found"}},
@@ -76,7 +54,7 @@ async def get_brand(brand_id: int, session: AsyncSession = Depends(get_session))
 
 @router.patch(
     "/{brand_id}",
-    response_model=Brand,
+    response_model=BrandRead,
     summary="Update a brand",
     description="Partially updates a brand. Only the fields provided in the request body are changed.",
     responses={404: {"description": "Brand not found"}},

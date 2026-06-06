@@ -48,6 +48,8 @@ def test_should_create_device_when_brand_and_device_type_exist(client, mock_sess
 
     async def set_id(obj):
         obj.id = 1
+        obj.created_at = datetime.now(timezone.utc)
+        obj.updated_at = datetime.now(timezone.utc)
 
     mock_session.refresh.side_effect = set_id
 

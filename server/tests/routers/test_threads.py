@@ -35,6 +35,8 @@ def make_message(**kwargs) -> Message:
 def test_should_create_thread_when_valid_data_provided(client, mock_session):
     async def set_id(obj):
         obj.id = 1
+        obj.created_at = datetime.now(timezone.utc)
+        obj.updated_at = datetime.now(timezone.utc)
 
     mock_session.refresh.side_effect = set_id
 
@@ -104,6 +106,8 @@ def test_should_send_message_and_return_system_reply(client, mock_session):
 
     async def set_id(obj):
         obj.id = 2
+        obj.created_at = datetime.now(timezone.utc)
+        obj.updated_at = datetime.now(timezone.utc)
 
     mock_session.refresh.side_effect = set_id
 
@@ -152,6 +156,8 @@ def test_should_store_user_message_before_reply(client, mock_session):
 
     async def set_id(obj):
         obj.id = 2
+        obj.created_at = datetime.now(timezone.utc)
+        obj.updated_at = datetime.now(timezone.utc)
 
     mock_session.refresh.side_effect = set_id
 

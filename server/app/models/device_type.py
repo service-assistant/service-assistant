@@ -1,0 +1,25 @@
+from __future__ import annotations
+
+from datetime import datetime
+from typing import TYPE_CHECKING
+
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from ..database import Base, utcnow
+
+if TYPE_CHECKING:
+    from .device import Device
+
+
+class DeviceType(Base):
+    __tablename__ = "device_types"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str]
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+    devices: Mapped[list[Device]] = relationship(
+        back_populates="device_type",
+        lazy="raise",
+    )

@@ -3,7 +3,7 @@ import re
 from functools import partial
 
 from rank_bm25 import BM25Okapi
-from sqlmodel import col, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
@@ -28,7 +28,7 @@ async def _fetch_device_chunks(
         select(Chunk)
         .join(
             AttachmentDevice,
-            col(AttachmentDevice.attachment_id) == col(Chunk.attachment_id),
+            AttachmentDevice.attachment_id == Chunk.attachment_id,
         )
         .where(AttachmentDevice.device_id == device_id)
     )
@@ -55,7 +55,7 @@ async def get_semantic_chunks(
         select(Chunk)
         .join(
             AttachmentDevice,
-            col(AttachmentDevice.attachment_id) == col(Chunk.attachment_id),
+            AttachmentDevice.attachment_id == Chunk.attachment_id,
         )
         .where(AttachmentDevice.device_id == device_id)
         .order_by(Chunk.embedding.op("<->")(embedded_vector))

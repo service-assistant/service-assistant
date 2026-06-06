@@ -21,6 +21,8 @@ def make_brand(**kwargs) -> Brand:
 def test_should_create_brand_when_valid_data_provided(client, mock_session):
     async def set_id(obj):
         obj.id = 1
+        obj.created_at = datetime.now(timezone.utc)
+        obj.updated_at = datetime.now(timezone.utc)
 
     mock_session.refresh.side_effect = set_id
 
@@ -38,6 +40,8 @@ def test_should_create_brand_with_logo_url(client, mock_session):
     async def set_id(obj):
         obj.id = 2
         obj.logo_url = "https://example.com/logo.png"
+        obj.created_at = datetime.now(timezone.utc)
+        obj.updated_at = datetime.now(timezone.utc)
 
     mock_session.refresh.side_effect = set_id
 

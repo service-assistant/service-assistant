@@ -20,6 +20,8 @@ def make_device_type(**kwargs) -> DeviceType:
 def test_should_create_device_type_when_valid_data_provided(client, mock_session):
     async def set_id(obj):
         obj.id = 1
+        obj.created_at = datetime.now(timezone.utc)
+        obj.updated_at = datetime.now(timezone.utc)
 
     mock_session.refresh.side_effect = set_id
 

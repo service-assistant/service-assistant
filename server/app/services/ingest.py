@@ -1,6 +1,6 @@
 from openai import AsyncAzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import delete as sql_delete
+from sqlalchemy import delete as sql_delete
 
 import fitz  # pymupdf
 

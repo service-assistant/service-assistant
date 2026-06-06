@@ -62,6 +62,8 @@ def test_should_upload_attachment_and_return_metadata(client_with_tmp, mock_sess
 
     async def set_id(obj):
         obj.id = 1
+        obj.created_at = datetime.now(timezone.utc)
+        obj.updated_at = datetime.now(timezone.utc)
 
     mock_session.refresh.side_effect = set_id
 
@@ -86,6 +88,8 @@ def test_should_handle_filename_collision_on_upload(client_with_tmp, mock_sessio
 
     async def set_id(obj):
         obj.id = 2
+        obj.created_at = datetime.now(timezone.utc)
+        obj.updated_at = datetime.now(timezone.utc)
 
     mock_session.refresh.side_effect = set_id
 
