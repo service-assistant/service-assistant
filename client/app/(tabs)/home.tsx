@@ -392,7 +392,7 @@ export default function HomeScreen() {
 		const logoUrl = getRemoteBrandLogo(vehicle.brand);
 
 		router.push({
-			pathname: '/newChat',
+			pathname: '/chat',
 			params: {
 				deviceId: HARDCODED_DEVICE_ID,
 				deviceName: vehicle.name,
@@ -552,16 +552,17 @@ export default function HomeScreen() {
 		);
 	};
 
+	const useLargeBottomBar = isPortrait || isTablet;
 	const bottomBar = {
-		gap: isPortrait ? 0 : isTablet ? 10 : 6,
-		paddingHorizontal: isPortrait ? 12 : isTablet ? 18 : 12,
-		paddingVertical: isPortrait ? 8 : isTablet ? 11 : 8,
-		sideBtnSize: isPortrait ? 60 : isTablet ? 76 : 58,
-		centerBtnSize: isPortrait ? 96 : isTablet ? 96 : 76,
-		sideIconSize: isPortrait ? 28 : isTablet ? 34 : 26,
-		centerIconSize: isPortrait ? 50 : isTablet ? 50 : 38,
-		centerColumnWidth: isPortrait ? 140 : isTablet ? 140 : 120,
-		panelWidth: isPortrait ? 284 : undefined,
+		gap: useLargeBottomBar ? 10 : 6,
+		paddingHorizontal: useLargeBottomBar ? 18 : 12,
+		paddingVertical: useLargeBottomBar ? 11 : 8,
+		sideBtnSize: useLargeBottomBar ? 76 : 58,
+		centerBtnSize: useLargeBottomBar ? 96 : 76,
+		sideIconSize: useLargeBottomBar ? 34 : 26,
+		centerIconSize: useLargeBottomBar ? 50 : 38,
+		centerColumnWidth: useLargeBottomBar ? 140 : 120,
+		panelWidth: isPortrait ? 344 : undefined,
 		panelHeight: isPortrait ? 140 : undefined,
 	};
 	const bottomBarBlurProps =
@@ -589,6 +590,8 @@ export default function HomeScreen() {
 
 	const brandFilterOptions = [{ name: 'WSZYSTKIE', logo_url: null }, ...brands];
 	const typeFilterOptions = [{ name: 'WSZYSTKIE' }, ...deviceTypes];
+	const useLargeHeaderTitle = isPortrait || isTablet;
+	const headerLogoHeight = useLargeHeaderTitle ? 50 : 38;
 
 	return (
 		<SafeAreaView className='flex-1 bg-[#09090b]' edges={['top', 'left', 'right']}>
@@ -613,12 +616,15 @@ export default function HomeScreen() {
 							<Image
 								source={require('../../assets/images/fixo3.png')}
 								className='mr-3'
-								style={{ width: isTablet ? 80 : 60, height: isTablet ? 50 : 38 }}
+								style={{
+									width: useLargeHeaderTitle ? 80 : 60,
+									height: headerLogoHeight,
+								}}
 								resizeMode='contain'
 							/>
 							<Text
 								className={`${
-									isTablet ? 'text-4xl' : 'text-2xl'
+									useLargeHeaderTitle ? 'text-4xl' : 'text-2xl'
 								} text-white font-bold`}>
 								Wybierz Pojazd
 							</Text>
@@ -627,29 +633,10 @@ export default function HomeScreen() {
 							onPress={() => router.push('/history')}
 							accessibilityRole='button'
 							accessibilityLabel='Historia czatów'
-							className='flex-row items-center justify-center'
-							style={{
-								height: 54,
-								paddingHorizontal: 20,
-								borderRadius: 10,
-								backgroundColor: '#111111',
-								borderWidth: 1,
-								borderColor: '#333333',
-							}}>
-							<MaterialCommunityIcons
-								name='history'
-								size={22}
-								color={PRIMARY_ORANGE}
-							/>
-							<Text
-								className='font-bold uppercase'
-								style={{
-									marginLeft: 10,
-									color: '#E6E6E6',
-									fontSize: 15,
-									letterSpacing: 0.45,
-								}}>
-								Historia czatów
+							className='h-12 px-[18px] flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#111111]'>
+							<MaterialCommunityIcons name='history' size={21} color='#FF7A00' />
+							<Text className='text-[#E6E6E6] ml-4 text-[13px] font-semibold tracking-wider'>
+								HISTORIA CZATÓW
 							</Text>
 						</TouchableOpacity>
 					</View>
@@ -816,7 +803,7 @@ export default function HomeScreen() {
 							paddingVertical: bottomBar.paddingVertical,
 							gap: bottomBar.gap,
 							zIndex: 1,
-							justifyContent: isPortrait ? 'space-between' : 'center',
+							justifyContent: 'center',
 						}}>
 						<TouchableOpacity
 							onPress={openCamera}
