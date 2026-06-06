@@ -255,9 +255,9 @@ export default function HistoryScreen() {
 						onPress={() => router.push('/home')}
 						accessibilityRole='button'
 						accessibilityLabel='Wstecz'
-						className='flex-row items-center border border-[#CC5500] px-4 py-3 rounded-md bg-[#0a0a0a]'>
-						<Feather name='arrow-left' size={18} color='#CC5500' />
-						<Text className='text-[#CC5500] font-bold ml-2 tracking-widest text-[11px] uppercase'>
+						className='h-12 px-[18px] flex-row items-center justify-center mr-5 border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D]'>
+						<Feather name='arrow-left' size={22} color='#FF7A00' />
+						<Text className='text-[#FF7A00] ml-4 text-[13px] font-semibold tracking-wider'>
 							WSTECZ
 						</Text>
 					</TouchableOpacity>
