@@ -1,46 +1,15 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from app.models import Brand, Device, DeviceType
+from sqlalchemy.exc import IntegrityError
 
-AUTH_HEADERS = {"Authorization": "Bearer CHANGEMELATER"}
-
-
-def make_brand(**kwargs) -> Brand:
-    defaults = dict(
-        id=1,
-        name="Toyota",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    defaults.update(kwargs)
-    return Brand(**defaults)
-
-
-def make_device_type(**kwargs) -> DeviceType:
-    defaults = dict(
-        id=1,
-        name="Counterbalance Forklift",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    defaults.update(kwargs)
-    return DeviceType(**defaults)
-
-
-def make_device(**kwargs) -> Device:
-    defaults = dict(
-        id=1,
-        brand_id=1,
-        device_type_id=1,
-        name="Toyota 8FBE20",
-        model_serial_code=None,
-        image_url=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    defaults.update(kwargs)
-    return Device(**defaults)
+from tests.routers.conftest import AUTH_HEADERS
+from tests.routers.factories import (
+    make_attachment,
+    make_brand,
+    make_device,
+    make_device_type,
+)
 
 
 def test_should_create_device_when_brand_and_device_type_exist(client, mock_session):
@@ -90,6 +59,14 @@ def test_should_return_404_when_device_type_not_found_on_create(client, mock_ses
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Device type not found"
+
+
+def test_should_return_422_when_creating_device_without_required_fields(
+    client, mock_session
+):
+    response = client.post("/api/devices", json={}, headers=AUTH_HEADERS)
+
+    assert response.status_code == 422
 
 
 def test_should_list_all_devices(client, mock_session):
@@ -214,6 +191,50 @@ def test_should_return_404_when_deleting_nonexistent_device(client, mock_session
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Device not found"
+
+
+def test_should_return_409_when_deleting_device_referenced_by_threads(
+    client, mock_session
+):
+    mock_session.get.return_value = make_device()
+    mock_session.commit.side_effect = IntegrityError(None, None, Exception())
+
+    response = client.delete("/api/devices/1", headers=AUTH_HEADERS)
+
+    assert response.status_code == 409
+    assert "Cannot delete device" in response.json()["detail"]
+    mock_session.rollback.assert_called_once()
+
+
+def test_should_list_attachments_for_device(client, mock_session):
+    mock_session.get.return_value = make_device(id=1)
+    attachments = [
+        make_attachment(id=1, original_filename="manual_a.pdf"),
+        make_attachment(id=2, original_filename="manual_b.pdf"),
+    ]
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = attachments
+    mock_session.execute.return_value = mock_result
+
+    response = client.get("/api/devices/1/attachments", headers=AUTH_HEADERS)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    assert data[0]["original_filename"] == "manual_a.pdf"
+    assert data[1]["original_filename"] == "manual_b.pdf"
+
+
+def test_should_return_empty_list_when_device_has_no_attachments(client, mock_session):
+    mock_session.get.return_value = make_device(id=1)
+    mock_result = MagicMock()
+    mock_result.scalars.return_value.all.return_value = []
+    mock_session.execute.return_value = mock_result
+
+    response = client.get("/api/devices/1/attachments", headers=AUTH_HEADERS)
+
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 def test_should_return_404_when_listing_attachments_for_nonexistent_device(

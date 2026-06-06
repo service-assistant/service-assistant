@@ -1,21 +1,10 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from app.models import Brand
+from sqlalchemy.exc import IntegrityError
 
-AUTH_HEADERS = {"Authorization": "Bearer CHANGEMELATER"}
-
-
-def make_brand(**kwargs) -> Brand:
-    defaults = dict(
-        id=1,
-        name="Toyota",
-        logo_url=None,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    defaults.update(kwargs)
-    return Brand(**defaults)
+from tests.routers.conftest import AUTH_HEADERS
+from tests.routers.factories import make_brand
 
 
 def test_should_create_brand_when_valid_data_provided(client, mock_session):
@@ -53,6 +42,12 @@ def test_should_create_brand_with_logo_url(client, mock_session):
 
     assert response.status_code == 201
     assert response.json()["logo_url"] == "https://example.com/logo.png"
+
+
+def test_should_return_422_when_creating_brand_without_name(client, mock_session):
+    response = client.post("/api/brands", json={}, headers=AUTH_HEADERS)
+
+    assert response.status_code == 422
 
 
 def test_should_list_all_brands(client, mock_session):
@@ -144,3 +139,16 @@ def test_should_return_404_when_deleting_nonexistent_brand(client, mock_session)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Brand not found"
+
+
+def test_should_return_409_when_deleting_brand_referenced_by_devices(
+    client, mock_session
+):
+    mock_session.get.return_value = make_brand()
+    mock_session.commit.side_effect = IntegrityError(None, None, Exception())
+
+    response = client.delete("/api/brands/1", headers=AUTH_HEADERS)
+
+    assert response.status_code == 409
+    assert "Cannot delete brand" in response.json()["detail"]
+    mock_session.rollback.assert_called_once()

@@ -7,8 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_session
 from app.main import app
 
-AUTH_HEADERS = {"Authorization": "Bearer CHANGEMELATER"}
-
 
 @pytest.fixture
 def healthy_client():

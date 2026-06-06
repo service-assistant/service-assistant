@@ -1,20 +1,10 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from app.models import DeviceType
+from sqlalchemy.exc import IntegrityError
 
-AUTH_HEADERS = {"Authorization": "Bearer CHANGEMELATER"}
-
-
-def make_device_type(**kwargs) -> DeviceType:
-    defaults = dict(
-        id=1,
-        name="Counterbalance Forklift",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    defaults.update(kwargs)
-    return DeviceType(**defaults)
+from tests.routers.conftest import AUTH_HEADERS
+from tests.routers.factories import make_device_type
 
 
 def test_should_create_device_type_when_valid_data_provided(client, mock_session):
@@ -37,6 +27,12 @@ def test_should_create_device_type_when_valid_data_provided(client, mock_session
     assert data["id"] == 1
     mock_session.add.assert_called_once()
     mock_session.commit.assert_called_once()
+
+
+def test_should_return_422_when_creating_device_type_without_name(client, mock_session):
+    response = client.post("/api/device_types", json={}, headers=AUTH_HEADERS)
+
+    assert response.status_code == 422
 
 
 def test_should_list_all_device_types(client, mock_session):
@@ -135,3 +131,16 @@ def test_should_return_404_when_deleting_nonexistent_device_type(client, mock_se
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Device type not found"
+
+
+def test_should_return_409_when_deleting_device_type_referenced_by_devices(
+    client, mock_session
+):
+    mock_session.get.return_value = make_device_type()
+    mock_session.commit.side_effect = IntegrityError(None, None, Exception())
+
+    response = client.delete("/api/device_types/1", headers=AUTH_HEADERS)
+
+    assert response.status_code == 409
+    assert "Cannot delete device type" in response.json()["detail"]
+    mock_session.rollback.assert_called_once()

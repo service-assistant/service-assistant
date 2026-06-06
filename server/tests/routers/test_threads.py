@@ -2,34 +2,11 @@ import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.models import ChatThread, Message, MessageSender
+from app.models import MessageSender
+from app.services.stt import SttError
 
-AUTH_HEADERS = {"Authorization": "Bearer CHANGEMELATER"}
-
-
-def make_thread(**kwargs) -> ChatThread:
-    defaults = dict(
-        id=1,
-        device_id=1,
-        title="Mast won't lift",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    defaults.update(kwargs)
-    return ChatThread(**defaults)
-
-
-def make_message(**kwargs) -> Message:
-    defaults = dict(
-        id=1,
-        content="Test content",
-        thread_id=1,
-        sender=MessageSender.system,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    defaults.update(kwargs)
-    return Message(**defaults)
+from tests.routers.conftest import AUTH_HEADERS
+from tests.routers.factories import make_message, make_thread
 
 
 def test_should_create_thread_when_valid_data_provided(client, mock_session):
@@ -50,6 +27,21 @@ def test_should_create_thread_when_valid_data_provided(client, mock_session):
     data = response.json()
     assert data["title"] == "Mast won't lift"
     assert data["device_id"] == 1
+
+
+def test_should_return_404_when_creating_thread_with_nonexistent_device(
+    client, mock_session
+):
+    mock_session.get.return_value = None
+
+    response = client.post(
+        "/api/threads",
+        json={"device_id": 999, "title": "Test"},
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Device not found"
 
 
 def test_should_list_all_threads(client, mock_session):
@@ -79,6 +71,27 @@ def test_should_return_empty_list_when_no_threads_exist(client, mock_session):
 
     assert response.status_code == 200
     assert response.json() == []
+
+
+def test_should_return_thread_when_id_exists(client, mock_session):
+    mock_session.get.return_value = make_thread(id=1, title="Mast won't lift")
+
+    response = client.get("/api/threads/1", headers=AUTH_HEADERS)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == 1
+    assert data["title"] == "Mast won't lift"
+    assert data["device_id"] == 1
+
+
+def test_should_return_404_when_getting_nonexistent_thread(client, mock_session):
+    mock_session.get.return_value = None
+
+    response = client.get("/api/threads/999", headers=AUTH_HEADERS)
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Thread not found"
 
 
 def test_should_delete_thread_when_id_exists(client, mock_session):
@@ -177,7 +190,6 @@ def test_should_store_user_message_before_reply(client, mock_session):
             headers=AUTH_HEADERS,
         )
 
-    # add called at least twice: once for user message, once for system message
     assert mock_session.add.call_count >= 2
 
 
@@ -238,3 +250,67 @@ def test_should_return_404_when_listing_messages_for_nonexistent_thread(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Thread not found"
+
+
+def test_should_transcribe_audio_when_thread_exists(client, mock_session):
+    mock_session.get.return_value = make_thread(id=1)
+
+    with patch(
+        "app.routers.threads.stt.transcribe",
+        new=AsyncMock(return_value="Oil pressure low"),
+    ):
+        response = client.post(
+            "/api/threads/1/messages/transcribe",
+            files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
+            headers=AUTH_HEADERS,
+        )
+
+    assert response.status_code == 200
+    assert response.json()["transcript"] == "Oil pressure low"
+
+
+def test_should_return_404_when_transcribing_for_nonexistent_thread(
+    client, mock_session
+):
+    mock_session.get.return_value = None
+
+    response = client.post(
+        "/api/threads/999/messages/transcribe",
+        files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
+        headers=AUTH_HEADERS,
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Thread not found"
+
+
+def test_should_return_502_when_stt_service_fails(client, mock_session):
+    mock_session.get.return_value = make_thread(id=1)
+
+    with patch(
+        "app.routers.threads.stt.transcribe",
+        new=AsyncMock(side_effect=SttError("Deepgram error 503: service unavailable")),
+    ):
+        response = client.post(
+            "/api/threads/1/messages/transcribe",
+            files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
+            headers=AUTH_HEADERS,
+        )
+
+    assert response.status_code == 502
+
+
+def test_should_return_422_when_audio_is_empty(client, mock_session):
+    mock_session.get.return_value = make_thread(id=1)
+
+    with patch(
+        "app.routers.threads.stt.transcribe",
+        new=AsyncMock(side_effect=SttError("Empty audio file")),
+    ):
+        response = client.post(
+            "/api/threads/1/messages/transcribe",
+            files={"audio": ("recording.m4a", b"", "audio/m4a")},
+            headers=AUTH_HEADERS,
+        )
+
+    assert response.status_code == 422
