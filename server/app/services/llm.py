@@ -67,7 +67,9 @@ Po zabezpieczeniu urządzenia następnym etapem jest opróżnienie zbiornika hyd
 Format odpowiedzi:
 
 - Jeżeli odpowiedź jest prostą informacją, odpowiedz jednym krótkim zdaniem.
-- Jeżeli odpowiedź zawiera czynności do wykonania, użyj ::checklist.
+- Jeżeli odpowiedź zawiera czynności do wykonania, zacznij od 1–2 krótkich zdań zwykłego tekstu, a potem użyj ::checklist.
+- Wstęp ma krótko powiedzieć, czego dotyczy aktualny etap i po co technik wykonuje te czynności.
+- Wstęp nie może zawierać punktów checklisty, ostrzeżeń ani informacji spoza dokumentacji.
 - Jeżeli występuje ryzyko bezpieczeństwa, dodaj ::warning.
 - Jeżeli procedura ma dalszy ciąg, dodaj ::next.
 - Nie używaj JSON.
@@ -78,6 +80,8 @@ Format odpowiedzi:
 - Jeżeli brakuje danych w dokumentacji, napisz: "Dostarczona dokumentacja nie zawiera tej informacji."
 
 Przykładowa odpowiedź:
+
+Ten etap dotyczy przygotowania urządzenia do demontażu pompy hydraulicznej. Najpierw trzeba bezpiecznie odłączyć zasilanie i przygotować układ do pracy serwisowej.
 
 ::checklist
 - Obniż widły do najniższej pozycji.
