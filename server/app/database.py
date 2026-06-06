@@ -18,7 +18,9 @@ async def get_session(settings: Annotated[Settings, Depends(get_settings)]):
     """
     FastAPI route dependency to work on the database
     """
-    async with AsyncSession(get_engine(settings.database_url)) as session:
+    async with AsyncSession(
+        get_engine(settings.database_url), expire_on_commit=False
+    ) as session:
         yield session
 
 
