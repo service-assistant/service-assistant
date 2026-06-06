@@ -109,7 +109,7 @@
 <script>
 (function () {
     const THREAD_ID = {{ thread.id }};
-    const AUTH_TOKEN = {{ auth_token | tojson }};
+    const AUTH_TOKEN = localStorage.getItem('admin_token') || '';
 
     const messagesEl = document.getElementById("messages");
     const input = document.getElementById("message-input");

@@ -54,6 +54,20 @@ async def list_threads(session: AsyncSession = Depends(get_session)):
     return result.scalars().all()
 
 
+@router.get(
+    "/{thread_id}",
+    response_model=ChatThreadRead,
+    summary="Get a chat thread",
+    description="Returns a single chat thread by its ID.",
+    responses={404: {"description": "Thread not found"}},
+)
+async def get_thread(thread_id: int, session: AsyncSession = Depends(get_session)):
+    thread = await session.get(ChatThread, thread_id)
+    if not thread:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    return thread
+
+
 @router.delete(
     "/{thread_id}",
     status_code=status.HTTP_204_NO_CONTENT,

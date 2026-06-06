@@ -11,13 +11,9 @@
         <h1 class="text-xl font-semibold mb-1">Admin Panel</h1>
         <p class="text-sm text-gray-500 mb-6">Enter the admin token to continue.</p>
 
-        {% if error %}
-        <div class="mb-4 px-4 py-3 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm">
-            {{ error }}
-        </div>
-        {% endif %}
+        <div id="login-error" class="hidden mb-4 px-4 py-3 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm"></div>
 
-        <form method="post" action="/admin/login" class="space-y-4">
+        <form id="login-form" class="space-y-4">
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-1" for="token">Token</label>
                 <input
@@ -34,5 +30,36 @@
             </button>
         </form>
     </div>
+
+    <script>
+    document.getElementById('login-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const token = document.getElementById('token').value;
+        const errEl = document.getElementById('login-error');
+        errEl.classList.add('hidden');
+
+        let resp;
+        try {
+            resp = await fetch('/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({ token }),
+            });
+        } catch {
+            errEl.textContent = 'Network error.';
+            errEl.classList.remove('hidden');
+            return;
+        }
+
+        const data = await resp.json();
+        if (!resp.ok || data.error) {
+            errEl.textContent = data.error || 'Login failed.';
+            errEl.classList.remove('hidden');
+        } else {
+            localStorage.setItem('admin_token', token);
+            window.location.href = data.redirect || '/admin/documents';
+        }
+    });
+    </script>
 </body>
 </html>

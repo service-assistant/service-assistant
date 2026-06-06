@@ -8,7 +8,7 @@
 <!-- Create form -->
 <section class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
     <h2 class="text-sm font-semibold text-gray-700 mb-4">Add Device Type</h2>
-    <form method="post" action="/admin/device_types" class="flex items-end gap-4">
+    <form method="post" action="/api/device_types" class="flex items-end gap-4">
         <div class="flex-1">
             <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
             <input type="text" name="name" required placeholder="e.g. Counterbalance Forklift"
@@ -40,8 +40,10 @@
                 <td class="px-4 py-3 text-right">
                     <div class="flex items-center justify-end gap-4">
                         <a href="/admin/device_types/{{ dt.id }}/edit" class="text-blue-600 hover:text-blue-800 text-sm">Edit</a>
-                        <form method="post" action="/admin/device_types/{{ dt.id }}/delete"
-                              data-confirm="Delete this device type?">
+                        <form method="post" action="/api/device_types/{{ dt.id }}"
+                              data-method="DELETE"
+                              data-confirm="Delete this device type?"
+                              data-remove-el="tr">
                             <button type="submit" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
                         </form>
                     </div>
