@@ -25,6 +25,7 @@ async def ingest_pdf_to_attachment(
     pdf_path: str,
     attachment_id: int,
     settings: Settings,
+    batch_size: int = 32,
 ):
     client = AsyncAzureOpenAI(
         api_version=settings.azure_openai_api_version,
@@ -34,6 +35,8 @@ async def ingest_pdf_to_attachment(
 
     doc = fitz.open(pdf_path)
     rows: list[tuple[str, list[float], int, list[str]]] = []
+    pending: list[tuple[str, int, list[str]]] = []
+    seen_chunks: set[str] = set()
 
     for page_num, page in enumerate(doc.pages()):
         # extract text
@@ -44,15 +47,37 @@ async def ingest_pdf_to_attachment(
             doc, page, settings.attachments_dir / "images"
         )
 
-        # create embeddings for text chunks
-        for batch in batch_list(chunks, 32):
-            response = await client.embeddings.create(
-                model=settings.azure_openai_embeddings_deployment, input=batch
-            )
-            embeddings = [d.embedding for d in response.data]
+        for chunk in chunks:
+            if chunk in seen_chunks:
+                continue
 
-            for chunk, emb in zip(batch, embeddings):
-                rows.append((chunk, emb, page_num, page_images))
+            seen_chunks.add(chunk)
+            pending.append((chunk, page_num, page_images))
+
+            # if there are enough pending chunks, embed them and add to rows
+            if len(pending) >= batch_size:
+                batch = pending[:batch_size]
+                pending = pending[batch_size:]
+
+                response = await client.embeddings.create(
+                    model=settings.azure_openai_embeddings_deployment,
+                    input=[chunk for chunk, _, _ in batch],
+                )
+                embeddings = [d.embedding for d in response.data]
+
+                for (chunk, page_num, page_images), emb in zip(batch, embeddings):
+                    rows.append((chunk, emb, page_num, page_images))
+
+    # embed any remaining pending chunks
+    if pending:
+        response = await client.embeddings.create(
+            model=settings.azure_openai_embeddings_deployment,
+            input=[chunk for chunk, _, _ in pending],
+        )
+        embeddings = [d.embedding for d in response.data]
+
+        for (chunk, page_num, page_images), emb in zip(pending, embeddings):
+            rows.append((chunk, emb, page_num, page_images))
 
     await insert_chunks(session, rows, attachment_id)
 
