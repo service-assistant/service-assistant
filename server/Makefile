@@ -54,6 +54,7 @@ check:
 	$(MAKE) format-check
 	$(MAKE) lint
 	$(MAKE) typecheck
+	$(MAKE) test
 migrations:
 	poetry run alembic history --verbose
 reset-db:
