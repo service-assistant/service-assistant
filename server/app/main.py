@@ -1,19 +1,21 @@
+from fastapi import Depends, FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.routers import (
     admin,
     attachments,
     brands,
+    chunks,
     device_types,
     devices,
+    images,
     messages,
     threads,
-    images,
 )
-from fastapi import FastAPI, Depends, status, Request
-from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
 
 from .config import get_settings
 from .database import get_session
@@ -75,16 +77,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(admin.router, prefix="/admin", include_in_schema=False)
-app.include_router(brands.router, prefix="/api/brands", tags=["brands"])
+app.include_router(brands.router, prefix="/api/brands", tags=["Brands"])
 app.include_router(
-    device_types.router, prefix="/api/device_types", tags=["device_types"]
+    device_types.router, prefix="/api/device_types", tags=["Device Types"]
 )
-app.include_router(devices.router, prefix="/api/devices", tags=["devices"])
-app.include_router(attachments.router, prefix="/api/attachments", tags=["attachments"])
-app.include_router(threads.router, prefix="/api/threads", tags=["threads"])
-app.include_router(messages.router, prefix="/api/messages", tags=["messages"])
-app.include_router(images.router, prefix="/api/images", tags=["images"])
+app.include_router(devices.router, prefix="/api/devices", tags=["Devices"])
+app.include_router(attachments.router, prefix="/api/attachments", tags=["Attachments"])
+app.include_router(threads.router, prefix="/api/threads", tags=["Chat Threads"])
+app.include_router(messages.router, prefix="/api/messages", tags=["Messages"])
+app.include_router(chunks.router, prefix="/api/chunks", tags=["Chunks"])
+app.include_router(images.router, prefix="/api/images", tags=["Images"])
+app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 
 
 @app.get("/health", include_in_schema=False)
