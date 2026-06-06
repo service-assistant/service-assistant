@@ -29,7 +29,8 @@ test = [
     "pytest (>=9.0.2,<10.0.0)"
 ]
 dev = [
-    "ruff (>=0.15.5,<0.16.0)"
+    "ruff (>=0.15.5,<0.16.0)",
+    "pyright (>=1.1.410,<2.0.0)"
 ]
 
 [tool.poetry]
@@ -45,3 +46,8 @@ testpaths = ["tests"]
 
 [tool.fastapi]
 entrypoint = "app.main:app"
+
+[tool.pyright]
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
