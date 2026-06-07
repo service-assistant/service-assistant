@@ -58,6 +58,17 @@ jobs:
       - name: Run format check
         run: poetry --directory ./server run ruff format --check app tests
 
+  server-typecheck:
+    name: Type check (server)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-python-poetry
+      - name: Install dependencies
+        run: poetry --directory ./server install --all-groups
+      - name: Run type check
+        run: poetry --directory ./server run pyright
+
   server-test:
     name: Run tests (server)
     runs-on: ubuntu-24.04

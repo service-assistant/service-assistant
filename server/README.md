@@ -10,7 +10,6 @@ The `Makefile` provides code quality commands. Type `make help` for more informa
 - [FastAPI Documentation](https://fastapi.tiangolo.com/learn/)
 - [Starlette Documentation](https://starlette.dev/)
 - [Alembic Documentation](https://alembic.sqlalchemy.org/en/latest/)
-- [SQLModel Documentation](https://sqlmodel.tiangolo.com/)
 - [SQLAlchemy Documentation](https://docs.sqlalchemy.org/en/20/)
 - [Poetry Documentation](https://python-poetry.org/docs/)
 - [`asyncio` Documentation](https://docs.python.org/3/library/asyncio.html)

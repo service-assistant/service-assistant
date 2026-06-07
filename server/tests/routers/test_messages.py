@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-AUTH_HEADERS = {"Authorization": "Bearer CHANGEMELATER"}
+from tests.routers.conftest import AUTH_HEADERS
 
 
 def test_should_return_chunks_for_system_message(client, mock_session):

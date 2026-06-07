@@ -1,5 +1,5 @@
 from collections.abc import AsyncGenerator
-from typing import Final
+from typing import Final, cast
 
 from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam
@@ -117,20 +117,25 @@ def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
 async def _recent_thread_messages(
     session: AsyncSession, thread_id: int, limit: int
 ) -> list[Message]:
-    return (
-        await session.scalars(
-            select(Message)
-            .where(Message.thread_id == thread_id)
-            .order_by(Message.created_at)
-            .limit(limit)
-        )
-    ).all()
+    return list(
+        (
+            await session.scalars(
+                select(Message)
+                .where(Message.thread_id == thread_id)
+                .order_by(Message.created_at)
+                .limit(limit)
+            )
+        ).all()
+    )
 
 
 def _build_history_messages(
     messages: list[Message],
 ) -> list[ChatCompletionMessageParam]:
-    return [{"role": m.sender, "content": m.content} for m in messages]
+    return [
+        cast(ChatCompletionMessageParam, {"role": m.sender, "content": m.content})
+        for m in messages
+    ]
 
 
 def _messages(

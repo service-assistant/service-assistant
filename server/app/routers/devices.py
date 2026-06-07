@@ -2,65 +2,21 @@ import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlmodel import col, select
+from sqlalchemy import select
 
 from app.database import get_session
-from app.models import Brand, Device, DeviceType, Attachment, AttachmentDevice
+from app.models import Attachment, AttachmentDevice, Brand, Device, DeviceType
+from app.schemas import AttachmentRead, DeviceCreate, DeviceRead, DeviceUpdate
 
 router = APIRouter()
-
-
-class DeviceCreate(BaseModel):
-    brand_id: int = Field(
-        description="ID of the brand this device belongs to.", examples=[1]
-    )
-    device_type_id: int = Field(
-        description="ID of the device type category.", examples=[2]
-    )
-    name: str = Field(
-        description="Human-readable device name.", examples=["Toyota 8FBE20"]
-    )
-    model_serial_code: str | None = Field(
-        default=None,
-        description="Manufacturer model or serial code used for identification.",
-        examples=["8FBE20-12345"],
-    )
-    image_url: str | None = Field(
-        default=None,
-        description="Publicly accessible URL of the device image.",
-        examples=["https://example.com/images/toyota-8fbe20.jpg"],
-    )
-
-
-class DeviceUpdate(BaseModel):
-    brand_id: int | None = Field(
-        default=None, description="New brand ID.", examples=[1]
-    )
-    device_type_id: int | None = Field(
-        default=None, description="New device type ID.", examples=[2]
-    )
-    name: str | None = Field(
-        default=None, description="New device name.", examples=["Toyota 8FBE20"]
-    )
-    model_serial_code: str | None = Field(
-        default=None,
-        description="New model or serial code.",
-        examples=["8FBE20-12345"],
-    )
-    image_url: str | None = Field(
-        default=None,
-        description="New image URL. Pass `null` to clear.",
-        examples=["https://example.com/images/toyota-8fbe20-v2.jpg"],
-    )
 
 
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    response_model=Device,
+    response_model=DeviceRead,
     summary="Create a device",
     description="Creates a new device and associates it with a brand and device type.",
 )
@@ -85,7 +41,7 @@ async def create_device(
 
 @router.get(
     "",
-    response_model=list[Device],
+    response_model=list[DeviceRead],
     summary="List devices",
     description="Returns all devices.",
 )
@@ -96,7 +52,7 @@ async def list_devices(session: AsyncSession = Depends(get_session)):
 
 @router.get(
     "/{device_id}/attachments",
-    response_model=list[Attachment],
+    response_model=list[AttachmentRead],
     summary="List device attachments",
     description="Returns all instruction files (attachments) linked to the given device.",
     responses={404: {"description": "Device not found"}},
@@ -112,17 +68,17 @@ async def list_device_attachments(
         select(Attachment)
         .join(
             AttachmentDevice,
-            col(AttachmentDevice.attachment_id) == col(Attachment.id),
+            AttachmentDevice.attachment_id == Attachment.id,
         )
         .where(AttachmentDevice.device_id == device_id)
-        .order_by(col(Attachment.created_at).desc())
+        .order_by(Attachment.created_at.desc())
     )
     return result.scalars().all()
 
 
 @router.get(
     "/{device_id}",
-    response_model=Device,
+    response_model=DeviceRead,
     summary="Get a device",
     description="Returns a single device by its ID.",
     responses={404: {"description": "Device not found"}},
@@ -136,7 +92,7 @@ async def get_device(device_id: int, session: AsyncSession = Depends(get_session
 
 @router.patch(
     "/{device_id}",
-    response_model=Device,
+    response_model=DeviceRead,
     summary="Update a device",
     description="Partially updates a device. Only provided fields are changed.",
     responses={404: {"description": "Device not found"}},

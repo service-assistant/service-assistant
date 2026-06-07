@@ -34,7 +34,7 @@
             </a>
         </nav>
         <div class="px-3 pb-4">
-            <a href="/admin/logout" class="block px-3 py-2 rounded-md text-sm text-gray-500 hover:bg-gray-100">
+            <a href="/admin/logout" id="logout-link" class="block px-3 py-2 rounded-md text-sm text-gray-500 hover:bg-gray-100">
                 Log out
             </a>
         </div>
@@ -53,6 +53,10 @@
     </div>
 
     <script>
+    function getToken() {
+        return localStorage.getItem('admin_token') || '';
+    }
+
     function showInlineBanner(message, type) {
         const isError = type === 'error';
         let banner = document.getElementById('js-flash-banner');
@@ -72,6 +76,10 @@
     function showInlineError(message) { showInlineBanner(message, 'error'); }
 
     (function () {
+        if (!getToken()) {
+            window.location.href = '/admin/login';
+            return;
+        }
         const msg = sessionStorage.getItem('admin_flash_success');
         if (msg) {
             sessionStorage.removeItem('admin_flash_success');
@@ -80,33 +88,93 @@
     })();
 
     async function submitFormAjax(form) {
-        const resp = await fetch(form.action || window.location.href, {
-            method: (form.method || 'GET').toUpperCase(),
-            body: new FormData(form),
-            redirect: 'follow',
-        });
-        const ct = resp.headers.get('content-type') || '';
-        if (ct.includes('application/json')) {
-            const data = await resp.json();
-            if (data.error) {
-                showInlineError(data.error);
-            } else if (data.success) {
-                if (data.redirect) {
-                    sessionStorage.setItem('admin_flash_success', data.success);
-                    window.location.href = data.redirect;
-                } else {
-                    showInlineBanner(data.success, 'success');
-                    form.closest('tr')?.remove();
+        const token = getToken();
+        if (!token) { window.location.href = '/admin/login'; return; }
+
+        const submitBtn = form.querySelector('[type="submit"]');
+        const originalText = submitBtn ? submitBtn.textContent : null;
+        const loadingText = form.dataset.loadingText;
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-60', 'cursor-not-allowed');
+            if (loadingText) submitBtn.textContent = loadingText;
+        }
+
+        const headers = { 'Authorization': `Bearer ${token}` };
+        const method = (form.dataset.method || form.method || 'POST').toUpperCase();
+
+        const url = form.dataset.urlTemplate
+            ? form.dataset.urlTemplate.replace(/{(\w+)}/g, function (_, k) {
+                const el = form.elements[k];
+                return el ? encodeURIComponent(el.value) : '';
+            })
+            : (form.action || window.location.href);
+
+        let body = undefined;
+        if (method !== 'GET' && method !== 'DELETE') {
+            if (form.enctype === 'multipart/form-data') {
+                body = new FormData(form);
+            } else {
+                const obj = {};
+                for (const el of form.elements) {
+                    if (!el.name || el.disabled || el.type === 'submit' || el.type === 'button') continue;
+                    if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) continue;
+                    const raw = el.value;
+                    const v = raw === '' ? null : /^\d+$/.test(raw) ? parseInt(raw, 10) : raw;
+                    if (obj[el.name] !== undefined) {
+                        if (!Array.isArray(obj[el.name])) obj[el.name] = [obj[el.name]];
+                        obj[el.name].push(v);
+                    } else {
+                        obj[el.name] = v;
+                    }
                 }
+                body = JSON.stringify(obj);
+                headers['Content-Type'] = 'application/json';
+            }
+        }
+
+        let resp;
+        try {
+            resp = await fetch(url, { method, headers, body });
+        } catch {
+            showInlineError('Network error.');
+            return;
+        }
+
+        if (resp.ok) {
+            const removeEl = form.dataset.removeEl;
+            const redirect = form.dataset.redirect;
+            const successMsg = form.dataset.successMsg;
+            if (removeEl) {
+                form.closest(removeEl)?.remove();
+            } else if (redirect) {
+                if (successMsg) sessionStorage.setItem('admin_flash_success', successMsg);
+                window.location.href = redirect;
+            } else {
+                if (successMsg) sessionStorage.setItem('admin_flash_success', successMsg);
+                window.location.reload();
             }
         } else {
-            window.location.href = resp.url;
+            let errMsg = `Error ${resp.status}.`;
+            try {
+                const data = await resp.json();
+                if (typeof data.detail === 'string') errMsg = data.detail;
+                else if (data.detail) errMsg = JSON.stringify(data.detail);
+            } catch {}
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+                if (loadingText) submitBtn.textContent = originalText;
+            }
+            showInlineError(errMsg);
         }
     }
 
     document.addEventListener('submit', function (e) {
-        e.preventDefault();
         const form = e.target;
+        const method = (form.dataset.method || form.method || 'get').toLowerCase();
+        if (method === 'get') return;
+        e.preventDefault();
         const confirmMsg = form.dataset.confirm;
         if (confirmMsg) {
             showConfirm(form, confirmMsg);
@@ -143,6 +211,10 @@
         };
         return false;
     }
+
+    document.getElementById('logout-link').addEventListener('click', function () {
+        localStorage.removeItem('admin_token');
+    });
     </script>
 
     <!-- Main content -->

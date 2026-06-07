@@ -6,7 +6,7 @@ GREEN  := \033[32m
 YELLOW := \033[33m
 GRAY   := \033[90m
 
-.PHONY: help dev staging production docs test lint format format-check migrations reset-db
+.PHONY: help dev staging production docs test lint format format-check typecheck check migrations reset-db
 
 help:
 	@echo ""
@@ -21,6 +21,8 @@ help:
 	@echo "  $(GREEN)lint$(RESET)              $(GRAY)-$(RESET) Check code style"
 	@echo "  $(GREEN)format$(RESET)            $(GRAY)-$(RESET) Format code"
 	@echo "  $(GREEN)format-check$(RESET)      $(GRAY)-$(RESET) Check formatting without applying"
+	@echo "  $(GREEN)typecheck$(RESET)         $(GRAY)-$(RESET) Check Python type correctness"
+	@echo "  $(GREEN)check$(RESET)             $(GRAY)-$(RESET) Run format-check, lint, and typecheck"
 	@echo "  $(GREEN)docs$(RESET)              $(GRAY)-$(RESET) Open documentation page $(GRAY)(port 8000)$(RESET)"
 	@echo "  $(GREEN)migrations$(RESET)        $(GRAY)-$(RESET) Lists all Alembic migrations"
 	@echo "  $(GREEN)reset-db$(RESET)          $(GRAY)-$(RESET) Compose down & remove postgres data volume"
@@ -46,6 +48,13 @@ format:
 	poetry run ruff format app tests
 format-check:
 	poetry run ruff format --check app tests
+typecheck:
+	poetry run pyright
+check:
+	$(MAKE) format-check
+	$(MAKE) lint
+	$(MAKE) typecheck
+	$(MAKE) test
 migrations:
 	poetry run alembic history --verbose
 reset-db:

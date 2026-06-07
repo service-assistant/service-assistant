@@ -10,7 +10,6 @@ from typing import Sequence, Union
 
 import pgvector.sqlalchemy
 import sqlalchemy as sa
-import sqlmodel.sql.sqltypes
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
@@ -25,9 +24,9 @@ def upgrade() -> None:
     op.create_table(
         "attachment_chunks",
         sa.Column("id", sa.Integer(), nullable=False),
-        sa.Column("content", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+        sa.Column("content", sa.String(), nullable=False),
         sa.Column("embedding", pgvector.sqlalchemy.Vector(1024), nullable=False),
-        sa.Column("document_name", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
+        sa.Column("document_name", sa.String(), nullable=False),
         sa.Column("page", sa.Integer(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column(
