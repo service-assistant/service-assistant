@@ -30,6 +30,7 @@ private const val SPECTROGRAM_FRAMES = 151
 private const val MIN_ACTIVE_RMS = 1e-4f
 private const val MAX_STREAMING_THRESHOLD = 1.0f
 
+private const val PREEMPHASIS = 0.97f
 class WakeWordModule : Module() {
   private var detector: FiksoDetector? = null
   @Volatile private var isRunning = false
@@ -213,7 +214,7 @@ private class FiksoDetector(input: DataInputStream) {
         for (sample in window.indices) {
           val fftSample = sample + (FFT_SIZE - window.size) / 2
           val audioIndex = reflectIndex(frame * 160 - FFT_SIZE / 2 + fftSample, audio.size)
-          val value = audio[audioIndex] * window[sample]
+          val current = audio[audioIndex]; val previous = if (audioIndex > 0) audio[audioIndex - 1] else 0f; val value = (current - PREEMPHASIS * previous) * window[sample]
           real += value * cosineTable[tableOffset + fftSample]
           imaginary -= value * sineTable[tableOffset + fftSample]
         }

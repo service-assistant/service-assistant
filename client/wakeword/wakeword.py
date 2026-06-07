@@ -21,8 +21,9 @@ class AudioConfig:
     win_length: int = 400
     stft_hop: int = 160
     n_mels: int = 40
-    f_min: float = 60.0
-    f_max: float = 7_600.0
+    f_min: float = 120.0
+    f_max: float = 4_800.0
+    preemphasis: float = 0.97
 
     @property
     def window_samples(self) -> int:
@@ -101,6 +102,8 @@ class LogMelSpectrogram(nn.Module):
         self.register_buffer("mel_filter", make_mel_filter(config))
 
     def forward(self, audio: torch.Tensor) -> torch.Tensor:
+        if self.config.preemphasis > 0:
+            audio = torch.cat([audio[:, :1], audio[:, 1:] - self.config.preemphasis * audio[:, :-1]], dim=1)
         spectrum = torch.stft(
             audio,
             n_fft=self.config.n_fft,
