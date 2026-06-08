@@ -18,6 +18,16 @@ const STRONG_SPEECH_OVER_NOISE_DB = 14;
 const SPEECH_PEAK_DROP_DB = 7;
 const MINIMUM_SPEECH_DB = -52;
 
+const getDeepgramApiKeyOrThrow = () => {
+	const apiKey = process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY?.trim();
+
+	if (!apiKey || apiKey === 'undefined' || apiKey === 'null') {
+		throw new Error('Missing EXPO_PUBLIC_DEEPGRAM_API_KEY');
+	}
+
+	return apiKey;
+};
+
 type VoiceMessage = {
 	id: number;
 	sender: 'user' | 'ai';
@@ -32,10 +42,13 @@ type UseMicrophoneParams<TMessage extends VoiceMessage> = {
 	isGenerating: boolean;
 	isAudioPlaying: boolean;
 	showTextInput: boolean;
+	isSpeechInputUnavailable?: boolean;
 	setShowTextInput: React.Dispatch<React.SetStateAction<boolean>>;
 	setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
 	onStopExternal: () => void;
 	onTranscript: (transcript: string) => void;
+	onServiceError?: (featureName: string, error: unknown) => void;
+	onSpeechInputError?: (error: unknown) => void;
 };
 
 export const useMicrophone = <TMessage extends VoiceMessage>({
@@ -45,10 +58,13 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 	isGenerating,
 	isAudioPlaying,
 	showTextInput,
+	isSpeechInputUnavailable = false,
 	setShowTextInput,
 	setIsLoading,
 	onStopExternal,
 	onTranscript,
+	onServiceError,
+	onSpeechInputError,
 }: UseMicrophoneParams<TMessage>) => {
 	const [isListening, setIsListening] = useState<boolean>(false);
 	const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
@@ -146,7 +162,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 			sttAbortControllerRef.current.abort();
 			sttAbortControllerRef.current = null;
 		}
-	}, [stopRecordingWithoutSending]);
+	}, [onServiceError, stopRecordingWithoutSending]);
 
 	const blockMicRestart = useCallback(() => {
 		micRestartBlockedUntilRef.current = Date.now() + MIC_RESTART_COOLDOWN_MS;
@@ -170,6 +186,8 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 			setIsLoading(true);
 			setIsTranscribing(true);
 			try {
+				const deepgramApiKey = getDeepgramApiKeyOrThrow();
+
 				const responseFile = await fetch(uri, { signal: abortController.signal });
 				const audioBlob = await responseFile.blob();
 
@@ -178,7 +196,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 					{
 						method: 'POST',
 						headers: {
-							Authorization: `Token ${process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY}`,
+							Authorization: `Token ${deepgramApiKey}`,
 							'Content-Type': 'audio/m4a',
 						},
 						body: audioBlob,
@@ -217,7 +235,9 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 					);
 					return;
 				}
-				console.error('Deepgram Error:', error);
+				console.log('Handled Deepgram error:', error);
+				onSpeechInputError?.(error);
+				onServiceError?.('rozpoznawanie mowy', error);
 				setMessages((prev) =>
 					prev.filter((message) => message.id !== userSpeakingMessageIdRef.current),
 				);
@@ -229,7 +249,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				}
 			}
 		},
-		[onTranscript, setIsLoading, setMessages],
+		[onServiceError, onSpeechInputError, onTranscript, setIsLoading, setMessages],
 	);
 
 	const stopRecordingAndSend = useCallback(async () => {
@@ -286,7 +306,8 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				setIsTranscribing(false);
 			}
 		} catch (error) {
-			console.error('Error while stopping recording:', error);
+			console.log('Handled recording stop error:', error);
+			onServiceError?.('nagrywanie głosu', error);
 			setMessages((prev) =>
 				prev.filter((message) => message.id !== userSpeakingMessageIdRef.current),
 			);
@@ -297,7 +318,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 			recordingStartedAtRef.current = null;
 			shouldDiscardCurrentRecordingRef.current = false;
 		}
-	}, [audioRecorder, clearMetering, sendToDeepgram, setIsLoading, setMessages]);
+	}, [audioRecorder, clearMetering, onServiceError, sendToDeepgram, setIsLoading, setMessages]);
 
 	const startMetering = useCallback(() => {
 		lastLoudTime.current = Date.now();
@@ -439,6 +460,18 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				return;
 			}
 
+			try {
+				getDeepgramApiKeyOrThrow();
+			} catch (error) {
+				console.log('Handled Deepgram configuration error:', error);
+				onSpeechInputError?.(error);
+				onServiceError?.('rozpoznawanie mowy', error);
+				setIsListening(false);
+				setIsLoading(false);
+				setIsTranscribing(false);
+				return;
+			}
+
 			onStopExternal();
 			isStartingRecordingRef.current = true;
 			shouldStopAfterStartRef.current = false;
@@ -482,7 +515,8 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 					startMetering();
 				}
 			} catch (error) {
-				console.error('Error starting recording:', error);
+				console.log('Handled recording start error:', error);
+				onServiceError?.('nagrywanie głosu', error);
 				setIsListening(false);
 				setMessages((prev) => prev.filter((message) => message.id !== userTempId));
 			} finally {
@@ -498,6 +532,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 		isMicProcessing,
 		isMicRestartBlocked,
 		onStopExternal,
+		onServiceError,
 		setMessages,
 		setShowTextInput,
 		showTextInput,
@@ -520,7 +555,8 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 			!isTranscribing &&
 			!isGenerating &&
 			!isAudioPlaying &&
-			!isMicRestartBlocked,
+			!isMicRestartBlocked &&
+			!isSpeechInputUnavailable,
 		onDetected: handleWakeWordDetected,
 	});
 
@@ -529,6 +565,9 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 			playsInSilentMode: true,
 			allowsRecording: true,
 			shouldPlayInBackground: true,
+		}).catch((error) => {
+			console.log('Handled audio mode setup error:', error);
+			onServiceError?.('nagrywanie głosu', error);
 		});
 
 		return () => {

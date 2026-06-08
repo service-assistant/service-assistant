@@ -24,6 +24,7 @@ type SourcePanelProps = {
 	downloadedFileIds: Set<number>;
 	onOpenFile: (file: AvailableFile) => void;
 	onDeleteDownloadedFile: (file: AvailableFile) => void;
+	onPdfError?: (error: unknown) => void;
 	onClose: () => void;
 };
 
@@ -37,6 +38,7 @@ export default function SourcePanel({
 	downloadedFileIds,
 	onOpenFile,
 	onDeleteDownloadedFile,
+	onPdfError,
 	onClose,
 }: SourcePanelProps) {
 	if (!showSourcePanel) return null;
@@ -53,6 +55,7 @@ export default function SourcePanel({
 					source={sourcePanelPdf.source}
 					page={sourcePanelPdf.page || 1}
 					preserveTop
+					onError={onPdfError}
 				/>
 			</View>
 		</View>

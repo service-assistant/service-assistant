@@ -137,6 +137,8 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	isListening: boolean;
 	isMicProcessing: boolean;
 	isMicRestartBlocked: boolean;
+	isSpeechInputUnavailable?: boolean;
+	isVoiceOutputUnavailable?: boolean;
 	soundLevelAnim: Animated.Value;
 	currentImageAspectRatio: number;
 	startPromptInputRef: TextInputRef;
@@ -208,6 +210,8 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	isListening,
 	isMicProcessing,
 	isMicRestartBlocked,
+	isSpeechInputUnavailable,
+	isVoiceOutputUnavailable,
 	soundLevelAnim,
 	currentImageAspectRatio,
 	startPromptInputRef,
@@ -329,6 +333,8 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 					isListening={isListening}
 					isMicProcessing={isMicProcessing}
 					isMicRestartBlocked={isMicRestartBlocked}
+					isSpeechInputUnavailable={isSpeechInputUnavailable}
+					isVoiceOutputUnavailable={isVoiceOutputUnavailable}
 					isWritingActive={showTextInput}
 					onMicPress={onMicPress}
 					onWritingPress={onWritingPress}
@@ -351,6 +357,8 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	isListening,
 	isMicProcessing,
 	isMicRestartBlocked,
+	isSpeechInputUnavailable,
+	isVoiceOutputUnavailable,
 	soundLevelAnim,
 	currentImageAspectRatio,
 	startPromptInputRef,
@@ -448,6 +456,8 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 						isListening={isListening}
 						isMicProcessing={isMicProcessing}
 						isMicRestartBlocked={isMicRestartBlocked}
+						isSpeechInputUnavailable={isSpeechInputUnavailable}
+						isVoiceOutputUnavailable={isVoiceOutputUnavailable}
 						isWritingActive={showTextInput}
 						onMicPress={onMicPress}
 						onWritingPress={onWritingPress}

@@ -12,10 +12,12 @@ export default function PdfViewer({
 	source,
 	page,
 	preserveTop = false,
+	onError,
 }: {
 	source: any;
 	page: number;
 	preserveTop?: boolean;
+	onError?: (error: unknown) => void;
 }) {
 	const [isLoading, setIsLoading] = useState(true);
 	const sourceKey = useMemo(() => {
@@ -61,6 +63,7 @@ export default function PdfViewer({
 				}}
 				onError={(error) => {
 					console.log('PDF failed to load:', error);
+					onError?.(error);
 					setIsLoading(false);
 				}}
 				style={{

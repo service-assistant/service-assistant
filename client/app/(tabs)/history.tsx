@@ -14,7 +14,14 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const SERVER_URL = 'https://staging.asystent-serwisanta.pl';
+import ServiceErrorModal from '@/components/ServiceErrorModal';
+import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
+import {
+	getAuthTokenOrThrow,
+	getServiceErrorFeature,
+	throwIfAuthResponseError,
+} from '@/utils/auth-errors';
+
 const PRIMARY_ORANGE = '#FF6B00';
 
 type Brand = {
@@ -124,8 +131,10 @@ const isTodayInPoland = (value: string) => {
 
 export default function HistoryScreen() {
 	const router = useRouter();
-	const { width } = useWindowDimensions();
-	const isTablet = width >= 768;
+	const { width, height } = useWindowDimensions();
+	const shortestScreenSide = Math.min(width, height);
+	const isTablet = shortestScreenSide >= 600;
+	const useTabletHistoryRefresh = isTablet;
 	const [brands, setBrands] = useState<Brand[]>([]);
 	const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
 	const [devices, setDevices] = useState<Device[]>([]);
@@ -133,39 +142,56 @@ export default function HistoryScreen() {
 	const [activeBrandFilter, setActiveBrandFilter] = useState('WSZYSTKIE');
 	const [activeTypeFilter, setActiveTypeFilter] = useState('WSZYSTKIE');
 	const [isLoading, setIsLoading] = useState(true);
+	const [serviceErrorFeature, setServiceErrorFeature] = useState<string | null>(null);
+
+	const showServiceError = useCallback((featureName: string, error: unknown) => {
+		console.log(`Handled service error (${featureName}):`, error);
+		setServiceErrorFeature(featureName);
+	}, []);
 
 	useFocusEffect(
 		useCallback(() => {
 			const abortController = new AbortController();
-			const authToken = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
-			const headers = {
-				Accept: 'application/json',
-				Authorization: `Bearer ${authToken}`,
-			};
 
 			const loadHistory = async () => {
 				setIsLoading(true);
 
 				try {
+					if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+					const authToken = getAuthTokenOrThrow();
+					const headers = {
+						Accept: 'application/json',
+						Authorization: `Bearer ${authToken}`,
+					};
+
 					const [brandsResponse, typesResponse, devicesResponse, threadsResponse] =
 						await Promise.all([
-							fetch(`${SERVER_URL}/api/brands`, {
+							fetch(`${AUTH_URL}/api/brands`, {
 								headers,
 								signal: abortController.signal,
 							}),
-							fetch(`${SERVER_URL}/api/device_types`, {
+							fetch(`${AUTH_URL}/api/device_types`, {
 								headers,
 								signal: abortController.signal,
 							}),
-							fetch(`${SERVER_URL}/api/devices`, {
+							fetch(`${AUTH_URL}/api/devices`, {
 								headers,
 								signal: abortController.signal,
 							}),
-							fetch(`${SERVER_URL}/api/threads`, {
+							fetch(`${AUTH_URL}/api/threads`, {
 								headers,
 								signal: abortController.signal,
 							}),
 						]);
+
+					for (const response of [
+						brandsResponse,
+						typesResponse,
+						devicesResponse,
+						threadsResponse,
+					]) {
+						throwIfAuthResponseError(response);
+					}
 
 					if (
 						!brandsResponse.ok ||
@@ -190,7 +216,8 @@ export default function HistoryScreen() {
 					setThreads(loadedThreads);
 				} catch (error: any) {
 					if (error.name !== 'AbortError') {
-						console.error('Failed to load chat history:', error);
+						console.log('Handled chat history load error:', error);
+						showServiceError(getServiceErrorFeature(error, 'historia czatów'), error);
 					}
 				} finally {
 					if (!abortController.signal.aborted) {
@@ -202,7 +229,7 @@ export default function HistoryScreen() {
 			loadHistory();
 
 			return () => abortController.abort();
-		}, []),
+		}, [showServiceError]),
 	);
 
 	const historyItems: HistoryItem[] = [...threads]
@@ -237,51 +264,75 @@ export default function HistoryScreen() {
 
 	const brandFilterOptions = [{ name: 'WSZYSTKIE', logo_url: null }, ...brands];
 	const typeFilterOptions = [{ name: 'WSZYSTKIE' }, ...deviceTypes];
+	const pagePaddingHorizontal = useTabletHistoryRefresh ? 20 : 16;
+	const pagePaddingTop = useTabletHistoryRefresh ? 10 : 16;
+	const headerTitleClassName = useTabletHistoryRefresh ? 'text-3xl' : 'text-2xl';
+	const headerMinHeight = useTabletHistoryRefresh ? 44 : 38;
+	const headerBottomMargin = useTabletHistoryRefresh ? 12 : 16;
+	const filterLabelClassName = `text-gray-400 font-bold uppercase tracking-widest ml-2 ${
+		useTabletHistoryRefresh ? 'text-[12px] mb-1' : 'text-sm mb-2'
+	}`;
+	const getFilterChipStyle = (active: boolean) =>
+		useTabletHistoryRefresh
+			? {
+					height: 42,
+					paddingHorizontal: 20,
+					paddingVertical: 0,
+					marginRight: 12,
+					backgroundColor: active ? 'rgba(255, 107, 0, 0.16)' : '#242428',
+					borderWidth: 1,
+					borderColor: active ? PRIMARY_ORANGE : 'rgba(255, 255, 255, 0.07)',
+				}
+			: {
+					backgroundColor: active ? PRIMARY_ORANGE : '#27272a',
+				};
+	const historyCardPaddingVertical = useTabletHistoryRefresh ? 14 : 16;
+	const historyCardBorderRadius = useTabletHistoryRefresh ? 10 : 12;
+	const historyCardMarginBottom = useTabletHistoryRefresh ? 12 : 12;
 
 	return (
 		<SafeAreaView className='flex-1 bg-[#09090b]' edges={['top', 'left', 'right']}>
 			<ScrollView
 				className='flex-1'
 				contentContainerStyle={{
-					paddingHorizontal: isTablet ? 24 : 16,
-					paddingTop: 16,
+					paddingHorizontal: pagePaddingHorizontal,
+					paddingTop: pagePaddingTop,
 					paddingBottom: 36,
 				}}
 				showsVerticalScrollIndicator={false}>
 				<View
-					className='flex-row items-center gap-3 mb-4'
-					style={{ minHeight: isTablet ? 50 : 38 }}>
+					className='flex-row items-center gap-3'
+					style={{ minHeight: headerMinHeight, marginBottom: headerBottomMargin }}>
 					<TouchableOpacity
 						onPress={() => router.push('/home')}
 						accessibilityRole='button'
 						accessibilityLabel='Wstecz'
-						className='h-12 px-[18px] flex-row items-center justify-center mr-5 border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D]'>
+						className='flex-row items-center justify-center mr-5 border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D]'
+						style={{
+							height: useTabletHistoryRefresh ? 44 : 48,
+							paddingHorizontal: useTabletHistoryRefresh ? 16 : 18,
+						}}>
 						<Feather name='arrow-left' size={22} color='#FF7A00' />
 						<Text className='text-[#FF7A00] ml-4 text-[13px] font-semibold tracking-wider'>
 							WSTECZ
 						</Text>
 					</TouchableOpacity>
-					<Text className={`${isTablet ? 'text-4xl' : 'text-2xl'} text-white font-bold`}>
+					<Text className={`${headerTitleClassName} text-white font-bold`}>
 						Historia czatów
 					</Text>
 				</View>
 
-				<View className='mb-3'>
-					<Text className='text-gray-400 text-sm font-bold uppercase tracking-widest ml-2 mb-2'>
-						Marka
-					</Text>
+				<View style={{ marginBottom: useTabletHistoryRefresh ? 8 : 12 }}>
+					<Text className={filterLabelClassName}>Marka</Text>
 					<ScrollView horizontal showsHorizontalScrollIndicator={false}>
 						{brandFilterOptions.map((brand) => (
 							<TouchableOpacity
 								key={brand.name}
 								onPress={() => setActiveBrandFilter(brand.name)}
-								style={{
-									backgroundColor:
-										activeBrandFilter === brand.name
-											? PRIMARY_ORANGE
-											: '#27272a',
-								}}
-								className='px-6 py-3 rounded-full mr-4 min-h-[48px] justify-center items-center flex-row'>
+								style={getFilterChipStyle(activeBrandFilter === brand.name)}
+								className={`rounded-full justify-center items-center flex-row ${
+									useTabletHistoryRefresh ? '' : 'px-6 py-3 mr-4 min-h-[48px]'
+								}`}>
 								<BrandLogoOrText
 									brandName={brand.name}
 									logoUrl={brand.logo_url}
@@ -293,19 +344,16 @@ export default function HistoryScreen() {
 				</View>
 
 				<View className='mb-0'>
-					<Text className='text-gray-400 text-sm font-bold uppercase tracking-widest ml-2 mb-2'>
-						Typ
-					</Text>
+					<Text className={filterLabelClassName}>Typ</Text>
 					<ScrollView horizontal showsHorizontalScrollIndicator={false}>
 						{typeFilterOptions.map((type) => (
 							<TouchableOpacity
 								key={type.name}
 								onPress={() => setActiveTypeFilter(type.name)}
-								style={{
-									backgroundColor:
-										activeTypeFilter === type.name ? PRIMARY_ORANGE : '#27272a',
-								}}
-								className='px-6 py-3 rounded-full mr-4 min-h-[48px] justify-center items-center flex-row'>
+								style={getFilterChipStyle(activeTypeFilter === type.name)}
+								className={`rounded-full justify-center items-center flex-row ${
+									useTabletHistoryRefresh ? '' : 'px-6 py-3 mr-4 min-h-[48px]'
+								}`}>
 								<Text
 									className={`text-sm font-bold uppercase ${
 										activeTypeFilter === type.name
@@ -359,7 +407,12 @@ export default function HistoryScreen() {
 								}
 								accessibilityRole='button'
 								accessibilityLabel={`Otwórz czat: ${item.title}`}
-								className='flex-row items-center bg-[#18181b] border border-white/5 rounded-[12px] px-4 py-4 mb-3'>
+								className='flex-row items-center bg-[#18181b] border border-white/5 px-4'
+								style={{
+									paddingVertical: historyCardPaddingVertical,
+									borderRadius: historyCardBorderRadius,
+									marginBottom: historyCardMarginBottom,
+								}}>
 								<View
 									className='w-2 h-2 rounded-full mr-3'
 									style={
@@ -419,6 +472,11 @@ export default function HistoryScreen() {
 					</View>
 				)}
 			</ScrollView>
+			<ServiceErrorModal
+				visible={Boolean(serviceErrorFeature)}
+				featureName={serviceErrorFeature || 'wybrana funkcja'}
+				onClose={() => setServiceErrorFeature(null)}
+			/>
 		</SafeAreaView>
 	);
 }

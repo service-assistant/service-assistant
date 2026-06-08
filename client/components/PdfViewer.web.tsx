@@ -17,10 +17,12 @@ const getPdfUri = (source: any) => {
 export default function PdfViewer({
 	source,
 	preserveTop = false,
+	onError,
 }: {
 	source: any;
 	page?: number;
 	preserveTop?: boolean;
+	onError?: (error: unknown) => void;
 }) {
 	const pdfUri = getPdfUri(source);
 	const [isLoading, setIsLoading] = useState(true);
@@ -40,6 +42,10 @@ export default function PdfViewer({
 				// and force the document to fit horizontally (view=FitH)
 				src={`${pdfUri}#toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
 				onLoad={() => requestAnimationFrame(() => setIsLoading(false))}
+				onError={(error) => {
+					onError?.(error);
+					setIsLoading(false);
+				}}
 				style={{
 					// Oversizing the iframe and using negative margins to hide
 					// any remaining native browser scrollbars or borders

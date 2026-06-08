@@ -12,21 +12,41 @@ import { Platform } from 'react-native';
 
 import * as FileSystem from 'expo-file-system/legacy';
 
+const getOpenAiApiKeyOrThrow = () => {
+	const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY?.trim();
+
+	if (!apiKey || apiKey === 'undefined' || apiKey === 'null') {
+		throw Object.assign(new Error('Missing EXPO_PUBLIC_OPENAI_API_KEY'), {
+			isOpenAiKeyError: true,
+		});
+	}
+
+	return apiKey;
+};
+
 type UseAssistantAudioParams = {
 	setIsLoading: Dispatch<SetStateAction<boolean>>;
 	setIsGenerating: Dispatch<SetStateAction<boolean>>;
+	onServiceError?: (featureName: string, error: unknown) => void;
+	onOpenAiKeyError?: (error: unknown) => void;
 };
 
-export const useAssistantAudio = ({ setIsLoading, setIsGenerating }: UseAssistantAudioParams) => {
+export const useAssistantAudio = ({
+	setIsLoading,
+	setIsGenerating,
+	onServiceError,
+	onOpenAiKeyError,
+}: UseAssistantAudioParams) => {
 	const ttsPlayer = useAudioPlayer(null);
 	const ttsAbortControllerRef = useRef<AbortController | null>(null);
 	const [isAudioPlaying, setIsAudioPlaying] = useState<boolean>(false);
 
 	useEffect(() => {
 		const interval = setInterval(() => {
-			if (ttsPlayer && ttsPlayer.playing) {
-				setIsAudioPlaying(true);
-			} else {
+			try {
+				setIsAudioPlaying(Boolean(ttsPlayer?.playing));
+			} catch (error) {
+				console.log('Handled released TTS player status read:', error);
 				setIsAudioPlaying(false);
 			}
 		}, 300);
@@ -39,8 +59,12 @@ export const useAssistantAudio = ({ setIsLoading, setIsGenerating }: UseAssistan
 			ttsAbortControllerRef.current.abort();
 			ttsAbortControllerRef.current = null;
 		}
-		if (ttsPlayer && ttsPlayer.playing) {
-			ttsPlayer.pause();
+		try {
+			if (ttsPlayer?.playing) {
+				ttsPlayer.pause();
+			}
+		} catch (error) {
+			console.log('Handled released TTS player stop:', error);
 		}
 		setIsAudioPlaying(false);
 	}, [ttsPlayer]);
@@ -54,12 +78,7 @@ export const useAssistantAudio = ({ setIsLoading, setIsGenerating }: UseAssistan
 
 			try {
 				setIsLoading(true);
-				const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-
-				if (!apiKey) {
-					alert('Missing API Key!');
-					return;
-				}
+				const apiKey = getOpenAiApiKeyOrThrow();
 
 				const response = await fetch('https://api.openai.com/v1/audio/speech', {
 					method: 'POST',
@@ -75,7 +94,11 @@ export const useAssistantAudio = ({ setIsLoading, setIsGenerating }: UseAssistan
 					signal: abortController.signal,
 				});
 
-				if (!response.ok) throw new Error(`OpenAI API error: ${response.status}`);
+				if (!response.ok) {
+					throw Object.assign(new Error(`OpenAI API error: ${response.status}`), {
+						isOpenAiKeyError: response.status === 401 || response.status === 403,
+					});
+				}
 				if (abortController.signal.aborted) return;
 
 				if (Platform.OS === 'web') {
@@ -83,9 +106,13 @@ export const useAssistantAudio = ({ setIsLoading, setIsGenerating }: UseAssistan
 					if (abortController.signal.aborted) return;
 
 					const url = URL.createObjectURL(blob);
-					ttsPlayer.replace(url);
-					setIsAudioPlaying(true);
-					ttsPlayer.play();
+					try {
+						ttsPlayer.replace(url);
+						setIsAudioPlaying(true);
+						ttsPlayer.play();
+					} catch (error) {
+						console.log('Handled released TTS player playback:', error);
+					}
 				} else {
 					const arrayBuffer = await response.arrayBuffer();
 					if (abortController.signal.aborted) return;
@@ -99,13 +126,22 @@ export const useAssistantAudio = ({ setIsLoading, setIsGenerating }: UseAssistan
 
 					if (abortController.signal.aborted) return;
 
-					ttsPlayer.replace(fileUri);
-					setIsAudioPlaying(true);
-					ttsPlayer.play();
+					try {
+						ttsPlayer.replace(fileUri);
+						setIsAudioPlaying(true);
+						ttsPlayer.play();
+					} catch (error) {
+						console.log('Handled released TTS player playback:', error);
+					}
 				}
 			} catch (error: any) {
 				if (error.name === 'AbortError') return;
-				console.error('ChatGPT TTS error:', error);
+				console.log('Handled ChatGPT TTS error:', error);
+				if (error?.isOpenAiKeyError) {
+					onOpenAiKeyError?.(error);
+				} else {
+					onServiceError?.('odtwarzanie odpowiedzi głosowej', error);
+				}
 			} finally {
 				setIsLoading(false);
 				setIsGenerating(false);
@@ -114,7 +150,7 @@ export const useAssistantAudio = ({ setIsLoading, setIsGenerating }: UseAssistan
 				}
 			}
 		},
-		[setIsGenerating, setIsLoading, ttsPlayer],
+		[onOpenAiKeyError, onServiceError, setIsGenerating, setIsLoading, ttsPlayer],
 	);
 
 	return {
