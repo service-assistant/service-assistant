@@ -113,37 +113,37 @@ export default function ControlPanel({
 						iconColor: '#FFFFFF',
 						label: 'SŁUCHAM...',
 						labelColor: '#FFFFFF',
-				}
-			: micState === 'unavailable'
-				? {
-						backgroundColor: 'rgba(69, 10, 10, 0.88)',
-						borderColor: 'rgba(239, 68, 68, 0.8)',
-						shadowColor: '#EF4444',
-						shadowOpacity: 0.18,
-						shadowRadius: 14,
-						iconColor: '#FCA5A5',
-						label: 'MOWA NIEDOSTĘPNA',
-						labelColor: '#FCA5A5',
 					}
-				: {
-						backgroundColor: '#202028',
-						borderColor: '#34313A',
-						shadowColor: '#000000',
-						shadowOpacity: 0,
-						shadowRadius: 0,
-						iconColor: '#F0F0F0',
-						label: 'Naciśnij, aby mówić',
-						labelColor: 'rgba(229, 231, 235, 0.58)',
-					};
+				: micState === 'unavailable'
+					? {
+							backgroundColor: 'rgba(69, 10, 10, 0.88)',
+							borderColor: 'rgba(239, 68, 68, 0.8)',
+							shadowColor: '#EF4444',
+							shadowOpacity: 0.18,
+							shadowRadius: 14,
+							iconColor: '#FCA5A5',
+							label: 'MOWA NIEDOSTĘPNA',
+							labelColor: '#FCA5A5',
+						}
+					: {
+							backgroundColor: '#202028',
+							borderColor: '#34313A',
+							shadowColor: '#000000',
+							shadowOpacity: 0,
+							shadowRadius: 0,
+							iconColor: '#F0F0F0',
+							label: 'Naciśnij, aby mówić',
+							labelColor: 'rgba(229, 231, 235, 0.58)',
+						};
 	const micLabel = isMicProcessing
 		? 'Przetwarzam...'
 		: isSpeechInputUnavailable
 			? 'Mowa niedostępna'
-		: isHorizontal
-			? isListening
-				? 'Słucham...'
-				: 'Naciśnij żeby mówić'
-			: micStyle.label;
+			: isHorizontal
+				? isListening
+					? 'Słucham...'
+					: 'Naciśnij żeby mówić'
+				: micStyle.label;
 	const controlButtonStyle = {
 		width: 82,
 		height: 82,

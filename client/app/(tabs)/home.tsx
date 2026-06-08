@@ -754,9 +754,13 @@ export default function HomeScreen() {
 									<TouchableOpacity
 										key={brandObj.name}
 										onPress={() => setActiveBrandFilter(brandObj.name)}
-										style={getFilterChipStyle(activeBrandFilter === brandObj.name)}
+										style={getFilterChipStyle(
+											activeBrandFilter === brandObj.name,
+										)}
 										className={`rounded-full justify-center items-center flex-row ${
-											useTabletHomeRefresh ? '' : 'px-6 py-3 mr-4 min-h-[48px]'
+											useTabletHomeRefresh
+												? ''
+												: 'px-6 py-3 mr-4 min-h-[48px]'
 										}`}>
 										<BrandLogoOrText
 											brandName={brandObj.name}
@@ -787,9 +791,13 @@ export default function HomeScreen() {
 									<TouchableOpacity
 										key={typeObj.name}
 										onPress={() => setActiveTypeFilter(typeObj.name)}
-										style={getFilterChipStyle(activeTypeFilter === typeObj.name)}
+										style={getFilterChipStyle(
+											activeTypeFilter === typeObj.name,
+										)}
 										className={`rounded-full justify-center items-center flex-row ${
-											useTabletHomeRefresh ? '' : 'px-6 py-3 mr-4 min-h-[48px]'
+											useTabletHomeRefresh
+												? ''
+												: 'px-6 py-3 mr-4 min-h-[48px]'
 										}`}>
 										<Text
 											className={`text-sm font-bold uppercase ${

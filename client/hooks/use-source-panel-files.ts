@@ -30,10 +30,10 @@ type UseSourcePanelFilesParams = {
 const isRemoteAuthorizedPdfSource = (source: unknown) =>
 	Boolean(
 		source &&
-			typeof source === 'object' &&
-			'uri' in source &&
-			typeof (source as { uri?: unknown }).uri === 'string' &&
-			'headers' in source,
+		typeof source === 'object' &&
+		'uri' in source &&
+		typeof (source as { uri?: unknown }).uri === 'string' &&
+		'headers' in source,
 	);
 
 export const useSourcePanelFiles = ({

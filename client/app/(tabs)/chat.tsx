@@ -311,16 +311,13 @@ export default function ChatScreen() {
 				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 				const authToken = CHAT_AUTH_TOKEN_OVERRIDE ?? getAuthTokenOrThrow();
 
-				const response = await fetch(
-					`${AUTH_URL}/api/threads/${parsedThreadId}/messages`,
-					{
-						headers: {
-							Accept: 'application/json',
-							Authorization: `Bearer ${authToken}`,
-						},
-						signal: abortController.signal,
+				const response = await fetch(`${AUTH_URL}/api/threads/${parsedThreadId}/messages`, {
+					headers: {
+						Accept: 'application/json',
+						Authorization: `Bearer ${authToken}`,
 					},
-				);
+					signal: abortController.signal,
+				});
 
 				if (!response.ok) {
 					throwIfAuthResponseError(response);
@@ -411,7 +408,10 @@ export default function ChatScreen() {
 		}
 
 		if (isSpeechInputUnavailable && !isListening) {
-			showServiceError('rozpoznawanie mowy', new Error('Deepgram speech input is unavailable'));
+			showServiceError(
+				'rozpoznawanie mowy',
+				new Error('Deepgram speech input is unavailable'),
+			);
 			return;
 		}
 
