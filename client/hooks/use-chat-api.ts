@@ -4,6 +4,14 @@ import EventSource, { EventSourceEvent } from 'react-native-sse';
 
 import type { ChatMessageItem } from '@/components/ChatMessages';
 import { stripResponseDirectivesForSpeech } from '@/components/ChatMessages';
+import { AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
+import {
+	AUTH_SERVICE_FEATURE,
+	createInvalidAuthTokenError,
+	getAuthTokenOrThrow,
+	getServiceErrorFeature,
+	throwIfAuthResponseError,
+} from '@/utils/auth-errors';
 import { buildChunkImageUrl, formatStreamingText, parseStreamData } from '@/utils/chat-stream';
 
 type StreamEvent = 'chunk';
@@ -39,6 +47,8 @@ type UseChatApiParams<TMessage extends ChatMessageItem> = {
 	setIsGenerating: Dispatch<SetStateAction<boolean>>;
 	setCurrentImage: Dispatch<SetStateAction<string | null>>;
 	playAssistantAudio: (text: string) => void | Promise<void>;
+	onServiceError?: (featureName: string, error: unknown) => void;
+	authTokenOverride?: string | null;
 };
 
 const fetchAuthorizedImageDataUrl = async (
@@ -52,6 +62,7 @@ const fetchAuthorizedImageDataUrl = async (
 	});
 
 	if (!response.ok) {
+		throwIfAuthResponseError(response);
 		throw new Error(`Failed to load source image: ${response.status}`);
 	}
 
@@ -72,6 +83,8 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 	setIsGenerating,
 	setCurrentImage,
 	playAssistantAudio,
+	onServiceError,
+	authTokenOverride,
 }: UseChatApiParams<TMessage>) => {
 	const fetchAbortControllerRef = useRef<AbortController | null>(null);
 	const currentThreadIdRef = useRef<number | null>(currentThreadId);
@@ -99,7 +112,6 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 			setIsLoading(true);
 			setIsGenerating(true);
 			const aiMessageId = Date.now() + Math.random();
-			const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
 
 			setMessages((prev) => [
 				...prev,
@@ -110,6 +122,8 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 			fetchAbortControllerRef.current = abortController;
 
 			try {
+				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				const AUTH_TOKEN = authTokenOverride ?? getAuthTokenOrThrow();
 				let activeThreadId = currentThreadIdRef.current;
 
 				if (!activeThreadId) {
@@ -127,7 +141,10 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 						signal: abortController.signal,
 					});
 
-					if (!threadResponse.ok) throw new Error('Failed to create a new thread.');
+					if (!threadResponse.ok) {
+						throwIfAuthResponseError(threadResponse);
+						throw new Error('Failed to create a new thread.');
+					}
 					const threadData = await threadResponse.json();
 
 					activeThreadId = threadData.id;
@@ -212,6 +229,11 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 						}
 
 						if ('xhrStatus' in event) {
+							const status = Number(event.xhrStatus);
+							if (status === 401 || status === 403) {
+								reject(createInvalidAuthTokenError(status));
+								return;
+							}
 							reject(new Error(`API server error: ${event.xhrStatus}`));
 						} else if ('message' in event) {
 							reject(new Error(event.message));
@@ -251,6 +273,8 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 						},
 					);
 
+					throwIfAuthResponseError(chunksResponse);
+
 					if (chunksResponse.ok) {
 						const chunks = (await chunksResponse.json()) as SourceChunkPayload[];
 						const chunkImagePaths = chunks.flatMap(
@@ -284,7 +308,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 											abortController.signal,
 										).catch((error) => {
 											if (abortController.signal.aborted) throw error;
-											console.error('Source image load error:', error);
+											console.log('Handled source image load error:', error);
 											return null;
 										});
 										loadedImagePromisesByPath.set(imagePath, imagePromise);
@@ -314,6 +338,8 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 									signal: abortController.signal,
 								},
 							);
+
+							throwIfAuthResponseError(attachmentResponse);
 
 							if (attachmentResponse.ok) {
 								const attachment =
@@ -374,16 +400,23 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 						),
 					);
 				} else {
-					setMessages((prev) =>
-						prev.map((message) =>
-							message.id === aiMessageId
-								? ({
-										...message,
-										text: `Wystąpił błąd komunikacji: ${error.message}`,
-									} as TMessage)
-								: message,
-						),
-					);
+					const serviceFeature = getServiceErrorFeature(error, 'odpowiedź asystenta');
+					onServiceError?.(serviceFeature, error);
+
+					if (serviceFeature === AUTH_SERVICE_FEATURE) {
+						setMessages((prev) => prev.filter((message) => message.id !== aiMessageId));
+					} else {
+						setMessages((prev) =>
+							prev.map((message) =>
+								message.id === aiMessageId
+									? ({
+											...message,
+											text: 'Wystąpił błąd komunikacji. Spróbuj ponownie później.',
+										} as TMessage)
+									: message,
+							),
+						);
+					}
 				}
 				setIsGenerating(false);
 			} finally {
@@ -395,7 +428,9 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 		},
 		[
 			deviceId,
+			authTokenOverride,
 			playAssistantAudio,
+			onServiceError,
 			serverUrl,
 			setCurrentImage,
 			setCurrentThreadId,

@@ -3,6 +3,14 @@ import { Alert, Platform } from 'react-native';
 
 import type { SourcePanelPdf } from '@/components/SourcePanel';
 import type { AvailableFile } from '@/types/chat';
+import { AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
+import {
+	AUTH_SERVICE_FEATURE,
+	createInvalidAuthTokenError,
+	getAuthTokenOrThrow,
+	getServiceErrorFeature,
+	throwIfAuthResponseError,
+} from '@/utils/auth-errors';
 import * as FileSystem from 'expo-file-system/legacy';
 
 type SourceMessage = {
@@ -15,12 +23,25 @@ type UseSourcePanelFilesParams = {
 	availableFiles: AvailableFile[];
 	isAvailableFilesLoading: boolean;
 	serverUrl: string;
+	onServiceError?: (featureName: string, error: unknown) => void;
+	authTokenOverride?: string | null;
 };
+
+const isRemoteAuthorizedPdfSource = (source: unknown) =>
+	Boolean(
+		source &&
+			typeof source === 'object' &&
+			'uri' in source &&
+			typeof (source as { uri?: unknown }).uri === 'string' &&
+			'headers' in source,
+	);
 
 export const useSourcePanelFiles = ({
 	availableFiles,
 	isAvailableFilesLoading,
 	serverUrl,
+	onServiceError,
+	authTokenOverride,
 }: UseSourcePanelFilesParams) => {
 	const [showSourcePanel, setShowSourcePanel] = useState<boolean>(false);
 	const [sourcePanelPdf, setSourcePanelPdf] = useState<SourcePanelPdf | null>(null);
@@ -100,6 +121,16 @@ export const useSourcePanelFiles = ({
 		(message: SourceMessage) => {
 			if (!message.sourceAttachmentId) return;
 
+			let authToken = '';
+			try {
+				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				authToken = authTokenOverride ?? getAuthTokenOrThrow();
+			} catch (error) {
+				console.log('Handled auth token error:', error);
+				onServiceError?.(getServiceErrorFeature(error, 'autoryzacja aplikacji'), error);
+				return;
+			}
+
 			openPdfInSourcePanel({
 				name: message.sourceAttachmentName || `Dokument_${message.sourceAttachmentId}.pdf`,
 				icon: 'file-pdf-box',
@@ -107,13 +138,13 @@ export const useSourcePanelFiles = ({
 				source: {
 					uri: `${serverUrl}/api/attachments/${message.sourceAttachmentId}/file`,
 					headers: {
-						Authorization: `Bearer ${process.env.EXPO_PUBLIC_AUTH_TOKEN || ''}`,
+						Authorization: `Bearer ${authToken}`,
 					},
 				},
 				page: (message.sourceAttachmentPage || 1) + 1,
 			});
 		},
-		[openPdfInSourcePanel, serverUrl],
+		[authTokenOverride, onServiceError, openPdfInSourcePanel, serverUrl],
 	);
 
 	const openFilesPanel = useCallback(() => {
@@ -156,11 +187,13 @@ export const useSourcePanelFiles = ({
 		async (file: AvailableFile, targetPage: number = 1) => {
 			if (isFileDownloading) return;
 
-			const authToken = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
 			setIsFileDownloading(true);
 			setDownloadingFileId(file.id);
 
 			try {
+				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				const authToken = authTokenOverride ?? getAuthTokenOrThrow();
+
 				if (Platform.OS === 'web') {
 					if (webPdfObjectUrlRef.current) {
 						URL.revokeObjectURL(webPdfObjectUrlRef.current);
@@ -172,6 +205,7 @@ export const useSourcePanelFiles = ({
 					});
 
 					if (!response.ok) {
+						throwIfAuthResponseError(response);
 						throw new Error(`PDF download failed: ${response.status}`);
 					}
 
@@ -200,6 +234,13 @@ export const useSourcePanelFiles = ({
 
 					const result = await downloadResumableRef.current.downloadAsync();
 
+					if (result && 'status' in result) {
+						const status = Number(result.status);
+						if (status === 401 || status === 403) {
+							throw createInvalidAuthTokenError(status);
+						}
+					}
+
 					if (!result?.uri) {
 						throw new Error('Download failed - no URI');
 					}
@@ -216,15 +257,19 @@ export const useSourcePanelFiles = ({
 				setDownloadedFileIds((prev) => new Set(prev).add(file.id));
 				setShowSourcePanel(true);
 			} catch (error) {
-				console.error('Download error:', error);
-				Alert.alert('Błąd', `Nie udało się pobrać pliku: ${file.name}`);
+				console.log('Handled download error:', error);
+				const featureName = getServiceErrorFeature(error, 'pobieranie pliku');
+				onServiceError?.(featureName, error);
+				if (featureName !== AUTH_SERVICE_FEATURE) {
+					Alert.alert('Błąd', `Nie udało się pobrać pliku: ${file.name}`);
+				}
 			} finally {
 				setIsFileDownloading(false);
 				setDownloadingFileId(null);
 				downloadResumableRef.current = null;
 			}
 		},
-		[getLocalFileUri, isFileDownloading],
+		[authTokenOverride, getLocalFileUri, isFileDownloading, onServiceError],
 	);
 
 	const openFileInSourcePanel = useCallback(
@@ -247,6 +292,18 @@ export const useSourcePanelFiles = ({
 		[downloadedFileIds, getLocalFileUri, openPdfInSourcePanel, performFileDownload],
 	);
 
+	const handlePdfError = useCallback(
+		(error: unknown) => {
+			if (isRemoteAuthorizedPdfSource(sourcePanelPdf?.source)) {
+				onServiceError?.(AUTH_SERVICE_FEATURE, createInvalidAuthTokenError(401));
+				return;
+			}
+
+			onServiceError?.('podgląd pliku', error);
+		},
+		[onServiceError, sourcePanelPdf?.source],
+	);
+
 	return {
 		cancelDownload,
 		openFileInSourcePanel,
@@ -262,6 +319,7 @@ export const useSourcePanelFiles = ({
 			downloadedFileIds,
 			onOpenFile: openFileInSourcePanel,
 			onDeleteDownloadedFile: deleteDownloadedFile,
+			onPdfError: handlePdfError,
 			onClose: closeSourcePanel,
 		},
 	};

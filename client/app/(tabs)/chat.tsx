@@ -1,6 +1,6 @@
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
 	Image,
 	Keyboard,
@@ -16,14 +16,21 @@ import {
 	FullscreenSchemaView,
 	PortraitChatLayout,
 } from '@/components/ChatLayouts';
+import ServiceErrorModal from '@/components/ServiceErrorModal';
 import type { KeyboardFrame } from '@/components/StartPromptView';
 import { useAssistantAudio } from '@/hooks/use-assistant-audio';
 import { useChatApi } from '@/hooks/use-chat-api';
 import { useMicrophone } from '@/hooks/use-microphone';
 import { useSourcePanelFiles } from '@/hooks/use-source-panel-files';
 import type { AvailableFile, Message } from '@/types/chat';
+import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
+import {
+	getAuthTokenOrThrow,
+	getServiceErrorFeature,
+	throwIfAuthResponseError,
+} from '@/utils/auth-errors';
 
-const SERVER_URL = 'https://staging.asystent-serwisanta.pl';
+const CHAT_AUTH_TOKEN_OVERRIDE: string | null = null;
 
 type ChatMessage = Message & {
 	schemaImage?: string;
@@ -93,24 +100,52 @@ export default function ChatScreen() {
 	const [showFullscreenSchema, setShowFullscreenSchema] = useState<boolean>(false);
 	const [currentThreadId, setCurrentThreadId] = useState<number | null>(null);
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
+	const [serviceErrorFeature, setServiceErrorFeature] = useState<string | null>(null);
+	const [isSpeechInputUnavailable, setIsSpeechInputUnavailable] = useState<boolean>(false);
+	const [isVoiceOutputUnavailable, setIsVoiceOutputUnavailable] = useState<boolean>(false);
 
 	const hasStartedChat = messages.length > 0 || Boolean(threadId);
 	const messagesScrollViewRef = useRef<ScrollView>(null);
 	const startPromptInputRef = useRef<TextInput>(null);
 	const askAPIRef = useRef<(question: string) => void>(() => undefined);
+	const hasShownOpenAiKeyErrorRef = useRef<boolean>(false);
+	const showServiceError = useCallback((featureName: string, error: unknown) => {
+		console.log(`Handled service error (${featureName}):`, error);
+		setServiceErrorFeature(featureName);
+	}, []);
+	const handleOpenAiKeyError = useCallback(
+		(error: unknown) => {
+			console.log('Handled OpenAI API key error:', error);
+			setIsVoiceOutputUnavailable(true);
+
+			if (hasShownOpenAiKeyErrorRef.current) return;
+
+			hasShownOpenAiKeyErrorRef.current = true;
+			showServiceError('odtwarzanie odpowiedzi głosowej', error);
+		},
+		[showServiceError],
+	);
+	const handleSpeechInputError = useCallback((error: unknown) => {
+		console.log('Handled speech input error:', error);
+		setIsSpeechInputUnavailable(true);
+	}, []);
 
 	const { isAudioPlaying, playAssistantAudio, stopAssistantAudio } = useAssistantAudio({
 		setIsLoading,
 		setIsGenerating,
+		onServiceError: showServiceError,
+		onOpenAiKeyError: handleOpenAiKeyError,
 	});
 	const { cancelDownload, openFilesPanel, openMessageSource, sourcePanelProps } =
 		useSourcePanelFiles({
 			availableFiles,
 			isAvailableFilesLoading,
-			serverUrl: SERVER_URL,
+			serverUrl: AUTH_URL,
+			onServiceError: showServiceError,
+			authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
 		});
 	const { askAPI, stopChatApi } = useChatApi<ChatMessage>({
-		serverUrl: SERVER_URL,
+		serverUrl: AUTH_URL,
 		deviceId: HARDCODED_DEVICE_ID,
 		currentThreadId,
 		setCurrentThreadId,
@@ -119,6 +154,8 @@ export default function ChatScreen() {
 		setIsGenerating,
 		setCurrentImage,
 		playAssistantAudio,
+		onServiceError: showServiceError,
+		authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
 	});
 	askAPIRef.current = askAPI;
 
@@ -137,6 +174,7 @@ export default function ChatScreen() {
 		isGenerating,
 		isAudioPlaying,
 		showTextInput,
+		isSpeechInputUnavailable,
 		setShowTextInput,
 		setIsLoading,
 		onStopExternal: () => {
@@ -144,6 +182,8 @@ export default function ChatScreen() {
 			stopAssistantAudio();
 		},
 		onTranscript: (transcript) => askAPIRef.current(transcript),
+		onServiceError: showServiceError,
+		onSpeechInputError: handleSpeechInputError,
 	});
 
 	useEffect(() => {
@@ -186,24 +226,27 @@ export default function ChatScreen() {
 
 	useEffect(() => {
 		const abortController = new AbortController();
-		const AUTH_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
 
 		const fetchAvailableFiles = async () => {
 			setIsAvailableFilesLoading(true);
 
 			try {
+				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				const authToken = CHAT_AUTH_TOKEN_OVERRIDE ?? getAuthTokenOrThrow();
+
 				const response = await fetch(
-					`${SERVER_URL}/api/devices/${HARDCODED_DEVICE_ID}/attachments`,
+					`${AUTH_URL}/api/devices/${HARDCODED_DEVICE_ID}/attachments`,
 					{
 						headers: {
 							Accept: 'application/json',
-							Authorization: `Bearer ${AUTH_TOKEN}`,
+							Authorization: `Bearer ${authToken}`,
 						},
 						signal: abortController.signal,
 					},
 				);
 
 				if (!response.ok) {
+					throwIfAuthResponseError(response);
 					throw new Error(`Failed to load attachments: ${response.status}`);
 				}
 
@@ -217,13 +260,14 @@ export default function ChatScreen() {
 							name: attachment.original_filename || `Dokument_${attachment.id}.pdf`,
 							icon: iconOption.icon,
 							color: iconOption.color,
-							remoteUrl: `${SERVER_URL}/api/attachments/${attachment.id}/file`,
+							remoteUrl: `${AUTH_URL}/api/attachments/${attachment.id}/file`,
 						};
 					}),
 				);
 			} catch (error: any) {
 				if (error.name !== 'AbortError') {
-					console.error('Available files load error:', error);
+					console.log('Handled available files load error:', error);
+					showServiceError(getServiceErrorFeature(error, 'lista plików'), error);
 					setAvailableFiles([]);
 				}
 			} finally {
@@ -236,7 +280,7 @@ export default function ChatScreen() {
 		fetchAvailableFiles();
 
 		return () => abortController.abort();
-	}, []);
+	}, [showServiceError]);
 
 	useEffect(() => {
 		const abortController = new AbortController();
@@ -264,9 +308,11 @@ export default function ChatScreen() {
 			}
 
 			try {
-				const authToken = process.env.EXPO_PUBLIC_AUTH_TOKEN || '';
+				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				const authToken = CHAT_AUTH_TOKEN_OVERRIDE ?? getAuthTokenOrThrow();
+
 				const response = await fetch(
-					`${SERVER_URL}/api/threads/${parsedThreadId}/messages`,
+					`${AUTH_URL}/api/threads/${parsedThreadId}/messages`,
 					{
 						headers: {
 							Accept: 'application/json',
@@ -277,6 +323,7 @@ export default function ChatScreen() {
 				);
 
 				if (!response.ok) {
+					throwIfAuthResponseError(response);
 					throw new Error(`Failed to load thread messages: ${response.status}`);
 				}
 
@@ -292,7 +339,8 @@ export default function ChatScreen() {
 				);
 			} catch (error: any) {
 				if (error.name !== 'AbortError') {
-					console.error('Thread messages load error:', error);
+					console.log('Handled thread messages load error:', error);
+					showServiceError(getServiceErrorFeature(error, 'historia wątku'), error);
 				}
 			} finally {
 				if (!abortController.signal.aborted) {
@@ -304,7 +352,15 @@ export default function ChatScreen() {
 		loadThreadMessages();
 
 		return () => abortController.abort();
-	}, [cancelDownload, resetVoiceInput, sessionKey, stopAssistantAudio, stopChatApi, threadId]);
+	}, [
+		cancelDownload,
+		resetVoiceInput,
+		sessionKey,
+		showServiceError,
+		stopAssistantAudio,
+		stopChatApi,
+		threadId,
+	]);
 
 	useEffect(() => {
 		if (!currentImage) {
@@ -354,6 +410,11 @@ export default function ChatScreen() {
 			return;
 		}
 
+		if (isSpeechInputUnavailable && !isListening) {
+			showServiceError('rozpoznawanie mowy', new Error('Deepgram speech input is unavailable'));
+			return;
+		}
+
 		void handleMicPress();
 	};
 
@@ -384,6 +445,8 @@ export default function ChatScreen() {
 		isListening,
 		isMicProcessing,
 		isMicRestartBlocked,
+		isSpeechInputUnavailable,
+		isVoiceOutputUnavailable,
 		soundLevelAnim,
 		currentImageAspectRatio,
 		startPromptInputRef,
@@ -404,18 +467,43 @@ export default function ChatScreen() {
 
 	if (showFullscreenSchema && currentImage) {
 		return (
-			<FullscreenSchemaView
-				imageUrl={currentImage}
-				aspectRatio={currentImageAspectRatio}
-				insets={insets}
-				onBack={() => setShowFullscreenSchema(false)}
-			/>
+			<>
+				<FullscreenSchemaView
+					imageUrl={currentImage}
+					aspectRatio={currentImageAspectRatio}
+					insets={insets}
+					onBack={() => setShowFullscreenSchema(false)}
+				/>
+				<ServiceErrorModal
+					visible={Boolean(serviceErrorFeature)}
+					featureName={serviceErrorFeature || 'wybrana funkcja'}
+					onClose={() => setServiceErrorFeature(null)}
+				/>
+			</>
 		);
 	}
 
 	if (isPortrait) {
-		return <PortraitChatLayout {...commonLayoutProps} insets={insets} />;
+		return (
+			<>
+				<PortraitChatLayout {...commonLayoutProps} insets={insets} />
+				<ServiceErrorModal
+					visible={Boolean(serviceErrorFeature)}
+					featureName={serviceErrorFeature || 'wybrana funkcja'}
+					onClose={() => setServiceErrorFeature(null)}
+				/>
+			</>
+		);
 	}
 
-	return <DesktopChatLayout {...commonLayoutProps} />;
+	return (
+		<>
+			<DesktopChatLayout {...commonLayoutProps} />
+			<ServiceErrorModal
+				visible={Boolean(serviceErrorFeature)}
+				featureName={serviceErrorFeature || 'wybrana funkcja'}
+				onClose={() => setServiceErrorFeature(null)}
+			/>
+		</>
+	);
 }

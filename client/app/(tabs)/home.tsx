@@ -3,7 +3,7 @@ import { BlurView } from 'expo-blur';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
 	ActivityIndicator,
 	Animated,
@@ -17,6 +17,15 @@ import {
 	useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import ServiceErrorModal from '@/components/ServiceErrorModal';
+import { AUTH_URL, AUTH_URL_CONFIG_ERROR, CONFIG_SERVICE_FEATURE } from '@/utils/api-config';
+import {
+	AUTH_SERVICE_FEATURE,
+	getAuthTokenOrThrow,
+	getServiceErrorFeature,
+	throwIfAuthResponseError,
+} from '@/utils/auth-errors';
 
 // --- CONFIGURATION & DATA TYPES ---
 
@@ -64,7 +73,6 @@ const PROCESSING_VIOLET = '#8B5CF6';
 const SUCCESS_GREEN = '#22C55E';
 const ERROR_RED = '#EF4444';
 const HARDCODED_DEVICE_ID = '1';
-
 type MicUiState = 'idle' | 'listening' | 'processing' | 'success' | 'error' | 'disabled';
 
 const MIC_STATE_STYLES: Record<
@@ -200,8 +208,10 @@ const BrandLogoOrText: React.FC<{ brandName: string; logoUrl: string | null; act
 export default function HomeScreen() {
 	const router = useRouter();
 	const { width: CURRENT_SCREEN_WIDTH, height: CURRENT_SCREEN_HEIGHT } = useWindowDimensions();
-	const isTablet = CURRENT_SCREEN_WIDTH >= 768;
+	const shortestScreenSide = Math.min(CURRENT_SCREEN_WIDTH, CURRENT_SCREEN_HEIGHT);
+	const isTablet = shortestScreenSide >= 600;
 	const isPortrait = CURRENT_SCREEN_HEIGHT > CURRENT_SCREEN_WIDTH;
+	const useTabletHomeRefresh = isTablet;
 	const insets = useSafeAreaInsets();
 	const isWeb = Platform.OS === 'web';
 
@@ -225,25 +235,35 @@ export default function HomeScreen() {
 	const [isLoadingBrands, setIsLoadingBrands] = useState(true);
 	const [isLoadingTypes, setIsLoadingTypes] = useState(true);
 	const [isLoadingDevices, setIsLoadingDevices] = useState(true);
+	const [serviceErrorFeature, setServiceErrorFeature] = useState<string | null>(null);
 
-	const API_TOKEN = process.env.EXPO_PUBLIC_AUTH_TOKEN;
+	const showServiceError = useCallback((featureName: string, error: unknown) => {
+		console.log(`Handled service error (${featureName}):`, error);
+		setServiceErrorFeature(featureName);
+	}, []);
 
 	// --- FETCH DATA FROM API ---
 	useEffect(() => {
 		const fetchBrands = async () => {
 			try {
-				const response = await fetch('https://staging.asystent-serwisanta.pl/api/brands', {
+				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				const authToken = getAuthTokenOrThrow();
+				const response = await fetch(`${AUTH_URL}/api/brands`, {
 					method: 'GET',
 					headers: {
-						Authorization: `Bearer ${API_TOKEN}`,
+						Authorization: `Bearer ${authToken}`,
 						Accept: 'application/json',
 					},
 				});
-				if (!response.ok) throw new Error(`Brands API error: ${response.status}`);
+				if (!response.ok) {
+					throwIfAuthResponseError(response);
+					throw new Error(`Brands API error: ${response.status}`);
+				}
 				const data: Brand[] = await response.json();
 				setBrands(data);
 			} catch (error) {
-				console.error('Failed to fetch brands:', error);
+				console.log('Handled brands load error:', error);
+				showServiceError(getServiceErrorFeature(error, 'lista marek'), error);
 			} finally {
 				setIsLoadingBrands(false);
 			}
@@ -251,21 +271,24 @@ export default function HomeScreen() {
 
 		const fetchDeviceTypes = async () => {
 			try {
-				const response = await fetch(
-					'https://staging.asystent-serwisanta.pl/api/device_types',
-					{
-						method: 'GET',
-						headers: {
-							Authorization: `Bearer ${API_TOKEN}`,
-							Accept: 'application/json',
-						},
+				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				const authToken = getAuthTokenOrThrow();
+				const response = await fetch(`${AUTH_URL}/api/device_types`, {
+					method: 'GET',
+					headers: {
+						Authorization: `Bearer ${authToken}`,
+						Accept: 'application/json',
 					},
-				);
-				if (!response.ok) throw new Error(`Types API error: ${response.status}`);
+				});
+				if (!response.ok) {
+					throwIfAuthResponseError(response);
+					throw new Error(`Types API error: ${response.status}`);
+				}
 				const data: DeviceType[] = await response.json();
 				setDeviceTypes(data);
 			} catch (error) {
-				console.error('Failed to fetch device types:', error);
+				console.log('Handled device types load error:', error);
+				showServiceError(getServiceErrorFeature(error, 'lista typów urządzeń'), error);
 			} finally {
 				setIsLoadingTypes(false);
 			}
@@ -273,18 +296,24 @@ export default function HomeScreen() {
 
 		const fetchDevices = async () => {
 			try {
-				const response = await fetch('https://staging.asystent-serwisanta.pl/api/devices', {
+				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				const authToken = getAuthTokenOrThrow();
+				const response = await fetch(`${AUTH_URL}/api/devices`, {
 					method: 'GET',
 					headers: {
-						Authorization: `Bearer ${API_TOKEN}`,
+						Authorization: `Bearer ${authToken}`,
 						Accept: 'application/json',
 					},
 				});
-				if (!response.ok) throw new Error(`Devices API error: ${response.status}`);
+				if (!response.ok) {
+					throwIfAuthResponseError(response);
+					throw new Error(`Devices API error: ${response.status}`);
+				}
 				const data: DeviceRaw[] = await response.json();
 				setRawDevices(data);
 			} catch (error) {
-				console.error('Failed to fetch devices:', error);
+				console.log('Handled devices load error:', error);
+				showServiceError(getServiceErrorFeature(error, 'lista maszyn'), error);
 			} finally {
 				setIsLoadingDevices(false);
 			}
@@ -293,7 +322,7 @@ export default function HomeScreen() {
 		fetchBrands();
 		fetchDeviceTypes();
 		fetchDevices();
-	}, []);
+	}, [showServiceError]);
 
 	// --- MAP DEVICES TO UI FORMAT ---
 	const mappedVehicles: Vehicle[] = rawDevices.map((device) => {
@@ -353,14 +382,19 @@ export default function HomeScreen() {
 	};
 
 	const openCamera = async () => {
-		const permission = cameraPermission?.granted
-			? cameraPermission
-			: await requestCameraPermission();
+		try {
+			const permission = cameraPermission?.granted
+				? cameraPermission
+				: await requestCameraPermission();
 
-		if (!permission.granted) return;
+			if (!permission.granted) return;
 
-		setCapturedPhotoUri(null);
-		setIsCameraOpen(true);
+			setCapturedPhotoUri(null);
+			setIsCameraOpen(true);
+		} catch (error) {
+			console.log('Handled camera open error:', error);
+			showServiceError('kamera', error);
+		}
 	};
 
 	const closeCamera = () => {
@@ -369,15 +403,20 @@ export default function HomeScreen() {
 	};
 
 	const takePhoto = async () => {
-		const photo = await cameraRef.current?.takePictureAsync?.({
-			quality: 0.75,
-			skipProcessing: true,
-			shutterSound: false,
-			flash: cameraFlash,
-		});
+		try {
+			const photo = await cameraRef.current?.takePictureAsync?.({
+				quality: 0.75,
+				skipProcessing: true,
+				shutterSound: false,
+				flash: cameraFlash,
+			});
 
-		if (photo?.uri) {
-			setCapturedPhotoUri(photo.uri);
+			if (photo?.uri) {
+				setCapturedPhotoUri(photo.uri);
+			}
+		} catch (error) {
+			console.log('Handled camera capture error:', error);
+			showServiceError('kamera', error);
 		}
 	};
 
@@ -434,25 +473,25 @@ export default function HomeScreen() {
 		return mBrand && mType && mSearch;
 	});
 
-	const paddingHorizontal = isTablet || isWeb ? 16 : 8;
+	const paddingHorizontal = useTabletHomeRefresh ? 20 : isWeb ? 16 : 8;
 	const containerPadding = paddingHorizontal * 2;
-	const cardMargin = 16;
+	const cardMargin = useTabletHomeRefresh ? 12 : 16;
 
 	let columns = 2;
 	if (isWeb) {
 		columns = Math.max(2, Math.floor((CURRENT_SCREEN_WIDTH - containerPadding) / 320));
 	} else if (isTablet) {
-		columns = 3;
+		columns = isPortrait ? 2 : 3;
 	}
 
 	const cardWidth = (CURRENT_SCREEN_WIDTH - containerPadding) / columns - cardMargin;
-	const cardHeight = isWeb ? 380 : isTablet ? 340 : cardWidth + 90;
-	const imageHeight = isWeb || isTablet ? 240 : cardWidth;
+	const cardHeight = useTabletHomeRefresh ? (isWeb ? 360 : 320) : isWeb ? 380 : cardWidth + 90;
+	const imageHeight = useTabletHomeRefresh ? (isWeb ? 220 : 210) : isWeb ? 240 : cardWidth;
 	const vehicleImageZoom = 1.02;
 
 	const renderCardInfo = (vehicle: Vehicle, isTabletSize: boolean) => {
 		const logoUrl = getRemoteBrandLogo(vehicle.brand);
-		const logoHeight = isTabletSize || isWeb ? 24 : 20;
+		const logoHeight = useTabletHomeRefresh ? 22 : isTabletSize || isWeb ? 24 : 20;
 
 		const brandToRemove = vehicle.brand.toLowerCase() + ' ';
 		const cleanName = vehicle.name.toLowerCase().startsWith(brandToRemove)
@@ -464,7 +503,9 @@ export default function HomeScreen() {
 				FILTER_LOGO_SIZES[vehicle.brand.toUpperCase()] || FILTER_LOGO_SIZES.DEFAULT;
 
 			return (
-				<View className='w-full flex-row items-center justify-center mb-4 px-2'>
+				<View
+					className='w-full flex-row items-center justify-center px-2'
+					style={{ marginBottom: useTabletHomeRefresh ? 10 : 16 }}>
 					{logoUrl && (
 						<Image
 							source={{ uri: logoUrl }}
@@ -476,7 +517,9 @@ export default function HomeScreen() {
 							resizeMode='contain'
 						/>
 					)}
-					<Text className='text-white font-bold text-xl' numberOfLines={1}>
+					<Text
+						className={`text-white font-bold ${useTabletHomeRefresh ? 'text-lg' : 'text-xl'}`}
+						numberOfLines={1}>
 						{cleanName.toUpperCase()}
 					</Text>
 				</View>
@@ -484,9 +527,16 @@ export default function HomeScreen() {
 		}
 
 		return (
-			<View className='w-full items-center justify-center p-3'>
+			<View
+				className='w-full items-center justify-center'
+				style={{ padding: useTabletHomeRefresh ? 10 : 12 }}>
 				{logoUrl && (
-					<View style={{ width: '100%', height: logoHeight, marginBottom: 8 }}>
+					<View
+						style={{
+							width: '100%',
+							height: logoHeight,
+							marginBottom: useTabletHomeRefresh ? 6 : 8,
+						}}>
 						<Image
 							source={{ uri: logoUrl }}
 							style={{ width: '100%', height: '100%' }}
@@ -495,7 +545,9 @@ export default function HomeScreen() {
 					</View>
 				)}
 				<Text
-					className={`text-white font-bold text-center ${isTabletSize ? 'text-xl' : 'text-lg'}`}
+					className={`text-white font-bold text-center ${
+						useTabletHomeRefresh ? 'text-lg' : isTabletSize ? 'text-xl' : 'text-lg'
+					}`}
 					numberOfLines={1}
 					adjustsFontSizeToFit>
 					{cleanName.toUpperCase()}
@@ -509,11 +561,13 @@ export default function HomeScreen() {
 			<TouchableOpacity
 				activeOpacity={isWeb ? 1 : 0.9}
 				onPress={isWeb ? undefined : () => openChat(item)}
-				className='bg-[#18181b] rounded-[24px] m-2 overflow-hidden flex-col'
+				className='bg-[#18181b] overflow-hidden flex-col'
 				style={
 					{
 						width: cardWidth,
 						height: cardHeight,
+						margin: useTabletHomeRefresh ? 6 : 8,
+						borderRadius: useTabletHomeRefresh ? 16 : 24,
 						...(isWeb ? { cursor: 'default' } : {}),
 					} as any
 				}>
@@ -536,14 +590,18 @@ export default function HomeScreen() {
 				</View>
 
 				<View
-					className={`bg-[#18181b] flex-1 p-4 border-t border-[#3f3f46] justify-center items-center`}>
+					className='bg-[#18181b] flex-1 border-t border-[#3f3f46] justify-center items-center'
+					style={{ padding: useTabletHomeRefresh ? 12 : 16 }}>
 					{renderCardInfo(item, isTablet)}
 
 					{isWeb && (
 						<TouchableOpacity
 							onPress={() => openChat(item)}
-							style={{ backgroundColor: PRIMARY_ORANGE }}
-							className='w-full py-4 rounded-[16px] flex-row justify-center items-center mt-1 z-10'>
+							className='w-full rounded-[14px] flex-row justify-center items-center mt-1 z-10'
+							style={{
+								backgroundColor: PRIMARY_ORANGE,
+								paddingVertical: useTabletHomeRefresh ? 12 : 16,
+							}}>
 							<Text className='text-white font-bold text-[15px]'>WYBIERZ</Text>
 						</TouchableOpacity>
 					)}
@@ -591,7 +649,35 @@ export default function HomeScreen() {
 	const brandFilterOptions = [{ name: 'WSZYSTKIE', logo_url: null }, ...brands];
 	const typeFilterOptions = [{ name: 'WSZYSTKIE' }, ...deviceTypes];
 	const useLargeHeaderTitle = isPortrait || isTablet;
-	const headerLogoHeight = useLargeHeaderTitle ? 50 : 38;
+	const headerLogoHeight = useTabletHomeRefresh ? 40 : useLargeHeaderTitle ? 50 : 38;
+	const headerLogoWidth = useTabletHomeRefresh ? 68 : useLargeHeaderTitle ? 80 : 60;
+	const headerTitleClassName = useTabletHomeRefresh
+		? 'text-3xl'
+		: useLargeHeaderTitle
+			? 'text-4xl'
+			: 'text-2xl';
+	const headerPaddingHorizontal = useTabletHomeRefresh ? 20 : isTablet ? 24 : 16;
+	const headerPaddingVertical = useTabletHomeRefresh ? 10 : 16;
+	const headerTopRowHeight = useTabletHomeRefresh ? 44 : undefined;
+	const titleGroupOffsetY = useTabletHomeRefresh ? 8 : 0;
+	const historyButtonOffsetY = useTabletHomeRefresh ? 8 : 0;
+	const filterLabelClassName = `text-gray-400 font-bold uppercase tracking-widest ml-2 ${
+		useTabletHomeRefresh ? 'text-[12px] mb-1' : 'text-sm mb-2'
+	}`;
+	const getFilterChipStyle = (active: boolean) =>
+		useTabletHomeRefresh
+			? {
+					height: 42,
+					paddingHorizontal: 20,
+					paddingVertical: 0,
+					marginRight: 12,
+					backgroundColor: active ? 'rgba(255, 107, 0, 0.16)' : '#242428',
+					borderWidth: 1,
+					borderColor: active ? PRIMARY_ORANGE : 'rgba(255, 255, 255, 0.07)',
+				}
+			: {
+					backgroundColor: active ? PRIMARY_ORANGE : '#27272a',
+				};
 
 	return (
 		<SafeAreaView className='flex-1 bg-[#09090b]' edges={['top', 'left', 'right']}>
@@ -605,27 +691,31 @@ export default function HomeScreen() {
 						top: 0,
 						left: 0,
 						right: 0,
-						paddingHorizontal: isTablet ? 24 : 16,
-						paddingTop: 16,
-						paddingBottom: 16,
+						paddingHorizontal: headerPaddingHorizontal,
+						paddingTop: headerPaddingVertical,
+						paddingBottom: headerPaddingVertical,
 						zIndex: 10,
 						backgroundColor: '#09090b',
 					}}>
-					<View className='flex-row justify-between items-center gap-3 mb-4'>
-						<View className='flex-row items-center flex-1 min-w-0'>
+					<View
+						className='flex-row justify-between items-center gap-3'
+						style={{
+							minHeight: headerTopRowHeight,
+							marginBottom: useTabletHomeRefresh ? 12 : 16,
+						}}>
+						<View
+							className='flex-row items-center flex-1 min-w-0'
+							style={{ transform: [{ translateY: titleGroupOffsetY }] }}>
 							<Image
 								source={require('../../assets/images/fixo3.png')}
 								className='mr-3'
 								style={{
-									width: useLargeHeaderTitle ? 80 : 60,
+									width: headerLogoWidth,
 									height: headerLogoHeight,
 								}}
 								resizeMode='contain'
 							/>
-							<Text
-								className={`${
-									useLargeHeaderTitle ? 'text-4xl' : 'text-2xl'
-								} text-white font-bold`}>
+							<Text className={`${headerTitleClassName} text-white font-bold`}>
 								Wybierz Pojazd
 							</Text>
 						</View>
@@ -633,7 +723,12 @@ export default function HomeScreen() {
 							onPress={() => router.push('/history')}
 							accessibilityRole='button'
 							accessibilityLabel='Historia czatów'
-							className='h-12 px-[18px] flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#111111]'>
+							className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#111111]'
+							style={{
+								height: useTabletHomeRefresh ? 44 : 48,
+								paddingHorizontal: useTabletHomeRefresh ? 16 : 18,
+								transform: [{ translateY: historyButtonOffsetY }],
+							}}>
 							<MaterialCommunityIcons name='history' size={21} color='#FF7A00' />
 							<Text className='text-[#E6E6E6] ml-4 text-[13px] font-semibold tracking-wider'>
 								HISTORIA CZATÓW
@@ -641,10 +736,8 @@ export default function HomeScreen() {
 						</TouchableOpacity>
 					</View>
 
-					<View className='mb-3'>
-						<Text className='text-gray-400 text-sm font-bold uppercase tracking-widest ml-2 mb-2'>
-							Marka
-						</Text>
+					<View style={{ marginBottom: useTabletHomeRefresh ? 8 : 12 }}>
+						<Text className={filterLabelClassName}>Marka</Text>
 						{isLoadingBrands ? (
 							<ActivityIndicator
 								size='small'
@@ -661,13 +754,10 @@ export default function HomeScreen() {
 									<TouchableOpacity
 										key={brandObj.name}
 										onPress={() => setActiveBrandFilter(brandObj.name)}
-										style={{
-											backgroundColor:
-												activeBrandFilter === brandObj.name
-													? PRIMARY_ORANGE
-													: '#27272a',
-										}}
-										className='px-6 py-3 rounded-full mr-4 min-h-[48px] justify-center items-center flex-row'>
+										style={getFilterChipStyle(activeBrandFilter === brandObj.name)}
+										className={`rounded-full justify-center items-center flex-row ${
+											useTabletHomeRefresh ? '' : 'px-6 py-3 mr-4 min-h-[48px]'
+										}`}>
 										<BrandLogoOrText
 											brandName={brandObj.name}
 											logoUrl={brandObj.logo_url}
@@ -680,9 +770,7 @@ export default function HomeScreen() {
 					</View>
 
 					<View className='mb-0'>
-						<Text className='text-gray-400 text-sm font-bold uppercase tracking-widest ml-2 mb-2'>
-							Typ
-						</Text>
+						<Text className={filterLabelClassName}>Typ</Text>
 						{isLoadingTypes ? (
 							<ActivityIndicator
 								size='small'
@@ -699,13 +787,10 @@ export default function HomeScreen() {
 									<TouchableOpacity
 										key={typeObj.name}
 										onPress={() => setActiveTypeFilter(typeObj.name)}
-										style={{
-											backgroundColor:
-												activeTypeFilter === typeObj.name
-													? PRIMARY_ORANGE
-													: '#27272a',
-										}}
-										className='px-6 py-3 rounded-full mr-4 min-h-[48px] justify-center items-center flex-row'>
+										style={getFilterChipStyle(activeTypeFilter === typeObj.name)}
+										className={`rounded-full justify-center items-center flex-row ${
+											useTabletHomeRefresh ? '' : 'px-6 py-3 mr-4 min-h-[48px]'
+										}`}>
 										<Text
 											className={`text-sm font-bold uppercase ${
 												activeTypeFilter === typeObj.name
@@ -1004,6 +1089,15 @@ export default function HomeScreen() {
 					</SafeAreaView>
 				</View>
 			) : null}
+			<ServiceErrorModal
+				visible={Boolean(serviceErrorFeature)}
+				featureName={serviceErrorFeature || 'wybrana funkcja'}
+				onClose={() => setServiceErrorFeature(null)}
+				dismissible={
+					serviceErrorFeature !== AUTH_SERVICE_FEATURE &&
+					serviceErrorFeature !== CONFIG_SERVICE_FEATURE
+				}
+			/>
 		</SafeAreaView>
 	);
 }
