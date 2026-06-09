@@ -11,9 +11,37 @@ const renderComponentPath = path.join(
 	'native',
 	'render-component.js',
 );
+const runtimeComponentsPath = path.join(
+	__dirname,
+	'..',
+	'node_modules',
+	'react-native-css-interop',
+	'dist',
+	'runtime',
+	'components.js',
+);
+
+if (!fs.existsSync(renderComponentPath) && !fs.existsSync(runtimeComponentsPath)) {
+	console.warn('react-native-css-interop render-component.js not found; skipping patch.');
+	process.exit(0);
+}
+
+if (fs.existsSync(runtimeComponentsPath)) {
+	let runtimeSource = fs.readFileSync(runtimeComponentsPath, 'utf8');
+	const deprecatedSafeAreaRegistration =
+		'(0, api_1.cssInterop)(react_native_1.SafeAreaView, { className: "style" });';
+
+	if (runtimeSource.includes(deprecatedSafeAreaRegistration)) {
+		runtimeSource = runtimeSource.replace(`${deprecatedSafeAreaRegistration}\n`, '');
+		fs.writeFileSync(runtimeComponentsPath, runtimeSource);
+		console.log(
+			'react-native-css-interop patched to avoid deprecated react-native SafeAreaView.',
+		);
+	}
+}
 
 if (!fs.existsSync(renderComponentPath)) {
-	console.warn('react-native-css-interop render-component.js not found; skipping patch.');
+	console.warn('react-native-css-interop render-component.js not found; skipping warning patch.');
 	process.exit(0);
 }
 

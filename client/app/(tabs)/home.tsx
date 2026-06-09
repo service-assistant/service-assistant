@@ -1,4 +1,4 @@
-﻿import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
@@ -217,7 +217,7 @@ export default function HomeScreen() {
 
 	const [activeBrandFilter, setActiveBrandFilter] = useState<string>('WSZYSTKIE');
 	const [activeTypeFilter, setActiveTypeFilter] = useState<string>('WSZYSTKIE');
-	const [searchQuery, setSearchQuery] = useState<string>('');
+	const [searchQuery] = useState<string>('');
 	const [isListening, setIsListening] = useState(false);
 	const [isCameraOpen, setIsCameraOpen] = useState(false);
 	const [capturedPhotoUri, setCapturedPhotoUri] = useState<string | null>(null);
