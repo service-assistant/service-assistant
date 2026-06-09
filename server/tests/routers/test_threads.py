@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.models import MessageSender
-from app.routers.threads import _extract_sentences
+from app.services.tts import extract_sentences as _extract_sentences
 from app.services.stt import SttError
 
 from tests.routers.conftest import AUTH_HEADERS

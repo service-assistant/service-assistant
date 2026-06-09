@@ -1,4 +1,5 @@
 import base64
+import re
 from collections.abc import Iterator
 from typing import Any, Final
 
@@ -12,9 +13,24 @@ PCM_CHANNELS: Final[int] = 1
 PCM_SAMPLE_WIDTH: Final[int] = 2  # s16le
 DEFAULT_CHUNK_SIZE: Final[int] = 16_384
 
+_SENTENCE_END: Final = re.compile(r"(?<=[.!?…])\s+")
+_MIN_SENTENCE_CHARS: Final[int] = 20
+
 
 class TtsError(Exception):
     pass
+
+
+def extract_sentences(buffer: str) -> tuple[list[str], str]:
+    """Return (complete_sentences, remaining_buffer) splitting on sentence boundaries."""
+    sentences: list[str] = []
+    pos = 0
+    for m in _SENTENCE_END.finditer(buffer):
+        s = buffer[pos : m.start()].strip()
+        if len(s) >= _MIN_SENTENCE_CHARS:
+            sentences.append(s)
+            pos = m.end()
+    return sentences, buffer[pos:]
 
 
 def _truncate_for_tts(text: str, max_chars: int) -> str:
