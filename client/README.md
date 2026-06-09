@@ -10,6 +10,19 @@ Most important commands are listed in `Makefile`. To learn about their usage jus
 make help
 ```
 
+## Testing
+
+Run automated checks:
+
+```
+npm.cmd run lint
+npm.cmd test -- --runInBand
+```
+
+Before sharing a real APK, run the manual release checklist:
+
+- [Manual E2E Release Checklist](./docs/manual-e2e.md)
+
 ## Recommended learning resources
 
 - [TypeScript for JS Programmers](https://www.typescriptlang.org/docs/handbook/typescript-in-5-minutes.html)
