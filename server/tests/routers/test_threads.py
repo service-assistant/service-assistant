@@ -2,11 +2,54 @@ import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.models import MessageSender
+from app.routers.threads import _extract_sentences
 from app.services.stt import SttError
 
 from tests.routers.conftest import AUTH_HEADERS
 from tests.routers.factories import make_message, make_thread
+
+
+@pytest.mark.parametrize(
+    "buffer,expected_sentences,expected_remainder",
+    [
+        (
+            "This is the first sentence. And this is the second one. Still streaming",
+            ["This is the first sentence.", "And this is the second one."],
+            "Still streaming",
+        ),
+        (
+            "Only one long enough sentence. ",
+            ["Only one long enough sentence."],
+            "",
+        ),
+        (
+            "No boundary here just keeps going",
+            [],
+            "No boundary here just keeps going",
+        ),
+        (
+            # "Short." is < 20 chars so it merges with the next sentence
+            "Short. This sentence is long enough to pass the minimum length check. Tail",
+            ["Short. This sentence is long enough to pass the minimum length check."],
+            "Tail",
+        ),
+        (
+            # Both sentences are >= 20 chars so each is emitted independently
+            "Question mark works? Yes it does work fine. Remainder",
+            ["Question mark works?", "Yes it does work fine."],
+            "Remainder",
+        ),
+    ],
+)
+def test_should_extract_sentences_correctly(
+    buffer, expected_sentences, expected_remainder
+):
+    sentences, remainder = _extract_sentences(buffer)
+    assert sentences == expected_sentences
+    assert remainder == expected_remainder
 
 
 def test_should_create_thread_when_valid_data_provided(client, mock_session):

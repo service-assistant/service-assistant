@@ -1,4 +1,6 @@
+import asyncio
 import json
+import re
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -83,25 +85,41 @@ async def delete_thread(thread_id: int, session: AsyncSession = Depends(get_sess
     await session.commit()
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?…])\s+")
+_MIN_SENTENCE_CHARS = 20
+
+
+def _extract_sentences(buffer: str) -> tuple[list[str], str]:
+    """Return (complete_sentences, remaining_buffer) splitting on sentence boundaries."""
+    sentences: list[str] = []
+    pos = 0
+    for m in _SENTENCE_END.finditer(buffer):
+        s = buffer[pos : m.start()].strip()
+        if len(s) >= _MIN_SENTENCE_CHARS:
+            sentences.append(s)
+            pos = m.end()
+    return sentences, buffer[pos:]
+
+
+async def _synthesize_and_enqueue(
+    idx: int,
+    text: str,
+    queue: asyncio.Queue[tuple[int, bytes | None]],
+    settings: Settings,
+) -> None:
+    try:
+        pcm = await tts.synthesize_pcm(text, settings)
+        await queue.put((idx, pcm))
+    except tts.TtsError:
+        await queue.put((idx, None))
+
+
 def _sse(event: str, payload: object) -> str:
     if isinstance(payload, str):
         data = payload
     else:
         data = json.dumps(payload, ensure_ascii=False)
     return f"event: {event}\ndata: {data}\n\n"
-
-
-async def _yield_tts_audio_events(answer: str, settings: Settings):
-    if not settings.gemini_api_key or not answer.strip():
-        return
-    try:
-        pcm = await tts.synthesize_pcm(answer, settings)
-    except tts.TtsError:
-        # Tekst i tak idzie do klienta; TTS opcjonalny przy błędzie
-        return
-    for payload in tts.iter_audio_chunk_payloads(pcm):
-        yield _sse("audio_chunk", payload)
-    yield _sse("audio_done", tts.audio_done_payload(total_bytes=len(pcm)))
 
 
 @router.post(
@@ -147,12 +165,40 @@ async def create_message(
 
     async def event_stream():
         answer_parts: list[str] = []
+        sentence_buffer = ""
+        sentence_idx = 0
+        tts_enabled = bool(settings.gemini_api_key)
+        audio_queue: asyncio.Queue[tuple[int, bytes | None]] = asyncio.Queue()
+        tts_tasks: list[asyncio.Task[None]] = []
+
         async for chunk in llm.stream_query(
             session, thread_id, body.content, context_chunks, settings
         ):
             answer_parts.append(chunk)
             yield _sse("chunk", chunk)
+            if tts_enabled:
+                sentence_buffer += chunk
+                sentences, sentence_buffer = _extract_sentences(sentence_buffer)
+                for sentence in sentences:
+                    task = asyncio.create_task(
+                        _synthesize_and_enqueue(
+                            sentence_idx, sentence, audio_queue, settings
+                        )
+                    )
+                    tts_tasks.append(task)
+                    sentence_idx += 1
+
         answer = "".join(answer_parts)
+
+        if tts_enabled and sentence_buffer.strip():
+            task = asyncio.create_task(
+                _synthesize_and_enqueue(
+                    sentence_idx, sentence_buffer.strip(), audio_queue, settings
+                )
+            )
+            tts_tasks.append(task)
+            sentence_idx += 1
+
         system_message = Message(
             content=answer,
             thread_id=thread_id,
@@ -168,8 +214,32 @@ async def create_message(
             )
         await session.commit()
         await session.refresh(system_message)
-        async for ev in _yield_tts_audio_events(answer, settings):
-            yield ev
+
+        if tts_tasks:
+            total = len(tts_tasks)
+            pending: dict[int, bytes | None] = {}
+            next_to_emit = 0
+            received = 0
+            while received < total:
+                idx, pcm = await audio_queue.get()
+                received += 1
+                pending[idx] = pcm
+                while next_to_emit in pending:
+                    audio = pending.pop(next_to_emit)
+                    if audio is not None:
+                        for payload in tts.iter_audio_chunk_payloads(audio):
+                            yield _sse(
+                                "audio_chunk", {**payload, "sentence": next_to_emit}
+                            )
+                        yield _sse(
+                            "audio_done",
+                            {
+                                **tts.audio_done_payload(total_bytes=len(audio)),
+                                "sentence": next_to_emit,
+                            },
+                        )
+                    next_to_emit += 1
+
         yield _sse(
             "message", MessageRead.model_validate(system_message).model_dump_json()
         )
