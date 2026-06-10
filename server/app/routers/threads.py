@@ -89,28 +89,27 @@ async def delete_thread(thread_id: int, session: AsyncSession = Depends(get_sess
 async def _synthesize_and_enqueue(
     idx: int,
     text: str,
-    queue: asyncio.Queue[tuple[int, bytes | None]],
+    queue: asyncio.Queue[tuple[int, bytes | None, str | None]],
     settings: Settings,
 ) -> None:
     try:
         pcm = await tts.synthesize_pcm(text, settings)
-        await queue.put((idx, pcm))
-    except tts.TtsError:
-        await queue.put((idx, None))
+        await queue.put((idx, pcm, None))
+    except tts.TtsError as exc:
+        await queue.put((idx, None, str(exc)))
 
 
 def _drain_ready_audio(
-    audio_queue: asyncio.Queue[tuple[int, bytes | None]],
-    pending: dict[int, bytes | None],
+    audio_queue: asyncio.Queue[tuple[int, bytes | None, str | None]],
+    pending: dict[int, tuple[bytes | None, str | None]],
     next_to_emit: int,
 ) -> tuple[list[str], int]:
-    """Collect SSE events for all TTS results already in the queue, in sentence order."""
     while not audio_queue.empty():
-        idx, pcm = audio_queue.get_nowait()
-        pending[idx] = pcm
+        idx, pcm, err = audio_queue.get_nowait()
+        pending[idx] = (pcm, err)
     events: list[str] = []
     while next_to_emit in pending:
-        audio = pending.pop(next_to_emit)
+        audio, err = pending.pop(next_to_emit)
         if audio is not None:
             for payload in tts.iter_audio_chunk_payloads(audio):
                 events.append(
@@ -125,6 +124,8 @@ def _drain_ready_audio(
                     },
                 )
             )
+        elif err is not None:
+            events.append(_sse("tts_error", {"sentence": next_to_emit, "detail": err}))
         next_to_emit += 1
     return events, next_to_emit
 
@@ -183,10 +184,12 @@ async def create_message(
         sentence_buffer = ""
         sentence_idx = 0
         tts_enabled = bool(settings.gemini_api_key)
-        audio_queue: asyncio.Queue[tuple[int, bytes | None]] = asyncio.Queue()
+        audio_queue: asyncio.Queue[tuple[int, bytes | None, str | None]] = (
+            asyncio.Queue()
+        )
         tts_tasks: list[asyncio.Task[None]] = []
 
-        pending: dict[int, bytes | None] = {}
+        pending: dict[int, tuple[bytes | None, str | None]] = {}
         next_to_emit = 0
 
         async for chunk in llm.stream_query(
@@ -248,8 +251,8 @@ async def create_message(
             for ev in events:
                 yield ev
             if next_to_emit < total_tts:
-                idx, pcm = await audio_queue.get()
-                pending[idx] = pcm
+                idx, pcm, err = await audio_queue.get()
+                pending[idx] = (pcm, err)
 
         yield _sse(
             "message", MessageRead.model_validate(system_message).model_dump_json()
