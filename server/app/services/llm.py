@@ -98,6 +98,18 @@ Nie rozpoczynaj pracy przy pompie przed odłączeniem akumulatora i zmniejszenie
 Po demontażu pompy następnym etapem jest kontrola elementów i przygotowanie pompy do ponownego montażu.
 """
 
+_NO_SOURCE_PHRASES = [
+    "dokumentacja nie zawiera",
+    "dokumenty nie zawierają",
+    "nie zawiera odpowiedzi na to pytanie",
+    "brak informacji w dokumentacji",
+]
+
+
+def is_no_source_answer(answer: str) -> bool:
+    lower = answer.lower()
+    return any(pharse in lower for pharse in _NO_SOURCE_PHRASES)
+
 
 def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
     parts: list[str] = []
