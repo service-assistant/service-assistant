@@ -1,12 +1,19 @@
-from typing import Final
-
-import httpx
-
+from typing import AsyncGenerator, Final
 from app.config import Settings
+import httpx
+from contextlib import asynccontextmanager
+import json
+import websockets
+
 
 DEEPGRAM_LISTEN_URL: Final[str] = (
     "https://api.deepgram.com/v1/listen"
     "?model=nova-3&numerals=true&language=pl&smart_format=true"
+)
+
+DEEPGRAM_STREAM_URL: Final[str] = (
+    "wss://api.deepgram.com/v1/listen"
+    "?model=nova-3&language=pl&smart_format=true&numerals=true&interim_results=true"
 )
 
 
@@ -29,9 +36,7 @@ async def transcribe(
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         response = await client.post(
-            DEEPGRAM_LISTEN_URL,
-            headers=headers,
-            content=audio_bytes,
+            DEEPGRAM_LISTEN_URL, headers=headers, content=audio_bytes
         )
 
     if response.status_code != 200:
@@ -50,3 +55,31 @@ async def transcribe(
         raise SttError("Empty transcript")
 
     return transcript
+
+
+@asynccontextmanager
+async def deepgram_websocket(
+    settings: Settings,
+    encoding: str = "linear16",
+    sample_rate: int = 16000,
+) -> AsyncGenerator:
+    if not settings.deepgram_api_key:
+        raise SttError("Deepgram API key not configured")
+
+    url = f"{DEEPGRAM_STREAM_URL}&encoding={encoding}&sample_rate={sample_rate}"
+    headers = {"Authorization": f"Token {settings.deepgram_api_key}"}
+    async with websockets.connect(url, additional_headers=headers) as ws:
+        yield ws
+
+
+def parse_deepgram_stream_message(raw: str) -> dict | None:
+    data = json.loads(raw)
+    if data.get("type") != "Results":
+        return None
+    transcript = (
+        data.get("channel", {}).get("alternatives", [{}])[0].get("transcript", "")
+    )
+    if not transcript:
+        return None
+    is_final = data.get("is_final", False)
+    return {"type": "final" if is_final else "partial", "transcript": transcript}

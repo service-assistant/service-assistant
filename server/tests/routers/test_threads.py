@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -357,3 +358,40 @@ def test_should_return_422_when_audio_is_empty(client, mock_session):
         )
 
     assert response.status_code == 422
+
+
+def test_should_stream_final_transcript_when_audio_sent(client, mock_session):
+    mock_session.get.return_value = make_thread(id=1)
+
+    class MockDgWs:
+        send = AsyncMock()
+
+        def __aiter__(self):
+            return self._iter()
+
+        async def _iter(self):
+            yield json.dumps(
+                {
+                    "type": "Results",
+                    "is_final": True,
+                    "channel": {
+                        "alternatives": [
+                            {"transcript": "Opisz mi co mówi kod błedu 2:002?"}
+                        ]
+                    },
+                }
+            )
+
+    @asynccontextmanager
+    async def mock_deepgram_ws(*args, **kwargs):
+        yield MockDgWs()
+
+    with patch("app.routers.threads.stt.deepgram_websocket", new=mock_deepgram_ws):
+        with client.websocket_connect(
+            "/api/threads/1/messages/transcribe-stream?token=CHANGEMELATER"
+        ) as ws:
+            ws.send_bytes(b"\x00" * 64)
+            data = ws.receive_json()
+
+    assert data["type"] == "final"
+    assert data["transcript"] == "Opisz mi co mówi kod błedu 2:002?"
