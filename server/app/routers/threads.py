@@ -296,6 +296,7 @@ async def transcribe_message(
 
     return TranscriptResponse(transcript=transcript)
 
+
 @router.websocket("/{thread_id}/messages/transcribe-stream")
 async def transcribe_stream(
     thread_id: int,
@@ -309,7 +310,7 @@ async def transcribe_stream(
     if token != settings.auth_token:
         await websocket.close(code=1008, reason="Unauthorized")
         return
-    
+
     await websocket.accept()
 
     thread = await session.get(ChatThread, thread_id)
@@ -317,9 +318,10 @@ async def transcribe_stream(
         await websocket.send_json({"type": "error", "message": "Thread not found"})
         await websocket.close()
         return
-    
+
     try:
         async with stt.deepgram_websocket(settings, encoding, sample_rate) as dg_ws:
+
             async def forward_audio() -> None:
                 try:
                     while True:
@@ -353,6 +355,7 @@ async def transcribe_stream(
     finally:
         with suppress(Exception):
             await websocket.close()
+
 
 @router.get(
     "/{thread_id}/messages",
