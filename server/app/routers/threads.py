@@ -18,6 +18,8 @@ from app.schemas import (
     TranscriptResponse,
 )
 from app.services import retrieval, llm, stt, tts
+from fastapi import WebSocket, WebSocketDisconnect
+from contextlib import suppress
 
 router = APIRouter()
 
@@ -294,6 +296,63 @@ async def transcribe_message(
 
     return TranscriptResponse(transcript=transcript)
 
+@router.websocket("/{thread_id}/messages/transcribe-stream")
+async def transcribe_stream(
+    thread_id: int,
+    websocket: WebSocket,
+    settings: Annotated[Settings, Depends(get_settings)],
+    session: AsyncSession = Depends(get_session),
+    token: str = "",
+    encoding: str = "linear16",
+    sample_rate: int = 16000,
+):
+    if token != settings.auth_token:
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
+    
+    await websocket.accept()
+
+    thread = await session.get(ChatThread, thread_id)
+    if not thread:
+        await websocket.send_json({"type": "error", "message": "Thread not found"})
+        await websocket.close()
+        return
+    
+    try:
+        async with stt.deepgram_websocket(settings, encoding, sample_rate) as dg_ws:
+            async def forward_audio() -> None:
+                try:
+                    while True:
+                        data = await websocket.receive_bytes()
+                        await dg_ws.send(data)
+                except WebSocketDisconnect:
+                    pass
+                finally:
+                    with suppress(Exception):
+                        await dg_ws.send(json.dumps({"type": "CloseStream"}))
+
+            async def forward_transcripts() -> None:
+                try:
+                    async for raw in dg_ws:
+                        event = stt.parse_deepgram_stream_message(raw)
+                        if event:
+                            with suppress(Exception):
+                                await websocket.send_json(event)
+                except Exception:
+                    pass
+
+            audio_task = asyncio.create_task(forward_audio())
+            transcript_task = asyncio.create_task(forward_transcripts())
+            audio_task.add_done_callback(lambda _: transcript_task.cancel())
+            transcript_task.add_done_callback(lambda _: audio_task.cancel())
+            await asyncio.gather(audio_task, transcript_task, return_exceptions=True)
+
+    except stt.SttError as exc:
+        with suppress(Exception):
+            await websocket.send_json({"type": "error", "message": str(exc)})
+    finally:
+        with suppress(Exception):
+            await websocket.close()
 
 @router.get(
     "/{thread_id}/messages",
