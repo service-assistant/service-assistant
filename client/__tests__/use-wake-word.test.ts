@@ -3,7 +3,9 @@ const mockRequestRecordingPermissionsAsync = jest.fn();
 const mockStartWakeWordDetection = jest.fn();
 const mockStopWakeWordDetection = jest.fn();
 const mockAddWakeWordListener = jest.fn();
+const mockAddWakeWordErrorListener = jest.fn();
 const mockRemoveWakeWordListener = jest.fn();
+const mockRemoveWakeWordErrorListener = jest.fn();
 let mockIsWakeWordAvailable = true;
 let lastCleanup: void | (() => void);
 
@@ -24,6 +26,7 @@ jest.mock('expo-audio', () => ({
 }));
 
 jest.mock('@/modules/wake-word', () => ({
+	addWakeWordErrorListener: mockAddWakeWordErrorListener,
 	addWakeWordListener: mockAddWakeWordListener,
 	get isWakeWordAvailable() {
 		return mockIsWakeWordAvailable;
@@ -46,11 +49,20 @@ describe('useWakeWord', () => {
 		mockStartWakeWordDetection.mockReset();
 		mockStopWakeWordDetection.mockReset();
 		mockAddWakeWordListener.mockReset();
+		mockAddWakeWordErrorListener.mockReset();
 		mockRemoveWakeWordListener.mockReset();
+		mockRemoveWakeWordErrorListener.mockReset();
 		mockRequestRecordingPermissionsAsync.mockResolvedValue({ granted: true });
 		mockStartWakeWordDetection.mockResolvedValue(undefined);
 		mockStopWakeWordDetection.mockResolvedValue(undefined);
 		mockAddWakeWordListener.mockReturnValue({ remove: mockRemoveWakeWordListener });
+		mockAddWakeWordErrorListener.mockReturnValue({ remove: mockRemoveWakeWordErrorListener });
+		jest.spyOn(console, 'log').mockImplementation(() => undefined);
+		jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+	});
+
+	afterEach(() => {
+		jest.restoreAllMocks();
 	});
 
 	test('requests permission and starts detection on android when enabled', async () => {
@@ -110,8 +122,10 @@ describe('useWakeWord', () => {
 		const onDetected = jest.fn();
 		useWakeWord({ enabled: true, onDetected });
 
-		const listener = mockAddWakeWordListener.mock.calls[0][0] as () => void;
-		listener();
+		const listener = mockAddWakeWordListener.mock.calls[0][0] as (event: {
+			probability: number;
+		}) => void;
+		listener({ probability: 0.93 });
 		await flushPromises();
 
 		expect(mockStopWakeWordDetection).toHaveBeenCalled();
@@ -125,6 +139,7 @@ describe('useWakeWord', () => {
 		await flushPromises();
 
 		expect(mockRemoveWakeWordListener).toHaveBeenCalled();
+		expect(mockRemoveWakeWordErrorListener).toHaveBeenCalled();
 		expect(mockStopWakeWordDetection).toHaveBeenCalled();
 	});
 

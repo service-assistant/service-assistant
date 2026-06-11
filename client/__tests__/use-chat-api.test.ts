@@ -209,6 +209,37 @@ describe('useChatApi', () => {
 		expect(harness.state.isLoading).toBe(false);
 	});
 
+	test('preserves spaces at the beginning of streamed chunks', async () => {
+		const fetchMock = jest.mocked(global.fetch);
+		fetchMock
+			.mockResolvedValueOnce(createJsonResponse({ id: 123 }))
+			.mockResolvedValueOnce(createJsonResponse([]));
+		const harness = createHarness();
+
+		const request = harness.api.askAPI('What is error E-23?');
+		await flushPromises();
+
+		MockEventSource.instances[0].emit('chunk', {
+			data: 'E-23 oznacza',
+		});
+		MockEventSource.instances[0].emit('chunk', {
+			data: ' hydraulic system error.',
+		});
+
+		expect(harness.state.messages[0].text).toBe(
+			'E-23 oznacza hydraulic system error.',
+		);
+
+		MockEventSource.instances[0].emit('message', {
+			data: JSON.stringify({
+				id: 555,
+				content: 'E-23 oznacza hydraulic system error.',
+				image_url: null,
+			}),
+		});
+		await request;
+	});
+
 	test('uses an existing thread and attaches source metadata with authorized chunk images', async () => {
 		const fetchMock = jest.mocked(global.fetch);
 		fetchMock
