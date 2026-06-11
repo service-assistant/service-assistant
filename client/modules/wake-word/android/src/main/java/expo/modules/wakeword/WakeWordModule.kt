@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.util.Log
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -29,6 +30,7 @@ private const val FFT_BINS = FFT_SIZE / 2 + 1
 private const val SPECTROGRAM_FRAMES = 151
 private const val MIN_ACTIVE_RMS = 1e-4f
 private const val MAX_STREAMING_THRESHOLD = 1.0f
+private const val LOG_TAG = "WakeWord"
 
 private const val PREEMPHASIS = 0.97f
 class WakeWordModule : Module() {
@@ -56,18 +58,24 @@ class WakeWordModule : Module() {
 
   private fun startListening(threshold: Float, requiredHits: Int, cooldownMillis: Int) {
     if (isRunning) {
+      Log.d(LOG_TAG, "start ignored: detector is already running")
       return
     }
 
+    Log.d(LOG_TAG, "start requested threshold=$threshold requiredHits=$requiredHits cooldownMillis=$cooldownMillis")
     val context = appContext.reactContext ?: throw IllegalStateException("React context is unavailable")
     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+      Log.w(LOG_TAG, "start failed: microphone permission is missing")
       throw IllegalStateException("Microphone permission is required for wake word detection")
     }
 
     val effectiveThreshold = min(threshold, MAX_STREAMING_THRESHOLD)
     val currentDetector = detector ?: FiksoDetector(
       DataInputStream(BufferedInputStream(context.assets.open("fikso_cnn.bin")))
-    ).also { detector = it }
+    ).also {
+      detector = it
+      Log.d(LOG_TAG, "model loaded from fikso_cnn.bin")
+    }
     val minBufferSize = AudioRecord.getMinBufferSize(
       SAMPLE_RATE,
       AudioFormat.CHANNEL_IN_MONO,
@@ -84,23 +92,28 @@ class WakeWordModule : Module() {
     )
     if (recorder.state != AudioRecord.STATE_INITIALIZED) {
       recorder.release()
+      Log.e(LOG_TAG, "start failed: AudioRecord did not initialize")
       throw IllegalStateException("Unable to initialize microphone recording")
     }
 
     audioRecord = recorder
     isRunning = true
+    Log.d(LOG_TAG, "recording thread starting bufferSize=${max(minBufferSize, HOP_SAMPLES * 2)} effectiveThreshold=$effectiveThreshold")
     recordingThread = thread(name = "fikso-wake-word") {
       val window = FloatArray(WINDOW_SAMPLES)
       val chunk = ShortArray(HOP_SAMPLES)
       var bufferedSamples = 0
       var hits = 0
       var lastDetectionMillis = 0L
+      var hasLoggedReadyWindow = false
 
       try {
         recorder.startRecording()
+        Log.d(LOG_TAG, "microphone recording started")
         while (isRunning) {
           val samplesRead = recorder.read(chunk, 0, chunk.size)
           if (samplesRead <= 0) {
+            Log.w(LOG_TAG, "AudioRecord returned samplesRead=$samplesRead")
             continue
           }
 
@@ -116,6 +129,10 @@ class WakeWordModule : Module() {
           }
           bufferedSamples = min(WINDOW_SAMPLES, bufferedSamples + samplesRead)
           if (bufferedSamples < WINDOW_SAMPLES) continue
+          if (!hasLoggedReadyWindow) {
+            hasLoggedReadyWindow = true
+            Log.d(LOG_TAG, "first full detection window is ready")
+          }
 
           val probability = currentDetector.predict(window)
           hits = if (probability >= effectiveThreshold) hits + 1 else 0
@@ -123,14 +140,17 @@ class WakeWordModule : Module() {
           if (hits >= requiredHits && now - lastDetectionMillis >= cooldownMillis) {
             lastDetectionMillis = now
             hits = 0
+            Log.i(LOG_TAG, "wake word detected probability=$probability threshold=$effectiveThreshold")
             sendEvent("onWakeWord", mapOf("probability" to probability))
           }
         }
       } catch (error: Exception) {
         if (isRunning) {
+          Log.e(LOG_TAG, "recording loop failed", error)
           sendEvent("onWakeWordError", mapOf("message" to (error.message ?: "Unknown microphone error")))
         }
       } finally {
+        Log.d(LOG_TAG, "recording thread stopping")
         try {
           recorder.stop()
         } catch (_: IllegalStateException) {
@@ -142,6 +162,9 @@ class WakeWordModule : Module() {
   }
 
   private fun stopListening() {
+    if (isRunning || recordingThread != null || audioRecord != null) {
+      Log.d(LOG_TAG, "stop requested")
+    }
     isRunning = false
     try {
       audioRecord?.stop()

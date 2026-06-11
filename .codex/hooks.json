@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "'C:\\dev\\service-assistant\\.codex\\hooks\\format.sh'"
+          }
+        ]
+      }
+    ]
+  }
+}
