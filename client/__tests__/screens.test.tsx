@@ -398,16 +398,27 @@ describe('tab screens', () => {
 		expect(mockRouterPush).toHaveBeenCalledWith('/home');
 	});
 
-	test('history screen loads metadata and opens selected thread', async () => {
-		jest.mocked(global.fetch)
-			.mockResolvedValueOnce(
-				createJsonResponse([{ id: 1, name: 'Toyota', logo_url: 'logo.png' }]),
-			)
-			.mockResolvedValueOnce(createJsonResponse([{ id: 2, name: 'Wózek' }]))
-			.mockResolvedValueOnce(
-				createJsonResponse([{ id: 3, brand_id: 1, device_type_id: 2, name: 'Toyota 8FG' }]),
-			)
-			.mockResolvedValueOnce(
+	test('history screen requests threads with auth headers', async () => {
+		jest.mocked(global.fetch).mockImplementation((url) => {
+			const requestUrl = String(url);
+
+			if (requestUrl.endsWith('/api/brands')) {
+				return Promise.resolve(
+					createJsonResponse([{ id: 1, name: 'Toyota', logo_url: 'logo.png' }]),
+				);
+			}
+			if (requestUrl.endsWith('/api/device_types')) {
+				return Promise.resolve(createJsonResponse([{ id: 2, name: 'Wózek' }]));
+			}
+			if (requestUrl.endsWith('/api/devices')) {
+				return Promise.resolve(
+					createJsonResponse([
+						{ id: 3, brand_id: 1, device_type_id: 2, name: 'Toyota 8FG' },
+					]),
+				);
+			}
+
+			return Promise.resolve(
 				createJsonResponse([
 					{
 						id: 44,
@@ -418,10 +429,13 @@ describe('tab screens', () => {
 					},
 				]),
 			);
+		});
 		const HistoryScreen = require('../app/(tabs)/history').default;
 
 		const tree = renderScreen(HistoryScreen);
-		await Promise.resolve();
+		getTextContent(tree);
+		await flushPromises();
+		await flushPromises();
 		const backButton = findByText(tree, 'WSTECZ');
 
 		expect(mockUseFocusEffect).toHaveBeenCalled();
@@ -436,6 +450,65 @@ describe('tab screens', () => {
 			}),
 		);
 		expect(backButton).toBeTruthy();
+	});
+
+	test('history screen opens selected thread with vehicle metadata', () => {
+		const loadedHistoryState = [
+			[
+				{
+					id: 44,
+					device_id: 3,
+					title: 'Diagnoza wideł',
+					created_at: '2026-06-09T08:00:00Z',
+					updated_at: '2026-06-09T09:00:00Z',
+				},
+			],
+			'WSZYSTKIE',
+			'WSZYSTKIE',
+			false,
+			null,
+			[{ id: 1, name: 'Toyota', logo_url: 'logo.png', created_at: '', updated_at: '' }],
+			[{ id: 2, name: 'Wózek', created_at: '', updated_at: '' }],
+			[
+				{
+					id: 3,
+					brand_id: 1,
+					device_type_id: 2,
+					name: 'Toyota 8FG',
+					model_serial_code: '',
+					image_url: '',
+					created_at: '',
+					updated_at: '',
+				},
+			],
+			false,
+			false,
+			false,
+		];
+		jest.mocked(global.fetch).mockResolvedValue(createJsonResponse([]));
+		const HistoryScreen = require('../app/(tabs)/history').default;
+
+		mockReactStateValues = [...loadedHistoryState];
+		expect(getTextContent(renderScreen(HistoryScreen))).toContain('Toyota 8FG'.toUpperCase());
+
+		mockReactStateValues = [...loadedHistoryState];
+		const threadButton = collectTouchableWithText(
+			renderScreen(HistoryScreen),
+			'Diagnoza wideł',
+		)[0];
+
+		threadButton.props.onPress();
+
+		expect(mockRouterPush).toHaveBeenCalledWith({
+			pathname: '/chat',
+			params: {
+				deviceId: '3',
+				deviceName: 'Toyota 8FG',
+				threadId: '44',
+				chatSession: 'history-44',
+				logoUrl: 'logo.png',
+			},
+		});
 	});
 
 	test('home screen loads home data and exposes history navigation', () => {
@@ -463,6 +536,45 @@ describe('tab screens', () => {
 		expect(getTextContent(tree)).toContain('Wybierz Pojazd');
 		expect(mockUseCameraPermissions).toHaveBeenCalled();
 		expect(mockRouterPush).toHaveBeenCalledWith('/history');
+	});
+
+	test('home screen shows an empty state when selected filters exclude all vehicles', async () => {
+		jest.mocked(global.fetch).mockImplementation((url) => {
+			const requestUrl = String(url);
+
+			if (requestUrl.endsWith('/api/brands')) {
+				return Promise.resolve(
+					createJsonResponse([
+						{ id: 1, name: 'Toyota', logo_url: null },
+						{ id: 2, name: 'Still', logo_url: null },
+					]),
+				);
+			}
+			if (requestUrl.endsWith('/api/device_types')) {
+				return Promise.resolve(createJsonResponse([{ id: 2, name: 'Wózek' }]));
+			}
+
+			return Promise.resolve(
+				createJsonResponse([{ id: 3, brand_id: 1, device_type_id: 2, name: 'Toyota 8FG' }]),
+			);
+		});
+		const HomeScreen = require('../app/(tabs)/home').default;
+
+		const tree = renderScreen(HomeScreen);
+		getTextContent(tree);
+		await flushPromises();
+		await flushPromises();
+		const loadedTree = renderScreen(HomeScreen);
+		const stillFilterButton = collectTouchableWithText(loadedTree, 'STILL')[0];
+
+		stillFilterButton.props.onPress();
+		const filteredTree = renderScreen(HomeScreen);
+		const vehicleList = findByType(filteredTree, 'Animated.FlatList')[0];
+
+		expect(vehicleList.props.data).toHaveLength(0);
+		expect(getTextContent(vehicleList.props.ListEmptyComponent)).toContain(
+			'Nie ma pojazdów pasujących do wybranych filtrów.',
+		);
 	});
 
 	test('home screen shows a service error modal when device data loading fails', async () => {
