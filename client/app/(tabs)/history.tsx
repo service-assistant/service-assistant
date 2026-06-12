@@ -5,7 +5,6 @@ import React, { useCallback, useState } from 'react';
 import {
 	ActivityIndicator,
 	Image,
-	Platform,
 	ScrollView,
 	Text,
 	TouchableOpacity,
@@ -15,6 +14,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ServiceErrorModal from '@/components/ServiceErrorModal';
+import VehicleFilters from '@/components/VehicleFilters';
+import { useVehicleMetadata } from '@/hooks/use-vehicle-metadata';
 import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
 	getAuthTokenOrThrow,
@@ -23,24 +24,6 @@ import {
 } from '@/utils/auth-errors';
 
 const PRIMARY_ORANGE = '#FF6B00';
-
-type Brand = {
-	id: number;
-	name: string;
-	logo_url: string;
-};
-
-type DeviceType = {
-	id: number;
-	name: string;
-};
-
-type Device = {
-	id: number;
-	brand_id: number;
-	device_type_id: number;
-	name: string;
-};
 
 type ChatThread = {
 	id: number;
@@ -55,43 +38,6 @@ type HistoryItem = ChatThread & {
 	brandName: string;
 	brandLogoUrl: string | null;
 	deviceTypeName: string;
-};
-
-const FILTER_LOGO_SIZES: Record<string, { width: number; height: number }> = {
-	TOYOTA: { width: 96, height: 26 },
-	DIECI: { width: 72, height: 26 },
-	UNICARRIERS: { width: 132, height: 26 },
-	TCM: { width: 60, height: 26 },
-	STILL: { width: 60, height: 26 },
-	JUNGHEINRICH: { width: 132, height: 26 },
-	DEFAULT: { width: 84, height: 26 },
-};
-
-const BrandLogoOrText: React.FC<{
-	brandName: string;
-	logoUrl: string | null;
-	active: boolean;
-}> = ({ brandName, logoUrl, active }) => {
-	const [imageError, setImageError] = useState(false);
-
-	if (brandName === 'WSZYSTKIE' || !logoUrl || imageError) {
-		return (
-			<Text className={`text-sm font-bold ${active ? 'text-white' : 'text-gray-300'}`}>
-				{brandName.toUpperCase()}
-			</Text>
-		);
-	}
-
-	const dims = FILTER_LOGO_SIZES[brandName.toUpperCase()] || FILTER_LOGO_SIZES.DEFAULT;
-
-	return (
-		<Image
-			source={{ uri: logoUrl }}
-			style={{ width: dims.width, height: dims.height }}
-			resizeMode='contain'
-			onError={() => setImageError(true)}
-		/>
-	);
 };
 
 const parseApiDate = (value: string) => {
@@ -135,13 +81,10 @@ export default function HistoryScreen() {
 	const shortestScreenSide = Math.min(width, height);
 	const isTablet = shortestScreenSide >= 600;
 	const useTabletHistoryRefresh = isTablet;
-	const [brands, setBrands] = useState<Brand[]>([]);
-	const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
-	const [devices, setDevices] = useState<Device[]>([]);
 	const [threads, setThreads] = useState<ChatThread[]>([]);
 	const [activeBrandFilter, setActiveBrandFilter] = useState('WSZYSTKIE');
 	const [activeTypeFilter, setActiveTypeFilter] = useState('WSZYSTKIE');
-	const [isLoading, setIsLoading] = useState(true);
+	const [isLoadingThreads, setIsLoadingThreads] = useState(true);
 	const [serviceErrorFeature, setServiceErrorFeature] = useState<string | null>(null);
 
 	const showServiceError = useCallback((featureName: string, error: unknown) => {
@@ -149,70 +92,41 @@ export default function HistoryScreen() {
 		setServiceErrorFeature(featureName);
 	}, []);
 
+	const {
+		brands,
+		deviceTypes,
+		rawDevices: devices,
+		isLoadingBrands,
+		isLoadingTypes,
+		isLoadingDevices,
+	} = useVehicleMetadata({ onServiceError: showServiceError });
+	const isLoading = isLoadingThreads || isLoadingBrands || isLoadingTypes || isLoadingDevices;
+
 	useFocusEffect(
 		useCallback(() => {
 			const abortController = new AbortController();
 
 			const loadHistory = async () => {
-				setIsLoading(true);
+				setIsLoadingThreads(true);
 
 				try {
 					if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 					const authToken = getAuthTokenOrThrow();
-					const headers = {
-						Accept: 'application/json',
-						Authorization: `Bearer ${authToken}`,
-					};
+					const threadsResponse = await fetch(`${AUTH_URL}/api/threads`, {
+						headers: {
+							Accept: 'application/json',
+							Authorization: `Bearer ${authToken}`,
+						},
+						signal: abortController.signal,
+					});
 
-					const [brandsResponse, typesResponse, devicesResponse, threadsResponse] =
-						await Promise.all([
-							fetch(`${AUTH_URL}/api/brands`, {
-								headers,
-								signal: abortController.signal,
-							}),
-							fetch(`${AUTH_URL}/api/device_types`, {
-								headers,
-								signal: abortController.signal,
-							}),
-							fetch(`${AUTH_URL}/api/devices`, {
-								headers,
-								signal: abortController.signal,
-							}),
-							fetch(`${AUTH_URL}/api/threads`, {
-								headers,
-								signal: abortController.signal,
-							}),
-						]);
+					throwIfAuthResponseError(threadsResponse);
 
-					for (const response of [
-						brandsResponse,
-						typesResponse,
-						devicesResponse,
-						threadsResponse,
-					]) {
-						throwIfAuthResponseError(response);
-					}
-
-					if (
-						!brandsResponse.ok ||
-						!typesResponse.ok ||
-						!devicesResponse.ok ||
-						!threadsResponse.ok
-					) {
+					if (!threadsResponse.ok) {
 						throw new Error('Failed to load chat history.');
 					}
 
-					const [loadedBrands, loadedTypes, loadedDevices, loadedThreads] =
-						await Promise.all([
-							brandsResponse.json() as Promise<Brand[]>,
-							typesResponse.json() as Promise<DeviceType[]>,
-							devicesResponse.json() as Promise<Device[]>,
-							threadsResponse.json() as Promise<ChatThread[]>,
-						]);
-
-					setBrands(loadedBrands);
-					setDeviceTypes(loadedTypes);
-					setDevices(loadedDevices);
+					const loadedThreads = (await threadsResponse.json()) as ChatThread[];
 					setThreads(loadedThreads);
 				} catch (error: any) {
 					if (error.name !== 'AbortError') {
@@ -221,7 +135,7 @@ export default function HistoryScreen() {
 					}
 				} finally {
 					if (!abortController.signal.aborted) {
-						setIsLoading(false);
+						setIsLoadingThreads(false);
 					}
 				}
 			};
@@ -262,30 +176,11 @@ export default function HistoryScreen() {
 		return matchesBrand && matchesType;
 	});
 
-	const brandFilterOptions = [{ name: 'WSZYSTKIE', logo_url: null }, ...brands];
-	const typeFilterOptions = [{ name: 'WSZYSTKIE' }, ...deviceTypes];
 	const pagePaddingHorizontal = useTabletHistoryRefresh ? 20 : 16;
 	const pagePaddingTop = useTabletHistoryRefresh ? 10 : 16;
 	const headerTitleClassName = useTabletHistoryRefresh ? 'text-3xl' : 'text-2xl';
 	const headerMinHeight = useTabletHistoryRefresh ? 44 : 38;
 	const headerBottomMargin = useTabletHistoryRefresh ? 12 : 16;
-	const filterLabelClassName = `text-gray-400 font-bold uppercase tracking-widest ml-2 ${
-		useTabletHistoryRefresh ? 'text-[12px] mb-1' : 'text-sm mb-2'
-	}`;
-	const getFilterChipStyle = (active: boolean) =>
-		useTabletHistoryRefresh
-			? {
-					height: 42,
-					paddingHorizontal: 20,
-					paddingVertical: 0,
-					marginRight: 12,
-					backgroundColor: active ? 'rgba(255, 107, 0, 0.16)' : '#242428',
-					borderWidth: 1,
-					borderColor: active ? PRIMARY_ORANGE : 'rgba(255, 255, 255, 0.07)',
-				}
-			: {
-					backgroundColor: active ? PRIMARY_ORANGE : '#27272a',
-				};
 	const historyCardPaddingVertical = useTabletHistoryRefresh ? 14 : 16;
 	const historyCardBorderRadius = useTabletHistoryRefresh ? 10 : 12;
 	const historyCardMarginBottom = useTabletHistoryRefresh ? 12 : 12;
@@ -322,58 +217,16 @@ export default function HistoryScreen() {
 					</Text>
 				</View>
 
-				<View style={{ marginBottom: useTabletHistoryRefresh ? 8 : 12 }}>
-					<Text className={filterLabelClassName}>Marka</Text>
-					<ScrollView horizontal showsHorizontalScrollIndicator={false}>
-						{brandFilterOptions.map((brand) => (
-							<TouchableOpacity
-								key={brand.name}
-								onPress={() => setActiveBrandFilter(brand.name)}
-								style={getFilterChipStyle(activeBrandFilter === brand.name)}
-								className={`rounded-full justify-center items-center flex-row ${
-									useTabletHistoryRefresh ? '' : 'px-6 py-3 mr-4 min-h-[48px]'
-								}`}>
-								<BrandLogoOrText
-									brandName={brand.name}
-									logoUrl={brand.logo_url}
-									active={activeBrandFilter === brand.name}
-								/>
-							</TouchableOpacity>
-						))}
-					</ScrollView>
-				</View>
-
-				<View className='mb-0'>
-					<Text className={filterLabelClassName}>Typ</Text>
-					<ScrollView horizontal showsHorizontalScrollIndicator={false}>
-						{typeFilterOptions.map((type) => (
-							<TouchableOpacity
-								key={type.name}
-								onPress={() => setActiveTypeFilter(type.name)}
-								style={getFilterChipStyle(activeTypeFilter === type.name)}
-								className={`rounded-full justify-center items-center flex-row ${
-									useTabletHistoryRefresh ? '' : 'px-6 py-3 mr-4 min-h-[48px]'
-								}`}>
-								<Text
-									className={`text-sm font-bold uppercase ${
-										activeTypeFilter === type.name
-											? 'text-white'
-											: 'text-gray-300'
-									}`}
-									style={
-										Platform.OS === 'android'
-											? {
-													includeFontPadding: false,
-													textAlignVertical: 'center',
-												}
-											: {}
-									}>
-									{type.name}
-								</Text>
-							</TouchableOpacity>
-						))}
-					</ScrollView>
-				</View>
+				<VehicleFilters
+					brands={brands}
+					deviceTypes={deviceTypes}
+					activeBrandFilter={activeBrandFilter}
+					activeTypeFilter={activeTypeFilter}
+					onBrandFilterChange={setActiveBrandFilter}
+					onTypeFilterChange={setActiveTypeFilter}
+					useTabletRefresh={useTabletHistoryRefresh}
+					primaryColor={PRIMARY_ORANGE}
+				/>
 
 				<View className='h-4' />
 
