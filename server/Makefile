@@ -6,7 +6,7 @@ GREEN  := \033[32m
 YELLOW := \033[33m
 GRAY   := \033[90m
 
-.PHONY: help dev staging production docs test lint format format-check typecheck check migrations reset-db
+.PHONY: help dev staging production docs test test-db-up test-db-down lint format format-check typecheck check migrations reset-db
 
 help:
 	@echo ""
@@ -17,6 +17,8 @@ help:
 	@echo "  $(GREEN)dev$(RESET)               $(GRAY)-$(RESET) Run development environment with hot reloading $(GRAY)(port 8000)$(RESET)"
 	@echo "  $(GREEN)staging$(RESET)           $(GRAY)-$(RESET) Run staging environment $(GRAY)(port 8001)$(RESET)"
 	@echo "  $(GREEN)production$(RESET)        $(GRAY)-$(RESET) Run production environment $(GRAY)(port 8000)$(RESET)"
+	@echo "  $(GREEN)test-db-up$(RESET)        $(GRAY)-$(RESET) Runs database for tests"
+	@echo "  $(GREEN)test-db-down$(RESET)      $(GRAY)-$(RESET) Stops database for tests"
 	@echo "  $(GREEN)test$(RESET)              $(GRAY)-$(RESET) Run tests"
 	@echo "  $(GREEN)lint$(RESET)              $(GRAY)-$(RESET) Check code style"
 	@echo "  $(GREEN)format$(RESET)            $(GRAY)-$(RESET) Format code"
@@ -40,6 +42,10 @@ production:
 	docker compose -f docker-compose.production.yml up --build
 docs:
 	open http://localhost:8000
+test-db-up:
+	docker compose -f docker-compose.test.yml up -d
+test-db-down:
+	docker compose -f docker-compose.test.yml down
 test:
 	poetry run pytest
 lint:

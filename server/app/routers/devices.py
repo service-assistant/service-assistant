@@ -1,4 +1,3 @@
-import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -23,13 +22,11 @@ router = APIRouter()
 async def create_device(
     body: DeviceCreate, session: AsyncSession = Depends(get_session)
 ):
-    async with asyncio.TaskGroup() as tg:
-        brand_task = tg.create_task(session.get(Brand, body.brand_id))
-        device_type_task = tg.create_task(session.get(DeviceType, body.device_type_id))
-
-    if not brand_task.result():
+    brand = await session.get(Brand, body.brand_id)
+    if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
-    if not device_type_task.result():
+    device_type = await session.get(DeviceType, body.device_type_id)
+    if not device_type:
         raise HTTPException(status_code=404, detail="Device type not found")
 
     device = Device(**body.model_dump())
@@ -104,26 +101,17 @@ async def update_device(
 ):
     updates = body.model_dump(exclude_unset=True)
 
-    async with asyncio.TaskGroup() as tg:
-        device_task = tg.create_task(session.get(Device, device_id))
-        brand_task = (
-            tg.create_task(session.get(Brand, updates["brand_id"]))
-            if "brand_id" in updates
-            else None
-        )
-        device_type_task = (
-            tg.create_task(session.get(DeviceType, updates["device_type_id"]))
-            if "device_type_id" in updates
-            else None
-        )
-
-    device = device_task.result()
+    device = await session.get(Device, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-    if brand_task and not brand_task.result():
-        raise HTTPException(status_code=404, detail="Brand not found")
-    if device_type_task and not device_type_task.result():
-        raise HTTPException(status_code=404, detail="Device type not found")
+    if "brand_id" in updates:
+        brand = await session.get(Brand, updates["brand_id"])
+        if not brand:
+            raise HTTPException(status_code=404, detail="Brand not found")
+    if "device_type_id" in updates:
+        device_type = await session.get(DeviceType, updates["device_type_id"])
+        if not device_type:
+            raise HTTPException(status_code=404, detail="Device type not found")
     for field, value in updates.items():
         setattr(device, field, value)
     device.updated_at = datetime.now(timezone.utc)

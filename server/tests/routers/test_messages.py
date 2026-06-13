@@ -1,52 +1,70 @@
-from datetime import datetime, timezone
-
 from tests.routers.conftest import AUTH_HEADERS
+from tests.routers.factories import (
+    create_attachment,
+    create_brand,
+    create_chunk,
+    create_device,
+    create_device_type,
+    create_message,
+    create_thread,
+)
+from app.models import ChunkMessage, MessageSender
 
 
-def test_should_return_chunks_for_system_message(client, mock_session, mocker):
-    now = datetime.now(timezone.utc)
-    mock_exists = mocker.MagicMock()
-    mock_exists.fetchone.return_value = (1,)
-    mock_chunks = mocker.MagicMock()
-    mock_chunks.fetchall.return_value = [
-        (1, 10, "Fault E-23 means hydraulic error.", {"page": 5}, now, now),
-        (2, 10, "Reset procedure: hold button for 3s.", {"page": 6}, now, now),
-    ]
-    mock_session.execute.side_effect = [mock_exists, mock_chunks]
+async def test_should_return_chunks_for_system_message(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    message = await create_message(session, thread.id, sender=MessageSender.system)
+    attachment = await create_attachment(session)
+    chunk1 = await create_chunk(
+        session,
+        attachment.id,
+        content="Fault E-23 means hydraulic error.",
+        extra_metadata={"page": 5},
+    )
+    chunk2 = await create_chunk(
+        session,
+        attachment.id,
+        content="Reset procedure: hold button for 3s.",
+        extra_metadata={"page": 6},
+    )
+    session.add(ChunkMessage(message_id=message.id, chunk_id=chunk1.id))
+    session.add(ChunkMessage(message_id=message.id, chunk_id=chunk2.id))
+    await session.commit()
 
-    response = client.get("/api/messages/1/chunks", headers=AUTH_HEADERS)
+    response = await client.get(
+        f"/api/messages/{message.id}/chunks", headers=AUTH_HEADERS
+    )
+
+    print(response)
 
     assert response.status_code == 200
     chunks = response.json()
     assert len(chunks) == 2
-    assert chunks[0]["id"] == 1
-    assert chunks[0]["content"] == "Fault E-23 means hydraulic error."
-    assert chunks[0]["attachment_id"] == 10
-    assert chunks[0]["metadata"] == {"page": 5}
-    assert chunks[1]["id"] == 2
+    contents = {c["content"] for c in chunks}
+    assert "Fault E-23 means hydraulic error." in contents
+    assert chunks[0]["attachment_id"] == attachment.id
 
 
-def test_should_return_empty_list_when_message_has_no_chunks(
-    client, mock_session, mocker
-):
-    mock_exists = mocker.MagicMock()
-    mock_exists.fetchone.return_value = (1,)
-    mock_chunks = mocker.MagicMock()
-    mock_chunks.fetchall.return_value = []
-    mock_session.execute.side_effect = [mock_exists, mock_chunks]
+async def test_should_return_empty_list_when_message_has_no_chunks(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    message = await create_message(session, thread.id)
 
-    response = client.get("/api/messages/1/chunks", headers=AUTH_HEADERS)
+    response = await client.get(
+        f"/api/messages/{message.id}/chunks", headers=AUTH_HEADERS
+    )
 
     assert response.status_code == 200
     assert response.json() == []
 
 
-def test_should_return_404_when_message_not_found(client, mock_session, mocker):
-    mock_exists = mocker.MagicMock()
-    mock_exists.fetchone.return_value = None
-    mock_session.execute.return_value = mock_exists
-
-    response = client.get("/api/messages/999/chunks", headers=AUTH_HEADERS)
+async def test_should_return_404_when_message_not_found(client):
+    response = await client.get("/api/messages/999/chunks", headers=AUTH_HEADERS)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Message not found"

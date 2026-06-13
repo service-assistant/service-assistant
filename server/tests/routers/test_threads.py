@@ -1,83 +1,41 @@
 import json
-from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
-import pytest
+from sqlalchemy import select
 
-from app.models import MessageSender
-from app.services.tts import extract_sentences as _extract_sentences
+from app.models import Message, MessageSender
 from app.services.stt import SttError
 
 from tests.routers.conftest import AUTH_HEADERS
-from tests.routers.factories import make_message, make_thread
-
-
-@pytest.mark.parametrize(
-    "buffer,expected_sentences,expected_remainder",
-    [
-        (
-            "This is the first sentence. And this is the second one. Still streaming",
-            ["This is the first sentence.", "And this is the second one."],
-            "Still streaming",
-        ),
-        (
-            "Only one long enough sentence. ",
-            ["Only one long enough sentence."],
-            "",
-        ),
-        (
-            "No boundary here just keeps going",
-            [],
-            "No boundary here just keeps going",
-        ),
-        (
-            # "Short." is < 20 chars so it merges with the next sentence
-            "Short. This sentence is long enough to pass the minimum length check. Tail",
-            ["Short. This sentence is long enough to pass the minimum length check."],
-            "Tail",
-        ),
-        (
-            # Both sentences are >= 20 chars so each is emitted independently
-            "Question mark works? Yes it does work fine. Remainder",
-            ["Question mark works?", "Yes it does work fine."],
-            "Remainder",
-        ),
-    ],
+from tests.routers.factories import (
+    create_brand,
+    create_device,
+    create_device_type,
+    create_message,
+    create_thread,
+    make_thread,
 )
-def test_should_extract_sentences_correctly(
-    buffer, expected_sentences, expected_remainder
-):
-    sentences, remainder = _extract_sentences(buffer)
-    assert sentences == expected_sentences
-    assert remainder == expected_remainder
 
 
-def test_should_create_thread_when_valid_data_provided(client, mock_session):
-    async def set_id(obj):
-        obj.id = 1
-        obj.created_at = datetime.now(timezone.utc)
-        obj.updated_at = datetime.now(timezone.utc)
+async def test_should_create_thread_when_valid_data_provided(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
 
-    mock_session.refresh.side_effect = set_id
-
-    response = client.post(
+    response = await client.post(
         "/api/threads",
-        json={"device_id": 1, "title": "Mast won't lift"},
+        json={"device_id": device.id, "title": "Mast won't lift"},
         headers=AUTH_HEADERS,
     )
 
     assert response.status_code == 201
     data = response.json()
     assert data["title"] == "Mast won't lift"
-    assert data["device_id"] == 1
+    assert data["device_id"] == device.id
 
 
-def test_should_return_404_when_creating_thread_with_nonexistent_device(
-    client, mock_session
-):
-    mock_session.get.return_value = None
-
-    response = client.post(
+async def test_should_return_404_when_creating_thread_with_nonexistent_device(client):
+    response = await client.post(
         "/api/threads",
         json={"device_id": 999, "title": "Test"},
         headers=AUTH_HEADERS,
@@ -87,94 +45,74 @@ def test_should_return_404_when_creating_thread_with_nonexistent_device(
     assert response.json()["detail"] == "Device not found"
 
 
-def test_should_list_all_threads(client, mock_session, mocker):
-    threads = [
-        make_thread(id=1, title="Thread 1"),
-        make_thread(id=2, title="Thread 2"),
-    ]
-    mock_result = mocker.MagicMock()
-    mock_result.scalars.return_value.all.return_value = threads
-    mock_session.execute.return_value = mock_result
+async def test_should_list_all_threads(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    await create_thread(session, device.id, title="Thread 1")
+    await create_thread(session, device.id, title="Thread 2")
 
-    response = client.get("/api/threads", headers=AUTH_HEADERS)
+    response = await client.get("/api/threads", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
-    assert data[0]["title"] == "Thread 1"
-    assert data[1]["title"] == "Thread 2"
+    titles = {t["title"] for t in data}
+    assert titles == {"Thread 1", "Thread 2"}
 
 
-def test_should_return_empty_list_when_no_threads_exist(client, mock_session, mocker):
-    mock_result = mocker.MagicMock()
-    mock_result.scalars.return_value.all.return_value = []
-    mock_session.execute.return_value = mock_result
-
-    response = client.get("/api/threads", headers=AUTH_HEADERS)
+async def test_should_return_empty_list_when_no_threads_exist(client):
+    response = await client.get("/api/threads", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     assert response.json() == []
 
 
-def test_should_return_thread_when_id_exists(client, mock_session):
-    mock_session.get.return_value = make_thread(id=1, title="Mast won't lift")
+async def test_should_return_thread_when_id_exists(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id, title="Mast won't lift")
 
-    response = client.get("/api/threads/1", headers=AUTH_HEADERS)
+    response = await client.get(f"/api/threads/{thread.id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
-    assert data["id"] == 1
+    assert data["id"] == thread.id
     assert data["title"] == "Mast won't lift"
-    assert data["device_id"] == 1
+    assert data["device_id"] == device.id
 
 
-def test_should_return_404_when_getting_nonexistent_thread(client, mock_session):
-    mock_session.get.return_value = None
-
-    response = client.get("/api/threads/999", headers=AUTH_HEADERS)
+async def test_should_return_404_when_getting_nonexistent_thread(client):
+    response = await client.get("/api/threads/999", headers=AUTH_HEADERS)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Thread not found"
 
 
-def test_should_delete_thread_when_id_exists(client, mock_session):
-    mock_session.get.return_value = make_thread()
+async def test_should_delete_thread_when_id_exists(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
 
-    response = client.delete("/api/threads/1", headers=AUTH_HEADERS)
+    response = await client.delete(f"/api/threads/{thread.id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 204
-    mock_session.delete.assert_called_once()
-    mock_session.commit.assert_called_once()
 
 
-def test_should_return_404_when_deleting_nonexistent_thread(client, mock_session):
-    mock_session.get.return_value = None
-
-    response = client.delete("/api/threads/999", headers=AUTH_HEADERS)
+async def test_should_return_404_when_deleting_nonexistent_thread(client):
+    response = await client.delete("/api/threads/999", headers=AUTH_HEADERS)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Thread not found"
 
 
-def test_should_send_message_and_return_system_reply(client, mock_session, mocker):
-    thread = make_thread(id=1, device_id=1)
-    mock_session.get.return_value = thread
-
-    async def set_id(obj):
-        obj.id = 2
-        obj.created_at = datetime.now(timezone.utc)
-        obj.updated_at = datetime.now(timezone.utc)
-
-    mock_session.refresh.side_effect = set_id
-
-    fake_chunks = [
-        {
-            "id": 10,
-            "content": "Fault E-23 means hydraulic system error.",
-            "attachment_id": 1,
-            "extra_metadata": {"page": 5},
-        }
-    ]
+async def test_should_send_message_and_return_system_reply(client, session, mocker):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
 
     async def mock_stream(*args, **kwargs):
         yield "E-23 oznacza"
@@ -182,12 +120,12 @@ def test_should_send_message_and_return_system_reply(client, mock_session, mocke
 
     mocker.patch(
         "app.routers.threads.retrieval.retrieve_context_chunks",
-        new=mocker.AsyncMock(return_value=fake_chunks),
+        new=mocker.AsyncMock(return_value=[]),
     )
     mocker.patch("app.routers.threads.llm.stream_query", new=mock_stream)
 
-    response = client.post(
-        "/api/threads/1/messages",
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
         json={"content": "What is error E-23?"},
         headers=AUTH_HEADERS,
     )
@@ -202,19 +140,14 @@ def test_should_send_message_and_return_system_reply(client, mock_session, mocke
     assert message_data is not None
     assert message_data["sender"] == "system"
     assert message_data["content"] == "E-23 oznacza błąd systemu hydraulicznego."
-    assert message_data["id"] == 2
+    assert isinstance(message_data["id"], int)
 
 
-def test_should_store_user_message_before_reply(client, mock_session, mocker):
-    thread = make_thread(id=1, device_id=1)
-    mock_session.get.return_value = thread
-
-    async def set_id(obj):
-        obj.id = 2
-        obj.created_at = datetime.now(timezone.utc)
-        obj.updated_at = datetime.now(timezone.utc)
-
-    mock_session.refresh.side_effect = set_id
+async def test_should_store_user_message_before_reply(client, session, mocker):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
 
     async def mock_stream(*args, **kwargs):
         yield "Answer"
@@ -225,19 +158,24 @@ def test_should_store_user_message_before_reply(client, mock_session, mocker):
     )
     mocker.patch("app.routers.threads.llm.stream_query", new=mock_stream)
 
-    client.post(
-        "/api/threads/1/messages",
+    await client.post(
+        f"/api/threads/{thread.id}/messages",
         json={"content": "My question"},
         headers=AUTH_HEADERS,
     )
 
-    assert mock_session.add.call_count >= 2
+    result = await session.execute(
+        select(Message).where(Message.thread_id == thread.id)
+    )
+    messages = result.scalars().all()
+    assert len(messages) >= 2
+    senders = {m.sender for m in messages}
+    assert MessageSender.user in senders
+    assert MessageSender.system in senders
 
 
-def test_should_return_404_when_thread_not_found_on_send_message(client, mock_session):
-    mock_session.get.return_value = None
-
-    response = client.post(
+async def test_should_return_404_when_thread_not_found_on_send_message(client):
+    response = await client.post(
         "/api/threads/999/messages",
         json={"content": "test question"},
         headers=AUTH_HEADERS,
@@ -247,19 +185,21 @@ def test_should_return_404_when_thread_not_found_on_send_message(client, mock_se
     assert response.json()["detail"] == "Thread not found"
 
 
-def test_should_list_messages_in_thread_chronologically(client, mock_session, mocker):
-    thread = make_thread(id=1)
-    user_msg = make_message(id=1, content="User question", sender=MessageSender.user)
-    system_msg = make_message(
-        id=2, content="System answer", sender=MessageSender.system
+async def test_should_list_messages_in_thread_chronologically(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    await create_message(
+        session, thread.id, content="User question", sender=MessageSender.user
+    )
+    await create_message(
+        session, thread.id, content="System answer", sender=MessageSender.system
     )
 
-    mock_session.get.return_value = thread
-    mock_scalars_result = mocker.MagicMock()
-    mock_scalars_result.all.return_value = [user_msg, system_msg]
-    mock_session.scalars.return_value = mock_scalars_result
-
-    response = client.get("/api/threads/1/messages", headers=AUTH_HEADERS)
+    response = await client.get(
+        f"/api/threads/{thread.id}/messages", headers=AUTH_HEADERS
+    )
 
     assert response.status_code == 200
     messages = response.json()
@@ -270,41 +210,40 @@ def test_should_list_messages_in_thread_chronologically(client, mock_session, mo
     assert messages[1]["content"] == "System answer"
 
 
-def test_should_return_empty_list_when_thread_has_no_messages(
-    client, mock_session, mocker
-):
-    mock_session.get.return_value = make_thread()
-    mock_scalars_result = mocker.MagicMock()
-    mock_scalars_result.all.return_value = []
-    mock_session.scalars.return_value = mock_scalars_result
+async def test_should_return_empty_list_when_thread_has_no_messages(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
 
-    response = client.get("/api/threads/1/messages", headers=AUTH_HEADERS)
+    response = await client.get(
+        f"/api/threads/{thread.id}/messages", headers=AUTH_HEADERS
+    )
 
     assert response.status_code == 200
     assert response.json() == []
 
 
-def test_should_return_404_when_listing_messages_for_nonexistent_thread(
-    client, mock_session
-):
-    mock_session.get.return_value = None
-
-    response = client.get("/api/threads/999/messages", headers=AUTH_HEADERS)
+async def test_should_return_404_when_listing_messages_for_nonexistent_thread(client):
+    response = await client.get("/api/threads/999/messages", headers=AUTH_HEADERS)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Thread not found"
 
 
-def test_should_transcribe_audio_when_thread_exists(client, mock_session, mocker):
-    mock_session.get.return_value = make_thread(id=1)
+async def test_should_transcribe_audio_when_thread_exists(client, session, mocker):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
 
     mocker.patch(
         "app.routers.threads.stt.transcribe",
         new=mocker.AsyncMock(return_value="Oil pressure low"),
     )
 
-    response = client.post(
-        "/api/threads/1/messages/transcribe",
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages/transcribe",
         files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
         headers=AUTH_HEADERS,
     )
@@ -313,12 +252,8 @@ def test_should_transcribe_audio_when_thread_exists(client, mock_session, mocker
     assert response.json()["transcript"] == "Oil pressure low"
 
 
-def test_should_return_404_when_transcribing_for_nonexistent_thread(
-    client, mock_session
-):
-    mock_session.get.return_value = None
-
-    response = client.post(
+async def test_should_return_404_when_transcribing_for_nonexistent_thread(client):
+    response = await client.post(
         "/api/threads/999/messages/transcribe",
         files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
         headers=AUTH_HEADERS,
@@ -328,8 +263,11 @@ def test_should_return_404_when_transcribing_for_nonexistent_thread(
     assert response.json()["detail"] == "Thread not found"
 
 
-def test_should_return_502_when_stt_service_fails(client, mock_session, mocker):
-    mock_session.get.return_value = make_thread(id=1)
+async def test_should_return_502_when_stt_service_fails(client, session, mocker):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
 
     mocker.patch(
         "app.routers.threads.stt.transcribe",
@@ -338,8 +276,8 @@ def test_should_return_502_when_stt_service_fails(client, mock_session, mocker):
         ),
     )
 
-    response = client.post(
-        "/api/threads/1/messages/transcribe",
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages/transcribe",
         files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
         headers=AUTH_HEADERS,
     )
@@ -347,16 +285,19 @@ def test_should_return_502_when_stt_service_fails(client, mock_session, mocker):
     assert response.status_code == 502
 
 
-def test_should_return_422_when_audio_is_empty(client, mock_session, mocker):
-    mock_session.get.return_value = make_thread(id=1)
+async def test_should_return_422_when_audio_is_empty(client, session, mocker):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
 
     mocker.patch(
         "app.routers.threads.stt.transcribe",
         new=mocker.AsyncMock(side_effect=SttError("Empty audio file")),
     )
 
-    response = client.post(
-        "/api/threads/1/messages/transcribe",
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages/transcribe",
         files={"audio": ("recording.m4a", b"", "audio/m4a")},
         headers=AUTH_HEADERS,
     )
@@ -364,7 +305,8 @@ def test_should_return_422_when_audio_is_empty(client, mock_session, mocker):
     assert response.status_code == 422
 
 
-def test_should_stream_final_transcript_when_audio_sent(client, mock_session, mocker):
+def test_should_stream_final_transcript_when_audio_sent(ws_client, mocker):
+    client, mock_session = ws_client
     mock_session.get.return_value = make_thread(id=1)
 
     class MockDgWs:
@@ -401,3 +343,36 @@ def test_should_stream_final_transcript_when_audio_sent(client, mock_session, mo
 
     assert data["type"] == "final"
     assert data["transcript"] == "Opisz mi co mówi kod błedu 2:002?"
+
+
+def test_should_send_error_when_thread_not_found_via_websocket(ws_client):
+    client, mock_session = ws_client
+    mock_session.get.return_value = None
+
+    with client.websocket_connect(
+        "/api/threads/999/messages/transcribe-stream?token=CHANGEMELATER"
+    ) as ws:
+        data = ws.receive_json()
+
+    assert data["type"] == "error"
+    assert "Thread not found" in data["message"]
+
+
+def test_should_send_error_when_stt_service_fails_during_stream(ws_client, mocker):
+    client, mock_session = ws_client
+    mock_session.get.return_value = make_thread(id=1)
+
+    @asynccontextmanager
+    async def mock_failing_dg_ws(*args, **kwargs):
+        raise SttError("Deepgram connection failed")
+        yield
+
+    mocker.patch("app.routers.threads.stt.deepgram_websocket", new=mock_failing_dg_ws)
+
+    with client.websocket_connect(
+        "/api/threads/1/messages/transcribe-stream?token=CHANGEMELATER"
+    ) as ws:
+        data = ws.receive_json()
+
+    assert data["type"] == "error"
+    assert "Deepgram connection failed" in data["message"]

@@ -1,20 +1,9 @@
-from datetime import datetime, timezone
-
-from sqlalchemy.exc import IntegrityError
-
 from tests.routers.conftest import AUTH_HEADERS
-from tests.routers.factories import make_device_type
+from tests.routers.factories import create_brand, create_device, create_device_type
 
 
-def test_should_create_device_type_when_valid_data_provided(client, mock_session):
-    async def set_id(obj):
-        obj.id = 1
-        obj.created_at = datetime.now(timezone.utc)
-        obj.updated_at = datetime.now(timezone.utc)
-
-    mock_session.refresh.side_effect = set_id
-
-    response = client.post(
+async def test_should_create_device_type_when_valid_data_provided(client):
+    response = await client.post(
         "/api/device_types",
         json={"name": "Counterbalance Forklift"},
         headers=AUTH_HEADERS,
@@ -23,79 +12,58 @@ def test_should_create_device_type_when_valid_data_provided(client, mock_session
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Counterbalance Forklift"
-    assert data["id"] == 1
-    mock_session.add.assert_called_once()
-    mock_session.commit.assert_called_once()
+    assert isinstance(data["id"], int)
 
 
-def test_should_return_422_when_creating_device_type_without_name(client, mock_session):
-    response = client.post("/api/device_types", json={}, headers=AUTH_HEADERS)
+async def test_should_return_422_when_creating_device_type_without_name(client):
+    response = await client.post("/api/device_types", json={}, headers=AUTH_HEADERS)
 
     assert response.status_code == 422
 
 
-def test_should_list_all_device_types(client, mock_session, mocker):
-    device_types = [
-        make_device_type(id=1, name="Counterbalance Forklift"),
-        make_device_type(id=2, name="Reach Truck"),
-    ]
-    mock_result = mocker.MagicMock()
-    mock_result.scalars.return_value.all.return_value = device_types
-    mock_session.execute.return_value = mock_result
+async def test_should_list_all_device_types(client, session):
+    await create_device_type(session, name="Counterbalance Forklift")
+    await create_device_type(session, name="Reach Truck")
 
-    response = client.get("/api/device_types", headers=AUTH_HEADERS)
+    response = await client.get("/api/device_types", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
-    assert data[0]["name"] == "Counterbalance Forklift"
-    assert data[1]["name"] == "Reach Truck"
+    names = {dt["name"] for dt in data}
+    assert names == {"Counterbalance Forklift", "Reach Truck"}
 
 
-def test_should_return_empty_list_when_no_device_types_exist(
-    client, mock_session, mocker
-):
-    mock_result = mocker.MagicMock()
-    mock_result.scalars.return_value.all.return_value = []
-    mock_session.execute.return_value = mock_result
-
-    response = client.get("/api/device_types", headers=AUTH_HEADERS)
+async def test_should_return_empty_list_when_no_device_types_exist(client):
+    response = await client.get("/api/device_types", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     assert response.json() == []
 
 
-def test_should_return_device_type_when_id_exists(client, mock_session):
-    mock_session.get.return_value = make_device_type(id=1, name="Reach Truck")
+async def test_should_return_device_type_when_id_exists(client, session):
+    dt = await create_device_type(session, name="Reach Truck")
 
-    response = client.get("/api/device_types/1", headers=AUTH_HEADERS)
+    response = await client.get(f"/api/device_types/{dt.id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
-    assert data["id"] == 1
+    assert data["id"] == dt.id
     assert data["name"] == "Reach Truck"
 
 
-def test_should_return_404_when_device_type_id_not_found(client, mock_session):
-    mock_session.get.return_value = None
-
-    response = client.get("/api/device_types/999", headers=AUTH_HEADERS)
+async def test_should_return_404_when_device_type_id_not_found(client):
+    response = await client.get("/api/device_types/999", headers=AUTH_HEADERS)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Device type not found"
 
 
-def test_should_update_device_type_name_when_patch_provided(client, mock_session):
-    device_type = make_device_type(id=1, name="Counterbalance Forklift")
-    mock_session.get.return_value = device_type
+async def test_should_update_device_type_name_when_patch_provided(client, session):
+    dt = await create_device_type(session, name="Counterbalance Forklift")
 
-    async def noop_refresh(obj):
-        pass
-
-    mock_session.refresh.side_effect = noop_refresh
-
-    response = client.patch(
-        "/api/device_types/1",
+    response = await client.patch(
+        f"/api/device_types/{dt.id}",
         json={"name": "Pallet Jack"},
         headers=AUTH_HEADERS,
     )
@@ -104,10 +72,8 @@ def test_should_update_device_type_name_when_patch_provided(client, mock_session
     assert response.json()["name"] == "Pallet Jack"
 
 
-def test_should_return_404_when_updating_nonexistent_device_type(client, mock_session):
-    mock_session.get.return_value = None
-
-    response = client.patch(
+async def test_should_return_404_when_updating_nonexistent_device_type(client):
+    response = await client.patch(
         "/api/device_types/999", json={"name": "X"}, headers=AUTH_HEADERS
     )
 
@@ -115,33 +81,42 @@ def test_should_return_404_when_updating_nonexistent_device_type(client, mock_se
     assert response.json()["detail"] == "Device type not found"
 
 
-def test_should_delete_device_type_when_id_exists(client, mock_session):
-    mock_session.get.return_value = make_device_type()
+async def test_should_delete_device_type_when_id_exists(client, session):
+    dt = await create_device_type(session)
 
-    response = client.delete("/api/device_types/1", headers=AUTH_HEADERS)
+    response = await client.delete(f"/api/device_types/{dt.id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 204
-    mock_session.delete.assert_called_once()
-    mock_session.commit.assert_called_once()
 
 
-def test_should_return_404_when_deleting_nonexistent_device_type(client, mock_session):
-    mock_session.get.return_value = None
-
-    response = client.delete("/api/device_types/999", headers=AUTH_HEADERS)
+async def test_should_return_404_when_deleting_nonexistent_device_type(client):
+    response = await client.delete("/api/device_types/999", headers=AUTH_HEADERS)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Device type not found"
 
 
-def test_should_return_409_when_deleting_device_type_referenced_by_devices(
-    client, mock_session
+async def test_should_return_409_when_deleting_device_type_referenced_by_devices(
+    client, session
 ):
-    mock_session.get.return_value = make_device_type()
-    mock_session.commit.side_effect = IntegrityError(None, None, Exception())
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    await create_device(session, brand.id, dt.id)
 
-    response = client.delete("/api/device_types/1", headers=AUTH_HEADERS)
+    response = await client.delete(f"/api/device_types/{dt.id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 409
     assert "Cannot delete device type" in response.json()["detail"]
-    mock_session.rollback.assert_called_once()
+
+
+async def test_should_return_unchanged_device_type_when_empty_patch_sent(
+    client, session
+):
+    dt = await create_device_type(session, name="Counterbalance Forklift")
+
+    response = await client.patch(
+        f"/api/device_types/{dt.id}", json={}, headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Counterbalance Forklift"

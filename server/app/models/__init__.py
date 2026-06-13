@@ -7,7 +7,7 @@ from .associations import AttachmentDevice, ChunkMessage
 from .attachment import Attachment
 from .brand import Brand
 from .chat_thread import ChatThread
-from .chunk import Chunk
+from .chunk import Chunk, EMBEDDING_DIMENSIONS
 from .device_type import DeviceType
 from .device import Device
 from .message import Message, MessageSender
@@ -23,4 +23,5 @@ __all__ = [
     "Device",
     "Message",
     "MessageSender",
+    "EMBEDDING_DIMENSIONS",
 ]

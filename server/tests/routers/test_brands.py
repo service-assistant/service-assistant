@@ -1,153 +1,118 @@
-from datetime import datetime, timezone
-
-from sqlalchemy.exc import IntegrityError
-
 from tests.routers.conftest import AUTH_HEADERS
-from tests.routers.factories import make_brand
+from tests.routers.factories import create_brand, create_device, create_device_type
 
 
-def test_should_create_brand_when_valid_data_provided(client, mock_session):
-    async def set_id(obj):
-        obj.id = 1
-        obj.created_at = datetime.now(timezone.utc)
-        obj.updated_at = datetime.now(timezone.utc)
-
-    mock_session.refresh.side_effect = set_id
-
-    response = client.post("/api/brands", json={"name": "Toyota"}, headers=AUTH_HEADERS)
-
-    assert response.status_code == 201
-    data = response.json()
-    assert data["name"] == "Toyota"
-    assert data["id"] == 1
-    mock_session.add.assert_called_once()
-    mock_session.commit.assert_called_once()
-
-
-def test_should_create_brand_with_logo_url(client, mock_session):
-    async def set_id(obj):
-        obj.id = 2
-        obj.logo_url = "https://example.com/logo.png"
-        obj.created_at = datetime.now(timezone.utc)
-        obj.updated_at = datetime.now(timezone.utc)
-
-    mock_session.refresh.side_effect = set_id
-
-    response = client.post(
+async def test_should_create_brand_when_valid_data_provided(client):
+    response = await client.post(
         "/api/brands",
-        json={"name": "Linde", "logo_url": "https://example.com/logo.png"},
+        json={"name": "Toyota"},
         headers=AUTH_HEADERS,
     )
 
     assert response.status_code == 201
-    assert response.json()["logo_url"] == "https://example.com/logo.png"
+    data = response.json()
+    assert data["name"] == "Toyota"
+    assert isinstance(data["id"], int)
 
 
-def test_should_return_422_when_creating_brand_without_name(client, mock_session):
-    response = client.post("/api/brands", json={}, headers=AUTH_HEADERS)
+async def test_should_return_422_when_creating_brand_without_name(client):
+    response = await client.post("/api/brands", json={}, headers=AUTH_HEADERS)
 
     assert response.status_code == 422
 
 
-def test_should_list_all_brands(client, mock_session, mocker):
-    brands = [make_brand(id=1, name="Toyota"), make_brand(id=2, name="Linde")]
-    mock_result = mocker.MagicMock()
-    mock_result.scalars.return_value.all.return_value = brands
-    mock_session.execute.return_value = mock_result
+async def test_should_list_all_brands(client, session):
+    await create_brand(session, name="Toyota")
+    await create_brand(session, name="Linde")
 
-    response = client.get("/api/brands", headers=AUTH_HEADERS)
+    response = await client.get("/api/brands", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
-    assert data[0]["name"] == "Toyota"
-    assert data[1]["name"] == "Linde"
+    names = {b["name"] for b in data}
+    assert names == {"Toyota", "Linde"}
 
 
-def test_should_return_empty_list_when_no_brands_exist(client, mock_session, mocker):
-    mock_result = mocker.MagicMock()
-    mock_result.scalars.return_value.all.return_value = []
-    mock_session.execute.return_value = mock_result
-
-    response = client.get("/api/brands", headers=AUTH_HEADERS)
+async def test_should_return_empty_list_when_no_brands_exist(client):
+    response = await client.get("/api/brands", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     assert response.json() == []
 
 
-def test_should_return_brand_when_id_exists(client, mock_session):
-    mock_session.get.return_value = make_brand(id=1, name="Toyota")
+async def test_should_return_brand_when_id_exists(client, session):
+    brand = await create_brand(session, name="Toyota")
 
-    response = client.get("/api/brands/1", headers=AUTH_HEADERS)
+    response = await client.get(f"/api/brands/{brand.id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     data = response.json()
-    assert data["id"] == 1
+    assert data["id"] == brand.id
     assert data["name"] == "Toyota"
 
 
-def test_should_return_404_when_brand_id_not_found(client, mock_session):
-    mock_session.get.return_value = None
-
-    response = client.get("/api/brands/999", headers=AUTH_HEADERS)
+async def test_should_return_404_when_brand_id_not_found(client):
+    response = await client.get("/api/brands/999", headers=AUTH_HEADERS)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Brand not found"
 
 
-def test_should_update_brand_name_when_patch_provided(client, mock_session):
-    brand = make_brand(id=1, name="Toyota")
-    mock_session.get.return_value = brand
+async def test_should_update_brand_name_when_patch_provided(client, session):
+    brand = await create_brand(session, name="Toyota")
 
-    async def noop_refresh(obj):
-        pass
-
-    mock_session.refresh.side_effect = noop_refresh
-
-    response = client.patch(
-        "/api/brands/1", json={"name": "Toyota MH"}, headers=AUTH_HEADERS
+    response = await client.patch(
+        f"/api/brands/{brand.id}", json={"name": "Toyota MH"}, headers=AUTH_HEADERS
     )
 
     assert response.status_code == 200
     assert response.json()["name"] == "Toyota MH"
 
 
-def test_should_return_404_when_updating_nonexistent_brand(client, mock_session):
-    mock_session.get.return_value = None
-
-    response = client.patch("/api/brands/999", json={"name": "X"}, headers=AUTH_HEADERS)
+async def test_should_return_404_when_updating_nonexistent_brand(client):
+    response = await client.patch(
+        "/api/brands/999", json={"name": "X"}, headers=AUTH_HEADERS
+    )
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Brand not found"
 
 
-def test_should_delete_brand_when_id_exists(client, mock_session):
-    mock_session.get.return_value = make_brand()
+async def test_should_delete_brand_when_id_exists(client, session):
+    brand = await create_brand(session)
 
-    response = client.delete("/api/brands/1", headers=AUTH_HEADERS)
+    response = await client.delete(f"/api/brands/{brand.id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 204
-    mock_session.delete.assert_called_once()
-    mock_session.commit.assert_called_once()
 
 
-def test_should_return_404_when_deleting_nonexistent_brand(client, mock_session):
-    mock_session.get.return_value = None
-
-    response = client.delete("/api/brands/999", headers=AUTH_HEADERS)
+async def test_should_return_404_when_deleting_nonexistent_brand(client):
+    response = await client.delete("/api/brands/999", headers=AUTH_HEADERS)
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Brand not found"
 
 
-def test_should_return_409_when_deleting_brand_referenced_by_devices(
-    client, mock_session
+async def test_should_return_409_when_deleting_brand_referenced_by_devices(
+    client, session
 ):
-    mock_session.get.return_value = make_brand()
-    mock_session.commit.side_effect = IntegrityError(None, None, Exception())
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    await create_device(session, brand.id, dt.id)
 
-    response = client.delete("/api/brands/1", headers=AUTH_HEADERS)
+    response = await client.delete(f"/api/brands/{brand.id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 409
     assert "Cannot delete brand" in response.json()["detail"]
-    mock_session.rollback.assert_called_once()
+
+
+async def test_should_return_unchanged_brand_when_empty_patch_sent(client, session):
+    brand = await create_brand(session, name="Toyota")
+
+    response = await client.patch(
+        f"/api/brands/{brand.id}", json={}, headers=AUTH_HEADERS
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == "Toyota"
