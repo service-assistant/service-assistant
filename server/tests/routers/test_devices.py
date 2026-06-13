@@ -15,7 +15,13 @@ async def test_should_create_device_when_brand_and_device_type_exist(client, ses
 
     response = await client.post(
         "/api/devices",
-        json={"brand_id": brand.id, "device_type_id": dt.id, "name": "Toyota 8FBE20"},
+        json={
+            "brand_id": brand.id,
+            "device_type_id": dt.id,
+            "name": "Toyota 8FBE20",
+            "model_serial_code": "8FBE20-12345",
+            "image_url": "https://example.com/images/toyota-8fbe20.jpg",
+        },
         headers=AUTH_HEADERS,
     )
 
@@ -24,6 +30,8 @@ async def test_should_create_device_when_brand_and_device_type_exist(client, ses
     assert data["name"] == "Toyota 8FBE20"
     assert data["brand_id"] == brand.id
     assert data["device_type_id"] == dt.id
+    assert data["model_serial_code"] == "8FBE20-12345"
+    assert data["image_url"] == "https://example.com/images/toyota-8fbe20.jpg"
 
 
 async def test_should_return_404_when_brand_not_found_on_create(client, session):

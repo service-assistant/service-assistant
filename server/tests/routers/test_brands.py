@@ -5,13 +5,14 @@ from tests.routers.factories import create_brand, create_device, create_device_t
 async def test_should_create_brand_when_valid_data_provided(client):
     response = await client.post(
         "/api/brands",
-        json={"name": "Toyota"},
+        json={"name": "Linde", "logo_url": "https://example.com/logo.png"},
         headers=AUTH_HEADERS,
     )
 
     assert response.status_code == 201
     data = response.json()
-    assert data["name"] == "Toyota"
+    assert data["name"] == "Linde"
+    assert data["logo_url"] == "https://example.com/logo.png"
     assert isinstance(data["id"], int)
 
 
