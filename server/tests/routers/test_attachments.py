@@ -17,7 +17,7 @@ from tests.routers.factories import make_attachment, make_device
 def client_with_tmp(mock_session, tmp_path):
     test_settings = Settings(
         env="test",
-        database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/service_assistant",
+        database_url="postgresql+psycopg://postgres:postgres@localhost:5432/service_assistant",
         azure_openai_endpoint="https://test.example.com",
         azure_openai_api_key="test-key",
         azure_openai_embeddings_deployment="test-deployment",
