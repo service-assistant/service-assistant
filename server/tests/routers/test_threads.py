@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy import select
 
-from app.models import Message, MessageSender
+from app.models import ChatThread, Message, MessageSender
 from app.services.stt import SttError
 
 from tests.routers.conftest import AUTH_HEADERS
@@ -95,10 +95,13 @@ async def test_should_delete_thread_when_id_exists(client, session):
     dt = await create_device_type(session)
     device = await create_device(session, brand.id, dt.id)
     thread = await create_thread(session, device.id)
+    thread_id = thread.id
 
-    response = await client.delete(f"/api/threads/{thread.id}", headers=AUTH_HEADERS)
+    response = await client.delete(f"/api/threads/{thread_id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 204
+    session.expunge(thread)
+    assert await session.get(ChatThread, thread_id) is None
 
 
 async def test_should_return_404_when_deleting_nonexistent_thread(client):

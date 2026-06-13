@@ -1,3 +1,5 @@
+from app.models import Attachment
+
 from tests.routers.conftest import AUTH_HEADERS
 from tests.routers.factories import (
     create_attachment,
@@ -177,13 +179,16 @@ async def test_should_delete_attachment_and_remove_file_from_disk(
         file_global_path=str(pdf_path),
         original_filename="manual.pdf",
     )
+    attachment_id = attachment.id
 
     response = await client.delete(
-        f"/api/attachments/{attachment.id}", headers=AUTH_HEADERS
+        f"/api/attachments/{attachment_id}", headers=AUTH_HEADERS
     )
 
     assert response.status_code == 204
     assert not pdf_path.exists()
+    session.expunge(attachment)
+    assert await session.get(Attachment, attachment_id) is None
 
 
 async def test_should_delete_attachment_even_when_file_missing_from_disk(
@@ -194,12 +199,15 @@ async def test_should_delete_attachment_even_when_file_missing_from_disk(
         file_global_path=str(tmp_path / "gone.pdf"),
         original_filename="gone.pdf",
     )
+    attachment_id = attachment.id
 
     response = await client.delete(
-        f"/api/attachments/{attachment.id}", headers=AUTH_HEADERS
+        f"/api/attachments/{attachment_id}", headers=AUTH_HEADERS
     )
 
     assert response.status_code == 204
+    session.expunge(attachment)
+    assert await session.get(Attachment, attachment_id) is None
 
 
 async def test_should_return_404_when_deleting_nonexistent_attachment(client):

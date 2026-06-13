@@ -1,3 +1,5 @@
+from app.models import Device
+
 from tests.routers.conftest import AUTH_HEADERS
 from tests.routers.factories import (
     create_attachment,
@@ -121,6 +123,8 @@ async def test_should_update_device_name_when_patch_provided(client, session):
 
     assert response.status_code == 200
     assert response.json()["name"] == "Toyota 8FBE30"
+    await session.refresh(device)
+    assert device.name == "Toyota 8FBE30"
 
 
 async def test_should_return_404_when_updating_nonexistent_device(client):
@@ -166,10 +170,13 @@ async def test_should_delete_device_when_id_exists(client, session):
     brand = await create_brand(session)
     dt = await create_device_type(session)
     device = await create_device(session, brand.id, dt.id)
+    device_id = device.id
 
-    response = await client.delete(f"/api/devices/{device.id}", headers=AUTH_HEADERS)
+    response = await client.delete(f"/api/devices/{device_id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 204
+    session.expunge(device)
+    assert await session.get(Device, device_id) is None
 
 
 async def test_should_return_404_when_deleting_nonexistent_device(client):
@@ -260,3 +267,6 @@ async def test_should_update_only_device_type_when_partial_patch_provided(
     data = response.json()
     assert data["device_type_id"] == dt_new.id
     assert data["name"] == "Toyota 8FBE20"
+    await session.refresh(device)
+    assert device.device_type_id == dt_new.id
+    assert device.name == "Toyota 8FBE20"

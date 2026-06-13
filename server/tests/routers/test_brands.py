@@ -1,3 +1,5 @@
+from app.models import Brand
+
 from tests.routers.conftest import AUTH_HEADERS
 from tests.routers.factories import create_brand, create_device, create_device_type
 
@@ -69,6 +71,8 @@ async def test_should_update_brand_name_when_patch_provided(client, session):
 
     assert response.status_code == 200
     assert response.json()["name"] == "Toyota MH"
+    await session.refresh(brand)
+    assert brand.name == "Toyota MH"
 
 
 async def test_should_return_404_when_updating_nonexistent_brand(client):
@@ -82,10 +86,13 @@ async def test_should_return_404_when_updating_nonexistent_brand(client):
 
 async def test_should_delete_brand_when_id_exists(client, session):
     brand = await create_brand(session)
+    brand_id = brand.id
 
-    response = await client.delete(f"/api/brands/{brand.id}", headers=AUTH_HEADERS)
+    response = await client.delete(f"/api/brands/{brand_id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 204
+    session.expunge(brand)
+    assert await session.get(Brand, brand_id) is None
 
 
 async def test_should_return_404_when_deleting_nonexistent_brand(client):
@@ -117,3 +124,5 @@ async def test_should_return_unchanged_brand_when_empty_patch_sent(client, sessi
 
     assert response.status_code == 200
     assert response.json()["name"] == "Toyota"
+    await session.refresh(brand)
+    assert brand.name == "Toyota"

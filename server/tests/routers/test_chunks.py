@@ -1,3 +1,5 @@
+from app.models import Chunk
+
 from tests.routers.conftest import AUTH_HEADERS
 from tests.routers.factories import create_attachment, create_chunk
 
@@ -68,10 +70,13 @@ async def test_should_clamp_page_below_one(client, session):
 async def test_should_delete_chunk_when_id_exists(client, session):
     attachment = await create_attachment(session)
     chunk = await create_chunk(session, attachment.id)
+    chunk_id = chunk.id
 
-    response = await client.delete(f"/api/chunks/{chunk.id}", headers=AUTH_HEADERS)
+    response = await client.delete(f"/api/chunks/{chunk_id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 204
+    session.expunge(chunk)
+    assert await session.get(Chunk, chunk_id) is None
 
 
 async def test_should_return_404_when_deleting_nonexistent_chunk(client):

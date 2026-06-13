@@ -1,3 +1,5 @@
+from app.models import DeviceType
+
 from tests.routers.conftest import AUTH_HEADERS
 from tests.routers.factories import create_brand, create_device, create_device_type
 
@@ -70,6 +72,8 @@ async def test_should_update_device_type_name_when_patch_provided(client, sessio
 
     assert response.status_code == 200
     assert response.json()["name"] == "Pallet Jack"
+    await session.refresh(dt)
+    assert dt.name == "Pallet Jack"
 
 
 async def test_should_return_404_when_updating_nonexistent_device_type(client):
@@ -83,10 +87,13 @@ async def test_should_return_404_when_updating_nonexistent_device_type(client):
 
 async def test_should_delete_device_type_when_id_exists(client, session):
     dt = await create_device_type(session)
+    dt_id = dt.id
 
-    response = await client.delete(f"/api/device_types/{dt.id}", headers=AUTH_HEADERS)
+    response = await client.delete(f"/api/device_types/{dt_id}", headers=AUTH_HEADERS)
 
     assert response.status_code == 204
+    session.expunge(dt)
+    assert await session.get(DeviceType, dt_id) is None
 
 
 async def test_should_return_404_when_deleting_nonexistent_device_type(client):
@@ -120,3 +127,5 @@ async def test_should_return_unchanged_device_type_when_empty_patch_sent(
 
     assert response.status_code == 200
     assert response.json()["name"] == "Counterbalance Forklift"
+    await session.refresh(dt)
+    assert dt.name == "Counterbalance Forklift"
