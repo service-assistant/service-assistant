@@ -1,7 +1,7 @@
 import React from 'react';
 
-import { findByType, getTextContent } from '../test-utils/react-tree';
 import VehicleFilters from '../components/VehicleFilters';
+import { findByType, getTextContent } from '../test-utils/react-tree';
 
 jest.mock('react', () => {
 	const actualReact = jest.requireActual('react');

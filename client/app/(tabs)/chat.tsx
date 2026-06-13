@@ -66,7 +66,7 @@ const FILE_ICON_OPTIONS = [
  * Handles the main conversational interface, supporting both text and voice interactions.
  * Features include:
  * - Real-time voice recording with volume metering
- * - Integration with Deepgram for Speech-to-Text (STT)
+ * - Server-side Speech-to-Text (STT)
  * - Integration with OpenAI for Text-to-Speech (TTS)
  * - Managing thread-based conversation history with the backend API
  * - Displaying attachments and schema images
@@ -144,7 +144,7 @@ export default function ChatScreen() {
 			onServiceError: showServiceError,
 			authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
 		});
-	const { askAPI, stopChatApi } = useChatApi<ChatMessage>({
+	const { askAPI, ensureThread, stopChatApi } = useChatApi<ChatMessage>({
 		serverUrl: AUTH_URL,
 		deviceId: HARDCODED_DEVICE_ID,
 		currentThreadId,
@@ -175,6 +175,9 @@ export default function ChatScreen() {
 		isAudioPlaying,
 		showTextInput,
 		isSpeechInputUnavailable,
+		serverUrl: AUTH_URL,
+		authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
+		getTranscriptionThreadId: (signal) => ensureThread('Wiadomość głosowa', signal),
 		setShowTextInput,
 		setIsLoading,
 		onStopExternal: () => {
@@ -408,10 +411,7 @@ export default function ChatScreen() {
 		}
 
 		if (isSpeechInputUnavailable && !isListening) {
-			showServiceError(
-				'rozpoznawanie mowy',
-				new Error('Deepgram speech input is unavailable'),
-			);
+			showServiceError('rozpoznawanie mowy', new Error('Speech input is unavailable'));
 			return;
 		}
 

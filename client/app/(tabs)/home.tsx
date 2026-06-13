@@ -48,14 +48,8 @@ export default function HomeScreen() {
 		setServiceErrorFeature(featureName);
 	}, []);
 
-	const {
-		brands,
-		deviceTypes,
-		rawDevices,
-		isLoadingBrands,
-		isLoadingTypes,
-		isLoadingDevices,
-	} = useVehicleMetadata({ onServiceError: showServiceError });
+	const { brands, deviceTypes, rawDevices, isLoadingBrands, isLoadingTypes, isLoadingDevices } =
+		useVehicleMetadata({ onServiceError: showServiceError });
 
 	// --- MAP DEVICES TO UI FORMAT ---
 	const mappedVehicles: Vehicle[] = rawDevices.map((device) => {
@@ -260,11 +254,7 @@ export default function HomeScreen() {
 						)}
 						ListEmptyComponent={
 							<View className='w-full items-center justify-center px-6 py-12'>
-								<MaterialCommunityIcons
-									name='forklift'
-									size={36}
-									color='#71717A'
-								/>
+								<MaterialCommunityIcons name='forklift' size={36} color='#71717A' />
 								<Text className='text-gray-400 text-center mt-3'>
 									Nie ma pojazdów pasujących do wybranych filtrów.
 								</Text>
