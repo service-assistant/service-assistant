@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
 
 from sqlalchemy.exc import IntegrityError
 
@@ -35,12 +34,12 @@ def test_should_return_422_when_creating_device_type_without_name(client, mock_s
     assert response.status_code == 422
 
 
-def test_should_list_all_device_types(client, mock_session):
+def test_should_list_all_device_types(client, mock_session, mocker):
     device_types = [
         make_device_type(id=1, name="Counterbalance Forklift"),
         make_device_type(id=2, name="Reach Truck"),
     ]
-    mock_result = MagicMock()
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.all.return_value = device_types
     mock_session.execute.return_value = mock_result
 
@@ -53,8 +52,10 @@ def test_should_list_all_device_types(client, mock_session):
     assert data[1]["name"] == "Reach Truck"
 
 
-def test_should_return_empty_list_when_no_device_types_exist(client, mock_session):
-    mock_result = MagicMock()
+def test_should_return_empty_list_when_no_device_types_exist(
+    client, mock_session, mocker
+):
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.all.return_value = []
     mock_session.execute.return_value = mock_result
 

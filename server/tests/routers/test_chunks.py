@@ -1,14 +1,12 @@
-from unittest.mock import MagicMock
-
 from tests.routers.conftest import AUTH_HEADERS
 from tests.routers.factories import make_chunk
 
 
-def test_should_list_chunks(client, mock_session):
+def test_should_list_chunks(client, mock_session, mocker):
     chunks = [make_chunk(id=1), make_chunk(id=2)]
-    mock_count = MagicMock()
+    mock_count = mocker.MagicMock()
     mock_count.scalar_one.return_value = 2
-    mock_rows = MagicMock()
+    mock_rows = mocker.MagicMock()
     mock_rows.scalars.return_value.all.return_value = chunks
     mock_session.execute.side_effect = [mock_count, mock_rows]
 
@@ -23,10 +21,10 @@ def test_should_list_chunks(client, mock_session):
     assert data[0]["metadata"] == {"page": 5}
 
 
-def test_should_return_empty_list_when_no_chunks(client, mock_session):
-    mock_count = MagicMock()
+def test_should_return_empty_list_when_no_chunks(client, mock_session, mocker):
+    mock_count = mocker.MagicMock()
     mock_count.scalar_one.return_value = 0
-    mock_rows = MagicMock()
+    mock_rows = mocker.MagicMock()
     mock_rows.scalars.return_value.all.return_value = []
     mock_session.execute.side_effect = [mock_count, mock_rows]
 
@@ -36,11 +34,11 @@ def test_should_return_empty_list_when_no_chunks(client, mock_session):
     assert response.json() == []
 
 
-def test_should_filter_chunks_by_attachment_id(client, mock_session):
+def test_should_filter_chunks_by_attachment_id(client, mock_session, mocker):
     chunks = [make_chunk(id=1, attachment_id=5), make_chunk(id=2, attachment_id=5)]
-    mock_count = MagicMock()
+    mock_count = mocker.MagicMock()
     mock_count.scalar_one.return_value = 2
-    mock_rows = MagicMock()
+    mock_rows = mocker.MagicMock()
     mock_rows.scalars.return_value.all.return_value = chunks
     mock_session.execute.side_effect = [mock_count, mock_rows]
 
@@ -52,10 +50,10 @@ def test_should_filter_chunks_by_attachment_id(client, mock_session):
     assert all(c["attachment_id"] == 5 for c in data)
 
 
-def test_should_clamp_page_below_one(client, mock_session):
-    mock_count = MagicMock()
+def test_should_clamp_page_below_one(client, mock_session, mocker):
+    mock_count = mocker.MagicMock()
     mock_count.scalar_one.return_value = 1
-    mock_rows = MagicMock()
+    mock_rows = mocker.MagicMock()
     mock_rows.scalars.return_value.all.return_value = [make_chunk()]
     mock_session.execute.side_effect = [mock_count, mock_rows]
 

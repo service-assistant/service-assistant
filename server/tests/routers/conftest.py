@@ -1,5 +1,3 @@
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -10,9 +8,9 @@ AUTH_HEADERS = {"Authorization": "Bearer CHANGEMELATER"}
 
 
 @pytest.fixture
-def mock_session():
-    session = AsyncMock()
-    session.add = MagicMock()
+def mock_session(mocker):
+    session = mocker.AsyncMock()
+    session.add = mocker.MagicMock()
     return session
 
 

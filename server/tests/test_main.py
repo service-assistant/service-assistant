@@ -1,5 +1,3 @@
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,9 +7,9 @@ from app.main import app
 
 
 @pytest.fixture
-def healthy_client():
-    mock_session = AsyncMock(spec=AsyncSession)
-    mock_result = MagicMock()
+def healthy_client(mocker):
+    mock_session = mocker.AsyncMock(spec=AsyncSession)
+    mock_result = mocker.MagicMock()
     mock_result.fetchone.return_value = (1,)
     mock_session.execute.return_value = mock_result
 
@@ -25,8 +23,8 @@ def healthy_client():
 
 
 @pytest.fixture
-def unhealthy_client():
-    mock_session = AsyncMock(spec=AsyncSession)
+def unhealthy_client(mocker):
+    mock_session = mocker.AsyncMock(spec=AsyncSession)
     mock_session.execute.side_effect = Exception("DB connection failed")
 
     async def override():

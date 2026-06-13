@@ -27,7 +27,8 @@ dependencies = [
 
 [dependency-groups]
 test = [
-    "pytest (>=9.0.2,<10.0.0)"
+    "pytest (>=9.0.2,<10.0.0)",
+    "pytest-mock (>=3.14.0,<4.0.0)"
 ]
 dev = [
     "ruff (>=0.15.5,<0.16.0)",

@@ -1,7 +1,6 @@
 import json
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -88,12 +87,12 @@ def test_should_return_404_when_creating_thread_with_nonexistent_device(
     assert response.json()["detail"] == "Device not found"
 
 
-def test_should_list_all_threads(client, mock_session):
+def test_should_list_all_threads(client, mock_session, mocker):
     threads = [
         make_thread(id=1, title="Thread 1"),
         make_thread(id=2, title="Thread 2"),
     ]
-    mock_result = MagicMock()
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.all.return_value = threads
     mock_session.execute.return_value = mock_result
 
@@ -106,8 +105,8 @@ def test_should_list_all_threads(client, mock_session):
     assert data[1]["title"] == "Thread 2"
 
 
-def test_should_return_empty_list_when_no_threads_exist(client, mock_session):
-    mock_result = MagicMock()
+def test_should_return_empty_list_when_no_threads_exist(client, mock_session, mocker):
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.all.return_value = []
     mock_session.execute.return_value = mock_result
 
@@ -157,7 +156,7 @@ def test_should_return_404_when_deleting_nonexistent_thread(client, mock_session
     assert response.json()["detail"] == "Thread not found"
 
 
-def test_should_send_message_and_return_system_reply(client, mock_session):
+def test_should_send_message_and_return_system_reply(client, mock_session, mocker):
     thread = make_thread(id=1, device_id=1)
     mock_session.get.return_value = thread
 
@@ -181,18 +180,17 @@ def test_should_send_message_and_return_system_reply(client, mock_session):
         yield "E-23 oznacza"
         yield " błąd systemu hydraulicznego."
 
-    with (
-        patch(
-            "app.routers.threads.retrieval.retrieve_context_chunks",
-            new=AsyncMock(return_value=fake_chunks),
-        ),
-        patch("app.routers.threads.llm.stream_query", new=mock_stream),
-    ):
-        response = client.post(
-            "/api/threads/1/messages",
-            json={"content": "What is error E-23?"},
-            headers=AUTH_HEADERS,
-        )
+    mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(return_value=fake_chunks),
+    )
+    mocker.patch("app.routers.threads.llm.stream_query", new=mock_stream)
+
+    response = client.post(
+        "/api/threads/1/messages",
+        json={"content": "What is error E-23?"},
+        headers=AUTH_HEADERS,
+    )
 
     assert response.status_code == 200
     lines = response.text.splitlines()
@@ -207,7 +205,7 @@ def test_should_send_message_and_return_system_reply(client, mock_session):
     assert message_data["id"] == 2
 
 
-def test_should_store_user_message_before_reply(client, mock_session):
+def test_should_store_user_message_before_reply(client, mock_session, mocker):
     thread = make_thread(id=1, device_id=1)
     mock_session.get.return_value = thread
 
@@ -221,18 +219,17 @@ def test_should_store_user_message_before_reply(client, mock_session):
     async def mock_stream(*args, **kwargs):
         yield "Answer"
 
-    with (
-        patch(
-            "app.routers.threads.retrieval.retrieve_context_chunks",
-            new=AsyncMock(return_value=[]),
-        ),
-        patch("app.routers.threads.llm.stream_query", new=mock_stream),
-    ):
-        client.post(
-            "/api/threads/1/messages",
-            json={"content": "My question"},
-            headers=AUTH_HEADERS,
-        )
+    mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+    mocker.patch("app.routers.threads.llm.stream_query", new=mock_stream)
+
+    client.post(
+        "/api/threads/1/messages",
+        json={"content": "My question"},
+        headers=AUTH_HEADERS,
+    )
 
     assert mock_session.add.call_count >= 2
 
@@ -250,7 +247,7 @@ def test_should_return_404_when_thread_not_found_on_send_message(client, mock_se
     assert response.json()["detail"] == "Thread not found"
 
 
-def test_should_list_messages_in_thread_chronologically(client, mock_session):
+def test_should_list_messages_in_thread_chronologically(client, mock_session, mocker):
     thread = make_thread(id=1)
     user_msg = make_message(id=1, content="User question", sender=MessageSender.user)
     system_msg = make_message(
@@ -258,7 +255,7 @@ def test_should_list_messages_in_thread_chronologically(client, mock_session):
     )
 
     mock_session.get.return_value = thread
-    mock_scalars_result = MagicMock()
+    mock_scalars_result = mocker.MagicMock()
     mock_scalars_result.all.return_value = [user_msg, system_msg]
     mock_session.scalars.return_value = mock_scalars_result
 
@@ -273,9 +270,11 @@ def test_should_list_messages_in_thread_chronologically(client, mock_session):
     assert messages[1]["content"] == "System answer"
 
 
-def test_should_return_empty_list_when_thread_has_no_messages(client, mock_session):
+def test_should_return_empty_list_when_thread_has_no_messages(
+    client, mock_session, mocker
+):
     mock_session.get.return_value = make_thread()
-    mock_scalars_result = MagicMock()
+    mock_scalars_result = mocker.MagicMock()
     mock_scalars_result.all.return_value = []
     mock_session.scalars.return_value = mock_scalars_result
 
@@ -296,18 +295,19 @@ def test_should_return_404_when_listing_messages_for_nonexistent_thread(
     assert response.json()["detail"] == "Thread not found"
 
 
-def test_should_transcribe_audio_when_thread_exists(client, mock_session):
+def test_should_transcribe_audio_when_thread_exists(client, mock_session, mocker):
     mock_session.get.return_value = make_thread(id=1)
 
-    with patch(
+    mocker.patch(
         "app.routers.threads.stt.transcribe",
-        new=AsyncMock(return_value="Oil pressure low"),
-    ):
-        response = client.post(
-            "/api/threads/1/messages/transcribe",
-            files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
-            headers=AUTH_HEADERS,
-        )
+        new=mocker.AsyncMock(return_value="Oil pressure low"),
+    )
+
+    response = client.post(
+        "/api/threads/1/messages/transcribe",
+        files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
+        headers=AUTH_HEADERS,
+    )
 
     assert response.status_code == 200
     assert response.json()["transcript"] == "Oil pressure low"
@@ -328,43 +328,48 @@ def test_should_return_404_when_transcribing_for_nonexistent_thread(
     assert response.json()["detail"] == "Thread not found"
 
 
-def test_should_return_502_when_stt_service_fails(client, mock_session):
+def test_should_return_502_when_stt_service_fails(client, mock_session, mocker):
     mock_session.get.return_value = make_thread(id=1)
 
-    with patch(
+    mocker.patch(
         "app.routers.threads.stt.transcribe",
-        new=AsyncMock(side_effect=SttError("Deepgram error 503: service unavailable")),
-    ):
-        response = client.post(
-            "/api/threads/1/messages/transcribe",
-            files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
-            headers=AUTH_HEADERS,
-        )
+        new=mocker.AsyncMock(
+            side_effect=SttError("Deepgram error 503: service unavailable")
+        ),
+    )
+
+    response = client.post(
+        "/api/threads/1/messages/transcribe",
+        files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
+        headers=AUTH_HEADERS,
+    )
 
     assert response.status_code == 502
 
 
-def test_should_return_422_when_audio_is_empty(client, mock_session):
+def test_should_return_422_when_audio_is_empty(client, mock_session, mocker):
     mock_session.get.return_value = make_thread(id=1)
 
-    with patch(
+    mocker.patch(
         "app.routers.threads.stt.transcribe",
-        new=AsyncMock(side_effect=SttError("Empty audio file")),
-    ):
-        response = client.post(
-            "/api/threads/1/messages/transcribe",
-            files={"audio": ("recording.m4a", b"", "audio/m4a")},
-            headers=AUTH_HEADERS,
-        )
+        new=mocker.AsyncMock(side_effect=SttError("Empty audio file")),
+    )
+
+    response = client.post(
+        "/api/threads/1/messages/transcribe",
+        files={"audio": ("recording.m4a", b"", "audio/m4a")},
+        headers=AUTH_HEADERS,
+    )
 
     assert response.status_code == 422
 
 
-def test_should_stream_final_transcript_when_audio_sent(client, mock_session):
+def test_should_stream_final_transcript_when_audio_sent(client, mock_session, mocker):
     mock_session.get.return_value = make_thread(id=1)
 
     class MockDgWs:
-        send = AsyncMock()
+        def __init__(self):
+            self.send = mocker.AsyncMock()
 
         def __aiter__(self):
             return self._iter()
@@ -386,12 +391,13 @@ def test_should_stream_final_transcript_when_audio_sent(client, mock_session):
     async def mock_deepgram_ws(*args, **kwargs):
         yield MockDgWs()
 
-    with patch("app.routers.threads.stt.deepgram_websocket", new=mock_deepgram_ws):
-        with client.websocket_connect(
-            "/api/threads/1/messages/transcribe-stream?token=CHANGEMELATER"
-        ) as ws:
-            ws.send_bytes(b"\x00" * 64)
-            data = ws.receive_json()
+    mocker.patch("app.routers.threads.stt.deepgram_websocket", new=mock_deepgram_ws)
+
+    with client.websocket_connect(
+        "/api/threads/1/messages/transcribe-stream?token=CHANGEMELATER"
+    ) as ws:
+        ws.send_bytes(b"\x00" * 64)
+        data = ws.receive_json()
 
     assert data["type"] == "final"
     assert data["transcript"] == "Opisz mi co mówi kod błedu 2:002?"

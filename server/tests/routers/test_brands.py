@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
 
 from sqlalchemy.exc import IntegrityError
 
@@ -50,9 +49,9 @@ def test_should_return_422_when_creating_brand_without_name(client, mock_session
     assert response.status_code == 422
 
 
-def test_should_list_all_brands(client, mock_session):
+def test_should_list_all_brands(client, mock_session, mocker):
     brands = [make_brand(id=1, name="Toyota"), make_brand(id=2, name="Linde")]
-    mock_result = MagicMock()
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.all.return_value = brands
     mock_session.execute.return_value = mock_result
 
@@ -65,8 +64,8 @@ def test_should_list_all_brands(client, mock_session):
     assert data[1]["name"] == "Linde"
 
 
-def test_should_return_empty_list_when_no_brands_exist(client, mock_session):
-    mock_result = MagicMock()
+def test_should_return_empty_list_when_no_brands_exist(client, mock_session, mocker):
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.all.return_value = []
     mock_session.execute.return_value = mock_result
 

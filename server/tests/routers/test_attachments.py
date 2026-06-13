@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -41,12 +40,12 @@ def client_with_tmp(mock_session, tmp_path):
     app.dependency_overrides.clear()
 
 
-def test_should_list_all_attachments(client, mock_session):
+def test_should_list_all_attachments(client, mock_session, mocker):
     attachments = [
         make_attachment(id=1, original_filename="a.pdf"),
         make_attachment(id=2, original_filename="b.pdf"),
     ]
-    mock_result = MagicMock()
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.all.return_value = attachments
     mock_session.execute.return_value = mock_result
 
@@ -59,8 +58,8 @@ def test_should_list_all_attachments(client, mock_session):
     assert data[1]["original_filename"] == "b.pdf"
 
 
-def test_should_return_empty_list_when_no_attachments(client, mock_session):
-    mock_result = MagicMock()
+def test_should_return_empty_list_when_no_attachments(client, mock_session, mocker):
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.all.return_value = []
     mock_session.execute.return_value = mock_result
 
@@ -70,7 +69,9 @@ def test_should_return_empty_list_when_no_attachments(client, mock_session):
     assert response.json() == []
 
 
-def test_should_upload_attachment_and_return_metadata(client_with_tmp, mock_session):
+def test_should_upload_attachment_and_return_metadata(
+    client_with_tmp, mock_session, mocker
+):
     client, tmp_path = client_with_tmp
 
     async def set_id(obj):
@@ -80,13 +81,16 @@ def test_should_upload_attachment_and_return_metadata(client_with_tmp, mock_sess
 
     mock_session.refresh.side_effect = set_id
 
-    with patch("app.routers.attachments.ingest_pdf_to_attachment", new=AsyncMock()):
-        response = client.post(
-            "/api/attachments",
-            files={"file": ("manual.pdf", b"%PDF-1.4 test content", "application/pdf")},
-            data={"device_ids": ["1", "2"]},
-            headers=AUTH_HEADERS,
-        )
+    mocker.patch(
+        "app.routers.attachments.ingest_pdf_to_attachment", new=mocker.AsyncMock()
+    )
+
+    response = client.post(
+        "/api/attachments",
+        files={"file": ("manual.pdf", b"%PDF-1.4 test content", "application/pdf")},
+        data={"device_ids": ["1", "2"]},
+        headers=AUTH_HEADERS,
+    )
 
     assert response.status_code == 201
     data = response.json()
@@ -95,7 +99,9 @@ def test_should_upload_attachment_and_return_metadata(client_with_tmp, mock_sess
     assert (tmp_path / "manual.pdf").exists()
 
 
-def test_should_handle_filename_collision_on_upload(client_with_tmp, mock_session):
+def test_should_handle_filename_collision_on_upload(
+    client_with_tmp, mock_session, mocker
+):
     client, tmp_path = client_with_tmp
     (tmp_path / "manual.pdf").write_bytes(b"existing file")
 
@@ -106,13 +112,16 @@ def test_should_handle_filename_collision_on_upload(client_with_tmp, mock_sessio
 
     mock_session.refresh.side_effect = set_id
 
-    with patch("app.routers.attachments.ingest_pdf_to_attachment", new=AsyncMock()):
-        response = client.post(
-            "/api/attachments",
-            files={"file": ("manual.pdf", b"%PDF-1.4 new content", "application/pdf")},
-            data={"device_ids": ["1"]},
-            headers=AUTH_HEADERS,
-        )
+    mocker.patch(
+        "app.routers.attachments.ingest_pdf_to_attachment", new=mocker.AsyncMock()
+    )
+
+    response = client.post(
+        "/api/attachments",
+        files={"file": ("manual.pdf", b"%PDF-1.4 new content", "application/pdf")},
+        data={"device_ids": ["1"]},
+        headers=AUTH_HEADERS,
+    )
 
     assert response.status_code == 201
     assert (tmp_path / "manual.pdf").read_bytes() == b"existing file"
@@ -120,18 +129,21 @@ def test_should_handle_filename_collision_on_upload(client_with_tmp, mock_sessio
 
 
 def test_should_return_404_when_uploading_with_nonexistent_device(
-    client_with_tmp, mock_session
+    client_with_tmp, mock_session, mocker
 ):
     client, _ = client_with_tmp
     mock_session.get.return_value = None
 
-    with patch("app.routers.attachments.ingest_pdf_to_attachment", new=AsyncMock()):
-        response = client.post(
-            "/api/attachments",
-            files={"file": ("manual.pdf", b"%PDF-1.4 content", "application/pdf")},
-            data={"device_ids": ["999"]},
-            headers=AUTH_HEADERS,
-        )
+    mocker.patch(
+        "app.routers.attachments.ingest_pdf_to_attachment", new=mocker.AsyncMock()
+    )
+
+    response = client.post(
+        "/api/attachments",
+        files={"file": ("manual.pdf", b"%PDF-1.4 content", "application/pdf")},
+        data={"device_ids": ["999"]},
+        headers=AUTH_HEADERS,
+    )
 
     assert response.status_code == 404
     assert "Device 999 not found" in response.json()["detail"]
@@ -234,7 +246,7 @@ def test_should_return_404_when_deleting_nonexistent_attachment(client, mock_ses
     assert response.json()["detail"] == "Attachment not found"
 
 
-def test_should_reingest_attachment(client_with_tmp, mock_session):
+def test_should_reingest_attachment(client_with_tmp, mock_session, mocker):
     client, tmp_path = client_with_tmp
     pdf_path = tmp_path / "manual.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 content")
@@ -246,11 +258,14 @@ def test_should_reingest_attachment(client_with_tmp, mock_session):
 
     mock_session.refresh.side_effect = noop_refresh
 
-    with (
-        patch("app.routers.attachments.delete_attachment_chunks", new=AsyncMock()),
-        patch("app.routers.attachments.ingest_pdf_to_attachment", new=AsyncMock()),
-    ):
-        response = client.post("/api/attachments/1/reingest", headers=AUTH_HEADERS)
+    mocker.patch(
+        "app.routers.attachments.delete_attachment_chunks", new=mocker.AsyncMock()
+    )
+    mocker.patch(
+        "app.routers.attachments.ingest_pdf_to_attachment", new=mocker.AsyncMock()
+    )
+
+    response = client.post("/api/attachments/1/reingest", headers=AUTH_HEADERS)
 
     assert response.status_code == 200
     assert response.json()["id"] == 1
@@ -303,9 +318,9 @@ def test_should_return_404_when_listing_devices_for_nonexistent_attachment(
     assert response.json()["detail"] == "Attachment not found"
 
 
-def test_should_link_device_to_attachment(client, mock_session):
+def test_should_link_device_to_attachment(client, mock_session, mocker):
     mock_session.get.side_effect = [make_attachment(), make_device()]
-    mock_existing = MagicMock()
+    mock_existing = mocker.MagicMock()
     mock_existing.scalars.return_value.first.return_value = None
     mock_session.execute.return_value = mock_existing
 
@@ -316,10 +331,12 @@ def test_should_link_device_to_attachment(client, mock_session):
     mock_session.commit.assert_called_once()
 
 
-def test_should_be_idempotent_when_linking_already_linked_device(client, mock_session):
+def test_should_be_idempotent_when_linking_already_linked_device(
+    client, mock_session, mocker
+):
     mock_session.get.side_effect = [make_attachment(), make_device()]
     existing_link = AttachmentDevice(attachment_id=1, device_id=1)
-    mock_existing = MagicMock()
+    mock_existing = mocker.MagicMock()
     mock_existing.scalars.return_value.first.return_value = existing_link
     mock_session.execute.return_value = mock_existing
 
@@ -349,9 +366,9 @@ def test_should_return_404_when_linking_nonexistent_device(client, mock_session)
     assert response.json()["detail"] == "Device not found"
 
 
-def test_should_unlink_device_from_attachment(client, mock_session):
+def test_should_unlink_device_from_attachment(client, mock_session, mocker):
     link = AttachmentDevice(attachment_id=1, device_id=1)
-    mock_result = MagicMock()
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.first.return_value = link
     mock_session.execute.return_value = mock_result
 
@@ -362,8 +379,10 @@ def test_should_unlink_device_from_attachment(client, mock_session):
     mock_session.commit.assert_called_once()
 
 
-def test_should_return_404_when_unlinking_device_not_linked(client, mock_session):
-    mock_result = MagicMock()
+def test_should_return_404_when_unlinking_device_not_linked(
+    client, mock_session, mocker
+):
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.first.return_value = None
     mock_session.execute.return_value = mock_result
 

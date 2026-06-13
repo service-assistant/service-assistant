@@ -1,5 +1,4 @@
 from datetime import datetime, timezone
-from unittest.mock import MagicMock
 
 from sqlalchemy.exc import IntegrityError
 
@@ -69,12 +68,12 @@ def test_should_return_422_when_creating_device_without_required_fields(
     assert response.status_code == 422
 
 
-def test_should_list_all_devices(client, mock_session):
+def test_should_list_all_devices(client, mock_session, mocker):
     devices = [
         make_device(id=1, name="Toyota 8FBE20"),
         make_device(id=2, name="Linde H30D"),
     ]
-    mock_result = MagicMock()
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.all.return_value = devices
     mock_session.execute.return_value = mock_result
 
@@ -87,8 +86,8 @@ def test_should_list_all_devices(client, mock_session):
     assert data[1]["name"] == "Linde H30D"
 
 
-def test_should_return_empty_list_when_no_devices_exist(client, mock_session):
-    mock_result = MagicMock()
+def test_should_return_empty_list_when_no_devices_exist(client, mock_session, mocker):
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.all.return_value = []
     mock_session.execute.return_value = mock_result
 
@@ -206,13 +205,13 @@ def test_should_return_409_when_deleting_device_referenced_by_threads(
     mock_session.rollback.assert_called_once()
 
 
-def test_should_list_attachments_for_device(client, mock_session):
+def test_should_list_attachments_for_device(client, mock_session, mocker):
     mock_session.get.return_value = make_device(id=1)
     attachments = [
         make_attachment(id=1, original_filename="manual_a.pdf"),
         make_attachment(id=2, original_filename="manual_b.pdf"),
     ]
-    mock_result = MagicMock()
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.all.return_value = attachments
     mock_session.execute.return_value = mock_result
 
@@ -225,9 +224,11 @@ def test_should_list_attachments_for_device(client, mock_session):
     assert data[1]["original_filename"] == "manual_b.pdf"
 
 
-def test_should_return_empty_list_when_device_has_no_attachments(client, mock_session):
+def test_should_return_empty_list_when_device_has_no_attachments(
+    client, mock_session, mocker
+):
     mock_session.get.return_value = make_device(id=1)
-    mock_result = MagicMock()
+    mock_result = mocker.MagicMock()
     mock_result.scalars.return_value.all.return_value = []
     mock_session.execute.return_value = mock_result
 
