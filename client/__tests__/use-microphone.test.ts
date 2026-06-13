@@ -24,7 +24,6 @@ const mockRecorder = {
 	}),
 };
 const mockUseAudioRecorder = jest.fn(() => mockRecorder);
-const mockUseWakeWord = jest.fn();
 const mockStartPcmAudioStream = jest.fn();
 const mockStopPcmAudioStream = jest.fn();
 const mockPcmAudioRemove = jest.fn();
@@ -105,10 +104,6 @@ jest.mock('expo-audio', () => ({
 		HIGH_QUALITY: { preset: 'high-quality' },
 	},
 	useAudioRecorder: mockUseAudioRecorder,
-}));
-
-jest.mock('@/hooks/use-wake-word', () => ({
-	useWakeWord: mockUseWakeWord,
 }));
 
 jest.mock('@/modules/audio-stream', () => ({
@@ -229,7 +224,6 @@ describe('useMicrophone', () => {
 			mockRecorder.isRecording = false;
 		});
 		mockUseAudioRecorder.mockClear();
-		mockUseWakeWord.mockClear();
 		mockRequestRecordingPermissionsAsync.mockReset();
 		mockSetAudioModeAsync.mockReset();
 		mockAnimatedValueSetValue.mockClear();
@@ -422,22 +416,5 @@ describe('useMicrophone', () => {
 		expect(harness.state.messages).toEqual([{ id: 2, sender: 'ai', text: 'answer' }]);
 		expect(harness.state.isListening).toBe(false);
 		expect(harness.state.isTranscribing).toBe(false);
-	});
-
-	test('configures wake-word only when voice input is idle and available', () => {
-		createHarness({ isSpeechInputUnavailable: false });
-
-		expect(mockUseWakeWord).toHaveBeenCalledWith({
-			enabled: true,
-			onDetected: expect.any(Function),
-		});
-
-		mockUseWakeWord.mockClear();
-		createHarness({ isLoading: true });
-
-		expect(mockUseWakeWord).toHaveBeenCalledWith({
-			enabled: false,
-			onDetected: expect.any(Function),
-		});
 	});
 });

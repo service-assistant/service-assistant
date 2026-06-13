@@ -11,6 +11,7 @@ const mockUseAssistantAudio = jest.fn();
 const mockUseChatApi = jest.fn();
 const mockUseMicrophone = jest.fn();
 const mockUseSourcePanelFiles = jest.fn();
+const mockUseWakeWord = jest.fn();
 const mockUseFocusEffect = jest.fn((callback: () => void | (() => void)) => callback());
 const mockUseCameraPermissions = jest.fn(() => [{ granted: true }, jest.fn()]);
 const mockImpactAsync = jest.fn(() => Promise.resolve());
@@ -81,6 +82,7 @@ jest.mock('react-native', () => {
 			select: (options: Record<string, unknown>) => options.ios ?? options.default,
 		},
 		ScrollView: createHost('ScrollView'),
+		Switch: createHost('Switch'),
 		Text: createHost('Text'),
 		TextInput: createHost('TextInput'),
 		TouchableOpacity: createHost('TouchableOpacity'),
@@ -149,6 +151,13 @@ jest.mock('expo-haptics', () => ({
 	selectionAsync: mockSelectionAsync,
 }));
 
+jest.mock('expo-file-system/legacy', () => ({
+	documentDirectory: 'file:///documents/',
+	getInfoAsync: jest.fn(() => Promise.resolve({ exists: false })),
+	readAsStringAsync: jest.fn(() => Promise.resolve('')),
+	writeAsStringAsync: jest.fn(() => Promise.resolve()),
+}));
+
 jest.mock('@react-navigation/native', () => ({
 	useFocusEffect: mockUseFocusEffect,
 }));
@@ -213,6 +222,10 @@ jest.mock('@/hooks/use-microphone', () => ({
 
 jest.mock('@/hooks/use-source-panel-files', () => ({
 	useSourcePanelFiles: mockUseSourcePanelFiles,
+}));
+
+jest.mock('@/hooks/use-wake-word', () => ({
+	useWakeWord: mockUseWakeWord,
 }));
 
 jest.mock('@/utils/api-config', () => ({
@@ -315,6 +328,7 @@ describe('tab screens', () => {
 		mockUseChatApi.mockReset();
 		mockUseMicrophone.mockReset();
 		mockUseSourcePanelFiles.mockReset();
+		mockUseWakeWord.mockClear();
 		mockKeyboardAddListener.mockClear();
 		mockImpactAsync.mockClear();
 		mockSelectionAsync.mockClear();
@@ -369,7 +383,7 @@ describe('tab screens', () => {
 			expect.objectContaining({
 				serverUrl: 'https://api.example.test',
 				deviceId: 1,
-				playAssistantAudio: hooks.playAssistantAudio,
+				playAssistantAudio: expect.any(Function),
 			}),
 		);
 		expect(mockUseMicrophone).toHaveBeenCalledWith(
@@ -379,6 +393,10 @@ describe('tab screens', () => {
 				onTranscript: expect.any(Function),
 			}),
 		);
+		expect(mockUseWakeWord).toHaveBeenCalledWith({
+			enabled: false,
+			onDetected: expect.any(Function),
+		});
 		expect(findByType(tree, 'ServiceErrorModal')[0].props.visible).toBe(false);
 	});
 

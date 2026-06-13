@@ -154,7 +154,9 @@ export default function HomeScreen() {
 	const headerPaddingVertical = useTabletHomeRefresh ? 10 : 16;
 	const headerTopRowHeight = useTabletHomeRefresh ? 44 : undefined;
 	const titleGroupOffsetY = useTabletHomeRefresh ? 8 : 0;
-	const historyButtonOffsetY = useTabletHomeRefresh ? 8 : 0;
+	const headerButtonOffsetY = useTabletHomeRefresh ? 8 : 0;
+	const headerButtonHeight = useTabletHomeRefresh ? 44 : 48;
+	const headerButtonPaddingHorizontal = useTabletHomeRefresh ? 16 : 18;
 	return (
 		<SafeAreaView className='flex-1 bg-[#09090b]' edges={['top', 'left', 'right']}>
 			<View className='flex-1'>
@@ -195,21 +197,42 @@ export default function HomeScreen() {
 								Wybierz Pojazd
 							</Text>
 						</View>
-						<TouchableOpacity
-							onPress={() => router.push('/history')}
-							accessibilityRole='button'
-							accessibilityLabel='Historia czatów'
-							className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#111111]'
-							style={{
-								height: useTabletHomeRefresh ? 44 : 48,
-								paddingHorizontal: useTabletHomeRefresh ? 16 : 18,
-								transform: [{ translateY: historyButtonOffsetY }],
-							}}>
-							<MaterialCommunityIcons name='history' size={21} color='#FF7A00' />
-							<Text className='text-[#E6E6E6] ml-4 text-[13px] font-semibold tracking-wider'>
-								HISTORIA CZATÓW
-							</Text>
-						</TouchableOpacity>
+						<View className='flex-row items-center gap-3'>
+							<TouchableOpacity
+								onPress={() => router.push('/settings')}
+								accessibilityRole='button'
+								accessibilityLabel='Ustawienia'
+								className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#111111]'
+								style={{
+									height: headerButtonHeight,
+									paddingHorizontal: headerButtonPaddingHorizontal,
+									transform: [{ translateY: headerButtonOffsetY }],
+								}}>
+								<MaterialCommunityIcons
+									name='cog-outline'
+									size={21}
+									color='#FF7A00'
+								/>
+								<Text className='text-[#E6E6E6] ml-4 text-[13px] font-semibold tracking-wider'>
+									USTAWIENIA
+								</Text>
+							</TouchableOpacity>
+							<TouchableOpacity
+								onPress={() => router.push('/history')}
+								accessibilityRole='button'
+								accessibilityLabel='Historia czatów'
+								className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#111111]'
+								style={{
+									height: headerButtonHeight,
+									paddingHorizontal: headerButtonPaddingHorizontal,
+									transform: [{ translateY: headerButtonOffsetY }],
+								}}>
+								<MaterialCommunityIcons name='history' size={21} color='#FF7A00' />
+								<Text className='text-[#E6E6E6] ml-4 text-[13px] font-semibold tracking-wider'>
+									HISTORIA CZATÓW
+								</Text>
+							</TouchableOpacity>
+						</View>
 					</View>
 
 					<VehicleFilters

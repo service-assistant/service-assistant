@@ -18,10 +18,12 @@ import {
 } from '@/components/ChatLayouts';
 import ServiceErrorModal from '@/components/ServiceErrorModal';
 import type { KeyboardFrame } from '@/components/StartPromptView';
+import { useAppSettings } from '@/hooks/use-app-settings';
 import { useAssistantAudio } from '@/hooks/use-assistant-audio';
 import { useChatApi } from '@/hooks/use-chat-api';
 import { useMicrophone } from '@/hooks/use-microphone';
 import { useSourcePanelFiles } from '@/hooks/use-source-panel-files';
+import { useWakeWord } from '@/hooks/use-wake-word';
 import type { AvailableFile, Message } from '@/types/chat';
 import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
@@ -76,6 +78,7 @@ export default function ChatScreen() {
 	const isPortrait = height > width;
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
+	const { wakeWordEnabled, ttsEnabled } = useAppSettings();
 
 	const { deviceId, deviceName, logoUrl, chatSession, threadId } = useLocalSearchParams<{
 		deviceId: string;
@@ -136,6 +139,23 @@ export default function ChatScreen() {
 		onServiceError: showServiceError,
 		onOpenAiKeyError: handleOpenAiKeyError,
 	});
+	const playAssistantAudioWhenEnabled = useCallback(
+		(text: string) => {
+			if (!ttsEnabled) {
+				setIsGenerating(false);
+				return;
+			}
+
+			return playAssistantAudio(text);
+		},
+		[playAssistantAudio, ttsEnabled],
+	);
+
+	useEffect(() => {
+		if (!ttsEnabled) {
+			stopAssistantAudio();
+		}
+	}, [stopAssistantAudio, ttsEnabled]);
 	const { cancelDownload, openFilesPanel, openMessageSource, sourcePanelProps } =
 		useSourcePanelFiles({
 			availableFiles,
@@ -153,7 +173,7 @@ export default function ChatScreen() {
 		setIsLoading,
 		setIsGenerating,
 		setCurrentImage,
-		playAssistantAudio,
+		playAssistantAudio: playAssistantAudioWhenEnabled,
 		onServiceError: showServiceError,
 		authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
 	});
@@ -165,6 +185,7 @@ export default function ChatScreen() {
 		isListening,
 		isMicProcessing,
 		isMicRestartBlocked,
+		isTranscribing,
 		resetVoiceInput,
 		soundLevelAnim,
 	} = useMicrophone({
@@ -417,6 +438,23 @@ export default function ChatScreen() {
 
 		void handleMicPress();
 	};
+
+	const handleWakeWordDetected = useCallback(() => {
+		void handleMicPress();
+	}, [handleMicPress]);
+
+	useWakeWord({
+		enabled:
+			wakeWordEnabled &&
+			!isListening &&
+			!isLoading &&
+			!isTranscribing &&
+			!isGenerating &&
+			!isAudioPlaying &&
+			!isMicRestartBlocked &&
+			!isSpeechInputUnavailable,
+		onDetected: handleWakeWordDetected,
+	});
 
 	const handleWritingPress = () => {
 		if (hasStartedChat) {
