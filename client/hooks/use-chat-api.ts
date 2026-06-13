@@ -107,6 +107,49 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 
 	useEffect(() => () => stopChatApi(), [stopChatApi]);
 
+	const ensureThread = useCallback(
+		async (titleSource: string, signal?: AbortSignal) => {
+			if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+			const AUTH_TOKEN = authTokenOverride ?? getAuthTokenOrThrow();
+			const activeThreadId = currentThreadIdRef.current;
+
+			if (activeThreadId) return activeThreadId;
+
+			const threadResponse = await fetch(`${serverUrl}/api/threads`, {
+				method: 'POST',
+				headers: {
+					Authorization: `Bearer ${AUTH_TOKEN}`,
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					device_id: deviceId,
+					title:
+						titleSource.length > 40
+							? `${titleSource.substring(0, 40)}...`
+							: titleSource,
+				}),
+				signal,
+			});
+
+			if (!threadResponse.ok) {
+				throwIfAuthResponseError(threadResponse);
+				throw new Error('Failed to create a new thread.');
+			}
+
+			const threadData = await threadResponse.json();
+			const createdThreadId = Number(threadData.id);
+			if (!Number.isFinite(createdThreadId)) {
+				throw new Error('Failed to create a new thread.');
+			}
+
+			currentThreadIdRef.current = createdThreadId;
+			setCurrentThreadId(createdThreadId);
+
+			return createdThreadId;
+		},
+		[authTokenOverride, deviceId, serverUrl, setCurrentThreadId],
+	);
+
 	const askAPI = useCallback(
 		async (question: string) => {
 			setIsLoading(true);
@@ -122,35 +165,8 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 			fetchAbortControllerRef.current = abortController;
 
 			try {
-				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 				const AUTH_TOKEN = authTokenOverride ?? getAuthTokenOrThrow();
-				let activeThreadId = currentThreadIdRef.current;
-
-				if (!activeThreadId) {
-					const threadResponse = await fetch(`${serverUrl}/api/threads`, {
-						method: 'POST',
-						headers: {
-							Authorization: `Bearer ${AUTH_TOKEN}`,
-							'Content-Type': 'application/json',
-						},
-						body: JSON.stringify({
-							device_id: deviceId,
-							title:
-								question.length > 40 ? `${question.substring(0, 40)}...` : question,
-						}),
-						signal: abortController.signal,
-					});
-
-					if (!threadResponse.ok) {
-						throwIfAuthResponseError(threadResponse);
-						throw new Error('Failed to create a new thread.');
-					}
-					const threadData = await threadResponse.json();
-
-					activeThreadId = threadData.id;
-					currentThreadIdRef.current = activeThreadId;
-					setCurrentThreadId(activeThreadId);
-				}
+				const activeThreadId = await ensureThread(question, abortController.signal);
 
 				let fullText = '';
 				let imageUrl: string | null = null;
@@ -427,13 +443,12 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 			}
 		},
 		[
-			deviceId,
 			authTokenOverride,
+			ensureThread,
 			playAssistantAudio,
 			onServiceError,
 			serverUrl,
 			setCurrentImage,
-			setCurrentThreadId,
 			setIsGenerating,
 			setIsLoading,
 			setMessages,
@@ -442,6 +457,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 
 	return {
 		askAPI,
+		ensureThread,
 		stopChatApi,
 	};
 };

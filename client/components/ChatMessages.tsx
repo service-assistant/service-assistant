@@ -395,7 +395,7 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 								: 'self-end bg-[#B85000] rounded-full px-7 py-2.5 mb-8'
 						}
 						style={{ maxWidth: compact ? '88%' : '65%' }}>
-						{message.isSpeaking ? (
+						{message.isSpeaking && !message.text ? (
 							isListening ? (
 								<SoundWaveformIndicator soundLevel={soundLevelAnim} />
 							) : (

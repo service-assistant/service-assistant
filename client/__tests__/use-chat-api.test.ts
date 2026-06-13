@@ -226,9 +226,7 @@ describe('useChatApi', () => {
 			data: ' hydraulic system error.',
 		});
 
-		expect(harness.state.messages[0].text).toBe(
-			'E-23 oznacza hydraulic system error.',
-		);
+		expect(harness.state.messages[0].text).toBe('E-23 oznacza hydraulic system error.');
 
 		MockEventSource.instances[0].emit('message', {
 			data: JSON.stringify({

@@ -25,6 +25,44 @@ const mockRecorder = {
 };
 const mockUseAudioRecorder = jest.fn(() => mockRecorder);
 const mockUseWakeWord = jest.fn();
+const mockStartPcmAudioStream = jest.fn();
+const mockStopPcmAudioStream = jest.fn();
+const mockPcmAudioRemove = jest.fn();
+const mockPcmStreamErrorRemove = jest.fn();
+let mockIsPcmAudioStreamAvailable = false;
+let mockPcmAudioListener: ((event: { pcm: string; metering: number }) => void) | null = null;
+let mockPcmStreamErrorListener: ((event: { message: string }) => void) | null = null;
+
+class MockWebSocket {
+	static CONNECTING = 0;
+	static OPEN = 1;
+	static CLOSED = 3;
+	static instances: MockWebSocket[] = [];
+
+	readyState = MockWebSocket.CONNECTING;
+	onopen: (() => void) | null = null;
+	onmessage: ((event: { data: string }) => void) | null = null;
+	onerror: (() => void) | null = null;
+	onclose: (() => void) | null = null;
+	send = jest.fn();
+	close = jest.fn(() => {
+		this.readyState = MockWebSocket.CLOSED;
+		this.onclose?.();
+	});
+
+	constructor(public url: string) {
+		MockWebSocket.instances.push(this);
+	}
+
+	emitOpen() {
+		this.readyState = MockWebSocket.OPEN;
+		this.onopen?.();
+	}
+
+	emitMessage(data: unknown) {
+		this.onmessage?.({ data: JSON.stringify(data) });
+	}
+}
 
 jest.mock('react', () => ({
 	useCallback: (callback: unknown) => callback,
@@ -53,6 +91,9 @@ jest.mock('react-native', () => ({
 		Value: jest.fn(() => ({ setValue: mockAnimatedValueSetValue })),
 		timing: jest.fn(() => ({ start: mockAnimatedTimingStart })),
 	},
+	Platform: {
+		OS: 'android',
+	},
 }));
 
 jest.mock('expo-audio', () => ({
@@ -70,32 +111,31 @@ jest.mock('@/hooks/use-wake-word', () => ({
 	useWakeWord: mockUseWakeWord,
 }));
 
+jest.mock('@/modules/audio-stream', () => ({
+	addPcmAudioListener: jest.fn((listener) => {
+		mockPcmAudioListener = listener;
+		return { remove: mockPcmAudioRemove };
+	}),
+	addPcmStreamErrorListener: jest.fn((listener) => {
+		mockPcmStreamErrorListener = listener;
+		return { remove: mockPcmStreamErrorRemove };
+	}),
+	get isPcmAudioStreamAvailable() {
+		return mockIsPcmAudioStreamAvailable;
+	},
+	startPcmAudioStream: mockStartPcmAudioStream,
+	stopPcmAudioStream: mockStopPcmAudioStream,
+}));
+
 import { useMicrophone } from '../hooks/use-microphone';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-const createBlobResponse = () =>
-	new Response('audio-data', {
-		status: 200,
-		headers: { 'content-type': 'audio/m4a' },
+const createTranscriptResponse = (transcript: string, status = 200) =>
+	new Response(JSON.stringify({ transcript }), {
+		status,
+		headers: { 'content-type': 'application/json' },
 	});
-
-const createDeepgramResponse = (transcript: string, status = 200) =>
-	new Response(
-		JSON.stringify({
-			results: {
-				channels: [
-					{
-						alternatives: [{ transcript }],
-					},
-				],
-			},
-		}),
-		{
-			status,
-			headers: { 'content-type': 'application/json' },
-		},
-	);
 
 const createHarness = (
 	params: {
@@ -105,6 +145,7 @@ const createHarness = (
 		isAudioPlaying?: boolean;
 		showTextInput?: boolean;
 		isSpeechInputUnavailable?: boolean;
+		authTokenOverride?: string | null;
 	} = {},
 ) => {
 	mockReactStateValues = [];
@@ -128,6 +169,7 @@ const createHarness = (
 	const onTranscript = jest.fn();
 	const onServiceError = jest.fn();
 	const onSpeechInputError = jest.fn();
+	const getTranscriptionThreadId = jest.fn().mockResolvedValue(123);
 
 	const api = useMicrophone({
 		messages,
@@ -137,6 +179,10 @@ const createHarness = (
 		isAudioPlaying: params.isAudioPlaying ?? false,
 		showTextInput,
 		isSpeechInputUnavailable: params.isSpeechInputUnavailable ?? false,
+		serverUrl: 'https://api.example.test',
+		authTokenOverride:
+			params.authTokenOverride === undefined ? 'test-token' : params.authTokenOverride,
+		getTranscriptionThreadId,
 		setShowTextInput,
 		setIsLoading,
 		onStopExternal,
@@ -154,6 +200,7 @@ const createHarness = (
 		setIsLoading,
 		setMessages,
 		setShowTextInput,
+		getTranscriptionThreadId,
 		get state() {
 			return {
 				isListening: mockReactStateValues[0],
@@ -168,7 +215,7 @@ const createHarness = (
 };
 
 describe('useMicrophone', () => {
-	const originalDeepgramApiKey = process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY;
+	const originalAuthToken = process.env.EXPO_PUBLIC_AUTH_TOKEN;
 
 	beforeEach(() => {
 		jest.useRealTimers();
@@ -187,37 +234,48 @@ describe('useMicrophone', () => {
 		mockSetAudioModeAsync.mockReset();
 		mockAnimatedValueSetValue.mockClear();
 		mockAnimatedTimingStart.mockClear();
+		mockStartPcmAudioStream.mockReset();
+		mockStartPcmAudioStream.mockResolvedValue(undefined);
+		mockStopPcmAudioStream.mockReset();
+		mockStopPcmAudioStream.mockResolvedValue(undefined);
+		mockPcmAudioRemove.mockClear();
+		mockPcmStreamErrorRemove.mockClear();
+		mockIsPcmAudioStreamAvailable = false;
+		mockPcmAudioListener = null;
+		mockPcmStreamErrorListener = null;
+		MockWebSocket.instances = [];
+		global.WebSocket = MockWebSocket as unknown as typeof WebSocket;
 		mockRequestRecordingPermissionsAsync.mockResolvedValue({ granted: true });
 		mockRecorder.prepareToRecordAsync.mockResolvedValue(undefined);
-		process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY = 'deepgram-test-key';
+		process.env.EXPO_PUBLIC_AUTH_TOKEN = 'test-token';
 		global.fetch = jest.fn();
 		jest.spyOn(console, 'log').mockImplementation(() => {});
 		jest.spyOn(Date, 'now').mockReturnValue(1000);
 	});
 
 	afterEach(() => {
-		if (originalDeepgramApiKey === undefined) {
-			delete process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY;
+		if (originalAuthToken === undefined) {
+			delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
 		} else {
-			process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY = originalDeepgramApiKey;
+			process.env.EXPO_PUBLIC_AUTH_TOKEN = originalAuthToken;
 		}
 		jest.restoreAllMocks();
 		jest.useRealTimers();
 	});
 
-	test('reports Deepgram configuration errors before requesting permissions', async () => {
-		delete process.env.EXPO_PUBLIC_DEEPGRAM_API_KEY;
-		const harness = createHarness();
+	test('reports auth configuration errors before requesting permissions', async () => {
+		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
+		const harness = createHarness({ authTokenOverride: null });
 
 		await harness.api.handleMicPress();
 
 		expect(mockRequestRecordingPermissionsAsync).not.toHaveBeenCalled();
 		expect(harness.onSpeechInputError).toHaveBeenCalledWith(
-			expect.objectContaining({ message: 'Missing EXPO_PUBLIC_DEEPGRAM_API_KEY' }),
+			expect.objectContaining({ message: 'Missing EXPO_PUBLIC_AUTH_TOKEN' }),
 		);
 		expect(harness.onServiceError).toHaveBeenCalledWith(
-			'rozpoznawanie mowy',
-			expect.objectContaining({ message: 'Missing EXPO_PUBLIC_DEEPGRAM_API_KEY' }),
+			'autoryzacja aplikacji',
+			expect.objectContaining({ message: 'Missing EXPO_PUBLIC_AUTH_TOKEN' }),
 		);
 		expect(harness.state.isListening).toBe(false);
 		expect(harness.setIsLoading).toHaveBeenCalledWith(false);
@@ -255,15 +313,13 @@ describe('useMicrophone', () => {
 		expect(harness.state.isListening).toBe(false);
 	});
 
-	test('stops an active recording, sends it to Deepgram, and applies the transcript', async () => {
+	test('stops an active recording, sends it to the backend STT endpoint, and applies the transcript', async () => {
 		const harness = createHarness();
 		await harness.api.handleMicPress();
 
 		jest.useFakeTimers({ doNotFake: ['Date'] });
 		(Date.now as jest.Mock).mockReturnValue(2000);
-		jest.mocked(global.fetch)
-			.mockResolvedValueOnce(createBlobResponse())
-			.mockResolvedValueOnce(createDeepgramResponse('podnieś widły'));
+		jest.mocked(global.fetch).mockResolvedValueOnce(createTranscriptResponse('podnieś widły'));
 
 		const stopPromise = harness.api.handleMicPress();
 		await Promise.resolve();
@@ -275,21 +331,16 @@ describe('useMicrophone', () => {
 		expect(mockRecorder.stop).toHaveBeenCalled();
 		expect(global.fetch).toHaveBeenNthCalledWith(
 			1,
-			'file:///recording.m4a',
-			expect.objectContaining({ signal: expect.any(AbortSignal) }),
-		);
-		expect(global.fetch).toHaveBeenNthCalledWith(
-			2,
-			'https://api.deepgram.com/v1/listen?model=nova-3&numerals=true&language=pl&smart_format=true',
+			'https://api.example.test/api/threads/123/messages/transcribe',
 			expect.objectContaining({
 				method: 'POST',
 				headers: {
-					Authorization: 'Token deepgram-test-key',
-					'Content-Type': 'audio/m4a',
+					Authorization: 'Bearer test-token',
 				},
-				body: expect.any(Blob),
+				body: expect.any(FormData),
 			}),
 		);
+		expect(harness.getTranscriptionThreadId).toHaveBeenCalledWith(expect.any(AbortSignal));
 		expect(harness.state.messages).toEqual([
 			{ id: 1000, sender: 'user', text: 'podnieś widły', isSpeaking: false },
 		]);
@@ -297,15 +348,13 @@ describe('useMicrophone', () => {
 		expect(harness.state.isTranscribing).toBe(false);
 	});
 
-	test('removes the speaking placeholder when Deepgram returns an empty transcript', async () => {
+	test('removes the speaking placeholder when backend STT returns an empty transcript', async () => {
 		const harness = createHarness();
 		await harness.api.handleMicPress();
 
 		jest.useFakeTimers({ doNotFake: ['Date'] });
 		(Date.now as jest.Mock).mockReturnValue(2000);
-		jest.mocked(global.fetch)
-			.mockResolvedValueOnce(createBlobResponse())
-			.mockResolvedValueOnce(createDeepgramResponse('   '));
+		jest.mocked(global.fetch).mockResolvedValueOnce(createTranscriptResponse('   '));
 
 		const stopPromise = harness.api.handleMicPress();
 		await Promise.resolve();
@@ -318,6 +367,43 @@ describe('useMicrophone', () => {
 		expect(harness.onTranscript).not.toHaveBeenCalled();
 		expect(harness.setIsLoading).toHaveBeenLastCalledWith(false);
 		expect(harness.state.isTranscribing).toBe(false);
+	});
+
+	test('streams PCM audio to backend STT and shows partial transcript while speaking', async () => {
+		mockIsPcmAudioStreamAvailable = true;
+		const harness = createHarness();
+
+		const startPromise = harness.api.handleMicPress();
+		await flushPromises();
+
+		expect(MockWebSocket.instances).toHaveLength(1);
+		const socket = MockWebSocket.instances[0];
+		expect(socket.url).toBe(
+			'wss://api.example.test/api/threads/123/messages/transcribe-stream?token=test-token&encoding=linear16&sample_rate=16000',
+		);
+
+		socket.emitOpen();
+		await startPromise;
+
+		expect(mockRecorder.prepareToRecordAsync).not.toHaveBeenCalled();
+		expect(mockStartPcmAudioStream).toHaveBeenCalled();
+		expect(harness.state.messages).toEqual([
+			{ id: 1000, sender: 'user', text: '', isSpeaking: true },
+		]);
+
+		mockPcmAudioListener?.({
+			pcm: Buffer.from([0, 0, 1, 0]).toString('base64'),
+			metering: -20,
+		});
+		expect(socket.send).toHaveBeenCalledWith(expect.any(ArrayBuffer));
+
+		socket.emitMessage({ type: 'partial', transcript: 'podnieś' });
+
+		expect(harness.state.messages).toEqual([
+			{ id: 1000, sender: 'user', text: 'podnieś', isSpeaking: true },
+		]);
+		expect(harness.onTranscript).not.toHaveBeenCalled();
+		expect(mockPcmStreamErrorListener).toEqual(expect.any(Function));
 	});
 
 	test('abortVoiceInput stops recording and removes pending voice messages', async () => {

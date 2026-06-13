@@ -18,7 +18,9 @@ type UseWakeWordOptions = {
 export const useWakeWord = ({ enabled, onDetected }: UseWakeWordOptions) => {
 	useEffect(() => {
 		if (Platform.OS !== 'android') {
-			console.log('[WakeWord] Disabled: Android-only module is not available on this platform.');
+			console.log(
+				'[WakeWord] Disabled: Android-only module is not available on this platform.',
+			);
 			void stopWakeWordDetection();
 			return;
 		}
@@ -60,7 +62,9 @@ export const useWakeWord = ({ enabled, onDetected }: UseWakeWordOptions) => {
 				return startWakeWordDetection().then(() => {
 					console.log('[WakeWord] Detection started.');
 					if (cancelled) {
-						console.log('[WakeWord] Startup finished after cleanup; stopping detection.');
+						console.log(
+							'[WakeWord] Startup finished after cleanup; stopping detection.',
+						);
 						return stopWakeWordDetection();
 					}
 				});
