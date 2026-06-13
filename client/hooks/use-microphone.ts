@@ -3,7 +3,6 @@ import { AudioModule, RecordingPresets, useAudioRecorder } from 'expo-audio';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Animated, Platform } from 'react-native';
 
-import { useWakeWord } from '@/hooks/use-wake-word';
 import {
 	addPcmAudioListener,
 	addPcmStreamErrorListener,
@@ -145,7 +144,6 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 	const streamedFinalTranscriptRef = useRef<string>('');
 	const streamedPartialTranscriptRef = useRef<string>('');
 	const hasFinalizedStreamingTranscriptRef = useRef<boolean>(false);
-	const handleMicPressRef = useRef<() => Promise<void>>(async () => undefined);
 	const isHandlingMicPressRef = useRef<boolean>(false);
 	const isStartingRecordingRef = useRef<boolean>(false);
 	const isStoppingRecordingRef = useRef<boolean>(false);
@@ -967,24 +965,6 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 		stopRecordingWithoutSending,
 		stopRecordingAndSend,
 	]);
-
-	handleMicPressRef.current = handleMicPress;
-
-	const handleWakeWordDetected = useCallback(() => {
-		void handleMicPressRef.current();
-	}, []);
-
-	useWakeWord({
-		enabled:
-			!isListening &&
-			!isLoading &&
-			!isTranscribing &&
-			!isGenerating &&
-			!isAudioPlaying &&
-			!isMicRestartBlocked &&
-			!isSpeechInputUnavailable,
-		onDetected: handleWakeWordDetected,
-	});
 
 	useEffect(() => {
 		AudioModule.setAudioModeAsync({
