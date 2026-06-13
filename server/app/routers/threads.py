@@ -233,10 +233,11 @@ async def create_message(
         await session.commit()
         await session.refresh(system_message)
         assert system_message.id is not None
-        for chunk in retrieved_chunks:
-            session.add(
-                ChunkMessage(message_id=system_message.id, chunk_id=chunk["id"])
-            )
+        if not llm.is_no_source_answer(answer):
+            for chunk in retrieved_chunks:
+                session.add(
+                    ChunkMessage(message_id=system_message.id, chunk_id=chunk["id"])
+                )
         await session.commit()
         await session.refresh(system_message)
 
