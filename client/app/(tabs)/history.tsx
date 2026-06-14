@@ -80,7 +80,10 @@ export default function HistoryScreen() {
 	const { width, height } = useWindowDimensions();
 	const shortestScreenSide = Math.min(width, height);
 	const isTablet = shortestScreenSide >= 600;
+	const isPortrait = height > width;
 	const useTabletHistoryRefresh = isTablet;
+	const usePhonePortraitHeader = !isTablet && isPortrait;
+	const useTabletFilterStyle = useTabletHistoryRefresh || usePhonePortraitHeader;
 	const [threads, setThreads] = useState<ChatThread[]>([]);
 	const [activeBrandFilter, setActiveBrandFilter] = useState('WSZYSTKIE');
 	const [activeTypeFilter, setActiveTypeFilter] = useState('WSZYSTKIE');
@@ -177,10 +180,12 @@ export default function HistoryScreen() {
 	});
 
 	const pagePaddingHorizontal = useTabletHistoryRefresh ? 20 : 16;
-	const pagePaddingTop = useTabletHistoryRefresh ? 10 : 16;
+	const pagePaddingTop = useTabletHistoryRefresh ? 10 : usePhonePortraitHeader ? 10 : 16;
 	const headerTitleClassName = useTabletHistoryRefresh ? 'text-3xl' : 'text-2xl';
 	const headerMinHeight = useTabletHistoryRefresh ? 44 : 38;
-	const headerBottomMargin = useTabletHistoryRefresh ? 12 : 16;
+	const headerBottomMargin = useTabletHistoryRefresh ? 12 : usePhonePortraitHeader ? 12 : 16;
+	const headerBackButtonHeight = useTabletHistoryRefresh ? 44 : usePhonePortraitHeader ? 42 : 48;
+	const headerBackButtonIconOnly = usePhonePortraitHeader;
 	const historyCardPaddingVertical = useTabletHistoryRefresh ? 14 : 16;
 	const historyCardBorderRadius = useTabletHistoryRefresh ? 10 : 12;
 	const historyCardMarginBottom = useTabletHistoryRefresh ? 12 : 12;
@@ -202,17 +207,28 @@ export default function HistoryScreen() {
 						onPress={() => router.push('/home')}
 						accessibilityRole='button'
 						accessibilityLabel='Wstecz'
-						className='flex-row items-center justify-center mr-5 border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D]'
+						className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D]'
 						style={{
-							height: useTabletHistoryRefresh ? 44 : 48,
-							paddingHorizontal: useTabletHistoryRefresh ? 16 : 18,
+							height: headerBackButtonHeight,
+							width: headerBackButtonIconOnly ? headerBackButtonHeight : undefined,
+							marginRight: usePhonePortraitHeader ? 4 : 20,
+							paddingHorizontal: headerBackButtonIconOnly
+								? 0
+								: useTabletHistoryRefresh
+									? 16
+									: 18,
 						}}>
 						<Feather name='arrow-left' size={22} color='#FF7A00' />
-						<Text className='text-[#FF7A00] ml-4 text-[13px] font-semibold tracking-wider'>
-							WSTECZ
-						</Text>
+						{headerBackButtonIconOnly ? null : (
+							<Text className='text-[#FF7A00] ml-4 text-[13px] font-semibold tracking-wider'>
+								WSTECZ
+							</Text>
+						)}
 					</TouchableOpacity>
-					<Text className={`${headerTitleClassName} text-white font-bold`}>
+					<Text
+						className={`${headerTitleClassName} text-white font-bold flex-1`}
+						numberOfLines={1}
+						adjustsFontSizeToFit>
 						Historia czatów
 					</Text>
 				</View>
@@ -224,7 +240,7 @@ export default function HistoryScreen() {
 					activeTypeFilter={activeTypeFilter}
 					onBrandFilterChange={setActiveBrandFilter}
 					onTypeFilterChange={setActiveTypeFilter}
-					useTabletRefresh={useTabletHistoryRefresh}
+					useTabletRefresh={useTabletFilterStyle}
 					primaryColor={PRIMARY_ORANGE}
 				/>
 

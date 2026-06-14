@@ -111,4 +111,13 @@ describe('SourcePanel', () => {
 
 		expect(onClose).toHaveBeenCalledTimes(2);
 	});
+
+	test('renders as full screen without the side overlay', () => {
+		const tree = <SourcePanel {...baseProps} fullScreen />;
+		const buttons = findByType(tree, 'TouchableOpacity');
+		const panel = findByType(tree, 'View').find((view) => view.props.style?.width === '100%');
+
+		expect(panel).toBeTruthy();
+		expect(buttons).toHaveLength(1);
+	});
 });

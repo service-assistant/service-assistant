@@ -8,6 +8,7 @@ const PROCESSING_VIOLET = '#8B5CF6';
 
 type ControlPanelProps = {
 	orientation: 'horizontal' | 'vertical';
+	edgeToEdge?: boolean;
 	isListening: boolean;
 	isMicProcessing: boolean;
 	isMicRestartBlocked: boolean;
@@ -60,6 +61,7 @@ const ListeningPulse = () => {
 
 export default function ControlPanel({
 	orientation,
+	edgeToEdge = false,
 	isListening,
 	isMicProcessing,
 	isMicRestartBlocked,
@@ -70,18 +72,21 @@ export default function ControlPanel({
 	onWritingPress,
 }: ControlPanelProps) {
 	const isHorizontal = orientation === 'horizontal';
+	const useEdgeToEdge = isHorizontal && edgeToEdge;
 	const sideButtonSize = 82;
 	const centerButtonSize = 96;
 	const sideIconSize = 34;
 	const centerIconSize = 50;
 	const centerColumnWidth = isHorizontal ? 170 : 124;
-	const panelWidth = isHorizontal ? 384 : 132;
-	const panelHeight = isHorizontal ? 130 : 404;
-	const panelRadius = isHorizontal ? 54 : 68;
+	const horizontalControlsWidth = 384;
+	const panelWidth = isHorizontal ? (useEdgeToEdge ? '100%' : 384) : 132;
+	const panelHeight = isHorizontal ? (useEdgeToEdge ? 162 : 130) : 404;
+	const panelRadius = isHorizontal ? (useEdgeToEdge ? 0 : 54) : 68;
 	const horizontalSideOffset = 28;
-	const horizontalCenterTop = 8;
+	const horizontalPanelTopPadding = useEdgeToEdge ? 16 : 0;
+	const horizontalCenterTop = horizontalPanelTopPadding + 8;
 	const horizontalSideTop = horizontalCenterTop + centerButtonSize - sideButtonSize;
-	const horizontalCenterLeft = (panelWidth - centerColumnWidth) / 2;
+	const horizontalCenterLeft = (horizontalControlsWidth - centerColumnWidth) / 2;
 	const verticalEdgeGap = 36;
 	const verticalMicSlotHeight = centerButtonSize + 22;
 	const micState = isMicProcessing
@@ -163,35 +168,66 @@ export default function ControlPanel({
 
 	const renderSideButton = (type: 'camera' | 'writing') => {
 		const isWritingButton = type === 'writing';
+		const isDisabled = !isWritingButton;
+		const isActive = isWritingButton && isWritingActive;
 
 		return (
 			<TouchableOpacity
 				key={type}
 				onPress={isWritingButton ? onWritingPress : undefined}
-				activeOpacity={1}
+				disabled={isDisabled}
+				activeOpacity={0.72}
 				className='rounded-[12px] items-center justify-center'
 				style={{
 					...controlButtonStyle,
 					width: sideButtonSize,
 					height: sideButtonSize,
-					backgroundColor: isWritingActive
-						? '#1C1F28'
-						: controlButtonStyle.backgroundColor,
-					borderColor: isWritingActive ? '#3A404C' : controlButtonStyle.borderColor,
+					backgroundColor: isDisabled
+						? '#161820'
+						: isActive
+							? '#242028'
+							: controlButtonStyle.backgroundColor,
+					borderColor: isDisabled
+						? 'rgba(63, 68, 82, 0.42)'
+						: isActive
+							? 'rgba(255, 122, 0, 0.72)'
+							: controlButtonStyle.borderColor,
+					shadowColor: '#000000',
+					shadowOffset: { width: 0, height: 0 },
+					shadowOpacity: isActive ? 0.22 : 0,
+					shadowRadius: isActive ? 10 : 0,
+					elevation: isActive ? 4 : 0,
 				}}>
-				<Image
-					source={
-						type === 'camera'
-							? require('../assets/images/camera.png')
-							: require('../assets/images/writing.png')
-					}
-					style={{
-						width: sideIconSize,
-						height: sideIconSize,
-						tintColor: isWritingActive ? '#FFFFFF' : '#D4D4D8',
-					}}
-					resizeMode='contain'
-				/>
+				{isWritingButton ? (
+					<MaterialCommunityIcons
+						name='send'
+						size={sideIconSize}
+						color={isActive ? '#FF7A00' : '#D4D4D8'}
+					/>
+				) : (
+					<Image
+						source={require('../assets/images/camera.png')}
+						style={{
+							width: sideIconSize,
+							height: sideIconSize,
+							opacity: 0.38,
+							tintColor: '#7A7F8C',
+						}}
+						resizeMode='contain'
+					/>
+				)}
+				{isActive ? (
+					<View
+						className='absolute'
+						style={{
+							bottom: 9,
+							width: 26,
+							height: 3,
+							borderRadius: 2,
+							backgroundColor: '#FF7A00',
+						}}
+					/>
+				) : null}
 			</TouchableOpacity>
 		);
 	};
@@ -277,7 +313,7 @@ export default function ControlPanel({
 			</TouchableOpacity>
 			<View
 				className='flex-row items-center justify-center'
-				style={{ marginTop: isHorizontal ? 2 : 4 }}>
+				style={{ marginTop: isHorizontal ? (useEdgeToEdge ? 8 : 2) : 4 }}>
 				{isListening && !isMicProcessing ? (
 					<View className='w-1.5 h-1.5 rounded-full mr-2 bg-[#06B6D4]' />
 				) : null}
@@ -322,6 +358,15 @@ export default function ControlPanel({
 					elevation: 6,
 					zIndex: 0,
 					backgroundColor: 'rgba(20, 22, 30, 0.92)',
+					...(useEdgeToEdge
+						? {
+								borderLeftWidth: 0,
+								borderRightWidth: 0,
+								borderBottomWidth: 0,
+								borderTopLeftRadius: 0,
+								borderTopRightRadius: 0,
+							}
+						: {}),
 					...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(8px)' } as any) : {}),
 				}}
 			/>
@@ -330,8 +375,9 @@ export default function ControlPanel({
 				style={
 					isHorizontal
 						? {
-								width: panelWidth,
+								width: useEdgeToEdge ? horizontalControlsWidth : panelWidth,
 								height: panelHeight,
+								alignSelf: 'center',
 								paddingVertical: 6,
 								gap: 0,
 								justifyContent: 'space-between',

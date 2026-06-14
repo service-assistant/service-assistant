@@ -1,3 +1,4 @@
+import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -76,6 +77,8 @@ const FILE_ICON_OPTIONS = [
 export default function ChatScreen() {
 	const { width, height } = useWindowDimensions();
 	const isPortrait = height > width;
+	const isTablet = Math.min(width, height) >= 600;
+	const sourcePanelFullScreen = isPortrait && isTablet;
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
 	const { wakeWordEnabled, ttsEnabled } = useAppSettings();
@@ -106,6 +109,7 @@ export default function ChatScreen() {
 	const [serviceErrorFeature, setServiceErrorFeature] = useState<string | null>(null);
 	const [isSpeechInputUnavailable, setIsSpeechInputUnavailable] = useState<boolean>(false);
 	const [isVoiceOutputUnavailable, setIsVoiceOutputUnavailable] = useState<boolean>(false);
+	const [isChatFocused, setIsChatFocused] = useState<boolean>(false);
 
 	const hasStartedChat = messages.length > 0 || Boolean(threadId);
 	const messagesScrollViewRef = useRef<ScrollView>(null);
@@ -164,6 +168,16 @@ export default function ChatScreen() {
 			onServiceError: showServiceError,
 			authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
 		});
+
+	useFocusEffect(
+		useCallback(() => {
+			setIsChatFocused(true);
+
+			return () => {
+				setIsChatFocused(false);
+			};
+		}, []),
+	);
 	const { askAPI, ensureThread, stopChatApi } = useChatApi<ChatMessage>({
 		serverUrl: AUTH_URL,
 		deviceId: HARDCODED_DEVICE_ID,
@@ -209,21 +223,6 @@ export default function ChatScreen() {
 		onServiceError: showServiceError,
 		onSpeechInputError: handleSpeechInputError,
 	});
-
-	useEffect(() => {
-		if (!shouldFocusStartPromptInput || hasStartedChat) return;
-
-		const focusInput = () => startPromptInputRef.current?.focus();
-		const firstFocusTimeout = setTimeout(focusInput, 0);
-		const secondFocusTimeout = setTimeout(focusInput, 80);
-		const retryFocusTimeout = setTimeout(focusInput, 180);
-
-		return () => {
-			clearTimeout(firstFocusTimeout);
-			clearTimeout(secondFocusTimeout);
-			clearTimeout(retryFocusTimeout);
-		};
-	}, [hasStartedChat, shouldFocusStartPromptInput]);
 
 	useEffect(() => {
 		const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -445,6 +444,7 @@ export default function ChatScreen() {
 
 	useWakeWord({
 		enabled:
+			isChatFocused &&
 			wakeWordEnabled &&
 			!isListening &&
 			!isLoading &&
@@ -457,13 +457,18 @@ export default function ChatScreen() {
 	});
 
 	const handleWritingPress = () => {
-		if (hasStartedChat) {
-			setShowTextInput((visible) => !visible);
+		if (showTextInput) {
+			startPromptInputRef.current?.blur();
+			Keyboard.dismiss();
+			setShouldFocusStartPromptInput(false);
+			setShowTextInput(false);
 			return;
 		}
 
 		setShowTextInput(true);
-		setShouldFocusStartPromptInput(true);
+		if (!hasStartedChat) {
+			setShouldFocusStartPromptInput(true);
+		}
 	};
 
 	const openSchemaFullscreen = (imageUrl: string) => {
@@ -474,12 +479,14 @@ export default function ChatScreen() {
 	const commonLayoutProps = {
 		currentSource,
 		logoUrl,
+		isTablet,
 		height,
 		keyboardFrame,
 		hasStartedChat,
 		showTextInput,
 		inputText,
 		messages,
+		shouldFocusStartPromptInput,
 		isListening,
 		isMicProcessing,
 		isMicRestartBlocked,
@@ -490,6 +497,7 @@ export default function ChatScreen() {
 		startPromptInputRef,
 		messagesScrollViewRef,
 		sourcePanelProps,
+		sourcePanelFullScreen,
 		onBack: () => router.push('/home'),
 		onOpenMachineInfo: sourcePanelProps.onClose,
 		onOpenFilesPanel: openFilesPanel,

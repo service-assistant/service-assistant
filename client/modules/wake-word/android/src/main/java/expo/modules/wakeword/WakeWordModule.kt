@@ -58,11 +58,9 @@ class WakeWordModule : Module() {
 
   private fun startListening(threshold: Float, requiredHits: Int, cooldownMillis: Int) {
     if (isRunning) {
-      Log.d(LOG_TAG, "start ignored: detector is already running")
       return
     }
 
-    Log.d(LOG_TAG, "start requested threshold=$threshold requiredHits=$requiredHits cooldownMillis=$cooldownMillis")
     val context = appContext.reactContext ?: throw IllegalStateException("React context is unavailable")
     if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
       Log.w(LOG_TAG, "start failed: microphone permission is missing")
@@ -74,7 +72,6 @@ class WakeWordModule : Module() {
       DataInputStream(BufferedInputStream(context.assets.open("fikso_cnn.bin")))
     ).also {
       detector = it
-      Log.d(LOG_TAG, "model loaded from fikso_cnn.bin")
     }
     val minBufferSize = AudioRecord.getMinBufferSize(
       SAMPLE_RATE,
@@ -98,18 +95,15 @@ class WakeWordModule : Module() {
 
     audioRecord = recorder
     isRunning = true
-    Log.d(LOG_TAG, "recording thread starting bufferSize=${max(minBufferSize, HOP_SAMPLES * 2)} effectiveThreshold=$effectiveThreshold")
     recordingThread = thread(name = "fikso-wake-word") {
       val window = FloatArray(WINDOW_SAMPLES)
       val chunk = ShortArray(HOP_SAMPLES)
       var bufferedSamples = 0
       var hits = 0
       var lastDetectionMillis = 0L
-      var hasLoggedReadyWindow = false
 
       try {
         recorder.startRecording()
-        Log.d(LOG_TAG, "microphone recording started")
         while (isRunning) {
           val samplesRead = recorder.read(chunk, 0, chunk.size)
           if (samplesRead <= 0) {
@@ -129,10 +123,6 @@ class WakeWordModule : Module() {
           }
           bufferedSamples = min(WINDOW_SAMPLES, bufferedSamples + samplesRead)
           if (bufferedSamples < WINDOW_SAMPLES) continue
-          if (!hasLoggedReadyWindow) {
-            hasLoggedReadyWindow = true
-            Log.d(LOG_TAG, "first full detection window is ready")
-          }
 
           val probability = currentDetector.predict(window)
           hits = if (probability >= effectiveThreshold) hits + 1 else 0
@@ -140,7 +130,6 @@ class WakeWordModule : Module() {
           if (hits >= requiredHits && now - lastDetectionMillis >= cooldownMillis) {
             lastDetectionMillis = now
             hits = 0
-            Log.i(LOG_TAG, "wake word detected probability=$probability threshold=$effectiveThreshold")
             sendEvent("onWakeWord", mapOf("probability" to probability))
           }
         }
@@ -150,7 +139,6 @@ class WakeWordModule : Module() {
           sendEvent("onWakeWordError", mapOf("message" to (error.message ?: "Unknown microphone error")))
         }
       } finally {
-        Log.d(LOG_TAG, "recording thread stopping")
         try {
           recorder.stop()
         } catch (_: IllegalStateException) {
@@ -162,9 +150,6 @@ class WakeWordModule : Module() {
   }
 
   private fun stopListening() {
-    if (isRunning || recordingThread != null || audioRecord != null) {
-      Log.d(LOG_TAG, "stop requested")
-    }
     isRunning = false
     try {
       audioRecord?.stop()

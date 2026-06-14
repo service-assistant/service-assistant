@@ -18,28 +18,21 @@ type UseWakeWordOptions = {
 export const useWakeWord = ({ enabled, onDetected }: UseWakeWordOptions) => {
 	useEffect(() => {
 		if (Platform.OS !== 'android') {
-			console.log(
-				'[WakeWord] Disabled: Android-only module is not available on this platform.',
-			);
 			void stopWakeWordDetection();
 			return;
 		}
 
 		if (!isWakeWordAvailable) {
-			console.log('[WakeWord] Disabled: native module is unavailable.');
 			void stopWakeWordDetection();
 			return;
 		}
 
 		if (!enabled) {
-			console.log('[WakeWord] Disabled: voice input is busy or wake word is not enabled.');
 			void stopWakeWordDetection();
 			return;
 		}
 
-		console.log('[WakeWord] Preparing detection.');
 		const detectionSubscription = addWakeWordListener((event) => {
-			console.log(`[WakeWord] Detected with probability ${event.probability.toFixed(4)}.`);
 			void stopWakeWordDetection().finally(onDetected);
 		});
 		const errorSubscription = addWakeWordErrorListener((event) => {
@@ -55,16 +48,11 @@ export const useWakeWord = ({ enabled, onDetected }: UseWakeWordOptions) => {
 				}
 
 				if (cancelled) {
-					console.log('[WakeWord] Startup cancelled before native detection started.');
 					return;
 				}
 
 				return startWakeWordDetection().then(() => {
-					console.log('[WakeWord] Detection started.');
 					if (cancelled) {
-						console.log(
-							'[WakeWord] Startup finished after cleanup; stopping detection.',
-						);
 						return stopWakeWordDetection();
 					}
 				});
@@ -75,7 +63,6 @@ export const useWakeWord = ({ enabled, onDetected }: UseWakeWordOptions) => {
 
 		return () => {
 			cancelled = true;
-			console.log('[WakeWord] Cleaning up detection.');
 			detectionSubscription.remove();
 			errorSubscription.remove();
 			void stopWakeWordDetection();

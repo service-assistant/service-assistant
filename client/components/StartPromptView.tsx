@@ -25,6 +25,7 @@ type StartPromptViewProps = {
 	inputText: string;
 	inputRef: React.RefObject<TextInput | null>;
 	hasStartedChat: boolean;
+	shouldFocusInput: boolean;
 	onChangeText: (text: string) => void;
 	onSend: () => void;
 	onShowTextInputChange: (show: boolean) => void;
@@ -38,6 +39,7 @@ export default function StartPromptView({
 	inputText,
 	inputRef,
 	hasStartedChat,
+	shouldFocusInput,
 	onChangeText,
 	onSend,
 	onShowTextInputChange,
@@ -49,6 +51,23 @@ export default function StartPromptView({
 		? Math.max(0, height - keyboardFrame.screenY, keyboardFrame.height)
 		: 0;
 	const keyboardBottomOffset = keyboardOverlap + (compact ? 18 : 22);
+
+	React.useEffect(() => {
+		if (!shouldFocusInput) return;
+
+		const focusInput = () => inputRef.current?.focus();
+		const firstFocusTimeout = setTimeout(focusInput, 0);
+		const secondFocusTimeout = setTimeout(focusInput, 80);
+		const retryFocusTimeout = setTimeout(focusInput, 180);
+		const lateFocusTimeout = setTimeout(focusInput, 320);
+
+		return () => {
+			clearTimeout(firstFocusTimeout);
+			clearTimeout(secondFocusTimeout);
+			clearTimeout(retryFocusTimeout);
+			clearTimeout(lateFocusTimeout);
+		};
+	}, [inputRef, keyboardFrame, shouldFocusInput]);
 
 	const handleFocus = () => {
 		onShowTextInputChange(true);
@@ -97,9 +116,11 @@ export default function StartPromptView({
 					width: compact ? 44 : 54,
 					height: compact ? 44 : 54,
 					borderRadius: compact ? 22 : 27,
-					backgroundColor: PRIMARY_ORANGE,
+					backgroundColor: '#1E2028',
+					borderWidth: 1,
+					borderColor: 'rgba(255, 122, 0, 0.5)',
 				}}>
-				<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
+				<Feather name='arrow-up-right' size={compact ? 24 : 30} color={PRIMARY_ORANGE} />
 			</TouchableOpacity>
 		</View>
 	);
@@ -146,7 +167,7 @@ export default function StartPromptView({
 				<View
 					pointerEvents={keyboardFrame ? 'none' : 'auto'}
 					style={{ opacity: keyboardFrame ? 0 : 1 }}>
-					{renderInput()}
+					{keyboardFrame ? null : renderInput(shouldFocusInput)}
 				</View>
 
 				<View

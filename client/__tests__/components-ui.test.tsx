@@ -5,6 +5,14 @@ import AvailableFilesList from '../components/AvailableFilesList';
 import ServiceErrorModal from '../components/ServiceErrorModal';
 import StartPromptView from '../components/StartPromptView';
 
+jest.mock('react', () => {
+	const actualReact = jest.requireActual('react');
+	return {
+		...actualReact,
+		useEffect: (callback: () => void | (() => void)) => callback(),
+	};
+});
+
 jest.mock('react-native', () => {
 	const React = require('react');
 	const createHost = (name: string) =>
@@ -207,6 +215,7 @@ describe('StartPromptView', () => {
 		inputText: 'test',
 		inputRef: { current: null },
 		hasStartedChat: false,
+		shouldFocusInput: false,
 		onChangeText: jest.fn(),
 		onSend: jest.fn(),
 		onShowTextInputChange: jest.fn(),
@@ -251,8 +260,8 @@ describe('StartPromptView', () => {
 		);
 		const inputs = findByType(tree, 'TextInput');
 
-		expect(inputs).toHaveLength(2);
-		expect(inputs[1].props.autoFocus).toBe(true);
+		expect(inputs).toHaveLength(1);
+		expect(inputs[0].props.autoFocus).toBe(true);
 		expect(findByText(tree, 'Jak mogę pomóc?')).toBeTruthy();
 	});
 });

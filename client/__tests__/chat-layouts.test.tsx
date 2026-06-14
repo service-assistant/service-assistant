@@ -13,6 +13,7 @@ jest.mock('react', () => {
 	return {
 		...actualReact,
 		useEffect: (callback: () => void | (() => void)) => callback(),
+		useRef: (initialValue: unknown) => ({ current: initialValue }),
 		useState: (initialValue: unknown) => [initialValue, jest.fn()],
 	};
 });
@@ -24,8 +25,17 @@ jest.mock('react-native', () => {
 			return React.createElement(name, props, children);
 		};
 
+	const animation = { start: jest.fn(), stop: jest.fn() };
+
 	return {
-		Animated: { Value: jest.fn() },
+		Animated: {
+			Value: jest.fn(() => ({ setValue: jest.fn(), stopAnimation: jest.fn() })),
+			Text: createHost('AnimatedText'),
+			delay: jest.fn(() => animation),
+			loop: jest.fn(() => animation),
+			sequence: jest.fn(() => animation),
+			timing: jest.fn(() => animation),
+		},
 		Image: Object.assign(createHost('Image'), {
 			getSize: jest.fn((_uri, onSuccess) => onSuccess(300, 100)),
 		}),
@@ -98,12 +108,14 @@ const messages: ChatMessageItem[] = [{ id: 1, sender: 'ai', text: 'Gotowe' }];
 const createLayoutProps = () => ({
 	currentSource: 'Toyota 8FG',
 	logoUrl: 'https://api.example.test/logo.png',
+	isTablet: false,
 	height: 800,
 	keyboardFrame: null,
 	hasStartedChat: true,
 	showTextInput: false,
 	inputText: 'pytanie',
 	messages,
+	shouldFocusStartPromptInput: false,
 	isListening: false,
 	isMicProcessing: false,
 	isMicRestartBlocked: false,
@@ -114,6 +126,7 @@ const createLayoutProps = () => ({
 	startPromptInputRef: { current: null },
 	messagesScrollViewRef: { current: { scrollToEnd: jest.fn() } } as any,
 	sourcePanelProps,
+	sourcePanelFullScreen: false,
 	onBack: jest.fn(),
 	onOpenMachineInfo: jest.fn(),
 	onOpenFilesPanel: jest.fn(),
@@ -134,7 +147,6 @@ describe('ChatLayouts', () => {
 		const buttons = findByType(tree, 'TouchableOpacity');
 
 		buttons[0].props.onPress();
-		buttons[1].props.onPress();
 		buttons[2].props.onPress();
 
 		expect(getTextContent(tree)).toContain('Toyota 8FG');
@@ -142,7 +154,8 @@ describe('ChatLayouts', () => {
 		expect(findByType(tree, 'ControlPanel')[0].props.orientation).toBe('vertical');
 		expect(findByType(tree, 'SourcePanel')[0].props).toMatchObject(sourcePanelProps);
 		expect(props.onBack).toHaveBeenCalled();
-		expect(props.onOpenMachineInfo).toHaveBeenCalled();
+		expect(buttons[1].props.disabled).toBe(true);
+		expect(props.onOpenMachineInfo).not.toHaveBeenCalled();
 		expect(props.onOpenFilesPanel).toHaveBeenCalled();
 	});
 

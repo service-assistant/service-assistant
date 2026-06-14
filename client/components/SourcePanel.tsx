@@ -17,6 +17,7 @@ export type SourcePanelPdf = {
 type SourcePanelProps = {
 	showSourcePanel: boolean;
 	sourcePanelPdf: SourcePanelPdf | null;
+	fullScreen?: boolean;
 	isAvailableFilesLoading: boolean;
 	availableFiles: AvailableFile[];
 	isFileDownloading: boolean;
@@ -31,6 +32,7 @@ type SourcePanelProps = {
 export default function SourcePanel({
 	showSourcePanel,
 	sourcePanelPdf,
+	fullScreen = false,
 	isAvailableFilesLoading,
 	availableFiles,
 	isFileDownloading,
@@ -76,15 +78,17 @@ export default function SourcePanel({
 
 	return (
 		<View className='absolute inset-0 flex-row' style={{ zIndex: 50, elevation: 50 }}>
-			<TouchableOpacity
-				activeOpacity={1}
-				onPress={onClose}
-				style={{ width: '40%', backgroundColor: 'rgba(0, 0, 0, 0.35)' }}
-			/>
+			{fullScreen ? null : (
+				<TouchableOpacity
+					activeOpacity={1}
+					onPress={onClose}
+					style={{ width: '40%', backgroundColor: 'rgba(0, 0, 0, 0.35)' }}
+				/>
+			)}
 			<View
-				className='relative bg-[#07080A] border-l border-white/10'
+				className={`relative bg-[#07080A] ${fullScreen ? '' : 'border-l border-white/10'}`}
 				style={{
-					width: '60%',
+					width: fullScreen ? '100%' : '60%',
 					shadowColor: '#000000',
 					shadowOpacity: 0.35,
 					shadowRadius: 24,
