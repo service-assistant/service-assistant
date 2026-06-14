@@ -11,7 +11,10 @@ make test          # poetry run pytest
 make lint          # ruff check app tests alembic
 make format        # ruff format app tests
 make typecheck     # pyright
-make check         # format-check + lint + typecheck + test (full CI gate)
+make check         # format-check + lint + typecheck (no tests)
+make test-db-up    # start test postgres container
+make test-db-down  # stop test postgres container
+make reset-test-db # recreate test postgres container (wipes data)
 make migrations    # list alembic history
 make reset-db      # tear down dev postgres and delete volume
 ```
@@ -65,9 +68,7 @@ Single bearer token in `settings.auth_token` (env var `AUTH_TOKEN`). Checked by 
 
 ## Testing
 
-Tests use `TestClient` (sync) with mocked `AsyncSession`. No real DB needed for unit tests. `tests/conftest.py` sets env vars before any app import. `tests/routers/conftest.py` provides `mock_session` and `client` fixtures; `factories.py` builds ORM objects.
-
-All router tests must pass `Authorization: Bearer CHANGEMELATER` header (use `AUTH_HEADERS` from `tests/routers/conftest.py`).
+Tests run against a real PostgreSQL instance (docker-compose.test.yml, env from `.env.test`). `tests/conftest.py` runs alembic migrations once per session and truncates all tables after each test via `clean_db`. `tests/routers/conftest.py` provides `client` (async `AsyncClient`) and `unauthenticated_client` fixtures; `factories.py` builds and persists ORM objects. Auth token is injected automatically in the `client` fixture — no need to set headers manually.
 
 ## Key env vars
 
