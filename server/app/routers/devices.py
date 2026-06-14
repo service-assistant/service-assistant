@@ -31,7 +31,13 @@ async def create_device(
 
     device = Device(**body.model_dump())
     session.add(device)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(
+            status_code=409, detail="Brand or device type no longer exists"
+        )
     await session.refresh(device)
     return device
 

@@ -1,8 +1,5 @@
-from pathlib import Path
-
 import pytest
 
-from app.config import Settings
 from app.services.llm import _build_context, stream_query
 
 
@@ -13,21 +10,6 @@ def mock_llm_session(mocker):
     mock_result.all.return_value = []
     session.scalars.return_value = mock_result
     return session
-
-
-def make_settings() -> Settings:
-    return Settings(
-        env="test",
-        database_url="postgresql://localhost/test",
-        azure_openai_endpoint="https://example",
-        azure_openai_api_key="key",
-        azure_openai_embeddings_deployment="dep",
-        azure_openai_api_version="2024-01-01",
-        openai_chat_model="gpt-4o-mini",
-        openai_api_key="test-openai-key",
-        attachments_dir=Path("/tmp"),
-        auth_token="token",
-    )
 
 
 def test_should_build_context_with_numbered_fragments():
@@ -82,9 +64,7 @@ def make_stream_mock(mocker, deltas: list[str | None]):
     return mocker.AsyncMock(return_value=mock_stream)
 
 
-@pytest.mark.asyncio
-async def test_should_return_llm_response_content(mock_llm_session, mocker):
-    settings = make_settings()
+async def test_should_return_llm_response_content(mock_llm_session, mocker, settings):
     mock_client = mocker.MagicMock()
     mock_client.chat.completions.create = make_stream_mock(
         mocker, ["Odpowiedź", " asystenta"]
@@ -106,9 +86,7 @@ async def test_should_return_llm_response_content(mock_llm_session, mocker):
     mock_client.chat.completions.create.assert_called_once()
 
 
-@pytest.mark.asyncio
-async def test_should_skip_none_delta_chunks(mock_llm_session, mocker):
-    settings = make_settings()
+async def test_should_skip_none_delta_chunks(mock_llm_session, mocker, settings):
     mock_client = mocker.MagicMock()
     mock_client.chat.completions.create = make_stream_mock(
         mocker, [None, "real content", None]
@@ -125,9 +103,9 @@ async def test_should_skip_none_delta_chunks(mock_llm_session, mocker):
     assert chunks == ["real content"]
 
 
-@pytest.mark.asyncio
-async def test_should_pass_question_and_context_to_llm(mock_llm_session, mocker):
-    settings = make_settings()
+async def test_should_pass_question_and_context_to_llm(
+    mock_llm_session, mocker, settings
+):
     mock_client = mocker.MagicMock()
     mock_client.chat.completions.create = make_stream_mock(mocker, ["Answer"])
 

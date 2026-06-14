@@ -1,10 +1,8 @@
-import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services.retrieval import get_semantic_chunks
 
 
-@pytest.mark.asyncio
 async def test_get_semantic_chunks_with_device_id(mocker):
     session = mocker.AsyncMock(spec=AsyncSession)
 
@@ -38,7 +36,6 @@ async def test_get_semantic_chunks_with_device_id(mocker):
     session.scalars.assert_called_once()
 
 
-@pytest.mark.asyncio
 async def test_get_semantic_chunks_skips_chunks_without_id(mocker):
     session = mocker.AsyncMock(spec=AsyncSession)
 

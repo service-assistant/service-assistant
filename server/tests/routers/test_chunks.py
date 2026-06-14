@@ -1,6 +1,5 @@
 from app.models import Chunk
 
-from tests.routers.conftest import AUTH_HEADERS
 from tests.routers.factories import create_attachment, create_chunk
 
 
@@ -19,7 +18,7 @@ async def test_should_list_chunks(client, session):
         extra_metadata={"page": 6},
     )
 
-    response = await client.get("/api/chunks", headers=AUTH_HEADERS)
+    response = await client.get("/api/chunks")
 
     assert response.status_code == 200
     data = response.json()
@@ -30,8 +29,7 @@ async def test_should_list_chunks(client, session):
 
 
 async def test_should_return_empty_list_when_no_chunks(client):
-    response = await client.get("/api/chunks", headers=AUTH_HEADERS)
-
+    response = await client.get("/api/chunks")
     assert response.status_code == 200
     assert response.json() == []
 
@@ -47,9 +45,7 @@ async def test_should_filter_chunks_by_attachment_id(client, tmp_path, session):
     await create_chunk(session, attachment_b.id)
     await create_chunk(session, attachment_b.id)
 
-    response = await client.get(
-        f"/api/chunks?attachment_id={attachment_b.id}", headers=AUTH_HEADERS
-    )
+    response = await client.get(f"/api/chunks?attachment_id={attachment_b.id}")
 
     assert response.status_code == 200
     data = response.json()
@@ -61,7 +57,7 @@ async def test_should_clamp_page_below_one(client, session):
     attachment = await create_attachment(session)
     await create_chunk(session, attachment.id)
 
-    response = await client.get("/api/chunks?page=0", headers=AUTH_HEADERS)
+    response = await client.get("/api/chunks?page=0")
 
     assert response.status_code == 200
     assert len(response.json()) == 1
@@ -72,7 +68,7 @@ async def test_should_delete_chunk_when_id_exists(client, session):
     chunk = await create_chunk(session, attachment.id)
     chunk_id = chunk.id
 
-    response = await client.delete(f"/api/chunks/{chunk_id}", headers=AUTH_HEADERS)
+    response = await client.delete(f"/api/chunks/{chunk_id}")
 
     assert response.status_code == 204
     session.expunge(chunk)
@@ -80,8 +76,7 @@ async def test_should_delete_chunk_when_id_exists(client, session):
 
 
 async def test_should_return_404_when_deleting_nonexistent_chunk(client):
-    response = await client.delete("/api/chunks/999", headers=AUTH_HEADERS)
-
+    response = await client.delete("/api/chunks/999")
     assert response.status_code == 404
     assert response.json()["detail"] == "Chunk not found"
 
@@ -89,8 +84,7 @@ async def test_should_return_404_when_deleting_nonexistent_chunk(client):
 async def test_should_return_empty_list_when_filtering_by_nonexistent_attachment_id(
     client,
 ):
-    response = await client.get("/api/chunks?attachment_id=999", headers=AUTH_HEADERS)
-
+    response = await client.get("/api/chunks?attachment_id=999")
     assert response.status_code == 200
     assert response.json() == []
 
@@ -100,7 +94,7 @@ async def test_should_paginate_chunks_to_second_page(client, session):
     for i in range(21):
         await create_chunk(session, attachment.id, content=f"Chunk {i}")
 
-    response = await client.get("/api/chunks?page=2", headers=AUTH_HEADERS)
+    response = await client.get("/api/chunks?page=2")
 
     assert response.status_code == 200
     assert len(response.json()) == 1

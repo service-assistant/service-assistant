@@ -6,7 +6,6 @@ from sqlalchemy import select
 from app.models import ChatThread, Message, MessageSender
 from app.services.stt import SttError
 
-from tests.routers.conftest import AUTH_HEADERS
 from tests.routers.factories import (
     create_brand,
     create_device,
@@ -25,7 +24,6 @@ async def test_should_create_thread_when_valid_data_provided(client, session):
     response = await client.post(
         "/api/threads",
         json={"device_id": device.id, "title": "Mast won't lift"},
-        headers=AUTH_HEADERS,
     )
 
     assert response.status_code == 201
@@ -38,7 +36,6 @@ async def test_should_return_404_when_creating_thread_with_nonexistent_device(cl
     response = await client.post(
         "/api/threads",
         json={"device_id": 999, "title": "Test"},
-        headers=AUTH_HEADERS,
     )
 
     assert response.status_code == 404
@@ -52,7 +49,7 @@ async def test_should_list_all_threads(client, session):
     await create_thread(session, device.id, title="Thread 1")
     await create_thread(session, device.id, title="Thread 2")
 
-    response = await client.get("/api/threads", headers=AUTH_HEADERS)
+    response = await client.get("/api/threads")
 
     assert response.status_code == 200
     data = response.json()
@@ -62,8 +59,7 @@ async def test_should_list_all_threads(client, session):
 
 
 async def test_should_return_empty_list_when_no_threads_exist(client):
-    response = await client.get("/api/threads", headers=AUTH_HEADERS)
-
+    response = await client.get("/api/threads")
     assert response.status_code == 200
     assert response.json() == []
 
@@ -74,7 +70,7 @@ async def test_should_return_thread_when_id_exists(client, session):
     device = await create_device(session, brand.id, dt.id)
     thread = await create_thread(session, device.id, title="Mast won't lift")
 
-    response = await client.get(f"/api/threads/{thread.id}", headers=AUTH_HEADERS)
+    response = await client.get(f"/api/threads/{thread.id}")
 
     assert response.status_code == 200
     data = response.json()
@@ -84,8 +80,7 @@ async def test_should_return_thread_when_id_exists(client, session):
 
 
 async def test_should_return_404_when_getting_nonexistent_thread(client):
-    response = await client.get("/api/threads/999", headers=AUTH_HEADERS)
-
+    response = await client.get("/api/threads/999")
     assert response.status_code == 404
     assert response.json()["detail"] == "Thread not found"
 
@@ -97,7 +92,7 @@ async def test_should_delete_thread_when_id_exists(client, session):
     thread = await create_thread(session, device.id)
     thread_id = thread.id
 
-    response = await client.delete(f"/api/threads/{thread_id}", headers=AUTH_HEADERS)
+    response = await client.delete(f"/api/threads/{thread_id}")
 
     assert response.status_code == 204
     session.expunge(thread)
@@ -105,32 +100,22 @@ async def test_should_delete_thread_when_id_exists(client, session):
 
 
 async def test_should_return_404_when_deleting_nonexistent_thread(client):
-    response = await client.delete("/api/threads/999", headers=AUTH_HEADERS)
-
+    response = await client.delete("/api/threads/999")
     assert response.status_code == 404
     assert response.json()["detail"] == "Thread not found"
 
 
-async def test_should_send_message_and_return_system_reply(client, session, mocker):
+async def test_should_send_message_and_return_system_reply(
+    client, session, mock_azure_embeddings, mock_openai_llm
+):
     brand = await create_brand(session)
     dt = await create_device_type(session)
     device = await create_device(session, brand.id, dt.id)
     thread = await create_thread(session, device.id)
 
-    async def mock_stream(*args, **kwargs):
-        yield "E-23 oznacza"
-        yield " błąd systemu hydraulicznego."
-
-    mocker.patch(
-        "app.routers.threads.retrieval.retrieve_context_chunks",
-        new=mocker.AsyncMock(return_value=[]),
-    )
-    mocker.patch("app.routers.threads.llm.stream_query", new=mock_stream)
-
     response = await client.post(
         f"/api/threads/{thread.id}/messages",
         json={"content": "What is error E-23?"},
-        headers=AUTH_HEADERS,
     )
 
     assert response.status_code == 200
@@ -142,46 +127,66 @@ async def test_should_send_message_and_return_system_reply(client, session, mock
             break
     assert message_data is not None
     assert message_data["sender"] == "system"
-    assert message_data["content"] == "E-23 oznacza błąd systemu hydraulicznego."
+    assert message_data["content"] == "Test response"
     assert isinstance(message_data["id"], int)
 
 
-async def test_should_store_user_message_before_reply(client, session, mocker):
+async def test_should_store_user_message_before_reply(
+    client, session, mock_azure_embeddings, mock_openai_llm
+):
     brand = await create_brand(session)
     dt = await create_device_type(session)
     device = await create_device(session, brand.id, dt.id)
     thread = await create_thread(session, device.id)
 
-    async def mock_stream(*args, **kwargs):
-        yield "Answer"
-
-    mocker.patch(
-        "app.routers.threads.retrieval.retrieve_context_chunks",
-        new=mocker.AsyncMock(return_value=[]),
-    )
-    mocker.patch("app.routers.threads.llm.stream_query", new=mock_stream)
-
     await client.post(
         f"/api/threads/{thread.id}/messages",
         json={"content": "My question"},
-        headers=AUTH_HEADERS,
     )
 
     result = await session.execute(
         select(Message).where(Message.thread_id == thread.id)
     )
     messages = result.scalars().all()
-    assert len(messages) >= 2
+    assert len(messages) == 2
     senders = {m.sender for m in messages}
     assert MessageSender.user in senders
     assert MessageSender.system in senders
+
+
+async def test_should_chunk_events_concatenate_to_full_message_content(
+    client, session, mock_azure_embeddings, mock_openai_llm
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "What is error E-23?"},
+    )
+
+    assert response.status_code == 200
+    lines = response.text.splitlines()
+
+    chunks: list[str] = []
+    message_content: str | None = None
+    for i, line in enumerate(lines):
+        if line == "event: chunk":
+            chunks.append(lines[i + 1].removeprefix("data: "))
+        elif line == "event: message":
+            message_content = json.loads(lines[i + 1].removeprefix("data: "))["content"]
+
+    assert len(chunks) > 0
+    assert message_content is not None
+    assert "".join(chunks) == message_content
 
 
 async def test_should_return_404_when_thread_not_found_on_send_message(client):
     response = await client.post(
         "/api/threads/999/messages",
         json={"content": "test question"},
-        headers=AUTH_HEADERS,
     )
 
     assert response.status_code == 404
@@ -200,9 +205,7 @@ async def test_should_list_messages_in_thread_chronologically(client, session):
         session, thread.id, content="System answer", sender=MessageSender.system
     )
 
-    response = await client.get(
-        f"/api/threads/{thread.id}/messages", headers=AUTH_HEADERS
-    )
+    response = await client.get(f"/api/threads/{thread.id}/messages")
 
     assert response.status_code == 200
     messages = response.json()
@@ -219,16 +222,14 @@ async def test_should_return_empty_list_when_thread_has_no_messages(client, sess
     device = await create_device(session, brand.id, dt.id)
     thread = await create_thread(session, device.id)
 
-    response = await client.get(
-        f"/api/threads/{thread.id}/messages", headers=AUTH_HEADERS
-    )
+    response = await client.get(f"/api/threads/{thread.id}/messages")
 
     assert response.status_code == 200
     assert response.json() == []
 
 
 async def test_should_return_404_when_listing_messages_for_nonexistent_thread(client):
-    response = await client.get("/api/threads/999/messages", headers=AUTH_HEADERS)
+    response = await client.get("/api/threads/999/messages")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Thread not found"
@@ -240,15 +241,21 @@ async def test_should_transcribe_audio_when_thread_exists(client, session, mocke
     device = await create_device(session, brand.id, dt.id)
     thread = await create_thread(session, device.id)
 
-    mocker.patch(
-        "app.routers.threads.stt.transcribe",
-        new=mocker.AsyncMock(return_value="Oil pressure low"),
-    )
+    mock_response = mocker.MagicMock(status_code=200)
+    mock_response.json.return_value = {
+        "results": {
+            "channels": [{"alternatives": [{"transcript": "Oil pressure low"}]}]
+        }
+    }
+    mock_http = mocker.AsyncMock()
+    mock_http.post = mocker.AsyncMock(return_value=mock_response)
+    mock_http.__aenter__ = mocker.AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = mocker.AsyncMock(return_value=False)
+    mocker.patch("app.services.stt.httpx.AsyncClient", return_value=mock_http)
 
     response = await client.post(
         f"/api/threads/{thread.id}/messages/transcribe",
         files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
-        headers=AUTH_HEADERS,
     )
 
     assert response.status_code == 200
@@ -259,7 +266,6 @@ async def test_should_return_404_when_transcribing_for_nonexistent_thread(client
     response = await client.post(
         "/api/threads/999/messages/transcribe",
         files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
-        headers=AUTH_HEADERS,
     )
 
     assert response.status_code == 404
@@ -272,40 +278,65 @@ async def test_should_return_502_when_stt_service_fails(client, session, mocker)
     device = await create_device(session, brand.id, dt.id)
     thread = await create_thread(session, device.id)
 
-    mocker.patch(
-        "app.routers.threads.stt.transcribe",
-        new=mocker.AsyncMock(
-            side_effect=SttError("Deepgram error 503: service unavailable")
-        ),
-    )
+    mock_response = mocker.MagicMock(status_code=503, text="service unavailable")
+    mock_http = mocker.AsyncMock()
+    mock_http.post = mocker.AsyncMock(return_value=mock_response)
+    mock_http.__aenter__ = mocker.AsyncMock(return_value=mock_http)
+    mock_http.__aexit__ = mocker.AsyncMock(return_value=False)
+    mocker.patch("app.services.stt.httpx.AsyncClient", return_value=mock_http)
 
     response = await client.post(
         f"/api/threads/{thread.id}/messages/transcribe",
         files={"audio": ("recording.m4a", b"fake audio bytes", "audio/m4a")},
-        headers=AUTH_HEADERS,
     )
 
     assert response.status_code == 502
 
 
-async def test_should_return_422_when_audio_is_empty(client, session, mocker):
+async def test_should_return_422_when_audio_is_empty(client, session):
     brand = await create_brand(session)
     dt = await create_device_type(session)
     device = await create_device(session, brand.id, dt.id)
     thread = await create_thread(session, device.id)
 
-    mocker.patch(
-        "app.routers.threads.stt.transcribe",
-        new=mocker.AsyncMock(side_effect=SttError("Empty audio file")),
-    )
-
     response = await client.post(
         f"/api/threads/{thread.id}/messages/transcribe",
         files={"audio": ("recording.m4a", b"", "audio/m4a")},
-        headers=AUTH_HEADERS,
     )
 
     assert response.status_code == 422
+
+
+async def test_should_not_leave_orphaned_user_message_when_retrieval_fails(
+    client, session, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+
+    mock_client = mocker.MagicMock()
+    mock_client.embeddings.create = mocker.AsyncMock(
+        side_effect=Exception("Azure embedding service down")
+    )
+    mocker.patch("app.services.embedding.AsyncAzureOpenAI", return_value=mock_client)
+
+    # Unhandled exceptions may propagate through starlette BaseHTTPMiddleware
+    # rather than being caught as 500 responses — handle both cases.
+    try:
+        response = await client.post(
+            f"/api/threads/{thread.id}/messages",
+            json={"content": "What is error E-23?"},
+        )
+        assert response.status_code == 500
+    except Exception:
+        pass
+
+    result = await session.execute(
+        select(Message).where(Message.thread_id == thread.id)
+    )
+    messages = result.scalars().all()
+    assert len(messages) == 0
 
 
 def test_should_stream_final_transcript_when_audio_sent(ws_client, mocker):

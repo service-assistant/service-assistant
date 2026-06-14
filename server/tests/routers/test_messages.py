@@ -1,4 +1,3 @@
-from tests.routers.conftest import AUTH_HEADERS
 from tests.routers.factories import (
     create_attachment,
     create_brand,
@@ -34,11 +33,7 @@ async def test_should_return_chunks_for_system_message(client, session):
     session.add(ChunkMessage(message_id=message.id, chunk_id=chunk2.id))
     await session.commit()
 
-    response = await client.get(
-        f"/api/messages/{message.id}/chunks", headers=AUTH_HEADERS
-    )
-
-    print(response)
+    response = await client.get(f"/api/messages/{message.id}/chunks")
 
     assert response.status_code == 200
     chunks = response.json()
@@ -55,16 +50,13 @@ async def test_should_return_empty_list_when_message_has_no_chunks(client, sessi
     thread = await create_thread(session, device.id)
     message = await create_message(session, thread.id)
 
-    response = await client.get(
-        f"/api/messages/{message.id}/chunks", headers=AUTH_HEADERS
-    )
+    response = await client.get(f"/api/messages/{message.id}/chunks")
 
     assert response.status_code == 200
     assert response.json() == []
 
 
 async def test_should_return_404_when_message_not_found(client):
-    response = await client.get("/api/messages/999/chunks", headers=AUTH_HEADERS)
-
+    response = await client.get("/api/messages/999/chunks")
     assert response.status_code == 404
     assert response.json()["detail"] == "Message not found"

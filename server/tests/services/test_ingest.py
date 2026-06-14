@@ -1,23 +1,8 @@
-import pytest
-
 from app.services.ingest import ingest_pdf_to_attachment
 
 
-@pytest.mark.asyncio
-async def test_ingest_pdf_to_attachment(mocker):
+async def test_ingest_pdf_to_attachment(mocker, settings):
     session = mocker.AsyncMock()
-
-    settings = mocker.Mock()
-
-    settings.azure_openai_api_version = "test"
-    settings.azure_openai_endpoint = "test"
-    settings.azure_openai_api_key = "test"
-    settings.azure_openai_embeddings_deployment = "test-model"
-
-    settings.attachments_dir = mocker.Mock()
-    settings.attachments_dir.__truediv__ = mocker.Mock(
-        return_value="attachments/images"
-    )
 
     mock_page = mocker.Mock()
 
