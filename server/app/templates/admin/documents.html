@@ -105,7 +105,7 @@ document.addEventListener('submit', function (e) {
                         <span class="text-gray-400">—</span>
                     {% endif %}
                 </td>
-                <td class="px-4 py-3 text-gray-500">{{ row.attachment.created_at.strftime('%Y-%m-%d') }}</td>
+                <td class="px-4 py-3 text-gray-500"><time data-utc="{{ row.attachment.created_at.isoformat() }}" data-fmt="date"></time></td>
                 <td class="px-4 py-3 text-right">
                     <div class="flex items-center justify-end gap-4">
                         <a href="/admin/documents/{{ row.attachment.id }}" class="text-blue-600 hover:text-blue-800 text-sm">Manage</a>

@@ -36,7 +36,7 @@
             <tr class="hover:bg-gray-50">
                 <td class="px-4 py-3 text-gray-500">{{ dt.id }}</td>
                 <td class="px-4 py-3 font-medium">{{ dt.name }}</td>
-                <td class="px-4 py-3 text-gray-500">{{ dt.created_at.strftime('%Y-%m-%d') }}</td>
+                <td class="px-4 py-3 text-gray-500"><time data-utc="{{ dt.created_at.isoformat() }}" data-fmt="date"></time></td>
                 <td class="px-4 py-3 text-right">
                     <div class="flex items-center justify-end gap-4">
                         <a href="/admin/device_types/{{ dt.id }}/edit" class="text-blue-600 hover:text-blue-800 text-sm">Edit</a>
