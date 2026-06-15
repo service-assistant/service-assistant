@@ -62,12 +62,18 @@ def save_drawing_region(
     combined_rect.x1 += padding
     combined_rect.y1 += padding
 
-    matrix = fitz.Matrix(2, 2)
+    combined_rect = combined_rect & page.rect
+
+    if combined_rect.width <= 0 or combined_rect.height <= 0:
+        return None
 
     pix = page.get_pixmap(
-        matrix=matrix,
+        matrix=fitz.Matrix(2, 2),
         clip=combined_rect,
     )
+
+    if pix.width <= 0 or pix.height <= 0:
+        return None
 
     output_dir.mkdir(parents=True, exist_ok=True)
     filename = f"{uuid.uuid4()}.png"
