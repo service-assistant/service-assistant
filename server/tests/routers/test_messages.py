@@ -10,12 +10,12 @@ from tests.routers.factories import (
 from app.models import ChunkMessage, MessageSender
 
 
-async def test_should_return_chunks_for_system_message(client, session):
+async def test_should_return_chunks_for_assistant_message(client, session):
     brand = await create_brand(session)
     dt = await create_device_type(session)
     device = await create_device(session, brand.id, dt.id)
     thread = await create_thread(session, device.id)
-    message = await create_message(session, thread.id, sender=MessageSender.system)
+    message = await create_message(session, thread.id, sender=MessageSender.assistant)
     attachment = await create_attachment(session)
     chunk1 = await create_chunk(
         session,
