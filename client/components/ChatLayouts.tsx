@@ -7,12 +7,12 @@ import {
 	Text,
 	TextInput,
 	TouchableOpacity,
-	useWindowDimensions,
 	View,
 	type LayoutChangeEvent,
 } from 'react-native';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
+import { getPortraitChatHeaderMetrics } from '@/components/chat-header-metrics';
 import ChatMessages, {
 	InvertedSchemaPreview,
 	type ChatMessageItem,
@@ -310,6 +310,7 @@ type FullscreenSchemaViewProps = {
 	imageUrl: string;
 	aspectRatio: number;
 	insets: EdgeInsets;
+	isTablet?: boolean;
 	onBack: () => void;
 };
 
@@ -317,36 +318,52 @@ export function FullscreenSchemaView({
 	imageUrl,
 	aspectRatio,
 	insets,
+	isTablet = false,
 	onBack,
 }: FullscreenSchemaViewProps) {
-	const { width, height } = useWindowDimensions();
-	const isTablet = Math.min(width, height) >= 600;
-	const usePhoneBackIconOnly = !isTablet;
-	const backButtonHeight = isTablet ? 44 : 48;
+	const headerMetrics = getPortraitChatHeaderMetrics({
+		isTablet,
+		topInset: insets.top,
+	});
 
 	return (
-		<View className='flex-1 bg-black px-4 pt-4'>
-			<View className='h-14 flex-row items-center'>
+		<View className='flex-1 bg-black'>
+			<View
+				className='flex-row items-center bg-[#0D0D0D] px-4 border-b border-[#1F1F1F]'
+				style={{
+					height: headerMetrics.height,
+					paddingTop: headerMetrics.paddingTop,
+				}}>
 				<TouchableOpacity
 					onPress={onBack}
 					accessibilityRole='button'
 					accessibilityLabel='Wstecz'
 					className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D]'
 					style={{
-						height: backButtonHeight,
-						width: usePhoneBackIconOnly ? backButtonHeight : undefined,
-						paddingHorizontal: usePhoneBackIconOnly ? 0 : 18,
+						height: headerMetrics.buttonSize,
+						width: headerMetrics.buttonSize,
 					}}>
-					<Feather name='arrow-left' size={22} color={PRIMARY_ORANGE} />
-					{usePhoneBackIconOnly ? null : (
-						<Text className='text-[#FF7A00] ml-4 text-[13px] font-semibold tracking-wider'>
-							WSTECZ
-						</Text>
-					)}
+					<Feather
+						name='arrow-left'
+						size={headerMetrics.iconSize}
+						color={PRIMARY_ORANGE}
+					/>
 				</TouchableOpacity>
+				<Text
+					className='flex-1 text-center text-white font-bold'
+					style={{
+						fontSize: headerMetrics.titleFontSize,
+						lineHeight: headerMetrics.titleFontSize + 5,
+					}}
+					numberOfLines={1}>
+					SCHEMAT POMOCNICZY
+				</Text>
+				<View
+					style={{ width: headerMetrics.buttonSize, height: headerMetrics.buttonSize }}
+				/>
 			</View>
 			<View
-				className='flex-1 mt-4 bg-black'
+				className='flex-1 mt-4 bg-black px-4'
 				style={{ marginBottom: Math.max(insets.bottom, 20) }}>
 				<InvertedSchemaPreview imageUrl={imageUrl} aspectRatio={aspectRatio} zoomable />
 			</View>
@@ -396,13 +413,17 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 			? insets.bottom + 14
 			: 24;
 	const portraitControlsHeight = portraitPanelHeight;
-	const headerSafeTop = isPhonePortrait ? insets.top : 0;
-	const headerHeight = isPhonePortrait ? 64 + headerSafeTop : 76;
-	const headerButtonSize = isPhonePortrait ? 42 : 48;
-	const headerIconSize = isPhonePortrait ? 21 : 23;
+	const headerMetrics = getPortraitChatHeaderMetrics({
+		isTablet,
+		topInset: insets.top,
+	});
+	const headerSafeTop = headerMetrics.paddingTop;
+	const headerHeight = headerMetrics.height;
+	const headerButtonSize = headerMetrics.buttonSize;
+	const headerIconSize = headerMetrics.iconSize;
 	const headerLogoHeight = isPhonePortrait ? 15 : 20;
 	const headerLogoMaxWidth = isPhonePortrait ? 110 : 120;
-	const headerTitleFontSize = isPhonePortrait ? 16 : 20;
+	const headerTitleFontSize = headerMetrics.titleFontSize;
 	const keyboardOverlap = keyboardFrame ? Math.max(0, height - keyboardFrame.screenY) : 0;
 	const portraitInputBottom = keyboardFrame
 		? keyboardOverlap + 8
@@ -540,7 +561,18 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 					onWritingPress={onWritingPress}
 				/>
 			</View>
-			<SourcePanel {...sourcePanelProps} fullScreen={sourcePanelFullScreen} />
+			<SourcePanel
+				{...sourcePanelProps}
+				fullScreen={sourcePanelFullScreen}
+				topInset={sourcePanelFullScreen ? insets.top : 0}
+				fileGridColumns={isTablet ? 3 : 2}
+				headerHeight={headerHeight}
+				headerPaddingTop={headerSafeTop}
+				headerTitleFontSize={headerTitleFontSize}
+				headerTitleLineHeight={headerTitleFontSize + 5}
+				backButtonSize={headerButtonSize}
+				backIconSize={headerIconSize}
+			/>
 		</View>
 	);
 }

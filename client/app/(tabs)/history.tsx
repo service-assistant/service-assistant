@@ -184,7 +184,7 @@ export default function HistoryScreen() {
 	const headerTitleClassName = useTabletHistoryRefresh ? 'text-3xl' : 'text-2xl';
 	const headerMinHeight = useTabletHistoryRefresh ? 44 : 38;
 	const headerBottomMargin = useTabletHistoryRefresh ? 12 : usePhonePortraitHeader ? 12 : 16;
-	const headerBackButtonHeight = useTabletHistoryRefresh ? 44 : usePhonePortraitHeader ? 42 : 48;
+	const headerBackButtonHeight = usePhonePortraitHeader ? 42 : 48;
 	const headerBackButtonIconOnly = usePhonePortraitHeader;
 	const historyCardPaddingVertical = useTabletHistoryRefresh ? 14 : 16;
 	const historyCardBorderRadius = useTabletHistoryRefresh ? 10 : 12;
@@ -212,13 +212,13 @@ export default function HistoryScreen() {
 							height: headerBackButtonHeight,
 							width: headerBackButtonIconOnly ? headerBackButtonHeight : undefined,
 							marginRight: usePhonePortraitHeader ? 4 : 20,
-							paddingHorizontal: headerBackButtonIconOnly
-								? 0
-								: useTabletHistoryRefresh
-									? 16
-									: 18,
+							paddingHorizontal: headerBackButtonIconOnly ? 0 : 18,
 						}}>
-						<Feather name='arrow-left' size={22} color='#FF7A00' />
+						<Feather
+							name='arrow-left'
+							size={headerBackButtonIconOnly ? 21 : 22}
+							color='#FF7A00'
+						/>
 						{headerBackButtonIconOnly ? null : (
 							<Text className='text-[#FF7A00] ml-4 text-[13px] font-semibold tracking-wider'>
 								WSTECZ

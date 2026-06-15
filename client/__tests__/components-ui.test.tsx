@@ -5,11 +5,33 @@ import AvailableFilesList from '../components/AvailableFilesList';
 import ServiceErrorModal from '../components/ServiceErrorModal';
 import StartPromptView from '../components/StartPromptView';
 
+let mockReactStateValues: unknown[] = [];
+let mockReactStateIndex = 0;
+
 jest.mock('react', () => {
 	const actualReact = jest.requireActual('react');
 	return {
 		...actualReact,
 		useEffect: (callback: () => void | (() => void)) => callback(),
+		useRef: (initialValue: unknown) => ({ current: initialValue }),
+		useState: (initialValue: unknown) => {
+			const stateIndex = mockReactStateIndex;
+			mockReactStateIndex += 1;
+
+			if (mockReactStateValues.length <= stateIndex) {
+				mockReactStateValues[stateIndex] =
+					typeof initialValue === 'function' ? initialValue() : initialValue;
+			}
+
+			const setValue = (nextValue: unknown) => {
+				mockReactStateValues[stateIndex] =
+					typeof nextValue === 'function'
+						? nextValue(mockReactStateValues[stateIndex])
+						: nextValue;
+			};
+
+			return [mockReactStateValues[stateIndex], setValue];
+		},
 	};
 });
 
@@ -19,9 +41,19 @@ jest.mock('react-native', () => {
 		function HostComponent({ children, ...props }: Record<string, unknown>) {
 			return React.createElement(name, props, children);
 		};
+	const animatedValue = () => ({
+		setValue: jest.fn(),
+		stopAnimation: jest.fn(),
+	});
 
 	return {
 		ActivityIndicator: createHost('ActivityIndicator'),
+		Animated: {
+			Text: createHost('Animated.Text'),
+			Value: jest.fn(animatedValue),
+			parallel: jest.fn(() => ({ start: (callback?: () => void) => callback?.() })),
+			timing: jest.fn(() => ({ start: (callback?: () => void) => callback?.() })),
+		},
 		Modal: createHost('Modal'),
 		Pressable: createHost('Pressable'),
 		ScrollView: createHost('ScrollView'),
@@ -88,6 +120,11 @@ const findByType = (node: unknown, type: string) =>
 
 const findByText = (node: unknown, text: string) =>
 	collectElements(node).find((element) => getTextContent(element).includes(text));
+
+beforeEach(() => {
+	mockReactStateValues = [];
+	mockReactStateIndex = 0;
+});
 
 const files: AvailableFile[] = [
 	{
@@ -263,5 +300,28 @@ describe('StartPromptView', () => {
 		expect(inputs).toHaveLength(1);
 		expect(inputs[0].props.autoFocus).toBe(true);
 		expect(findByText(tree, 'Jak mogę pomóc?')).toBeTruthy();
+	});
+
+	test('uses animated placeholder without focus and native placeholder with focus', () => {
+		const props = { ...createProps(), inputText: '' };
+		const idleTree = <StartPromptView {...props} />;
+		const idleElements = collectElements(idleTree);
+
+		expect(idleElements.filter((element) => element.type === 'Animated.Text')).toHaveLength(1);
+		expect(
+			idleElements.find((element) => element.type === 'TextInput')?.props.placeholder,
+		).toBe('');
+
+		mockReactStateValues = [0, true];
+		mockReactStateIndex = 0;
+		const focusedTree = <StartPromptView {...props} />;
+		const focusedElements = collectElements(focusedTree);
+
+		expect(focusedElements.filter((element) => element.type === 'Animated.Text')).toHaveLength(
+			0,
+		);
+		expect(
+			focusedElements.find((element) => element.type === 'TextInput')?.props.placeholder,
+		).toBe('Np. co oznacza błąd 2:101?');
 	});
 });

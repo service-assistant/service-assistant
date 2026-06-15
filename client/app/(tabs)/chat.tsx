@@ -518,6 +518,7 @@ export default function ChatScreen() {
 					imageUrl={currentImage}
 					aspectRatio={currentImageAspectRatio}
 					insets={insets}
+					isTablet={isTablet}
 					onBack={() => setShowFullscreenSchema(false)}
 				/>
 				<ServiceErrorModal

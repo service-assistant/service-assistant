@@ -194,6 +194,28 @@ describe('ChatLayouts', () => {
 		expect(findByType(tree, 'ChatMessages')[0].props.compact).toBe(true);
 		expect(findByType(tree, 'ControlPanel')[0].props.orientation).toBe('horizontal');
 		expect(findByType(tree, 'SourcePanel')[0].props).toMatchObject(sourcePanelProps);
+		expect(findByType(tree, 'SourcePanel')[0].props.fileGridColumns).toBe(2);
+		expect(findByType(tree, 'SourcePanel')[0].props.headerHeight).toBe(74);
+		expect(findByType(tree, 'SourcePanel')[0].props.backButtonSize).toBe(42);
+		expect(findByType(tree, 'SourcePanel')[0].props.backIconSize).toBe(21);
+	});
+
+	test('PortraitChatLayout keeps three file columns on tablets', () => {
+		const props = createLayoutProps();
+		const tree = (
+			<PortraitChatLayout
+				{...props}
+				isTablet
+				sourcePanelFullScreen
+				insets={{ top: 10, right: 0, bottom: 20, left: 0 }}
+			/>
+		);
+
+		expect(findByType(tree, 'SourcePanel')[0].props.fileGridColumns).toBe(3);
+		expect(findByType(tree, 'SourcePanel')[0].props.headerHeight).toBe(76);
+		expect(findByType(tree, 'SourcePanel')[0].props.headerTitleFontSize).toBe(20);
+		expect(findByType(tree, 'SourcePanel')[0].props.backButtonSize).toBe(48);
+		expect(findByType(tree, 'SourcePanel')[0].props.backIconSize).toBe(23);
 	});
 
 	test('PortraitChatLayout renders start prompt before chat starts', () => {
@@ -223,7 +245,7 @@ describe('ChatLayouts', () => {
 
 		findByType(tree, 'TouchableOpacity')[0].props.onPress();
 
-		expect(findByText(tree, 'WRÓĆ DO CZATU')).toBeTruthy();
+		expect(findByText(tree, 'SCHEMAT POMOCNICZY')).toBeTruthy();
 		expect(findByType(tree, 'InvertedSchemaPreview')[0].props).toMatchObject({
 			imageUrl: 'data:image/png;base64,abc',
 			aspectRatio: 1.6,

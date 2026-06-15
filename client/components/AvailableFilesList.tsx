@@ -15,6 +15,7 @@ type AvailableFilesListProps = {
 	downloadedFileIds?: Set<number>;
 	showTitle?: boolean;
 	scrollable?: boolean;
+	gridColumns?: 2 | 3;
 	onOpenFile: (file: AvailableFile) => void;
 	onDeleteDownloadedFile?: (file: AvailableFile) => void;
 };
@@ -28,9 +29,12 @@ export default function AvailableFilesList({
 	downloadedFileIds = new Set(),
 	showTitle = true,
 	scrollable = variant === 'grid',
+	gridColumns = 3,
 	onOpenFile,
 	onDeleteDownloadedFile,
 }: AvailableFilesListProps) {
+	const gridItemWidth = gridColumns === 2 ? '46%' : '30%';
+
 	const title = showTitle ? (
 		<Text
 			className='text-[#FF7A00] font-bold tracking-widest'
@@ -82,7 +86,8 @@ export default function AvailableFilesList({
 							key={file.id}
 							onPress={() => onOpenFile(file)}
 							disabled={isFileDownloading}
-							className='w-[30%] aspect-square py-5 px-3 border rounded-2xl items-center justify-center bg-[#141418] border-[#26262C] relative'>
+							className='aspect-square py-5 px-3 border rounded-2xl items-center justify-center bg-[#141418] border-[#26262C] relative'
+							style={{ width: gridItemWidth }}>
 							{isDownloaded && onDeleteDownloadedFile ? (
 								<TouchableOpacity
 									onPress={() => onDeleteDownloadedFile(file)}

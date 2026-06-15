@@ -116,8 +116,10 @@ describe('SourcePanel', () => {
 		const tree = <SourcePanel {...baseProps} fullScreen />;
 		const buttons = findByType(tree, 'TouchableOpacity');
 		const panel = findByType(tree, 'View').find((view) => view.props.style?.width === '100%');
+		const list = findByType(tree, 'AvailableFilesList')[0];
 
 		expect(panel).toBeTruthy();
 		expect(buttons).toHaveLength(1);
+		expect(list.props.gridColumns).toBe(2);
 	});
 });

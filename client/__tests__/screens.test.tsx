@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { findByText, findByType, getTextContent } from '../test-utils/react-tree';
+import { collectElements, findByText, findByType, getTextContent } from '../test-utils/react-tree';
 
 const mockRouterPush = jest.fn();
 let mockSearchParams: Record<string, string | undefined> = {};
@@ -362,9 +362,13 @@ describe('tab screens', () => {
 	test('tab layout hides the tab bar and status bar', () => {
 		const TabLayout = require('../app/(tabs)/_layout').default;
 		const tree = renderScreen(TabLayout);
-		const statusBar = findByType(tree, 'StatusBar')[0];
-		const tabs = findByType(tree, 'Tabs')[0];
+		const elements = collectElements(tree);
+		const statusBar = elements.find((element) => element.type === 'StatusBar');
+		const tabs = elements.find((element) => element.type === 'Tabs');
 
+		if (!statusBar || !tabs) {
+			throw new Error('Tab layout did not render the expected root elements.');
+		}
 		expect(statusBar.props.hidden).toBe(true);
 		expect(tabs.props.screenOptions).toMatchObject({
 			headerShown: false,
@@ -378,7 +382,7 @@ describe('tab screens', () => {
 		mockWindowDimensions = { width: 390, height: 844 };
 		const TabLayout = require('../app/(tabs)/_layout').default;
 
-		renderScreen(TabLayout);
+		collectElements(renderScreen(TabLayout));
 
 		expect(mockOrientationLockAsync).toHaveBeenCalledWith('PORTRAIT_UP');
 		expect(mockOrientationUnlockAsync).not.toHaveBeenCalled();
