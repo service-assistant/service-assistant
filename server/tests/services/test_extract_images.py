@@ -43,7 +43,12 @@ def test_save_drawing_region_saves_png(mocker, tmp_path: Path):
 
     mock_pixmap = mocker.Mock()
 
+    mock_pixmap.width = 100
+    mock_pixmap.height = 100
+
     page = mocker.Mock()
+
+    page.rect = fitz.Rect(0, 0, 500, 500)
 
     page.get_drawings.return_value = rects
     page.get_pixmap.return_value = mock_pixmap
