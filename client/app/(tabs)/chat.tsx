@@ -78,7 +78,7 @@ export default function ChatScreen() {
 	const { width, height } = useWindowDimensions();
 	const isPortrait = height > width;
 	const isTablet = Math.min(width, height) >= 600;
-	const sourcePanelFullScreen = isPortrait && isTablet;
+	const sourcePanelFullScreen = isPortrait;
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
 	const { wakeWordEnabled, ttsEnabled } = useAppSettings();

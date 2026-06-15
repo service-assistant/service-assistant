@@ -1,16 +1,16 @@
 -- Merging decision tree log ---
 manifest
-ADDED from C:\Dev\untitled\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest16995149450995811476.xml:2:13-83
-INJECTED from C:\Dev\untitled\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest16995149450995811476.xml:2:13-83
+ADDED from C:\dev\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13825166014105273559.xml:2:13-83
+INJECTED from C:\dev\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13825166014105273559.xml:2:13-83
 	package
-		INJECTED from C:\Dev\untitled\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest16995149450995811476.xml
+		INJECTED from C:\dev\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13825166014105273559.xml
 	xmlns:android
-		ADDED from C:\Dev\untitled\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest16995149450995811476.xml:2:23-81
+		ADDED from C:\dev\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13825166014105273559.xml:2:23-81
 uses-sdk
-INJECTED from C:\Dev\untitled\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest16995149450995811476.xml reason: use-sdk injection requested
-INJECTED from C:\Dev\untitled\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest16995149450995811476.xml
-INJECTED from C:\Dev\untitled\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest16995149450995811476.xml
+INJECTED from C:\dev\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13825166014105273559.xml reason: use-sdk injection requested
+INJECTED from C:\dev\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13825166014105273559.xml
+INJECTED from C:\dev\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13825166014105273559.xml
 	android:targetSdkVersion
-		INJECTED from C:\Dev\untitled\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest16995149450995811476.xml
+		INJECTED from C:\dev\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13825166014105273559.xml
 	android:minSdkVersion
-		INJECTED from C:\Dev\untitled\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest16995149450995811476.xml
+		INJECTED from C:\dev\service-assistant\client\modules\audio-stream\android\build\intermediates\tmp\ProcessLibraryManifest\debug\tempAndroidManifest13825166014105273559.xml

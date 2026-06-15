@@ -7,10 +7,9 @@ import {
 	Text,
 	TextInput,
 	TouchableOpacity,
+	useWindowDimensions,
 	View,
 	type LayoutChangeEvent,
-	type NativeScrollEvent,
-	type NativeSyntheticEvent,
 } from 'react-native';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
@@ -314,36 +313,43 @@ type FullscreenSchemaViewProps = {
 	onBack: () => void;
 };
 
-const scrollToEnd = (ref: ScrollViewRef, _event?: NativeSyntheticEvent<NativeScrollEvent>) => {
-	ref.current?.scrollToEnd({ animated: true });
-};
-
 export function FullscreenSchemaView({
 	imageUrl,
 	aspectRatio,
 	insets,
 	onBack,
 }: FullscreenSchemaViewProps) {
+	const { width, height } = useWindowDimensions();
+	const isTablet = Math.min(width, height) >= 600;
+	const usePhoneBackIconOnly = !isTablet;
+	const backButtonHeight = isTablet ? 44 : 48;
+
 	return (
 		<View className='flex-1 bg-black px-4 pt-4'>
 			<View className='h-14 flex-row items-center'>
 				<TouchableOpacity
 					onPress={onBack}
-					className='h-12 px-5 flex-row items-center justify-center border border-[#FF7A00] bg-[#050505]'>
+					accessibilityRole='button'
+					accessibilityLabel='Wstecz'
+					className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D]'
+					style={{
+						height: backButtonHeight,
+						width: usePhoneBackIconOnly ? backButtonHeight : undefined,
+						paddingHorizontal: usePhoneBackIconOnly ? 0 : 18,
+					}}>
 					<Feather name='arrow-left' size={22} color={PRIMARY_ORANGE} />
-					<Text className='text-[#FF7A00] ml-3 text-[13px] font-semibold tracking-wider'>
-						WRÓĆ DO CZATU
-					</Text>
+					{usePhoneBackIconOnly ? null : (
+						<Text className='text-[#FF7A00] ml-4 text-[13px] font-semibold tracking-wider'>
+							WSTECZ
+						</Text>
+					)}
 				</TouchableOpacity>
 			</View>
-			<ScrollView
-				className='flex-1 mt-4'
-				showsVerticalScrollIndicator={false}
-				contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 20) }}>
-				<View className='w-full bg-black'>
-					<InvertedSchemaPreview imageUrl={imageUrl} aspectRatio={aspectRatio} />
-				</View>
-			</ScrollView>
+			<View
+				className='flex-1 mt-4 bg-black'
+				style={{ marginBottom: Math.max(insets.bottom, 20) }}>
+				<InvertedSchemaPreview imageUrl={imageUrl} aspectRatio={aspectRatio} zoomable />
+			</View>
 		</View>
 	);
 }
@@ -477,7 +483,6 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 			{hasStartedChat ? (
 				<ScrollView
 					ref={messagesScrollViewRef}
-					onContentSizeChange={() => scrollToEnd(messagesScrollViewRef)}
 					className='flex-1 mt-5 px-4'
 					showsVerticalScrollIndicator={false}
 					contentContainerStyle={{ paddingBottom: portraitMessagesBottomPadding }}>
@@ -620,7 +625,6 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 				{hasStartedChat ? (
 					<ScrollView
 						ref={messagesScrollViewRef}
-						onContentSizeChange={() => scrollToEnd(messagesScrollViewRef)}
 						className='flex-1 pr-8'
 						contentContainerStyle={{ paddingBottom: 30 }}>
 						<ChatMessages

@@ -32,13 +32,13 @@ type AssistantResponseBlock =
 	| { type: 'warning'; content: string }
 	| { type: 'next'; content: string };
 
-const getInvertedImageHtml = (imageUrl: string) => `
+const getInvertedImageHtml = (imageUrl: string, zoomable = false) => `
 	<!DOCTYPE html>
 	<html>
 	<head>
-		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=${zoomable ? '6.0' : '1.0'}, user-scalable=${zoomable ? 'yes' : 'no'}" />
 		<style>
-			html, body { width: 100%; height: 100%; margin: 0; padding: 0; background-color: #000000; overflow: hidden; }
+			html, body { width: 100%; height: 100%; margin: 0; padding: 0; background-color: #000000; overflow: ${zoomable ? 'auto' : 'hidden'}; }
 			body { display: flex; align-items: center; justify-content: center; }
 			img { display: block; width: 100%; height: 100%; object-fit: contain; filter: invert(100%); }
 		</style>
@@ -58,14 +58,16 @@ export const stripResponseDirectivesForSpeech = (text: string) =>
 export const InvertedSchemaPreview = ({
 	imageUrl,
 	aspectRatio,
+	zoomable = false,
 }: {
 	imageUrl: string;
 	aspectRatio: number;
+	zoomable?: boolean;
 }) => (
 	<View
 		style={{
 			width: '100%',
-			aspectRatio,
+			...(zoomable ? { flex: 1 } : { aspectRatio }),
 			backgroundColor: '#000000',
 			overflow: 'hidden',
 		}}>
@@ -75,17 +77,24 @@ export const InvertedSchemaPreview = ({
 				style={{
 					display: 'block',
 					width: '100%',
-					height: 'auto',
+					height: zoomable ? '100%' : 'auto',
+					objectFit: zoomable ? 'contain' : undefined,
 					filter: 'invert(100%)',
 				}}
 				alt='Schemat pomocniczy'
 			/>
 		) : (
 			<WebView
-				pointerEvents='none'
-				source={{ html: getInvertedImageHtml(imageUrl) }}
+				pointerEvents={zoomable ? 'auto' : 'none'}
+				source={{ html: getInvertedImageHtml(imageUrl, zoomable) }}
 				style={{ flex: 1, backgroundColor: '#000000' }}
-				scrollEnabled={false}
+				scrollEnabled={zoomable}
+				nestedScrollEnabled={zoomable}
+				scalesPageToFit
+				setBuiltInZoomControls={zoomable}
+				setDisplayZoomControls={false}
+				showsHorizontalScrollIndicator={zoomable}
+				showsVerticalScrollIndicator={zoomable}
 			/>
 		)}
 	</View>
