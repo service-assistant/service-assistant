@@ -61,6 +61,10 @@ class MockWebSocket {
 	emitMessage(data: unknown) {
 		this.onmessage?.({ data: JSON.stringify(data) });
 	}
+
+	emitError() {
+		this.onerror?.();
+	}
 }
 
 jest.mock('react', () => ({
@@ -398,6 +402,74 @@ describe('useMicrophone', () => {
 		]);
 		expect(harness.onTranscript).not.toHaveBeenCalled();
 		expect(mockPcmStreamErrorListener).toEqual(expect.any(Function));
+	});
+
+	test('does not report STT stream connection errors after voice input is cancelled', async () => {
+		mockIsPcmAudioStreamAvailable = true;
+		const harness = createHarness();
+
+		const startPromise = harness.api.handleMicPress();
+		await flushPromises();
+
+		const socket = MockWebSocket.instances[0];
+		harness.api.abortVoiceInput();
+		socket.emitError();
+		socket.emitOpen();
+		await startPromise;
+		await flushPromises();
+
+		expect(harness.onServiceError).not.toHaveBeenCalledWith(
+			'rozpoznawanie mowy',
+			expect.objectContaining({ message: 'STT stream connection failed' }),
+		);
+		expect(harness.onSpeechInputError).not.toHaveBeenCalledWith(
+			expect.objectContaining({ message: 'STT stream connection failed' }),
+		);
+	});
+
+	test('queues cancellation when microphone is tapped again during streaming startup', async () => {
+		mockIsPcmAudioStreamAvailable = true;
+		const harness = createHarness();
+
+		const startPromise = harness.api.handleMicPress();
+		await flushPromises();
+
+		const socket = MockWebSocket.instances[0];
+		await harness.api.handleMicPress();
+		socket.emitError();
+		await startPromise;
+		await flushPromises();
+
+		expect(mockStopPcmAudioStream).toHaveBeenCalled();
+		expect(harness.onServiceError).not.toHaveBeenCalledWith(
+			'rozpoznawanie mowy',
+			expect.objectContaining({ message: 'STT stream connection failed' }),
+		);
+		expect(harness.onSpeechInputError).not.toHaveBeenCalledWith(
+			expect.objectContaining({ message: 'STT stream connection failed' }),
+		);
+	});
+
+	test('does not report cancelled streaming voice input as a service error', async () => {
+		mockIsPcmAudioStreamAvailable = true;
+		const harness = createHarness();
+
+		const startPromise = harness.api.handleMicPress();
+		await flushPromises();
+		MockWebSocket.instances[0].emitOpen();
+		await startPromise;
+
+		const stopPromise = harness.api.abortVoiceInput();
+		await flushPromises();
+		await stopPromise;
+
+		expect(harness.onServiceError).not.toHaveBeenCalledWith(
+			'rozpoznawanie mowy',
+			expect.objectContaining({ message: 'Voice input cancelled' }),
+		);
+		expect(harness.onSpeechInputError).not.toHaveBeenCalledWith(
+			expect.objectContaining({ message: 'Voice input cancelled' }),
+		);
 	});
 
 	test('abortVoiceInput stops recording and removes pending voice messages', async () => {

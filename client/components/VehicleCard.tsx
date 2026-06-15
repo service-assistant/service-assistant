@@ -77,13 +77,13 @@ export default function VehicleCard({
 		return (
 			<View
 				className='w-full items-center justify-center'
-				style={{ padding: useTabletRefresh ? 10 : 12 }}>
+				style={{ paddingHorizontal: useTabletRefresh ? 10 : 12, paddingVertical: 6 }}>
 				{logoUrl && (
 					<View
 						style={{
 							width: '100%',
 							height: logoHeight,
-							marginBottom: useTabletRefresh ? 6 : 8,
+							marginBottom: 5,
 						}}>
 						<Image
 							source={{ uri: logoUrl }}
@@ -96,8 +96,11 @@ export default function VehicleCard({
 					className={`text-white font-bold text-center ${
 						useTabletRefresh ? 'text-lg' : isTablet ? 'text-xl' : 'text-lg'
 					}`}
-					numberOfLines={1}
-					adjustsFontSizeToFit>
+					numberOfLines={3}
+					style={{
+						lineHeight: useTabletRefresh ? 22 : isTablet ? 24 : 22,
+						maxWidth: '100%',
+					}}>
 					{cleanName.toUpperCase()}
 				</Text>
 			</View>
@@ -112,7 +115,7 @@ export default function VehicleCard({
 			style={
 				{
 					width: cardWidth,
-					height: cardHeight,
+					minHeight: cardHeight,
 					margin: useTabletRefresh ? 6 : 8,
 					borderRadius: useTabletRefresh ? 16 : 24,
 					...(isWeb ? { cursor: 'default' } : {}),
@@ -138,7 +141,10 @@ export default function VehicleCard({
 
 			<View
 				className='bg-[#18181b] flex-1 border-t border-[#3f3f46] justify-center items-center'
-				style={{ padding: useTabletRefresh ? 12 : 16 }}>
+				style={{
+					paddingHorizontal: useTabletRefresh ? 12 : 16,
+					paddingVertical: useTabletRefresh ? 8 : 10,
+				}}>
 				{renderCardInfo()}
 
 				{isWeb && (

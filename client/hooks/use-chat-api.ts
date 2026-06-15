@@ -275,7 +275,38 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 				let sourceAttachmentId: number | null = null;
 				let sourceAttachmentName = '';
 				let sourceAttachmentPage = 1;
-				let imageUrls: string[] = [];
+				let hasAppliedSchemaImage = false;
+				let hasStartedAssistantAudio = false;
+
+				const startAssistantAudio = () => {
+					if (
+						hasStartedAssistantAudio ||
+						abortController.signal.aborted ||
+						fullText.length === 0
+					) {
+						return;
+					}
+
+					hasStartedAssistantAudio = true;
+					playAssistantAudio(stripResponseDirectivesForSpeech(fullText));
+				};
+
+				const applySchemaImage = (nextImageUrl: string) => {
+					hasAppliedSchemaImage = true;
+					setCurrentImage(nextImageUrl);
+					setMessages((prev) =>
+						prev.map((message) =>
+							message.id === aiMessageId
+								? ({ ...message, schemaImage: nextImageUrl } as TMessage)
+								: message,
+						),
+					);
+					startAssistantAudio();
+				};
+
+				if (imageUrl) {
+					applySchemaImage(imageUrl);
+				}
 
 				if (systemMessageId) {
 					const chunksResponse = await fetch(
@@ -305,44 +336,31 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 							sourceAttachmentId = sourceChunk.attachment_id;
 							sourceAttachmentPage = sourceChunk.metadata?.page || 1;
 
-							if (!imageUrl && chunkImagePaths.length > 0) {
-								const loadedImagePromisesByPath = new Map<
-									string,
-									Promise<string | null>
-								>();
-								const loadedImages = await Promise.all(
-									chunkImagePaths.map((imagePath) => {
-										const existingPromise =
-											loadedImagePromisesByPath.get(imagePath);
-										if (existingPromise) {
-											return existingPromise;
-										}
-
-										const imagePromise = fetchAuthorizedImageDataUrl(
-											buildChunkImageUrl(serverUrl, imagePath),
-											AUTH_TOKEN,
-											abortController.signal,
-										).catch((error) => {
-											if (abortController.signal.aborted) throw error;
-											console.log('Handled source image load error:', error);
-											return null;
-										});
-										loadedImagePromisesByPath.set(imagePath, imagePromise);
-										return imagePromise;
-									}),
-								);
-
-								imageUrls = loadedImages.filter(
-									(url): url is string => typeof url === 'string',
-								);
-								imageUrl = imageUrls[0] || null;
-							}
-
 							imageUrl =
 								imageUrl ||
 								sourceChunk.metadata?.image_url ||
 								sourceChunk.metadata?.schema_url ||
 								null;
+
+							if (imageUrl && !hasAppliedSchemaImage) {
+								applySchemaImage(imageUrl);
+							}
+
+							if (!imageUrl && chunkImagePaths.length > 0) {
+								imageUrl = await fetchAuthorizedImageDataUrl(
+									buildChunkImageUrl(serverUrl, chunkImagePaths[0]),
+									AUTH_TOKEN,
+									abortController.signal,
+								).catch((error) => {
+									if (abortController.signal.aborted) throw error;
+									console.log('Handled source image load error:', error);
+									return null;
+								});
+
+								if (imageUrl && !hasAppliedSchemaImage) {
+									applySchemaImage(imageUrl);
+								}
+							}
 
 							const attachmentResponse = await fetch(
 								`${serverUrl}/api/attachments/${sourceAttachmentId}`,
@@ -387,24 +405,12 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 					);
 				}
 
-				if (imageUrl) {
-					const nextImages = imageUrls.length > 0 ? imageUrls : [imageUrl];
-
-					setCurrentImage(nextImages[0] || imageUrl);
-					setMessages((prev) =>
-						prev.map((message) =>
-							message.id === aiMessageId
-								? ({ ...message, schemaImage: imageUrl! } as TMessage)
-								: message,
-						),
-					);
-				} else if (sourceAttachmentId) {
+				if (!imageUrl && sourceAttachmentId) {
 					setCurrentImage(null);
 				}
 
-				if (!abortController.signal.aborted && fullText.length > 0) {
-					playAssistantAudio(stripResponseDirectivesForSpeech(fullText));
-				} else {
+				startAssistantAudio();
+				if (!hasStartedAssistantAudio) {
 					setIsGenerating(false);
 				}
 			} catch (error: any) {

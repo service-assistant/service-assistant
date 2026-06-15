@@ -60,6 +60,15 @@ const createImageResponse = (body = 'image-data', status = 200) =>
 		headers: { 'content-type': 'image/png' },
 	});
 
+const createDeferred = <T>() => {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((promiseResolve) => {
+		resolve = promiseResolve;
+	});
+
+	return { promise, resolve };
+};
+
 const createHarness = (params: { currentThreadId?: number | null } = {}) => {
 	let currentThreadId = params.currentThreadId ?? null;
 	let messages: ChatMessageItem[] = [];
@@ -300,6 +309,95 @@ describe('useChatApi', () => {
 			sourceAttachmentName: 'manual.pdf',
 			sourceAttachmentPage: 4,
 			schemaImage: 'data:image/png;base64,aW1hZ2UtZGF0YQ==',
+		});
+	});
+
+	test('shows schema and starts audio before attachment metadata finishes loading', async () => {
+		const fetchMock = jest.mocked(global.fetch);
+		const attachmentResponse = createDeferred<Response>();
+		fetchMock
+			.mockResolvedValueOnce(
+				createJsonResponse([
+					{
+						attachment_id: 77,
+						metadata: {
+							images: ['manual/page 2.png'],
+							page: 4,
+						},
+					},
+				]),
+			)
+			.mockResolvedValueOnce(createImageResponse())
+			.mockReturnValueOnce(attachmentResponse.promise);
+		const harness = createHarness({ currentThreadId: 321 });
+
+		const request = harness.api.askAPI('Show source');
+		await flushPromises();
+
+		MockEventSource.instances[0].emit('message', {
+			data: JSON.stringify({
+				id: 999,
+				content: 'Use the diagram.',
+				image_url: null,
+			}),
+		});
+		await flushPromises();
+		await flushPromises();
+
+		expect(harness.state.currentImage).toBe('data:image/png;base64,aW1hZ2UtZGF0YQ==');
+		expect(harness.state.messages[0]).toMatchObject({
+			schemaImage: 'data:image/png;base64,aW1hZ2UtZGF0YQ==',
+		});
+		expect(harness.playAssistantAudio).toHaveBeenCalledWith('Use the diagram.');
+
+		attachmentResponse.resolve(createJsonResponse({ original_filename: 'manual.pdf' }));
+		await request;
+
+		expect(harness.state.messages[0]).toMatchObject({
+			sourceAttachmentName: 'manual.pdf',
+		});
+	});
+
+	test('loads only the first chunk image for the schema preview', async () => {
+		const fetchMock = jest.mocked(global.fetch);
+		fetchMock
+			.mockResolvedValueOnce(
+				createJsonResponse([
+					{
+						attachment_id: 77,
+						metadata: {
+							images: ['manual/page 2.png', 'manual/page 3.png'],
+							page: 4,
+						},
+					},
+				]),
+			)
+			.mockResolvedValueOnce(createImageResponse('first-image'))
+			.mockResolvedValueOnce(createJsonResponse({ original_filename: 'manual.pdf' }));
+		const harness = createHarness({ currentThreadId: 321 });
+
+		const request = harness.api.askAPI('Show first source');
+		await flushPromises();
+
+		MockEventSource.instances[0].emit('message', {
+			data: JSON.stringify({
+				id: 999,
+				content: 'Use the first diagram.',
+				image_url: null,
+			}),
+		});
+		await request;
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			'https://api.example.test/api/images/manual%2Fpage%202.png',
+			expect.anything(),
+		);
+		expect(fetchMock).not.toHaveBeenCalledWith(
+			'https://api.example.test/api/images/manual%2Fpage%203.png',
+			expect.anything(),
+		);
+		expect(harness.state.messages[0]).toMatchObject({
+			schemaImage: 'data:image/png;base64,Zmlyc3QtaW1hZ2U=',
 		});
 	});
 

@@ -1,6 +1,6 @@
 import React from 'react';
 
-import { findByText, findByType, getTextContent } from '../test-utils/react-tree';
+import { collectElements, findByText, findByType, getTextContent } from '../test-utils/react-tree';
 
 const mockRouterPush = jest.fn();
 let mockSearchParams: Record<string, string | undefined> = {};
@@ -16,6 +16,8 @@ const mockUseFocusEffect = jest.fn((callback: () => void | (() => void)) => call
 const mockUseCameraPermissions = jest.fn(() => [{ granted: true }, jest.fn()]);
 const mockImpactAsync = jest.fn(() => Promise.resolve());
 const mockSelectionAsync = jest.fn(() => Promise.resolve());
+const mockOrientationLockAsync = jest.fn(() => Promise.resolve());
+const mockOrientationUnlockAsync = jest.fn(() => Promise.resolve());
 const mockImageGetSize = jest.fn();
 const mockKeyboardAddListener = jest.fn(() => ({ remove: jest.fn() }));
 const mockAnimatedValueSetValue = jest.fn();
@@ -149,6 +151,12 @@ jest.mock('expo-haptics', () => ({
 	ImpactFeedbackStyle: { Medium: 'medium' },
 	impactAsync: mockImpactAsync,
 	selectionAsync: mockSelectionAsync,
+}));
+
+jest.mock('expo-screen-orientation', () => ({
+	OrientationLock: { PORTRAIT_UP: 'PORTRAIT_UP' },
+	lockAsync: mockOrientationLockAsync,
+	unlockAsync: mockOrientationUnlockAsync,
 }));
 
 jest.mock('expo-file-system/legacy', () => ({
@@ -332,6 +340,8 @@ describe('tab screens', () => {
 		mockKeyboardAddListener.mockClear();
 		mockImpactAsync.mockClear();
 		mockSelectionAsync.mockClear();
+		mockOrientationLockAsync.mockClear();
+		mockOrientationUnlockAsync.mockClear();
 		mockImageGetSize.mockReset();
 		mockImageGetSize.mockImplementation(
 			(_uri: string, onSuccess: (width: number, height: number) => void) =>
@@ -352,14 +362,30 @@ describe('tab screens', () => {
 	test('tab layout hides the tab bar and status bar', () => {
 		const TabLayout = require('../app/(tabs)/_layout').default;
 		const tree = renderScreen(TabLayout);
-		const statusBar = findByType(tree, 'StatusBar')[0];
-		const tabs = findByType(tree, 'Tabs')[0];
+		const elements = collectElements(tree);
+		const statusBar = elements.find((element) => element.type === 'StatusBar');
+		const tabs = elements.find((element) => element.type === 'Tabs');
 
+		if (!statusBar || !tabs) {
+			throw new Error('Tab layout did not render the expected root elements.');
+		}
 		expect(statusBar.props.hidden).toBe(true);
 		expect(tabs.props.screenOptions).toMatchObject({
 			headerShown: false,
 			tabBarStyle: { display: 'none' },
 		});
+		expect(mockOrientationUnlockAsync).toHaveBeenCalledTimes(1);
+		expect(mockOrientationLockAsync).not.toHaveBeenCalled();
+	});
+
+	test('tab layout locks phones to portrait orientation', () => {
+		mockWindowDimensions = { width: 390, height: 844 };
+		const TabLayout = require('../app/(tabs)/_layout').default;
+
+		collectElements(renderScreen(TabLayout));
+
+		expect(mockOrientationLockAsync).toHaveBeenCalledWith('PORTRAIT_UP');
+		expect(mockOrientationUnlockAsync).not.toHaveBeenCalled();
 	});
 
 	test('chat screen renders desktop layout with chat params and hook wiring', () => {
@@ -552,7 +578,7 @@ describe('tab screens', () => {
 			}),
 		);
 		expect(getTextContent(tree)).toContain('Wybierz Pojazd');
-		expect(mockUseCameraPermissions).toHaveBeenCalled();
+		expect(mockUseCameraPermissions).not.toHaveBeenCalled();
 		expect(mockRouterPush).toHaveBeenCalledWith('/history');
 	});
 

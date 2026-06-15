@@ -13,7 +13,6 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import HomeActionPanel, { getHomeActionPanelListPadding } from '@/components/HomeActionPanel';
 import ServiceErrorModal from '@/components/ServiceErrorModal';
 import VehicleCard, { type Vehicle } from '@/components/VehicleCard';
 import VehicleFilters from '@/components/VehicleFilters';
@@ -136,27 +135,44 @@ export default function HomeScreen() {
 	const imageHeight = useTabletHomeRefresh ? (isWeb ? 220 : 210) : isWeb ? 240 : cardWidth;
 	const vehicleImageZoom = 1.02;
 
-	const bottomListPadding = getHomeActionPanelListPadding({
-		isPortrait,
-		isTablet,
-		insetBottom: insets.bottom,
-	});
+	const bottomListPadding = (insets.bottom || 0) + 32;
 
+	const usePhonePortraitHeader = !isTablet && isPortrait;
+	const useTabletFilterStyle = useTabletHomeRefresh || usePhonePortraitHeader;
 	const useLargeHeaderTitle = isPortrait || isTablet;
-	const headerLogoHeight = useTabletHomeRefresh ? 40 : useLargeHeaderTitle ? 50 : 38;
-	const headerLogoWidth = useTabletHomeRefresh ? 68 : useLargeHeaderTitle ? 80 : 60;
+	const headerLogoHeight = useTabletHomeRefresh
+		? 40
+		: usePhonePortraitHeader
+			? 34
+			: useLargeHeaderTitle
+				? 50
+				: 38;
+	const headerLogoWidth = useTabletHomeRefresh
+		? 68
+		: usePhonePortraitHeader
+			? 54
+			: useLargeHeaderTitle
+				? 80
+				: 60;
 	const headerTitleClassName = useTabletHomeRefresh
 		? 'text-3xl'
-		: useLargeHeaderTitle
-			? 'text-4xl'
-			: 'text-2xl';
+		: usePhonePortraitHeader
+			? 'text-2xl'
+			: useLargeHeaderTitle
+				? 'text-4xl'
+				: 'text-2xl';
 	const headerPaddingHorizontal = useTabletHomeRefresh ? 20 : isTablet ? 24 : 16;
-	const headerPaddingVertical = useTabletHomeRefresh ? 10 : 16;
+	const headerPaddingVertical = useTabletHomeRefresh ? 10 : usePhonePortraitHeader ? 10 : 16;
 	const headerTopRowHeight = useTabletHomeRefresh ? 44 : undefined;
 	const titleGroupOffsetY = useTabletHomeRefresh ? 8 : 0;
 	const headerButtonOffsetY = useTabletHomeRefresh ? 8 : 0;
-	const headerButtonHeight = useTabletHomeRefresh ? 44 : 48;
-	const headerButtonPaddingHorizontal = useTabletHomeRefresh ? 16 : 18;
+	const useIconOnlyHeaderButtons = (isTablet && isPortrait) || usePhonePortraitHeader;
+	const headerButtonHeight = useTabletHomeRefresh ? 44 : usePhonePortraitHeader ? 42 : 48;
+	const headerButtonPaddingHorizontal = useIconOnlyHeaderButtons
+		? 0
+		: useTabletHomeRefresh
+			? 16
+			: 18;
 	return (
 		<SafeAreaView className='flex-1 bg-[#09090b]' edges={['top', 'left', 'right']}>
 			<View className='flex-1'>
@@ -176,28 +192,38 @@ export default function HomeScreen() {
 						backgroundColor: '#09090b',
 					}}>
 					<View
-						className='flex-row justify-between items-center gap-3'
+						className={`flex-row justify-between items-center ${
+							usePhonePortraitHeader ? 'gap-2' : 'gap-3'
+						}`}
 						style={{
 							minHeight: headerTopRowHeight,
-							marginBottom: useTabletHomeRefresh ? 12 : 16,
+							marginBottom: useTabletHomeRefresh
+								? 12
+								: usePhonePortraitHeader
+									? 12
+									: 16,
 						}}>
 						<View
 							className='flex-row items-center flex-1 min-w-0'
 							style={{ transform: [{ translateY: titleGroupOffsetY }] }}>
 							<Image
 								source={require('../../assets/images/fixo3.png')}
-								className='mr-3'
+								className={usePhonePortraitHeader ? 'mr-2' : 'mr-3'}
 								style={{
 									width: headerLogoWidth,
 									height: headerLogoHeight,
 								}}
 								resizeMode='contain'
 							/>
-							<Text className={`${headerTitleClassName} text-white font-bold`}>
+							<Text
+								className={`${headerTitleClassName} text-white font-bold flex-1`}
+								numberOfLines={1}
+								adjustsFontSizeToFit>
 								Wybierz Pojazd
 							</Text>
 						</View>
-						<View className='flex-row items-center gap-3'>
+						<View
+							className={`flex-row items-center ${usePhonePortraitHeader ? 'gap-2' : 'gap-3'}`}>
 							<TouchableOpacity
 								onPress={() => router.push('/settings')}
 								accessibilityRole='button'
@@ -205,6 +231,9 @@ export default function HomeScreen() {
 								className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#111111]'
 								style={{
 									height: headerButtonHeight,
+									width: useIconOnlyHeaderButtons
+										? headerButtonHeight
+										: undefined,
 									paddingHorizontal: headerButtonPaddingHorizontal,
 									transform: [{ translateY: headerButtonOffsetY }],
 								}}>
@@ -213,9 +242,11 @@ export default function HomeScreen() {
 									size={21}
 									color='#FF7A00'
 								/>
-								<Text className='text-[#E6E6E6] ml-4 text-[13px] font-semibold tracking-wider'>
-									USTAWIENIA
-								</Text>
+								{useIconOnlyHeaderButtons ? null : (
+									<Text className='text-[#E6E6E6] ml-4 text-[13px] font-semibold tracking-wider'>
+										USTAWIENIA
+									</Text>
+								)}
 							</TouchableOpacity>
 							<TouchableOpacity
 								onPress={() => router.push('/history')}
@@ -224,13 +255,18 @@ export default function HomeScreen() {
 								className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#111111]'
 								style={{
 									height: headerButtonHeight,
+									width: useIconOnlyHeaderButtons
+										? headerButtonHeight
+										: undefined,
 									paddingHorizontal: headerButtonPaddingHorizontal,
 									transform: [{ translateY: headerButtonOffsetY }],
 								}}>
 								<MaterialCommunityIcons name='history' size={21} color='#FF7A00' />
-								<Text className='text-[#E6E6E6] ml-4 text-[13px] font-semibold tracking-wider'>
-									HISTORIA CZATÓW
-								</Text>
+								{useIconOnlyHeaderButtons ? null : (
+									<Text className='text-[#E6E6E6] ml-4 text-[13px] font-semibold tracking-wider'>
+										HISTORIA CZATÓW
+									</Text>
+								)}
 							</TouchableOpacity>
 						</View>
 					</View>
@@ -242,7 +278,7 @@ export default function HomeScreen() {
 						activeTypeFilter={activeTypeFilter}
 						onBrandFilterChange={setActiveBrandFilter}
 						onTypeFilterChange={setActiveTypeFilter}
-						useTabletRefresh={useTabletHomeRefresh}
+						useTabletRefresh={useTabletFilterStyle}
 						isLoadingBrands={isLoadingBrands}
 						isLoadingTypes={isLoadingTypes}
 						primaryColor={PRIMARY_ORANGE}
@@ -301,13 +337,6 @@ export default function HomeScreen() {
 					/>
 				)}
 			</View>
-
-			<HomeActionPanel
-				isPortrait={isPortrait}
-				isTablet={isTablet}
-				isWeb={isWeb}
-				onServiceError={showServiceError}
-			/>
 
 			<ServiceErrorModal
 				visible={Boolean(serviceErrorFeature)}

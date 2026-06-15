@@ -22,12 +22,14 @@ export default function SettingsScreen() {
 	const shortestScreenSide = Math.min(width, height);
 	const isTablet = shortestScreenSide >= 600;
 	const useTabletSettingsRefresh = isTablet;
+	const usePhoneBackIconOnly = !isTablet;
 
 	const pagePaddingHorizontal = useTabletSettingsRefresh ? 20 : 16;
 	const pagePaddingTop = useTabletSettingsRefresh ? 10 : 16;
 	const headerTitleClassName = useTabletSettingsRefresh ? 'text-3xl' : 'text-2xl';
 	const headerMinHeight = useTabletSettingsRefresh ? 44 : 38;
 	const headerBottomMargin = useTabletSettingsRefresh ? 12 : 16;
+	const headerBackButtonHeight = usePhoneBackIconOnly ? 42 : 48;
 	const rowPaddingVertical = useTabletSettingsRefresh ? 16 : 18;
 
 	const switchTrackColor = { false: '#27272A', true: '#8A3D00' };
@@ -51,13 +53,20 @@ export default function SettingsScreen() {
 						accessibilityLabel='Wstecz'
 						className='flex-row items-center justify-center mr-5 border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D]'
 						style={{
-							height: useTabletSettingsRefresh ? 44 : 48,
-							paddingHorizontal: useTabletSettingsRefresh ? 16 : 18,
+							height: headerBackButtonHeight,
+							width: usePhoneBackIconOnly ? headerBackButtonHeight : undefined,
+							paddingHorizontal: usePhoneBackIconOnly ? 0 : 18,
 						}}>
-						<Feather name='arrow-left' size={22} color='#FF7A00' />
-						<Text className='text-[#FF7A00] ml-4 text-[13px] font-semibold tracking-wider'>
-							WSTECZ
-						</Text>
+						<Feather
+							name='arrow-left'
+							size={usePhoneBackIconOnly ? 21 : 22}
+							color='#FF7A00'
+						/>
+						{usePhoneBackIconOnly ? null : (
+							<Text className='text-[#FF7A00] ml-4 text-[13px] font-semibold tracking-wider'>
+								WSTECZ
+							</Text>
+						)}
 					</TouchableOpacity>
 					<Text className={`${headerTitleClassName} text-white font-bold`}>
 						Ustawienia

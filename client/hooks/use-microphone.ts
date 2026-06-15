@@ -282,6 +282,18 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 		}, MIC_RESTART_COOLDOWN_MS);
 	}, []);
 
+	const isSttStreamInterruptionExpected = useCallback(
+		(signal?: AbortSignal) =>
+			Boolean(
+				signal?.aborted ||
+				shouldCancelAfterStartRef.current ||
+				shouldDiscardCurrentRecordingRef.current ||
+				shouldStopAfterStartRef.current ||
+				isStoppingRecordingRef.current,
+			),
+		[],
+	);
+
 	const updateStreamingTranscriptMessage = useCallback(() => {
 		const transcript = [
 			streamedFinalTranscriptRef.current,
@@ -469,7 +481,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				recordingStartedAtRef.current = null;
 
 				if (shouldDiscardRecording()) {
-					finalizeStreamingTranscript(new Error('Voice input cancelled'));
+					finalizeStreamingTranscript();
 					return;
 				}
 
@@ -689,15 +701,20 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 
 				socket.onopen = () => settleOnce(resolve);
 				socket.onerror = () =>
-					settleOnce(() =>
+					settleOnce(() => {
+						if (isSttStreamInterruptionExpected(abortController.signal)) {
+							resolve();
+							return;
+						}
+
 						reject(
 							new Error(
 								isReconnect
 									? 'STT stream reconnect failed'
 									: 'STT stream connection failed',
 							),
-						),
-					);
+						);
+					});
 			});
 
 			if (abortController.signal.aborted || hasFinalizedStreamingTranscriptRef.current) {
@@ -741,6 +758,10 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				}
 			};
 			socket.onerror = () => {
+				if (isSttStreamInterruptionExpected(abortController.signal)) {
+					return;
+				}
+
 				if (!isStreamingRecordingRef.current) {
 					finalizeStreamingTranscript(new Error('STT stream connection failed'));
 				}
@@ -765,6 +786,11 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				sttStreamReconnectTimeoutRef.current = setTimeout(() => {
 					sttStreamReconnectTimeoutRef.current = null;
 					void connectSttStreamSocket(true).catch((error) => {
+						if (isSttStreamInterruptionExpected(abortController.signal)) {
+							finalizeStreamingTranscript();
+							return;
+						}
+
 						finalizeStreamingTranscript(error);
 					});
 				}, 100);
@@ -812,6 +838,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 		authTokenOverride,
 		finalizeStreamingTranscript,
 		getTranscriptionThreadId,
+		isSttStreamInterruptionExpected,
 		processMetering,
 		serverUrl,
 		updateStreamingTranscriptMessage,
@@ -837,7 +864,20 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 	}, [blockMicRestart, isMicProcessing]);
 
 	const handleMicPress = useCallback(async () => {
-		if (isHandlingMicPressRef.current) return;
+		if (isHandlingMicPressRef.current) {
+			if (
+				isStartingRecordingRef.current ||
+				isListening ||
+				isStreamingRecordingRef.current ||
+				sttStreamWebSocketRef.current
+			) {
+				shouldCancelAfterStartRef.current = true;
+				shouldDiscardCurrentRecordingRef.current = true;
+				shouldStopAfterStartRef.current = true;
+				void stopRecordingWithoutSending();
+			}
+			return;
+		}
 		isHandlingMicPressRef.current = true;
 
 		try {
@@ -933,6 +973,11 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				removePcmStreamListeners();
 				void stopPcmAudioStream();
 				closeSttStreamSocket();
+				if (isSttStreamInterruptionExpected(sttAbortControllerRef.current?.signal)) {
+					setIsListening(false);
+					setMessages((prev) => prev.filter((message) => message.id !== userTempId));
+					return;
+				}
 				onServiceError?.('nagrywanie głosu', error);
 				setIsListening(false);
 				setMessages((prev) => prev.filter((message) => message.id !== userTempId));
@@ -950,6 +995,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 		isListening,
 		isMicProcessing,
 		isMicRestartBlocked,
+		isSttStreamInterruptionExpected,
 		authTokenOverride,
 		onStopExternal,
 		onServiceError,
