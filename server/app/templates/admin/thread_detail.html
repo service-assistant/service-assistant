@@ -12,7 +12,7 @@
     </div>
     <div>
         <p class="text-gray-500 mb-0.5">Created</p>
-        <p class="font-medium">{{ thread.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+        <p class="font-medium"><time data-utc="{{ thread.created_at.isoformat() }}"></time></p>
     </div>
     <div>
         <p class="text-gray-500 mb-0.5">Messages</p>
@@ -33,7 +33,7 @@
         <div class="flex justify-end">
             <div class="max-w-[70%] bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm shadow-sm">
                 <p class="whitespace-pre-wrap break-words">{{ row.message.content }}</p>
-                <p class="text-xs text-blue-200 mt-1 text-right">{{ row.message.created_at.strftime('%H:%M') }}</p>
+                <p class="text-xs text-blue-200 mt-1 text-right"><time data-utc="{{ row.message.created_at.isoformat() }}" data-fmt="time"></time></p>
             </div>
         </div>
         {% else %}
@@ -41,7 +41,7 @@
             <div class="max-w-[70%] space-y-1.5">
                 <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm shadow-sm">
                     <div data-assistant-msg="{{ row.message.content | e }}"></div>
-                    <p class="text-xs text-gray-400 mt-1">{{ row.message.created_at.strftime('%H:%M') }}</p>
+                    <p class="text-xs text-gray-400 mt-1"><time data-utc="{{ row.message.created_at.isoformat() }}" data-fmt="time"></time></p>
                     {% if row.message.has_continuation %}
                     <p class="text-xs text-amber-600 mt-1 flex items-center gap-1">
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>

@@ -45,7 +45,7 @@
                 <td class="px-4 py-3 font-medium">{{ row.thread.title }}</td>
                 <td class="px-4 py-3 text-gray-600">{{ row.device_name }}</td>
                 <td class="px-4 py-3 text-gray-500">{{ row.message_count }}</td>
-                <td class="px-4 py-3 text-gray-500">{{ row.thread.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td class="px-4 py-3 text-gray-500"><time data-utc="{{ row.thread.created_at.isoformat() }}"></time></td>
                 <td class="px-4 py-3 text-right">
                     <div class="flex items-center justify-end gap-4">
                         <a href="/admin/threads/{{ row.thread.id }}" class="text-blue-600 hover:text-blue-800 text-sm">View</a>

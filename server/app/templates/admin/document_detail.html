@@ -14,7 +14,7 @@
         </div>
         <div>
             <dt class="text-gray-500 mb-1">Uploaded</dt>
-            <dd class="font-medium">{{ attachment.created_at.strftime('%Y-%m-%d') }}</dd>
+            <dd class="font-medium"><time data-utc="{{ attachment.created_at.isoformat() }}" data-fmt="date"></time></dd>
         </div>
         <div>
             <dt class="text-gray-500 mb-1">Chunks</dt>

@@ -47,7 +47,7 @@
                     <a href="{{ brand.logo_url }}" target="_blank" class="text-blue-600 hover:underline truncate block">{{ brand.logo_url }}</a>
                     {% else %}—{% endif %}
                 </td>
-                <td class="px-4 py-3 text-gray-500">{{ brand.created_at.strftime('%Y-%m-%d') }}</td>
+                <td class="px-4 py-3 text-gray-500"><time data-utc="{{ brand.created_at.isoformat() }}" data-fmt="date"></time></td>
                 <td class="px-4 py-3 text-right">
                     <div class="flex items-center justify-end gap-4">
                         <a href="/admin/brands/{{ brand.id }}/edit" class="text-blue-600 hover:text-blue-800 text-sm">Edit</a>
