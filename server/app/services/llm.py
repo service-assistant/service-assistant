@@ -12,10 +12,20 @@ from ..models import Message
 SYSTEM_PROMPT: Final[str] = """
 Jesteś pomocnym asystentem serwisowym dla technika pracującego przy urządzeniu.
 
+Na końcu wiadomości zostaw 2 puste znaki nowej linii, a następnie linię zawierającą "---". Wszystkie następne linie po tym to metadane wiadomości. W żadnym innym wypadku nie dodawaj tekstu "---" poprzedzonego dwoma pustymi liniami - tylko dla metadanych.
+
 Odpowiadaj wyłącznie na podstawie dostarczonych fragmentów dokumentacji.
 Jeżeli dokumenty nie zawierają odpowiedzi, powiedz to wprost.
 Nie domyślaj się procedur serwisowych z własnej wiedzy.
 Nie odpowiadaj na pytania spoza serwisu, diagnostyki, naprawy, konserwacji lub obsługi urządzeń.
+Odpowiadaj jeśli zostaniesz zapytany o aktualną konwersację, na przykład "O czym rozmawialiśmy?".
+
+Jeśli jesteś poproszony o kontynuację, kontynuuj w logicznym miejscu, w którym skończyła się twoja ostatnia wiadomość - nie powtarzaj już raz napisanych kroków. 
+Przykładowo jeśli w ostatniej wiadomości zwróciłeś 6 punktów, a użytkownik pyta o kontynuację, kontynuuj od punktu lub kroku 7.
+Jeśli nie ma dalszych kroków, poinformuj użytkownika, że to już wszystko, nawet jeśli właśnie sam poprosił o dalsze kroki, bo nie wiedział.
+Załóż, że jeśli użytkownik prosi o kontynuację lub rozwinięcie poprzedniej wiadomości, to dostarczone fragmenty dokumentacji odnoszą się do tamtej wiadomości. 
+Jeśli poprzednia wiadomość w metadanych ma HAS_CONTINUATION, to tym bardziej reaguj na prośby kontynuowania.
+Użytkownik może dopytywać o szczegóły poprzednich wiadomości, choć tutać dostajesz jedynie jej treść bez dodatkowego kontekstu. Możesz wtedy kazać użytkownikowi zadać to pytanie od nowa w całości.
 
 Odpowiadaj krótko, bezpośrednio i praktycznie.
 Nie pisz jak zwykły chatbot.
@@ -36,6 +46,7 @@ Używaj dla czynności, które technik ma sprawdzić albo wykonać teraz.
 Każdy punkt zapisuj w osobnej linii zaczynającej się od "- ".
 Nie dawaj więcej niż 6 punktów w jednej sekcji checklist.
 Jeżeli dokumentacja zawiera więcej kroków, wybierz najbliższy logiczny etap procedury.
+Jeżeli dokumentacja zawiera więcej kroków i użytkownik może o nią potem poprosić kolejnym zapytaniem, dopisz w metadanych wiadomości nową linię o treści "HAS_CONTINUATION".
 Nie mieszaj ostrzeżeń z checklistą.
 
 Przykład:
@@ -188,3 +199,24 @@ async def stream_query(
         delta = event.choices[0].delta.content
         if delta:
             yield delta
+
+
+async def is_message_continuation_request(content: str, settings: Settings) -> bool:
+    """
+    Makes a small request to the OpenAI API to check if user's
+    message was a continuation request. Returns "1" if yes and "0" if not.
+    """
+    client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+    res = await client.responses.create(
+        model=settings.openai_chat_model,
+        input=f"""
+        Na podstawie podanej wiadomości oceń, czy jest to prośba o kontynuację lub rozwinięcie poprzedniej wiadomości. 
+        Chodzi o wiadomości w stylu "kontunuuj", "dalej", "co dalej?", "rozwiń" itp. 
+        Jeśli treść wiadomości wskazuje, że użytkownik może pytać o coś niezwiązanego, to nie uznawaj tego jako kontunuację.
+        Odpowiedz jednym znakiem: 1 jeśli tak lub 0 jeśli nie.
+
+        Treść wiadomości: {content}
+        """,
+    )
+    return res.output_text == "1"

@@ -96,7 +96,7 @@ def make_message(**kwargs) -> Message:
         id=1,
         content="Test content",
         thread_id=1,
-        sender=MessageSender.system,
+        sender=MessageSender.assistant,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
@@ -174,7 +174,7 @@ async def create_message(session: AsyncSession, thread_id: int, **kwargs) -> Mes
     message = Message(
         content=kwargs.get("content", "Test content"),
         thread_id=thread_id,
-        sender=kwargs.get("sender", MessageSender.system),
+        sender=kwargs.get("sender", MessageSender.assistant),
     )
     session.add(message)
     await session.commit()

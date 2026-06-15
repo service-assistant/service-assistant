@@ -105,7 +105,7 @@ async def test_should_return_404_when_deleting_nonexistent_thread(client):
     assert response.json()["detail"] == "Thread not found"
 
 
-async def test_should_send_message_and_return_system_reply(
+async def test_should_send_message_and_return_assistant_reply(
     client, session, mock_azure_embeddings, mock_openai_llm
 ):
     brand = await create_brand(session)
@@ -126,7 +126,7 @@ async def test_should_send_message_and_return_system_reply(
             message_data = json.loads(lines[i + 1].removeprefix("data: "))
             break
     assert message_data is not None
-    assert message_data["sender"] == "system"
+    assert message_data["sender"] == "assistant"
     assert message_data["content"] == "Test response"
     assert isinstance(message_data["id"], int)
 
@@ -151,7 +151,7 @@ async def test_should_store_user_message_before_reply(
     assert len(messages) == 2
     senders = {m.sender for m in messages}
     assert MessageSender.user in senders
-    assert MessageSender.system in senders
+    assert MessageSender.assistant in senders
 
 
 async def test_should_chunk_events_concatenate_to_full_message_content(
@@ -202,7 +202,7 @@ async def test_should_list_messages_in_thread_chronologically(client, session):
         session, thread.id, content="User question", sender=MessageSender.user
     )
     await create_message(
-        session, thread.id, content="System answer", sender=MessageSender.system
+        session, thread.id, content="Assistant answer", sender=MessageSender.assistant
     )
 
     response = await client.get(f"/api/threads/{thread.id}/messages")
@@ -212,8 +212,8 @@ async def test_should_list_messages_in_thread_chronologically(client, session):
     assert len(messages) == 2
     assert messages[0]["sender"] == "user"
     assert messages[0]["content"] == "User question"
-    assert messages[1]["sender"] == "system"
-    assert messages[1]["content"] == "System answer"
+    assert messages[1]["sender"] == "assistant"
+    assert messages[1]["content"] == "Assistant answer"
 
 
 async def test_should_return_empty_list_when_thread_has_no_messages(client, session):

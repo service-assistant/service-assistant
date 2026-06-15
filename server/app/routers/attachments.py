@@ -81,7 +81,6 @@ async def create_attachment(
     await session.refresh(attachment)
 
     attachment_id = attachment.id
-    assert attachment_id is not None
     for device_id in device_ids:
         session.add(AttachmentDevice(device_id=device_id, attachment_id=attachment_id))
     await session.commit()

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from app.config import Settings, get_settings
 from app.database import get_session
@@ -166,17 +167,37 @@ async def create_message(
 
     device_id = thread.device_id
 
-    user_message = Message(
-        content=body.content,
-        thread_id=thread_id,
-        sender=MessageSender.user,
+    latest_system_message = await session.scalar(
+        select(Message)
+        .where(Message.thread_id == thread.id)
+        .where(Message.sender == MessageSender.assistant)
+        .order_by(Message.created_at.desc())
+        .options(selectinload(Message.chunks))
     )
-    session.add(user_message)
-    await session.flush()
 
-    retrieved_chunks = await retrieval.retrieve_context_chunks(
-        session, body.content, device_id=device_id, settings=settings
-    )
+    continue_latest_message: bool = False
+    if latest_system_message:
+        continue_latest_message = await llm.is_message_continuation_request(
+            body.content, settings
+        )
+
+    retrieved_chunks = []
+    if latest_system_message and continue_latest_message:
+        # Reuse chunks from previous message in continuation
+        retrieved_chunks = [
+            {
+                "id": c.id,
+                "content": c.content,
+                "attachment_id": c.attachment_id,
+                "extra_metadata": c.extra_metadata,
+            }
+            for c in latest_system_message.chunks
+        ]
+    else:
+        retrieved_chunks = await retrieval.retrieve_context_chunks(
+            session, body.content, device_id=device_id, settings=settings
+        )
+
     context_chunks = [chunk["content"] for chunk in retrieved_chunks]
 
     async def event_stream():
@@ -227,22 +248,28 @@ async def create_message(
             )
             sentence_idx += 1
 
-        system_message = Message(
+        user_message = Message(
+            content=body.content,
+            thread_id=thread_id,
+            sender=MessageSender.user,
+        )
+        session.add(user_message)
+
+        assistant_message = Message(
             content=answer,
             thread_id=thread_id,
-            sender=MessageSender.system,
+            sender=MessageSender.assistant,
         )
-        session.add(system_message)
-        await session.commit()
-        await session.refresh(system_message)
-        assert system_message.id is not None
+        session.add(assistant_message)
+        await session.flush()
+
         if not llm.is_no_source_answer(answer):
             for chunk in retrieved_chunks:
                 session.add(
-                    ChunkMessage(message_id=system_message.id, chunk_id=chunk["id"])
+                    ChunkMessage(message_id=assistant_message.id, chunk_id=chunk["id"])
                 )
+
         await session.commit()
-        await session.refresh(system_message)
 
         total_tts = len(tts_tasks)
         while next_to_emit < total_tts:
@@ -256,7 +283,7 @@ async def create_message(
                 pending[idx] = (pcm, err)
 
         yield _sse(
-            "message", MessageRead.model_validate(system_message).model_dump_json()
+            "message", MessageRead.model_validate(assistant_message).model_dump_json()
         )
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

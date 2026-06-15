@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 class MessageSender(str, Enum):
     user = "user"
-    system = "system"
+    assistant = "assistant"
 
 
 class Message(Base):
