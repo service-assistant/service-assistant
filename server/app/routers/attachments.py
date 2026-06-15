@@ -39,8 +39,8 @@ def get_unique_filepath(base_path: Path) -> Path:
     description="Returns all attachments.",
 )
 async def list_attachments(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Attachment))
-    return result.scalars().all()
+    result = await session.scalars(select(Attachment))
+    return result.all()
 
 
 @router.post(
