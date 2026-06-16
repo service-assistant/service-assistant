@@ -139,6 +139,14 @@ def _sse(event: str, payload: object) -> str:
     return f"event: {event}\ndata: {data}\n\n"
 
 
+_CONTINUATION_HINTS = {"kontynuuj", "dalej", "rozwiń", "więcej", "ciągnij"}
+
+
+def _looks_like_continuation(content: str) -> bool:
+    lower = content.lower().strip()
+    return len(lower.split()) <= 4 or any(hint in lower for hint in _CONTINUATION_HINTS)
+
+
 @router.post(
     "/{thread_id}/messages",
     response_class=StreamingResponse,
@@ -172,18 +180,34 @@ async def create_message(
         .where(Message.thread_id == thread.id)
         .where(Message.sender == MessageSender.assistant)
         .order_by(Message.created_at.desc())
+        .limit(1)
         .options(selectinload(Message.chunks))
     )
 
-    continue_latest_message: bool = False
-    if latest_system_message:
-        continue_latest_message = await llm.is_message_continuation_request(
-            body.content, settings
+    might_continue = latest_system_message is not None and _looks_like_continuation(
+        body.content
+    )
+
+    if might_continue:
+        is_continuation, fresh_chunks = await asyncio.gather(
+            llm.is_message_continuation_request(body.content, settings),
+            retrieval.retrieve_context_chunks(
+                session,
+                body.content,
+                device_id=device_id,
+                settings=settings,
+            ),
+        )
+    else:
+        is_continuation = False
+        fresh_chunks = await retrieval.retrieve_context_chunks(
+            session,
+            body.content,
+            device_id=device_id,
+            settings=settings,
         )
 
-    retrieved_chunks = []
-    if latest_system_message and continue_latest_message:
-        # Reuse chunks from previous message in continuation
+    if is_continuation and latest_system_message and latest_system_message.chunks:
         retrieved_chunks = [
             {
                 "id": c.id,
@@ -194,11 +218,17 @@ async def create_message(
             for c in latest_system_message.chunks
         ]
     else:
-        retrieved_chunks = await retrieval.retrieve_context_chunks(
-            session, body.content, device_id=device_id, settings=settings
-        )
+        retrieved_chunks = fresh_chunks
 
     context_chunks = [chunk["content"] for chunk in retrieved_chunks]
+
+    user_message = Message(
+        content=body.content,
+        thread_id=thread_id,
+        sender=MessageSender.user,
+    )
+    session.add(user_message)
+    await session.commit()
 
     async def event_stream():
         answer_parts: list[str] = []
@@ -214,7 +244,12 @@ async def create_message(
         next_to_emit = 0
 
         async for chunk in llm.stream_query(
-            session, thread_id, body.content, context_chunks, settings
+            session,
+            thread_id,
+            body.content,
+            context_chunks,
+            settings,
+            exclude_message_id=user_message.id,
         ):
             answer_parts.append(chunk)
             yield _sse("chunk", chunk)
@@ -247,13 +282,6 @@ async def create_message(
                 )
             )
             sentence_idx += 1
-
-        user_message = Message(
-            content=body.content,
-            thread_id=thread_id,
-            sender=MessageSender.user,
-        )
-        session.add(user_message)
 
         assistant_message = Message(
             content=answer,

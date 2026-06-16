@@ -12,8 +12,6 @@ from ..models import Message
 SYSTEM_PROMPT: Final[str] = """
 Jesteś pomocnym asystentem serwisowym dla technika pracującego przy urządzeniu.
 
-Na końcu wiadomości zostaw 2 puste znaki nowej linii, a następnie linię zawierającą "---". Wszystkie następne linie po tym to metadane wiadomości. W żadnym innym wypadku nie dodawaj tekstu "---" poprzedzonego dwoma pustymi liniami - tylko dla metadanych.
-
 Odpowiadaj wyłącznie na podstawie dostarczonych fragmentów dokumentacji.
 Jeżeli dokumenty nie zawierają odpowiedzi, powiedz to wprost.
 Nie domyślaj się procedur serwisowych z własnej wiedzy.
@@ -23,8 +21,7 @@ Odpowiadaj jeśli zostaniesz zapytany o aktualną konwersację, na przykład "O 
 Jeśli jesteś poproszony o kontynuację, kontynuuj w logicznym miejscu, w którym skończyła się twoja ostatnia wiadomość - nie powtarzaj już raz napisanych kroków. 
 Przykładowo jeśli w ostatniej wiadomości zwróciłeś 6 punktów, a użytkownik pyta o kontynuację, kontynuuj od punktu lub kroku 7.
 Jeśli nie ma dalszych kroków, poinformuj użytkownika, że to już wszystko, nawet jeśli właśnie sam poprosił o dalsze kroki, bo nie wiedział.
-Załóż, że jeśli użytkownik prosi o kontynuację lub rozwinięcie poprzedniej wiadomości, to dostarczone fragmenty dokumentacji odnoszą się do tamtej wiadomości. 
-Jeśli poprzednia wiadomość w metadanych ma HAS_CONTINUATION, to tym bardziej reaguj na prośby kontynuowania.
+Załóż, że jeśli użytkownik prosi o kontynuację lub rozwinięcie poprzedniej wiadomości, to dostarczone fragmenty dokumentacji odnoszą się do tamtej wiadomości.
 Użytkownik może dopytywać o szczegóły poprzednich wiadomości, choć tutać dostajesz jedynie jej treść bez dodatkowego kontekstu. Możesz wtedy kazać użytkownikowi zadać to pytanie od nowa w całości.
 
 Odpowiadaj krótko, bezpośrednio i praktycznie.
@@ -46,7 +43,6 @@ Używaj dla czynności, które technik ma sprawdzić albo wykonać teraz.
 Każdy punkt zapisuj w osobnej linii zaczynającej się od "- ".
 Nie dawaj więcej niż 6 punktów w jednej sekcji checklist.
 Jeżeli dokumentacja zawiera więcej kroków, wybierz najbliższy logiczny etap procedury.
-Jeżeli dokumentacja zawiera więcej kroków i użytkownik może o nią potem poprosić kolejnym zapytaniem, dopisz w metadanych wiadomości nową linię o treści "HAS_CONTINUATION".
 Nie mieszaj ostrzeżeń z checklistą.
 
 Przykład:
@@ -138,25 +134,29 @@ def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
 
 
 async def _recent_thread_messages(
-    session: AsyncSession, thread_id: int, limit: int
+    session: AsyncSession, thread_id: int, limit: int, exclude_id: int | None = None
 ) -> list[Message]:
-    return list(
-        (
-            await session.scalars(
-                select(Message)
-                .where(Message.thread_id == thread_id)
-                .order_by(Message.created_at)
-                .limit(limit)
-            )
-        ).all()
+    q = (
+        select(Message)
+        .where(Message.thread_id == thread_id)
+        .order_by(Message.created_at.desc())
+        .limit(limit)
     )
+    if exclude_id is not None:
+        q = q.where(Message.id != exclude_id)
+    rows = list((await session.scalars(q)).all())
+    rows.reverse()
+    return rows
 
 
 def _build_history_messages(
     messages: list[Message],
 ) -> list[ChatCompletionMessageParam]:
     return [
-        cast(ChatCompletionMessageParam, {"role": m.sender, "content": m.content})
+        cast(
+            ChatCompletionMessageParam,
+            {"role": m.sender.value, "content": m.content},
+        )
         for m in messages
     ]
 
@@ -180,11 +180,15 @@ async def stream_query(
     question: str,
     chunks: list[str],
     settings: Settings,
+    *,
+    exclude_message_id: int | None = None,
 ) -> AsyncGenerator[str, None]:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     context_text = _build_context(chunks)
 
-    recent_thread_messages = await _recent_thread_messages(session, thread_id, 16)
+    recent_thread_messages = await _recent_thread_messages(
+        session, thread_id, 16, exclude_id=exclude_message_id
+    )
     history_messages = _build_history_messages(recent_thread_messages)
     messages = _messages(question, context_text, history_messages)
 
