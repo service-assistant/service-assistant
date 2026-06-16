@@ -1,0 +1,81 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Document — {{ attachment.original_filename }}{% endblock %}
+{% block heading %}{{ attachment.original_filename }}{% endblock %}
+
+{% block content %}
+
+<!-- Info -->
+<section class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
+    <dl class="grid grid-cols-3 gap-6 text-sm">
+        <div>
+            <dt class="text-gray-500 mb-1">ID</dt>
+            <dd class="font-medium">{{ attachment.id }}</dd>
+        </div>
+        <div>
+            <dt class="text-gray-500 mb-1">Uploaded</dt>
+            <dd class="font-medium"><time data-utc="{{ attachment.created_at.isoformat() }}" data-fmt="date"></time></dd>
+        </div>
+        <div>
+            <dt class="text-gray-500 mb-1">Chunks</dt>
+            <dd class="font-medium">
+                <a href="/admin/chunks?attachment_id={{ attachment.id }}" class="text-blue-600 hover:underline">{{ chunk_count }}</a>
+            </dd>
+        </div>
+    </dl>
+</section>
+
+<!-- Linked devices -->
+<section class="bg-white border border-gray-200 rounded-lg overflow-hidden mb-8">
+    <div class="px-6 py-4 border-b border-gray-100">
+        <h2 class="text-sm font-semibold text-gray-700">Linked Devices</h2>
+    </div>
+    {% if linked_devices %}
+    <table class="w-full text-sm">
+        <tbody class="divide-y divide-gray-100">
+            {% for device in linked_devices %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-3 font-medium">{{ device.name }}</td>
+                <td class="px-6 py-3 text-right">
+                    <form method="post" action="/api/attachments/{{ attachment.id }}/devices/{{ device.id }}"
+                          data-method="DELETE"
+                          data-confirm="Unlink this device?"
+                          data-remove-el="tr">
+                        <button type="submit" class="text-red-600 hover:text-red-800 text-sm">Unlink</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="px-6 py-8 text-center text-gray-400 text-sm">No devices linked.</p>
+    {% endif %}
+</section>
+
+<!-- Link a device -->
+{% if available_devices %}
+<section class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">Link Device</h2>
+    <form method="post"
+          data-url-template="/api/attachments/{{ attachment.id }}/devices/{device_id}"
+          class="flex items-end gap-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Device</label>
+            <select name="device_id" required
+                class="block text-sm border border-gray-300 rounded-md px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-500">
+                {% for device in available_devices %}
+                <option value="{{ device.id }}">{{ device.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-md transition-colors">
+            Link
+        </button>
+    </form>
+</section>
+{% endif %}
+
+<a href="/admin/documents" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to Documents</a>
+
+{% endblock %}

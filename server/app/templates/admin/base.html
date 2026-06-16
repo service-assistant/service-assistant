@@ -34,11 +34,202 @@
             </a>
         </nav>
         <div class="px-3 pb-4">
-            <a href="/admin/logout" class="block px-3 py-2 rounded-md text-sm text-gray-500 hover:bg-gray-100">
+            <a href="/admin/logout" id="logout-link" class="block px-3 py-2 rounded-md text-sm text-gray-500 hover:bg-gray-100">
                 Log out
             </a>
         </div>
     </aside>
+
+    <!-- Confirm dialog -->
+    <div id="confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center">
+        <div id="confirm-backdrop" class="absolute inset-0 bg-black/50"></div>
+        <div id="confirm-box" class="relative bg-white rounded-lg shadow-xl p-6 max-w-sm w-full mx-4 transform scale-95 opacity-0 transition-all duration-150">
+            <p id="confirm-message" class="text-sm text-gray-700 mb-5"></p>
+            <div class="flex justify-end gap-3">
+                <button id="confirm-cancel" type="button" class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-md transition-colors">Cancel</button>
+                <button id="confirm-ok" type="button" class="px-3 py-1.5 text-sm text-white bg-red-600 hover:bg-red-700 rounded-md transition-colors">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    function getToken() {
+        return localStorage.getItem('admin_token') || '';
+    }
+
+    function showInlineBanner(message, type) {
+        const isError = type === 'error';
+        let banner = document.getElementById('js-flash-banner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'js-flash-banner';
+            const main = document.querySelector('main');
+            main.insertBefore(banner, main.firstChild);
+        }
+        banner.className = isError
+            ? 'mb-5 px-4 py-3 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm'
+            : 'mb-5 px-4 py-3 rounded-md bg-green-50 border border-green-200 text-green-800 text-sm';
+        banner.textContent = message;
+        banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function showInlineError(message) { showInlineBanner(message, 'error'); }
+
+    (function () {
+        if (!getToken()) {
+            window.location.href = '/admin/login';
+            return;
+        }
+        const msg = sessionStorage.getItem('admin_flash_success');
+        if (msg) {
+            sessionStorage.removeItem('admin_flash_success');
+            showInlineBanner(msg, 'success');
+        }
+    })();
+
+    async function submitFormAjax(form) {
+        const token = getToken();
+        if (!token) { window.location.href = '/admin/login'; return; }
+
+        const submitBtn = form.querySelector('[type="submit"]');
+        const originalText = submitBtn ? submitBtn.textContent : null;
+        const loadingText = form.dataset.loadingText;
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-60', 'cursor-not-allowed');
+            if (loadingText) submitBtn.textContent = loadingText;
+        }
+
+        const headers = { 'Authorization': `Bearer ${token}` };
+        const method = (form.dataset.method || form.method || 'POST').toUpperCase();
+
+        const url = form.dataset.urlTemplate
+            ? form.dataset.urlTemplate.replace(/{(\w+)}/g, function (_, k) {
+                const el = form.elements[k];
+                return el ? encodeURIComponent(el.value) : '';
+            })
+            : (form.action || window.location.href);
+
+        let body = undefined;
+        if (method !== 'GET' && method !== 'DELETE') {
+            if (form.enctype === 'multipart/form-data') {
+                body = new FormData(form);
+            } else {
+                const obj = {};
+                for (const el of form.elements) {
+                    if (!el.name || el.disabled || el.type === 'submit' || el.type === 'button') continue;
+                    if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) continue;
+                    const raw = el.value;
+                    const v = raw === '' ? null : /^\d+$/.test(raw) ? parseInt(raw, 10) : raw;
+                    if (obj[el.name] !== undefined) {
+                        if (!Array.isArray(obj[el.name])) obj[el.name] = [obj[el.name]];
+                        obj[el.name].push(v);
+                    } else {
+                        obj[el.name] = v;
+                    }
+                }
+                body = JSON.stringify(obj);
+                headers['Content-Type'] = 'application/json';
+            }
+        }
+
+        let resp;
+        try {
+            resp = await fetch(url, { method, headers, body });
+        } catch {
+            showInlineError('Network error.');
+            return;
+        }
+
+        if (resp.ok) {
+            const removeEl = form.dataset.removeEl;
+            const redirect = form.dataset.redirect;
+            const successMsg = form.dataset.successMsg;
+            if (removeEl) {
+                form.closest(removeEl)?.remove();
+            } else if (redirect) {
+                if (successMsg) sessionStorage.setItem('admin_flash_success', successMsg);
+                window.location.href = redirect;
+            } else {
+                if (successMsg) sessionStorage.setItem('admin_flash_success', successMsg);
+                window.location.reload();
+            }
+        } else {
+            let errMsg = `Error ${resp.status}.`;
+            try {
+                const data = await resp.json();
+                if (typeof data.detail === 'string') errMsg = data.detail;
+                else if (data.detail) errMsg = JSON.stringify(data.detail);
+            } catch {}
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+                if (loadingText) submitBtn.textContent = originalText;
+            }
+            showInlineError(errMsg);
+        }
+    }
+
+    document.addEventListener('submit', function (e) {
+        const form = e.target;
+        const method = (form.dataset.method || form.method || 'get').toLowerCase();
+        if (method === 'get') return;
+        e.preventDefault();
+        const confirmMsg = form.dataset.confirm;
+        if (confirmMsg) {
+            showConfirm(form, confirmMsg);
+        } else {
+            submitFormAjax(form);
+        }
+    });
+
+    function showConfirm(form, message) {
+        const modal = document.getElementById('confirm-modal');
+        const box = document.getElementById('confirm-box');
+        document.getElementById('confirm-message').textContent = message;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        requestAnimationFrame(() => {
+            box.classList.remove('scale-95', 'opacity-0');
+            box.classList.add('scale-100', 'opacity-100');
+        });
+
+        function close() {
+            box.classList.remove('scale-100', 'opacity-100');
+            box.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }, 150);
+        }
+
+        document.getElementById('confirm-cancel').onclick = close;
+        document.getElementById('confirm-backdrop').onclick = close;
+        document.getElementById('confirm-ok').onclick = function () {
+            close();
+            setTimeout(() => submitFormAjax(form), 150);
+        };
+        return false;
+    }
+
+    document.getElementById('logout-link').addEventListener('click', function () {
+        localStorage.removeItem('admin_token');
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+        document.querySelectorAll('time[data-utc]').forEach(function (el) {
+            const d = new Date(el.dataset.utc);
+            const fmt = el.dataset.fmt || 'datetime';
+            if (fmt === 'time') {
+                el.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            } else if (fmt === 'date') {
+                el.textContent = d.toLocaleDateString();
+            } else {
+                el.textContent = d.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            }
+        });
+    });
+    </script>
 
     <!-- Main content -->
     <div class="flex-1 flex flex-col min-w-0">
@@ -47,18 +238,6 @@
         </header>
 
         <main class="flex-1 px-8 py-6 max-w-5xl">
-
-            {% if request.query_params.get('success') %}
-            <div class="mb-5 px-4 py-3 rounded-md bg-green-50 border border-green-200 text-green-800 text-sm">
-                {{ request.query_params.get('success') }}
-            </div>
-            {% endif %}
-
-            {% if request.query_params.get('error') %}
-            <div class="mb-5 px-4 py-3 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm">
-                {{ request.query_params.get('error') }}
-            </div>
-            {% endif %}
 
             {% block content %}{% endblock %}
         </main>

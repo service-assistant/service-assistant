@@ -8,7 +8,7 @@
 <!-- Upload form -->
 <section class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
     <h2 class="text-sm font-semibold text-gray-700 mb-4">Upload PDF</h2>
-    <form method="post" action="/admin/documents" enctype="multipart/form-data" class="space-y-4">
+    <form id="upload-form" method="post" action="/api/attachments" enctype="multipart/form-data" class="space-y-4">
         <div>
             <label class="block text-sm font-medium text-gray-700 mb-1">PDF file</label>
             <input type="file" name="file" accept="application/pdf" required
@@ -27,11 +27,56 @@
                 {% endfor %}
             </div>
         </div>
-        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-md transition-colors">
-            Upload &amp; Ingest
+        <button id="upload-btn" type="submit" class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-md transition-colors">
+            <svg id="upload-spinner" class="hidden animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"></path>
+            </svg>
+            <span id="upload-btn-label">Upload &amp; Ingest</span>
         </button>
     </form>
 </section>
+
+<script>
+document.addEventListener('submit', function (e) {
+    const form = e.target;
+    if (form.id !== 'upload-form') return;
+    e.stopPropagation();
+    e.preventDefault();
+
+    const btn = document.getElementById('upload-btn');
+    const spinner = document.getElementById('upload-spinner');
+    const label = document.getElementById('upload-btn-label');
+
+    btn.disabled = true;
+    btn.classList.add('opacity-60', 'cursor-not-allowed');
+    spinner.classList.remove('hidden');
+    label.textContent = 'Uploading…';
+
+    fetch(form.action || window.location.href, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('admin_token') || ''}` },
+        body: new FormData(form),
+    })
+        .then(function (resp) {
+            if (!resp.ok) return resp.json().then(function (d) { throw new Error(d.detail || 'Upload failed.'); });
+            return resp.json();
+        })
+        .then(function (data) {
+            showInlineBanner(`'${data.original_filename}' uploaded and indexed.`, 'success');
+            form.reset();
+        })
+        .catch(function (err) {
+            showInlineBanner(err.message || 'Upload failed. Please try again.', 'error');
+        })
+        .finally(function () {
+            btn.disabled = false;
+            btn.classList.remove('opacity-60', 'cursor-not-allowed');
+            spinner.classList.add('hidden');
+            label.textContent = 'Upload & Ingest';
+        });
+}, true);
+</script>
 
 <!-- Documents table -->
 <section class="bg-white border border-gray-200 rounded-lg overflow-hidden">
@@ -60,12 +105,23 @@
                         <span class="text-gray-400">—</span>
                     {% endif %}
                 </td>
-                <td class="px-4 py-3 text-gray-500">{{ row.attachment.created_at.strftime('%Y-%m-%d') }}</td>
+                <td class="px-4 py-3 text-gray-500"><time data-utc="{{ row.attachment.created_at.isoformat() }}" data-fmt="date"></time></td>
                 <td class="px-4 py-3 text-right">
-                    <form method="post" action="/admin/documents/{{ row.attachment.id }}/delete"
-                          onsubmit="return confirm('Delete this document and all its indexed chunks?')">
-                        <button type="submit" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
-                    </form>
+                    <div class="flex items-center justify-end gap-4">
+                        <a href="/admin/documents/{{ row.attachment.id }}" class="text-blue-600 hover:text-blue-800 text-sm">Manage</a>
+                        <form method="post" action="/api/attachments/{{ row.attachment.id }}/reingest"
+                              data-confirm="Re-ingest this document? All existing chunks will be replaced."
+                              data-loading-text="Re-ingesting…"
+                              data-success-msg="Re-ingestion complete.">
+                            <button type="submit" class="text-gray-600 hover:text-gray-800 text-sm">Re-ingest</button>
+                        </form>
+                        <form method="post" action="/api/attachments/{{ row.attachment.id }}"
+                              data-method="DELETE"
+                              data-confirm="Delete this document and all its indexed chunks?"
+                              data-remove-el="tr">
+                            <button type="submit" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                        </form>
+                    </div>
                 </td>
             </tr>
             {% else %}

@@ -3,12 +3,17 @@
 	"main": "expo-router/entry",
 	"version": "1.0.0",
 	"scripts": {
+		"patch:sse": "node ./scripts/patch-react-native-sse.js",
+		"prestart": "node ./scripts/patch-react-native-sse.js",
 		"start": "expo start",
 		"reset-project": "node ./scripts/reset-project.js",
+		"preandroid": "node ./scripts/patch-react-native-sse.js",
 		"android": "expo run:android",
+		"preios": "node ./scripts/patch-react-native-sse.js",
 		"ios": "expo run:ios",
+		"preweb": "node ./scripts/patch-react-native-sse.js",
 		"web": "expo start --web",
-		"postinstall": "node ./scripts/patch-react-native-pdf.js && node ./scripts/patch-react-native-css-interop.js",
+		"postinstall": "node ./scripts/patch-react-native-pdf.js && node ./scripts/patch-react-native-css-interop.js && node ./scripts/patch-react-native-sse.js",
 		"format": "prettier --write .",
 		"lint": "expo lint",
 		"test": "jest"

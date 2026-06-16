@@ -1,13 +1,13 @@
 {
 	"expo": {
-		"name": "client",
+		"name": "Fixo",
 		"slug": "client",
 		"version": "1.0.0",
 		"orientation": "default",
-		"icon": "./assets/images/icon.png",
+		"icon": "./assets/images/logo.png",
 		"scheme": "client",
 		"userInterfaceStyle": "automatic",
-		"newArchEnabled": false,
+		"newArchEnabled": true,
 		"ios": {
 			"supportsTablet": true,
 			"infoPlist": {
@@ -19,12 +19,13 @@
 		"android": {
 			"adaptiveIcon": {
 				"backgroundColor": "#E6F4FE",
-				"foregroundImage": "./assets/images/android-icon-foreground.png",
+				"foregroundImage": "./assets/images/logo.png",
 				"backgroundImage": "./assets/images/android-icon-background.png",
 				"monochromeImage": "./assets/images/android-icon-monochrome.png"
 			},
 			"permissions": ["android.permission.CAMERA", "android.permission.RECORD_AUDIO"],
 			"edgeToEdgeEnabled": true,
+			"softwareKeyboardLayoutMode": "resize",
 			"predictiveBackGestureEnabled": false,
 			"package": "com.ziemnio.client"
 		},

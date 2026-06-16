@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(make test *)"
+      "Bash(make test *)",
+      "Bash(make lint *)",
+      "Bash(poetry run *)",
+      "Bash(docker compose *)",
+      "Bash(poetry add *)",
+      "Bash(DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5433/service_assistant_test poetry run pytest -x)"
     ]
   }
 }

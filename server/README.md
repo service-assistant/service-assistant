@@ -10,7 +10,6 @@ The `Makefile` provides code quality commands. Type `make help` for more informa
 - [FastAPI Documentation](https://fastapi.tiangolo.com/learn/)
 - [Starlette Documentation](https://starlette.dev/)
 - [Alembic Documentation](https://alembic.sqlalchemy.org/en/latest/)
-- [SQLModel Documentation](https://sqlmodel.tiangolo.com/)
 - [SQLAlchemy Documentation](https://docs.sqlalchemy.org/en/20/)
 - [Poetry Documentation](https://python-poetry.org/docs/)
 - [`asyncio` Documentation](https://docs.python.org/3/library/asyncio.html)
@@ -34,7 +33,7 @@ Current setup on the server:
 
 In case of any questions, ask [@mateuszmanczak04](https://github.com/mateuszmanczak04)
 
-### Setup (first time)
+## Setup (first time)
 
 Copy `.env.example` to `.env` and fill in real values:
 
@@ -42,7 +41,23 @@ Copy `.env.example` to `.env` and fill in real values:
 cp .env.example .env
 ```
 
-### Cautions
+
+## Running tests
+
+Start the test database before running any tests:
+
+```sh
+make test-db-up
+make test
+```
+
+To stop the test database afterwards:
+
+```sh
+make test-db-down
+```
+
+## Cautions
 
 Database migrations run automatically on startup via `alembic upgrade head`. Once a migration is pushed to `staging` or `main`, never revert it — the database has already been migrated and a downgrade would cause data loss or schema conflicts. Remember that you can do it freely on your local machine or in a feature branch as long as it's not merged into one of the branches above.
 

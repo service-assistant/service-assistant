@@ -5,29 +5,367 @@
 
 {% block content %}
 
-<!-- Thread metadata -->
-<section class="bg-white border border-gray-200 rounded-lg p-5 mb-6 grid grid-cols-3 gap-4 text-sm">
+<section class="bg-white border border-gray-200 rounded-lg p-5 mb-4 grid grid-cols-3 gap-4 text-sm">
     <div>
         <p class="text-gray-500 mb-0.5">Device</p>
         <p class="font-medium">{{ device_name }}</p>
     </div>
     <div>
         <p class="text-gray-500 mb-0.5">Created</p>
-        <p class="font-medium">{{ thread.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+        <p class="font-medium"><time data-utc="{{ thread.created_at.isoformat() }}"></time></p>
     </div>
     <div>
         <p class="text-gray-500 mb-0.5">Messages</p>
-        <p class="font-medium">{{ messages | length }}</p>
+        <p class="font-medium" id="msg-count">{{ message_rows | length }}</p>
     </div>
 </section>
 
-<!-- Messages as JSON -->
-<section class="bg-white border border-gray-200 rounded-lg overflow-hidden">
-    <div class="px-5 py-3 border-b border-gray-200 flex items-center justify-between">
-        <h2 class="text-sm font-semibold text-gray-700">Messages</h2>
+<section class="bg-white border border-gray-200 rounded-lg flex flex-col" style="height:72vh">
+    <div class="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+        <span class="text-sm font-semibold text-gray-700">Chat</span>
         <a href="/admin/threads" class="text-sm text-gray-500 hover:text-gray-700">&larr; Back to threads</a>
     </div>
-    <pre class="p-5 text-xs leading-relaxed overflow-x-auto bg-gray-50 text-gray-800 whitespace-pre-wrap">{{ messages_json }}</pre>
+
+    <div id="messages" class="flex-1 overflow-y-auto p-4 space-y-4">
+        {% for row in message_rows %}
+
+        {% if row.message.sender.value == 'user' %}
+        <div class="flex justify-end">
+            <div class="max-w-[70%] bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm shadow-sm">
+                <p class="whitespace-pre-wrap break-words">{{ row.message.content }}</p>
+                <p class="text-xs text-blue-200 mt-1 text-right"><time data-utc="{{ row.message.created_at.isoformat() }}" data-fmt="time"></time></p>
+            </div>
+        </div>
+        {% else %}
+        <div class="flex justify-start">
+            <div class="max-w-[70%] space-y-1.5">
+                <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm shadow-sm">
+                    <div data-assistant-msg="{{ row.message.content | e }}"></div>
+                    <p class="text-xs text-gray-400 mt-1"><time data-utc="{{ row.message.created_at.isoformat() }}" data-fmt="time"></time></p>
+                    {% if row.message.has_continuation %}
+                    <p class="text-xs text-amber-600 mt-1 flex items-center gap-1">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+                        continues
+                    </p>
+                    {% endif %}
+                </div>
+                {% if row.chunks %}
+                <details class="pl-1">
+                <summary class="text-xs text-gray-400 cursor-pointer select-none hover:text-gray-600 py-0.5">Sources ({{ row.chunks | length }})</summary>
+                <div class="space-y-1 mt-1">
+                    {% for chunk in row.chunks %}
+                    <details class="text-xs bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                        <summary class="px-3 py-2 cursor-pointer text-gray-500 hover:bg-gray-50 flex items-center gap-2 select-none">
+                            <span class="font-mono text-gray-400">#{{ chunk.id }}</span>
+                            <span class="text-gray-600 font-medium truncate">{{ chunk.attachment_filename }}</span>
+                            {% if chunk.page is not none %}
+                            <span class="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded flex-shrink-0">p.{{ chunk.page + 1 }}</span>
+                            {% endif %}
+                            <a href="/admin/chunks?attachment_id={{ chunk.attachment_id }}" target="_blank"
+                               class="ml-auto text-blue-600 hover:underline flex-shrink-0" onclick="event.stopPropagation()">
+                                View doc
+                            </a>
+                        </summary>
+                        <div class="px-3 py-2 border-t border-gray-100 text-gray-700 whitespace-pre-wrap leading-relaxed">{{ chunk.content }}</div>
+                        {% if chunk.images %}
+                        <div class="px-3 pb-3 pt-2 border-t border-gray-100 flex flex-wrap gap-2">
+                            {% for img_path in chunk.images %}
+                            <a href="/admin/images/{{ img_path.lstrip('/') }}" target="_blank" class="block">
+                                <img src="/admin/images/{{ img_path.lstrip('/') }}"
+                                     alt="Source image"
+                                     class="max-h-32 max-w-xs rounded border border-gray-200 object-contain hover:opacity-80 transition-opacity" />
+                            </a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                    </details>
+                    {% endfor %}
+                </div>
+                </details>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% else %}
+        <p class="text-center text-gray-400 text-sm py-8">No messages yet. Start the conversation.</p>
+        {% endfor %}
+
+        <!-- streaming placeholder -->
+        <div id="streaming-wrap" class="hidden flex justify-start">
+            <div class="max-w-[70%] bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm shadow-sm">
+                <p id="streaming-text" class="whitespace-pre-wrap break-words"></p>
+                <p class="text-xs text-gray-400 mt-1 flex items-center gap-1">
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style="animation-delay:0ms"></span>
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style="animation-delay:150ms"></span>
+                    <span class="inline-block w-1.5 h-1.5 rounded-full bg-gray-400 animate-bounce" style="animation-delay:300ms"></span>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="border-t border-gray-200 p-3 flex gap-2 items-end">
+        <textarea id="message-input" rows="2"
+                  placeholder="Type a message… (Ctrl+Enter to send)"
+                  class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+        <button id="send-btn"
+                class="bg-blue-600 hover:bg-blue-700 text-white text-sm px-5 py-2 rounded-lg self-end disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            Send
+        </button>
+    </div>
 </section>
+
+<script>
+(function () {
+    const THREAD_ID = {{ thread.id }};
+    const AUTH_TOKEN = localStorage.getItem('admin_token') || '';
+
+    const messagesEl = document.getElementById("messages");
+    const input = document.getElementById("message-input");
+    const sendBtn = document.getElementById("send-btn");
+    const streamingWrap = document.getElementById("streaming-wrap");
+    const streamingText = document.getElementById("streaming-text");
+    const msgCount = document.getElementById("msg-count");
+
+    function scrollBottom() {
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function esc(text) {
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+    }
+
+    function parseAssistantBlocks(text) {
+        const blocks = [];
+        const normalized = text.replace(/\r\n/g, '\n');
+        const directiveRe = /::(checklist|warning|next)\b[ \t]*/gi;
+        const matches = [...normalized.matchAll(directiveRe)];
+
+        function pushBlock(type, content) {
+            const trimmed = content.trim();
+            if (!trimmed) return;
+            if (type === 'checklist') {
+                const cc = content.replace(/\s+/g, ' ').trim();
+                const markers = [...cc.matchAll(/[-*]\s+/g)];
+                const items = markers.length > 0
+                    ? markers.map((m, i) => {
+                        const s = (m.index ?? 0) + m[0].length;
+                        const e = i + 1 < markers.length ? (markers[i + 1].index ?? cc.length) : cc.length;
+                        return cc.slice(s, e).trim();
+                    }).filter(Boolean)
+                    : content.split('\n').map(l => l.trim().replace(/^[-*]\s+/, '').trim()).filter(Boolean);
+                if (items.length) blocks.push({ type: 'checklist', items });
+            } else {
+                blocks.push({ type, content: trimmed });
+            }
+        }
+
+        if (!matches.length) {
+            pushBlock('text', normalized);
+            return blocks.length ? blocks : [{ type: 'text', content: text }];
+        }
+
+        pushBlock('text', normalized.slice(0, matches[0].index ?? 0));
+        matches.forEach((m, i) => {
+            const s = (m.index ?? 0) + m[0].length;
+            const e = i + 1 < matches.length ? (matches[i + 1].index ?? normalized.length) : normalized.length;
+            pushBlock(m[1].toLowerCase(), normalized.slice(s, e));
+        });
+
+        return blocks.length ? blocks : [{ type: 'text', content: text }];
+    }
+
+    const WARN_SVG = `<svg class="shrink-0 w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>`;
+    const NEXT_SVG = `<svg class="shrink-0 w-4 h-4 text-gray-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>`;
+
+    function renderAssistantBlocks(blocks) {
+        return blocks.map((block, i) => {
+            if (block.type === 'checklist') {
+                const items = block.items.map(item =>
+                    `<div class="flex items-start gap-2.5 mb-2.5">
+                        <div class="shrink-0 w-4 h-4 mt-0.5 border border-orange-500 rounded" style="min-width:16px;min-height:16px"></div>
+                        <span>${esc(item)}</span>
+                    </div>`
+                ).join('');
+                return `<div class="mt-2">${items}</div>`;
+            }
+            if (block.type === 'warning') {
+                return `<div class="flex items-center gap-2.5 mt-3 px-3 py-2 border border-red-300 rounded-lg bg-red-50 text-red-800">
+                    ${WARN_SVG}<span>${esc(block.content)}</span>
+                </div>`;
+            }
+            if (block.type === 'next') {
+                return `<div class="flex items-start gap-2.5 mt-3">
+                    ${NEXT_SVG}<span>${esc(block.content)}</span>
+                </div>`;
+            }
+            return `<p class="whitespace-pre-wrap break-words${i > 0 ? ' mt-2' : ''}">${esc(block.content)}</p>`;
+        }).join('');
+    }
+
+    function assistantHtml(content) {
+        return renderAssistantBlocks(parseAssistantBlocks(content));
+    }
+
+    function fmtTime(iso) {
+        return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function chunkHtml(chunk) {
+        const page = chunk.metadata?.page;
+        const images = chunk.metadata?.images || [];
+        const imgsHtml = images.map(p =>
+            `<a href="/admin/images/${p.replace(/^\//,'')}" target="_blank" class="block">
+                <img src="/admin/images/${p.replace(/^\//,'')}" alt="Source image"
+                     class="max-h-32 max-w-xs rounded border border-gray-200 object-contain hover:opacity-80 transition-opacity" />
+             </a>`
+        ).join("");
+
+        return `<details class="text-xs bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+            <summary class="px-3 py-2 cursor-pointer text-gray-500 hover:bg-gray-50 flex items-center gap-2 select-none">
+                <span class="font-mono text-gray-400">#${chunk.id}</span>
+                <span class="text-gray-600 font-medium truncate">attachment #${chunk.attachment_id}</span>
+                ${page != null ? `<span class="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded flex-shrink-0">p.${page + 1}</span>` : ""}
+                <a href="/admin/chunks?attachment_id=${chunk.attachment_id}" target="_blank"
+                   class="ml-auto text-blue-600 hover:underline flex-shrink-0" onclick="event.stopPropagation()">
+                    View doc
+                </a>
+            </summary>
+            <div class="px-3 py-2 border-t border-gray-100 text-gray-700 whitespace-pre-wrap leading-relaxed">${esc(chunk.content)}</div>
+            ${images.length ? `<div class="px-3 pb-3 pt-2 border-t border-gray-100 flex flex-wrap gap-2">${imgsHtml}</div>` : ""}
+        </details>`;
+    }
+
+    function insertUserBubble(content) {
+        const div = document.createElement("div");
+        div.className = "flex justify-end";
+        div.innerHTML = `
+            <div class="max-w-[70%] bg-blue-600 text-white rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm shadow-sm">
+                <p class="whitespace-pre-wrap break-words">${esc(content)}</p>
+                <p class="text-xs text-blue-200 mt-1 text-right">just now</p>
+            </div>`;
+        messagesEl.insertBefore(div, streamingWrap);
+        scrollBottom();
+    }
+
+    async function fetchChunks(messageId) {
+        try {
+            const r = await fetch(`/api/messages/${messageId}/chunks`, {
+                headers: { "Authorization": `Bearer ${AUTH_TOKEN}` }
+            });
+            return r.ok ? await r.json() : [];
+        } catch { return []; }
+    }
+
+    async function finalizeAssistantBubble(message) {
+        streamingWrap.classList.add("hidden");
+        streamingText.textContent = "";
+
+        const chunks = await fetchChunks(message.id);
+        const chunksHtml = chunks.length
+            ? `<details class="pl-1"><summary class="text-xs text-gray-400 cursor-pointer select-none hover:text-gray-600 py-0.5">Sources (${chunks.length})</summary><div class="space-y-1 mt-1">${chunks.map(chunkHtml).join("")}</div></details>`
+            : "";
+
+        const div = document.createElement("div");
+        div.className = "flex justify-start";
+        div.innerHTML = `
+            <div class="max-w-[70%] space-y-1.5">
+                <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm shadow-sm">
+                    <div>${assistantHtml(message.content)}</div>
+                    <p class="text-xs text-gray-400 mt-1">${fmtTime(message.created_at)}</p>
+                </div>
+                ${chunksHtml}
+            </div>`;
+        messagesEl.insertBefore(div, streamingWrap);
+        msgCount.textContent = parseInt(msgCount.textContent) + 1;
+        scrollBottom();
+    }
+
+    async function sendMessage() {
+        const content = input.value.trim();
+        if (!content) return;
+
+        input.value = "";
+        input.disabled = true;
+        sendBtn.disabled = true;
+
+        insertUserBubble(content);
+        msgCount.textContent = parseInt(msgCount.textContent) + 1;
+
+        streamingWrap.classList.remove("hidden");
+        streamingText.textContent = "";
+        scrollBottom();
+
+        try {
+            const resp = await fetch(`/api/threads/${THREAD_ID}/messages`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${AUTH_TOKEN}`,
+                },
+                body: JSON.stringify({ content }),
+            });
+
+            if (!resp.ok || !resp.body) {
+                streamingWrap.classList.add("hidden");
+                alert("Error: " + resp.status);
+                return;
+            }
+
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                const parts = buffer.split("\n\n");
+                buffer = parts.pop();
+
+                for (const part of parts) {
+                    const lines = part.trim().split("\n");
+                    const eLine = lines.find(l => l.startsWith("event: "));
+                    const dLine = lines.find(l => l.startsWith("data: "));
+                    if (!eLine || !dLine) continue;
+                    const evType = eLine.slice(7).trim();
+                    const data = dLine.slice(6);
+
+                    if (evType === "chunk") {
+                        streamingText.textContent += data;
+                        scrollBottom();
+                    } else if (evType === "message") {
+                        await finalizeAssistantBubble(JSON.parse(data));
+                    }
+                }
+            }
+        } finally {
+            input.disabled = false;
+            sendBtn.disabled = false;
+            input.focus();
+        }
+    }
+
+    sendBtn.addEventListener("click", sendMessage);
+    input.addEventListener("keydown", e => {
+        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+
+    document.querySelectorAll('[data-assistant-msg]').forEach(el => {
+        el.innerHTML = assistantHtml(el.dataset.assistantMsg);
+        el.removeAttribute('data-assistant-msg');
+    });
+
+    scrollBottom();
+})();
+</script>
 
 {% endblock %}

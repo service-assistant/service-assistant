@@ -1,0 +1,31 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Edit Brand{% endblock %}
+{% block heading %}Edit Brand{% endblock %}
+
+{% block content %}
+<section class="bg-white border border-gray-200 rounded-lg p-6 max-w-md">
+    <form method="post" action="/api/brands/{{ brand.id }}"
+          data-method="PATCH"
+          data-redirect="/admin/brands"
+          data-success-msg="Brand saved."
+          class="space-y-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <input type="text" name="name" required value="{{ brand.name }}"
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Logo URL <span class="text-gray-400">(optional)</span></label>
+            <input type="url" name="logo_url" value="{{ brand.logo_url or '' }}"
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div class="flex items-center gap-3">
+            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-md transition-colors">
+                Save
+            </button>
+            <a href="/admin/brands" class="text-sm text-gray-500 hover:text-gray-700">Cancel</a>
+        </div>
+    </form>
+</section>
+{% endblock %}

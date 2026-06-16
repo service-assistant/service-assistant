@@ -1,6 +1,8 @@
 import { Tabs } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { StatusBar } from 'expo-status-bar';
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useWindowDimensions } from 'react-native';
 
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
@@ -9,6 +11,17 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
 	const colorScheme = useColorScheme();
+	const { width, height } = useWindowDimensions();
+	const isPhone = Math.min(width, height) < 600;
+
+	useEffect(() => {
+		if (isPhone) {
+			ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+			return;
+		}
+
+		ScreenOrientation.unlockAsync();
+	}, [isPhone]);
 
 	return (
 		<>

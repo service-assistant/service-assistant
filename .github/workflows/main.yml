@@ -58,6 +58,17 @@ jobs:
       - name: Run format check
         run: poetry --directory ./server run ruff format --check app tests
 
+  server-typecheck:
+    name: Type check (server)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-python-poetry
+      - name: Install dependencies
+        run: poetry --directory ./server install --all-groups
+      - name: Run type check
+        run: poetry --directory ./server run pyright
+
   server-test:
     name: Run tests (server)
     runs-on: ubuntu-24.04
@@ -67,9 +78,9 @@ jobs:
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: service_assistant
+          POSTGRES_DB: service_assistant_test
         ports:
-          - 5432:5432
+          - 5433:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -83,4 +94,4 @@ jobs:
       - name: Run tests
         run: poetry --directory ./server run pytest
         env:
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/service_assistant
+          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5433/service_assistant_test

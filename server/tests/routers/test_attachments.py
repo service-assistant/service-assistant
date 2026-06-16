@@ -1,162 +1,385 @@
-from datetime import datetime
-from unittest.mock import AsyncMock, patch
+import asyncio
 
-import pytest
-from fastapi.testclient import TestClient
+from sqlalchemy import select
 
-from app.config import Settings, get_settings
-from app.database import get_session
-from app.main import app
-from app.models import Attachment
+from app.models import Attachment, AttachmentDevice
 
-AUTH_HEADERS = {"Authorization": "Bearer CHANGEMELATER"}
+from tests.routers.factories import (
+    create_attachment,
+    create_brand,
+    create_device,
+    create_device_type,
+    link_attachment_device,
+)
 
 
-def make_attachment(path: str, **kwargs) -> Attachment:
-    defaults = dict(
-        id=1,
-        file_global_path=path,
-        original_filename="manual.pdf",
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+async def test_should_list_all_attachments(client, tmp_path, session):
+    await create_attachment(
+        session, original_filename="a.pdf", file_global_path=str(tmp_path / "a.pdf")
     )
-    defaults.update(kwargs)
-    return Attachment(**defaults)
-
-
-@pytest.fixture
-def mock_session():
-    return AsyncMock()
-
-
-@pytest.fixture
-def client_with_tmp(mock_session, tmp_path):
-    test_settings = Settings(
-        env="test",
-        database_url="postgresql+asyncpg://postgres:postgres@localhost:5432/service_assistant",
-        azure_openai_endpoint="https://test.example.com",
-        azure_openai_api_key="test-key",
-        azure_openai_embeddings_deployment="test-deployment",
-        azure_openai_api_version="2024-01-01",
-        openai_api_key="test-openai-key",
-        openai_chat_model="gpt-4o-mini",
-        attachments_dir=tmp_path,
-        auth_token="CHANGEMELATER",
+    await create_attachment(
+        session, original_filename="b.pdf", file_global_path=str(tmp_path / "b.pdf")
     )
 
-    async def override_get_session():
-        yield mock_session
+    response = await client.get("/api/attachments")
 
-    def override_get_settings():
-        return test_settings
-
-    app.dependency_overrides[get_session] = override_get_session
-    app.dependency_overrides[get_settings] = override_get_settings
-    with TestClient(app) as c:
-        yield c, tmp_path
-    app.dependency_overrides.clear()
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+    filenames = {a["original_filename"] for a in data}
+    assert filenames == {"a.pdf", "b.pdf"}
 
 
-def test_should_upload_attachment_and_return_metadata(client_with_tmp, mock_session):
-    client, tmp_path = client_with_tmp
+async def test_should_return_empty_list_when_no_attachments(client):
+    response = await client.get("/api/attachments")
 
-    async def set_id(obj):
-        obj.id = 1
+    assert response.status_code == 200
+    assert response.json() == []
 
-    mock_session.refresh.side_effect = set_id
 
-    with patch("app.routers.attachments.ingest_pdf_to_attachment", new=AsyncMock()):
-        response = client.post(
-            "/api/attachments",
-            files={"file": ("manual.pdf", b"%PDF-1.4 test content", "application/pdf")},
-            data={"device_ids": ["1", "2"]},
-            headers=AUTH_HEADERS,
-        )
+async def test_should_upload_attachment_and_return_metadata(
+    client, tmp_path, session, mock_ingest_fitz
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device1 = await create_device(session, brand.id, dt.id, name="Device 1")
+    device2 = await create_device(session, brand.id, dt.id, name="Device 2")
+
+    response = await client.post(
+        "/api/attachments",
+        files={"file": ("manual.pdf", b"%PDF-1.4 test content", "application/pdf")},
+        data={"device_ids": [str(device1.id), str(device2.id)]},
+    )
 
     assert response.status_code == 201
     data = response.json()
     assert data["original_filename"] == "manual.pdf"
-    assert data["id"] == 1
+    assert isinstance(data["id"], int)
     assert (tmp_path / "manual.pdf").exists()
 
 
-def test_should_handle_filename_collision_on_upload(client_with_tmp, mock_session):
-    client, tmp_path = client_with_tmp
+async def test_should_handle_filename_collision_on_upload(
+    client, tmp_path, session, mock_ingest_fitz
+):
     (tmp_path / "manual.pdf").write_bytes(b"existing file")
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
 
-    async def set_id(obj):
-        obj.id = 2
-
-    mock_session.refresh.side_effect = set_id
-
-    with patch("app.routers.attachments.ingest_pdf_to_attachment", new=AsyncMock()):
-        response = client.post(
-            "/api/attachments",
-            files={"file": ("manual.pdf", b"%PDF-1.4 new content", "application/pdf")},
-            data={"device_ids": ["1"]},
-            headers=AUTH_HEADERS,
-        )
+    response = await client.post(
+        "/api/attachments",
+        files={"file": ("manual.pdf", b"%PDF-1.4 new content", "application/pdf")},
+        data={"device_ids": [str(device.id)]},
+    )
 
     assert response.status_code == 201
-    # Original file untouched, new file saved with __1 suffix
     assert (tmp_path / "manual.pdf").read_bytes() == b"existing file"
     assert (tmp_path / "manual__1.pdf").exists()
 
 
-def test_should_return_attachment_metadata_when_id_exists(
-    client_with_tmp, mock_session
-):
-    client, tmp_path = client_with_tmp
-    mock_session.get.return_value = make_attachment(str(tmp_path / "manual.pdf"))
+async def test_should_return_404_when_uploading_with_nonexistent_device(client):
+    response = await client.post(
+        "/api/attachments",
+        files={"file": ("manual.pdf", b"%PDF-1.4 content", "application/pdf")},
+        data={"device_ids": ["999"]},
+    )
 
-    response = client.get("/api/attachments/1", headers=AUTH_HEADERS)
+    assert response.status_code == 404
+    assert "Device 999 not found" in response.json()["detail"]
+
+
+async def test_should_return_attachment_metadata_when_id_exists(
+    client, tmp_path, session
+):
+    attachment = await create_attachment(
+        session,
+        file_global_path=str(tmp_path / "manual.pdf"),
+        original_filename="manual.pdf",
+    )
+
+    response = await client.get(f"/api/attachments/{attachment.id}")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["id"] == 1
+    assert data["id"] == attachment.id
     assert data["original_filename"] == "manual.pdf"
 
 
-def test_should_return_404_when_attachment_not_found(client_with_tmp, mock_session):
-    client, _ = client_with_tmp
-    mock_session.get.return_value = None
-
-    response = client.get("/api/attachments/999", headers=AUTH_HEADERS)
+async def test_should_return_404_when_attachment_not_found(client):
+    response = await client.get("/api/attachments/999")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Attachment not found"
 
 
-def test_should_download_attachment_file_when_it_exists(client_with_tmp, mock_session):
-    client, tmp_path = client_with_tmp
+async def test_should_download_attachment_file_when_it_exists(
+    client, tmp_path, session
+):
     pdf_path = tmp_path / "manual.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 test document")
-    mock_session.get.return_value = make_attachment(str(pdf_path))
+    attachment = await create_attachment(
+        session,
+        file_global_path=str(pdf_path),
+        original_filename="manual.pdf",
+    )
 
-    response = client.get("/api/attachments/1/file", headers=AUTH_HEADERS)
+    response = await client.get(f"/api/attachments/{attachment.id}/file")
 
     assert response.status_code == 200
     assert response.content == b"%PDF-1.4 test document"
 
 
-def test_should_return_404_when_attachment_record_not_found_for_file_download(
-    client_with_tmp, mock_session
+async def test_should_return_404_when_attachment_record_not_found_for_file_download(
+    client,
 ):
-    client, _ = client_with_tmp
-    mock_session.get.return_value = None
-
-    response = client.get("/api/attachments/999/file", headers=AUTH_HEADERS)
+    response = await client.get("/api/attachments/999/file")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Attachment not found"
 
 
-def test_should_return_404_when_file_missing_from_disk(client_with_tmp, mock_session):
-    client, tmp_path = client_with_tmp
-    missing_path = str(tmp_path / "missing.pdf")
-    mock_session.get.return_value = make_attachment(missing_path)
+async def test_should_return_404_when_file_missing_from_disk(client, tmp_path, session):
+    attachment = await create_attachment(
+        session,
+        file_global_path=str(tmp_path / "missing.pdf"),
+        original_filename="missing.pdf",
+    )
 
-    response = client.get("/api/attachments/1/file", headers=AUTH_HEADERS)
+    response = await client.get(f"/api/attachments/{attachment.id}/file")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "File not found on disk"
+
+
+async def test_should_delete_attachment_and_remove_file_from_disk(
+    client, tmp_path, session
+):
+    pdf_path = tmp_path / "manual.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 content")
+    attachment = await create_attachment(
+        session,
+        file_global_path=str(pdf_path),
+        original_filename="manual.pdf",
+    )
+    attachment_id = attachment.id
+
+    response = await client.delete(f"/api/attachments/{attachment_id}")
+
+    assert response.status_code == 204
+    assert not pdf_path.exists()
+    session.expunge(attachment)
+    assert await session.get(Attachment, attachment_id) is None
+
+
+async def test_should_delete_attachment_even_when_file_missing_from_disk(
+    client, tmp_path, session
+):
+    attachment = await create_attachment(
+        session,
+        file_global_path=str(tmp_path / "gone.pdf"),
+        original_filename="gone.pdf",
+    )
+    attachment_id = attachment.id
+
+    response = await client.delete(f"/api/attachments/{attachment_id}")
+
+    assert response.status_code == 204
+    session.expunge(attachment)
+    assert await session.get(Attachment, attachment_id) is None
+
+
+async def test_should_return_404_when_deleting_nonexistent_attachment(client):
+    response = await client.delete("/api/attachments/999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Attachment not found"
+
+
+async def test_should_reingest_attachment(client, tmp_path, session, mock_ingest_fitz):
+    pdf_path = tmp_path / "manual.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4 content")
+    attachment = await create_attachment(
+        session,
+        file_global_path=str(pdf_path),
+        original_filename="manual.pdf",
+    )
+
+    response = await client.post(f"/api/attachments/{attachment.id}/reingest")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == attachment.id
+
+
+async def test_should_return_404_when_reingesting_nonexistent_attachment(client):
+    response = await client.post("/api/attachments/999/reingest")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Attachment not found"
+
+
+async def test_should_list_devices_for_attachment(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device1 = await create_device(session, brand.id, dt.id, name="Device 1")
+    device2 = await create_device(session, brand.id, dt.id, name="Device 2")
+    attachment = await create_attachment(session)
+    await link_attachment_device(session, attachment.id, device1.id)
+    await link_attachment_device(session, attachment.id, device2.id)
+
+    response = await client.get(f"/api/attachments/{attachment.id}/devices")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 2
+
+
+async def test_should_return_empty_list_when_attachment_has_no_devices(client, session):
+    attachment = await create_attachment(session)
+
+    response = await client.get(f"/api/attachments/{attachment.id}/devices")
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+async def test_should_return_404_when_listing_devices_for_nonexistent_attachment(
+    client,
+):
+    response = await client.get("/api/attachments/999/devices")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Attachment not found"
+
+
+async def test_should_link_device_to_attachment(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    attachment = await create_attachment(session)
+
+    response = await client.post(
+        f"/api/attachments/{attachment.id}/devices/{device.id}"
+    )
+
+    assert response.status_code == 204
+
+
+async def test_should_be_idempotent_when_linking_already_linked_device(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    attachment = await create_attachment(session)
+    await link_attachment_device(session, attachment.id, device.id)
+
+    response = await client.post(
+        f"/api/attachments/{attachment.id}/devices/{device.id}"
+    )
+
+    assert response.status_code == 204
+
+
+async def test_should_return_404_when_linking_device_to_nonexistent_attachment(
+    client, session
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+
+    response = await client.post(f"/api/attachments/999/devices/{device.id}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Attachment not found"
+
+
+async def test_should_return_404_when_linking_nonexistent_device(client, session):
+    attachment = await create_attachment(session)
+
+    response = await client.post(f"/api/attachments/{attachment.id}/devices/999")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Device not found"
+
+
+async def test_should_unlink_device_from_attachment(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    attachment = await create_attachment(session)
+    await link_attachment_device(session, attachment.id, device.id)
+
+    response = await client.delete(
+        f"/api/attachments/{attachment.id}/devices/{device.id}"
+    )
+
+    assert response.status_code == 204
+
+
+async def test_should_return_404_when_unlinking_device_not_linked(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    attachment = await create_attachment(session)
+
+    response = await client.delete(
+        f"/api/attachments/{attachment.id}/devices/{device.id}"
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Link not found"
+
+
+async def test_should_be_idempotent_on_concurrent_link_device(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    attachment = await create_attachment(session)
+
+    results = await asyncio.gather(
+        client.post(f"/api/attachments/{attachment.id}/devices/{device.id}"),
+        client.post(f"/api/attachments/{attachment.id}/devices/{device.id}"),
+        return_exceptions=True,
+    )
+
+    non_errors = [r for r in results if not isinstance(r, Exception)]
+    assert any(r.status_code == 204 for r in non_errors)
+
+    result = await session.execute(
+        select(AttachmentDevice).where(
+            AttachmentDevice.attachment_id == attachment.id,
+            AttachmentDevice.device_id == device.id,
+        )
+    )
+    links = result.scalars().all()
+    assert len(links) == 1
+
+
+async def test_should_save_unique_filenames_on_concurrent_upload(
+    client, tmp_path, session, mock_ingest_fitz
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+
+    async with asyncio.TaskGroup() as tg:
+        t1 = tg.create_task(
+            client.post(
+                "/api/attachments",
+                files={"file": ("manual.pdf", b"%PDF-1.4 content1", "application/pdf")},
+                data={"device_ids": [str(device.id)]},
+            )
+        )
+        t2 = tg.create_task(
+            client.post(
+                "/api/attachments",
+                files={"file": ("manual.pdf", b"%PDF-1.4 content2", "application/pdf")},
+                data={"device_ids": [str(device.id)]},
+            )
+        )
+
+    assert t1.result().status_code == 201
+    assert t2.result().status_code == 201
+    paths = {
+        t1.result().json()["file_global_path"],
+        t2.result().json()["file_global_path"],
+    }
+    assert len(paths) == 2
