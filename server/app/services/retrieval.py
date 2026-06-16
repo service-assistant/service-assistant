@@ -11,7 +11,7 @@ from ..models import AttachmentDevice, Chunk
 from .embedding import RetrievedChunk, embed_question
 
 TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:[:.-][A-Za-z0-9]+)*")
-ERROR_CODE_RE = re.compile(r"\b\d+:\d+\b")
+ERROR_CODE_RE = re.compile(r"\b\d+[:.]\d+\b|\b\d{3,}\b")
 
 SEMANTIC_LIMIT = 7
 BM25_LIMIT = 3
@@ -19,6 +19,21 @@ BM25_LIMIT = 3
 
 def tokenize(text: str) -> list[str]:
     return [t.lower() for t in TOKEN_RE.findall(text)]
+
+
+def _identifier_variants(code: str) -> list[str]:
+    m = re.match(r"^(\d+)[:.](\d+)$", code)
+    if m:
+        a, b = m.group(1), m.group(2)
+        return list({code, f"{a}:{b}", f"{a}.{b}", a + b})
+    if re.match(r"^\d{2,}$", code):
+        variants = {code}
+        for i in range(1, len(code)):
+            a, b = code[:i], code[i:]
+            variants.add(f"{a}:{b}")
+            variants.add(f"{a}.{b}")
+        return list(variants)
+    return [code]
 
 
 async def _fetch_device_chunks(
@@ -96,14 +111,12 @@ async def get_bm25_chunks(
     corpus_tokens = [tokenize(r["content"]) for r in rows]
     query_tokens = tokenize(question)
 
-    # Exact code boost: jeśli w pytaniu jest A200:2, preferuj chunki zawierające ten string
     code_match = ERROR_CODE_RE.search(question)
     if code_match:
         code = code_match.group(0)
+        variants = _identifier_variants(code)
         exact = [
-            r
-            for r in rows
-            if code in r["content"] or code.lower() in r["content"].lower()
+            r for r in rows if any(v.lower() in r["content"].lower() for v in variants)
         ]
         if exact:
             return exact[:limit]
@@ -156,7 +169,6 @@ async def retrieve_context_chunks(
 ) -> list[RetrievedChunk]:
     vector = await embed_question(question, settings)
 
-    # jeden fetch dla BM25; semantic osobno (ma LIMIT w SQL)
     device_rows = await _fetch_device_chunks(session, device_id)
 
     semantic, bm25 = await asyncio.gather(
