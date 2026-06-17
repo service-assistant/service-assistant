@@ -184,19 +184,13 @@ sequenceDiagram
     participant API as FastAPI
     participant DG as Deepgram
 
-    alt File upload (one-shot)
-        App->>API: POST /threads/{id}/messages/transcribe (audio file)
-        API->>DG: POST /v1/listen (audio bytes)
-        DG-->>API: transcript JSON
-        API-->>App: {transcript}
-    else Real-time streaming
-        App->>API: WS /threads/{id}/messages/transcribe-stream
-        loop audio frames
-            App->>API: binary audio chunk
-            API->>DG: forward via WSS
-            DG-->>API: {type:Results, transcript, is_final}
-            API-->>App: {type: partial|final, transcript}
-        end
+    App->>API: WS /threads/{id}/messages/transcribe-stream
+    loop audio frames
+        App->>API: binary audio chunk (PCM)
+        API->>DG: forward via WSS
+        DG-->>API: {type: Results, transcript, is_final}
+        API-->>App: {type: partial|final, transcript}
     end
+    App->>API: close WebSocket
 ```
 
