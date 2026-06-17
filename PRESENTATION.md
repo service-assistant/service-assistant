@@ -22,7 +22,7 @@
 | Embeddingi | Azure OpenAI |
 | Chat LLM | OpenAI |
 | STT | Deepgram |
-| TTS | Google Gemini |
+| TTS | OpenAI |
 
 
 ## System Overview
