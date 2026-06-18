@@ -10,6 +10,7 @@ jest.mock('react', () => {
 		...actualReact,
 		useEffect: () => undefined,
 		useRef: (initialValue: unknown) => ({ current: initialValue }),
+		useState: (initialValue: unknown) => [initialValue, jest.fn()],
 	};
 });
 
@@ -91,6 +92,38 @@ describe('ChatMessages', () => {
 		const tree = <ChatMessages {...baseProps} messages={[{ id: 1, sender: 'ai', text: '' }]} />;
 
 		expect(findByType(tree, 'Animated.View').length).toBeGreaterThanOrEqual(3);
+		expect(findByType(tree, 'Icon').some((icon) => icon.props.name === 'thumbs-up')).toBe(
+			false,
+		);
+	});
+
+	test('renders local feedback controls only for completed assistant messages', () => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[
+					{ id: 1, sender: 'user', text: 'Pytanie' },
+					{ id: 2, sender: 'ai', text: 'Odpowiedź' },
+				]}
+			/>
+		);
+		const feedbackIcons = findByType(tree, 'Icon').filter((icon) =>
+			['thumbs-up', 'thumbs-down'].includes(icon.props.name),
+		);
+		const feedbackButtons = findByType(tree, 'TouchableOpacity').filter((button) =>
+			['Lubię tę odpowiedź', 'Nie lubię tej odpowiedzi'].includes(
+				button.props.accessibilityLabel,
+			),
+		);
+
+		expect(feedbackIcons.map((icon) => icon.props.name)).toEqual(['thumbs-up', 'thumbs-down']);
+		expect(findByText(tree, 'Czy ta odpowiedź była pomocna?')).toBeTruthy();
+		expect(feedbackIcons.map((icon) => icon.props.color)).toEqual(['#8F959E', '#8F959E']);
+		expect(feedbackButtons).toHaveLength(2);
+		expect(feedbackButtons.every((button) => button.props.accessibilityRole === 'button')).toBe(
+			true,
+		);
+		feedbackButtons.forEach((button) => button.props.onPress());
 	});
 
 	test('renders structured assistant directives', () => {
