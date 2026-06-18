@@ -89,8 +89,10 @@ export const useAssistantAudio = ({
 			ttsAbortControllerRef.current.abort();
 			ttsAbortControllerRef.current = null;
 		}
+		const shouldPausePlayer =
+			hasObservedPlaybackRef.current || playbackRequestedAtRef.current !== null;
 		try {
-			if (ttsPlayer?.playing) {
+			if (shouldPausePlayer || ttsPlayer?.playing) {
 				ttsPlayer.pause();
 			}
 		} catch (error) {

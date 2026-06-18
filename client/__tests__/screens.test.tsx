@@ -414,6 +414,7 @@ describe('tab screens', () => {
 		);
 		expect(mockUseMicrophone).toHaveBeenCalledWith(
 			expect.objectContaining({
+				isLoading: false,
 				isSpeechInputUnavailable: false,
 				onStopExternal: expect.any(Function),
 				onTranscript: expect.any(Function),
@@ -427,7 +428,7 @@ describe('tab screens', () => {
 	});
 
 	test('chat screen uses portrait layout and navigates back to home', () => {
-		setupChatHooks();
+		const hooks = setupChatHooks();
 		mockWindowDimensions = { width: 500, height: 900 };
 		mockSearchParams = { deviceName: 'Still RX', chatSession: 'abc' };
 		jest.mocked(global.fetch).mockResolvedValue(createJsonResponse([]));
@@ -435,9 +436,15 @@ describe('tab screens', () => {
 
 		const tree = renderScreen(ChatScreen);
 		const layout = findByType(tree, 'PortraitChatLayout')[0];
+		hooks.stopChatApi.mockClear();
+		hooks.stopAssistantAudio.mockClear();
+		hooks.abortVoiceInput.mockClear();
 
 		layout.props.onBack();
 
+		expect(hooks.stopChatApi).toHaveBeenCalledTimes(1);
+		expect(hooks.stopAssistantAudio).toHaveBeenCalledTimes(1);
+		expect(hooks.abortVoiceInput).toHaveBeenCalledTimes(1);
 		expect(layout.props.insets).toBe(mockSafeAreaInsets);
 		expect(mockRouterPush).toHaveBeenCalledWith('/home');
 	});
