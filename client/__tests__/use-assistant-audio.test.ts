@@ -221,13 +221,20 @@ describe('useAssistantAudio', () => {
 		expect(mockAudioPlayer.play).not.toHaveBeenCalled();
 	});
 
-	test('pauses current playback when stopped', () => {
-		mockAudioPlayer.playing = true;
+	test('pauses current playback only once when stopped repeatedly', async () => {
+		jest.mocked(global.fetch).mockResolvedValue(
+			new Response('mp3-data', {
+				status: 200,
+				headers: { 'content-type': 'audio/mpeg' },
+			}),
+		);
 		const harness = createHarness();
+		await harness.api.playAssistantAudio('Stop audio');
 
 		harness.api.stopAssistantAudio();
+		harness.api.stopAssistantAudio();
 
-		expect(mockAudioPlayer.pause).toHaveBeenCalled();
+		expect(mockAudioPlayer.pause).toHaveBeenCalledTimes(1);
 		expect(harness.state.isAudioPlaying).toBe(false);
 	});
 });

@@ -169,15 +169,6 @@ export default function ChatScreen() {
 			authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
 		});
 
-	useFocusEffect(
-		useCallback(() => {
-			setIsChatFocused(true);
-
-			return () => {
-				setIsChatFocused(false);
-			};
-		}, []),
-	);
 	const { askAPI, ensureThread, stopChatApi } = useChatApi<ChatMessage>({
 		serverUrl: AUTH_URL,
 		deviceId: HARDCODED_DEVICE_ID,
@@ -223,6 +214,19 @@ export default function ChatScreen() {
 		onServiceError: showServiceError,
 		onSpeechInputError: handleSpeechInputError,
 	});
+
+	useFocusEffect(
+		useCallback(() => {
+			setIsChatFocused(true);
+
+			return () => {
+				setIsChatFocused(false);
+				stopChatApi();
+				stopAssistantAudio();
+				abortVoiceInput();
+			};
+		}, [abortVoiceInput, stopAssistantAudio, stopChatApi]),
+	);
 
 	useEffect(() => {
 		const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -405,6 +409,11 @@ export default function ChatScreen() {
 		abortVoiceInput();
 	};
 
+	const handleBack = () => {
+		handleStop();
+		router.push('/home');
+	};
+
 	const handleSendText = () => {
 		const trimmedInput = inputText.trim();
 		if (trimmedInput.length === 0) return;
@@ -498,7 +507,7 @@ export default function ChatScreen() {
 		messagesScrollViewRef,
 		sourcePanelProps,
 		sourcePanelFullScreen,
-		onBack: () => router.push('/home'),
+		onBack: handleBack,
 		onOpenMachineInfo: sourcePanelProps.onClose,
 		onOpenFilesPanel: openFilesPanel,
 		onSendText: handleSendText,
