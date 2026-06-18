@@ -12,6 +12,16 @@ import { Platform } from 'react-native';
 
 import * as FileSystem from 'expo-file-system/legacy';
 
+const PLAYBACK_START_GRACE_MS = 1000;
+
+const isReleasedAudioPlayerError = (error: unknown) => {
+	const message = error instanceof Error ? error.message : String(error);
+	return (
+		message.includes('shared object that was already released') ||
+		message.includes('cannot be cast to type expo.modules.audio.AudioPlayer')
+	);
+};
+
 const getOpenAiApiKeyOrThrow = () => {
 	const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY?.trim();
 
@@ -23,9 +33,6 @@ const getOpenAiApiKeyOrThrow = () => {
 
 	return apiKey;
 };
-
-const isReleasedAudioPlayerError = (error: unknown) =>
-	error instanceof Error && error.message.includes('shared object that was already released');
 
 type UseAssistantAudioParams = {
 	setIsLoading: Dispatch<SetStateAction<boolean>>;
@@ -42,20 +49,34 @@ export const useAssistantAudio = ({
 }: UseAssistantAudioParams) => {
 	const ttsPlayer = useAudioPlayer(null);
 	const ttsAbortControllerRef = useRef<AbortController | null>(null);
-	const isPlaybackActiveRef = useRef<boolean>(false);
+	const isPreparingAudioRef = useRef<boolean>(false);
+	const hasObservedPlaybackRef = useRef<boolean>(false);
+	const playbackRequestedAtRef = useRef<number | null>(null);
 	const [isAudioPlaying, setIsAudioPlaying] = useState<boolean>(false);
 
 	useEffect(() => {
 		const interval = setInterval(() => {
 			try {
-				const isPlaying = Boolean(ttsPlayer?.playing);
-				isPlaybackActiveRef.current = isPlaying;
-				setIsAudioPlaying(isPlaying);
-			} catch (error) {
-				isPlaybackActiveRef.current = false;
-				if (!isReleasedAudioPlayerError(error)) {
-					console.log('Handled TTS player status read:', error);
+				if (ttsPlayer?.playing) {
+					hasObservedPlaybackRef.current = true;
+					setIsAudioPlaying(true);
+				} else if (
+					!isPreparingAudioRef.current &&
+					(hasObservedPlaybackRef.current ||
+						(playbackRequestedAtRef.current !== null &&
+							Date.now() - playbackRequestedAtRef.current >= PLAYBACK_START_GRACE_MS))
+				) {
+					hasObservedPlaybackRef.current = false;
+					playbackRequestedAtRef.current = null;
+					setIsAudioPlaying(false);
 				}
+			} catch (error) {
+				if (!isReleasedAudioPlayerError(error)) {
+					console.log('Handled TTS player status read error:', error);
+				}
+				isPreparingAudioRef.current = false;
+				hasObservedPlaybackRef.current = false;
+				playbackRequestedAtRef.current = null;
 				setIsAudioPlaying(false);
 			}
 		}, 300);
@@ -68,26 +89,43 @@ export const useAssistantAudio = ({
 			ttsAbortControllerRef.current.abort();
 			ttsAbortControllerRef.current = null;
 		}
-		const shouldPausePlayer = isPlaybackActiveRef.current;
-		isPlaybackActiveRef.current = false;
-		if (shouldPausePlayer) {
-			try {
+		const shouldPausePlayer =
+			hasObservedPlaybackRef.current || playbackRequestedAtRef.current !== null;
+		try {
+			if (shouldPausePlayer || ttsPlayer?.playing) {
 				ttsPlayer.pause();
-			} catch (error) {
-				if (!isReleasedAudioPlayerError(error)) {
-					console.log('Handled TTS player stop:', error);
-				}
+			}
+		} catch (error) {
+			if (!isReleasedAudioPlayerError(error)) {
+				console.log('Handled TTS player stop error:', error);
 			}
 		}
+		isPreparingAudioRef.current = false;
+		hasObservedPlaybackRef.current = false;
+		playbackRequestedAtRef.current = null;
 		setIsAudioPlaying(false);
 	}, [ttsPlayer]);
 
-	useEffect(() => () => stopAssistantAudio(), [stopAssistantAudio]);
+	useEffect(
+		() => () => {
+			ttsAbortControllerRef.current?.abort();
+			ttsAbortControllerRef.current = null;
+			isPreparingAudioRef.current = false;
+			hasObservedPlaybackRef.current = false;
+			playbackRequestedAtRef.current = null;
+		},
+		[],
+	);
 
 	const playAssistantAudio = useCallback(
 		async (text: string) => {
 			const abortController = new AbortController();
 			ttsAbortControllerRef.current = abortController;
+			isPreparingAudioRef.current = true;
+			hasObservedPlaybackRef.current = false;
+			playbackRequestedAtRef.current = null;
+			setIsAudioPlaying(true);
+			let didStartPlayback = false;
 
 			try {
 				setIsLoading(true);
@@ -122,11 +160,12 @@ export const useAssistantAudio = ({
 					try {
 						ttsPlayer.replace(url);
 						ttsPlayer.play();
-						isPlaybackActiveRef.current = true;
-						setIsAudioPlaying(true);
+						didStartPlayback = true;
+						playbackRequestedAtRef.current = Date.now();
 					} catch (error) {
-						isPlaybackActiveRef.current = false;
-						console.log('Handled released TTS player playback:', error);
+						if (!isReleasedAudioPlayerError(error)) {
+							console.log('Handled TTS player playback error:', error);
+						}
 					}
 				} else {
 					const arrayBuffer = await response.arrayBuffer();
@@ -144,11 +183,12 @@ export const useAssistantAudio = ({
 					try {
 						ttsPlayer.replace(fileUri);
 						ttsPlayer.play();
-						isPlaybackActiveRef.current = true;
-						setIsAudioPlaying(true);
+						didStartPlayback = true;
+						playbackRequestedAtRef.current = Date.now();
 					} catch (error) {
-						isPlaybackActiveRef.current = false;
-						console.log('Handled released TTS player playback:', error);
+						if (!isReleasedAudioPlayerError(error)) {
+							console.log('Handled TTS player playback error:', error);
+						}
 					}
 				}
 			} catch (error: any) {
@@ -160,6 +200,12 @@ export const useAssistantAudio = ({
 					onServiceError?.('odtwarzanie odpowiedzi głosowej', error);
 				}
 			} finally {
+				isPreparingAudioRef.current = false;
+				if (!didStartPlayback) {
+					hasObservedPlaybackRef.current = false;
+					playbackRequestedAtRef.current = null;
+					setIsAudioPlaying(false);
+				}
 				setIsLoading(false);
 				setIsGenerating(false);
 				if (ttsAbortControllerRef.current === abortController) {

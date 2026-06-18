@@ -146,6 +146,26 @@ describe('useAssistantAudio', () => {
 		expect(harness.setIsGenerating).toHaveBeenCalledWith(false);
 	});
 
+	test('keeps audio activity active while handing generation off to playback', async () => {
+		let resolveFetch!: (response: Response) => void;
+		jest.mocked(global.fetch).mockReturnValue(
+			new Promise<Response>((resolve) => {
+				resolveFetch = resolve;
+			}),
+		);
+		const harness = createHarness();
+
+		const playPromise = harness.api.playAssistantAudio('Bez skoku stanu');
+		await Promise.resolve();
+
+		expect(harness.state.isAudioPlaying).toBe(true);
+
+		resolveFetch(new Response('mp3-data', { status: 200 }));
+		await playPromise;
+
+		expect(harness.state.isAudioPlaying).toBe(true);
+	});
+
 	test('plays TTS audio from an object URL on web', async () => {
 		Platform.OS = 'web';
 		const objectUrl = 'blob:tts-audio';
@@ -186,6 +206,7 @@ describe('useAssistantAudio', () => {
 		expect(harness.onServiceError).not.toHaveBeenCalled();
 		expect(harness.setIsLoading).toHaveBeenLastCalledWith(false);
 		expect(harness.setIsGenerating).toHaveBeenCalledWith(false);
+		expect(harness.state.isAudioPlaying).toBe(false);
 	});
 
 	test('treats 401 and 403 responses as OpenAI key errors', async () => {
@@ -219,6 +240,7 @@ describe('useAssistantAudio', () => {
 		);
 		expect(harness.onOpenAiKeyError).not.toHaveBeenCalled();
 		expect(mockAudioPlayer.play).not.toHaveBeenCalled();
+		expect(harness.state.isAudioPlaying).toBe(false);
 	});
 
 	test('pauses current playback only once when stopped repeatedly', async () => {
@@ -235,6 +257,21 @@ describe('useAssistantAudio', () => {
 		harness.api.stopAssistantAudio();
 
 		expect(mockAudioPlayer.pause).toHaveBeenCalledTimes(1);
+		expect(harness.state.isAudioPlaying).toBe(false);
+	});
+
+	test('ignores a stop race after Expo has already released the player', () => {
+		mockAudioPlayer.playing = true;
+		mockAudioPlayer.pause.mockImplementation(() => {
+			throw new Error('Cannot use shared object that was already released');
+		});
+		const harness = createHarness();
+
+		expect(() => harness.api.stopAssistantAudio()).not.toThrow();
+		expect(console.log).not.toHaveBeenCalledWith(
+			'Handled TTS player stop error:',
+			expect.anything(),
+		);
 		expect(harness.state.isAudioPlaying).toBe(false);
 	});
 });
