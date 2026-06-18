@@ -93,7 +93,7 @@ export default function ChatScreen() {
 	const sessionKey = `${deviceId ?? ''}:${chatSession ?? ''}:${threadId ?? ''}`;
 	const currentSource = deviceName || 'Wybierz maszynę';
 
-	const [isLoading, setIsLoading] = useState<boolean>(true);
+	const [isLoading, setIsLoading] = useState<boolean>(() => Boolean(threadId));
 	const [isGenerating, setIsGenerating] = useState<boolean>(false);
 	const [availableFiles, setAvailableFiles] = useState<AvailableFile[]>([]);
 	const [isAvailableFilesLoading, setIsAvailableFilesLoading] = useState<boolean>(true);

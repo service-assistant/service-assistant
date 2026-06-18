@@ -414,6 +414,7 @@ describe('tab screens', () => {
 		);
 		expect(mockUseMicrophone).toHaveBeenCalledWith(
 			expect.objectContaining({
+				isLoading: false,
 				isSpeechInputUnavailable: false,
 				onStopExternal: expect.any(Function),
 				onTranscript: expect.any(Function),
