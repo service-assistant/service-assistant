@@ -9,6 +9,7 @@ from .chunk import ChunkRead
 from .device import DeviceCreate, DeviceRead, DeviceUpdate
 from .device_type import DeviceTypeCreate, DeviceTypeRead, DeviceTypeUpdate
 from .message import MessageCreate, MessageRead, TranscriptResponse
+from .tts import TtsRequest
 
 __all__ = [
     "AttachmentRead",
@@ -27,4 +28,5 @@ __all__ = [
     "MessageRead",
     "ThreadCreate",
     "TranscriptResponse",
+    "TtsRequest",
 ]
