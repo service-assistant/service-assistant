@@ -6,9 +6,9 @@ from app.services.tts import (
     PCM_CHANNELS,
     PCM_SAMPLE_RATE,
     PCM_SAMPLE_WIDTH,
+    _extract_b64_audio,
     extract_sentences,
     pcm_to_wav,
-    stream_synthesize_pcm_chunks,
     synthesize_pcm,
 )
 
@@ -65,6 +65,33 @@ def test_should_wrap_pcm_audio_as_wav():
     assert wav[-4:] == b"\x01\x02\x03\x04"
 
 
+def test_should_extract_audio_from_current_interactions_step_shape():
+    b64_audio = _extract_b64_audio(
+        {
+            "created": 123,
+            "id": "interaction-id",
+            "model": "gemini-2.5-flash-preview-tts",
+            "object": "interaction",
+            "service_tier": "default",
+            "status": "completed",
+            "steps": [
+                {
+                    "id": "step-id",
+                    "status": "completed",
+                    "output_audio": {
+                        "data": "AQIDBA==",
+                        "mime_type": "audio/pcm",
+                    },
+                }
+            ],
+            "updated": 124,
+            "usage": {},
+        }
+    )
+
+    assert b64_audio == "AQIDBA=="
+
+
 async def test_should_call_gemini_interactions_api_for_tts(mocker):
     captured: dict = {}
 
@@ -87,7 +114,7 @@ async def test_should_call_gemini_interactions_api_for_tts(mocker):
                     }
                 ],
                 "object": "interaction",
-                "model": "gemini-3.1-flash-tts-preview",
+                "model": "gemini-2.5-flash-preview-tts",
             }
 
     class FakeAsyncClient:
@@ -119,7 +146,7 @@ async def test_should_call_gemini_interactions_api_for_tts(mocker):
         azure_openai_api_version="2024-01-01",
         attachments_dir="/tmp",
         gemini_api_key="gemini-key",
-        gemini_tts_model="gemini-3.1-flash-tts-preview",
+        gemini_tts_model="gemini-2.5-flash-preview-tts",
         gemini_tts_voice="Algenib",
     )
 
@@ -129,7 +156,7 @@ async def test_should_call_gemini_interactions_api_for_tts(mocker):
     assert captured["url"] == GEMINI_INTERACTIONS_URL
     assert captured["headers"]["x-goog-api-key"] == "gemini-key"
     assert captured["json"] == {
-        "model": "gemini-3.1-flash-tts-preview",
+        "model": "gemini-2.5-flash-preview-tts",
         "input": "Dzien dobry",
         "response_format": {"type": "audio"},
         "generation_config": {
@@ -137,62 +164,3 @@ async def test_should_call_gemini_interactions_api_for_tts(mocker):
         },
     }
 
-
-async def test_should_stream_gemini_tts_audio_chunks(mocker):
-    captured: dict = {}
-
-    class FakeStreamResponse:
-        status_code = 200
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            return None
-
-        async def aiter_lines(self):
-            yield 'data: {"delta":{"type":"audio","data":"AQI="}}'
-            yield 'data: {"delta":{"type":"audio","data":"AwQ="}}'
-            yield "data: [DONE]"
-
-    class FakeAsyncClient:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *args):
-            return None
-
-        def stream(self, method, url, headers, json):
-            captured["method"] = method
-            captured["url"] = url
-            captured["headers"] = headers
-            captured["json"] = json
-            return FakeStreamResponse()
-
-    mocker.patch("app.services.tts.httpx.AsyncClient", FakeAsyncClient)
-    settings = Settings(
-        env="test",
-        database_url="postgresql+psycopg://postgres:postgres@localhost/test",
-        auth_token="token",
-        azure_openai_endpoint="https://azure.example.test",
-        azure_openai_api_key="azure-key",
-        azure_openai_embeddings_deployment="embedding",
-        openai_api_key="openai-key",
-        openai_chat_model="gpt-4o-mini",
-        azure_openai_api_version="2024-01-01",
-        attachments_dir="/tmp",
-        gemini_api_key="gemini-key",
-        gemini_tts_model="gemini-3.1-flash-tts-preview",
-        gemini_tts_voice="Algenib",
-    )
-
-    chunks = [chunk async for chunk in stream_synthesize_pcm_chunks("Dzien dobry", settings)]
-
-    assert chunks == [b"\x01\x02", b"\x03\x04"]
-    assert captured["method"] == "POST"
-    assert captured["url"] == GEMINI_INTERACTIONS_URL
-    assert captured["headers"]["Api-Revision"] == "2026-05-20"
-    assert captured["json"]["stream"] is True
