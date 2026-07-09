@@ -9,34 +9,6 @@ const mockAudioPlayer = {
 };
 const mockUseAudioPlayer = jest.fn(() => mockAudioPlayer);
 const mockWriteAsStringAsync = jest.fn();
-let mockIsPcmAudioPlaybackAvailable = false;
-const mockStartPcmAudioPlayback = jest.fn(() => Promise.resolve());
-const mockEnqueuePcmAudioPlaybackChunk = jest.fn(() => Promise.resolve());
-const mockStopPcmAudioPlayback = jest.fn(() => Promise.resolve());
-
-class MockEventSource {
-	static instances: MockEventSource[] = [];
-	url: string;
-	options: Record<string, unknown>;
-	close = jest.fn();
-	private listeners: Record<string, Array<(event: Record<string, unknown>) => void>> = {};
-
-	constructor(url: string, options: Record<string, unknown>) {
-		this.url = url;
-		this.options = options;
-		MockEventSource.instances.push(this);
-	}
-
-	addEventListener(eventName: string, listener: (event: Record<string, unknown>) => void) {
-		this.listeners[eventName] = [...(this.listeners[eventName] || []), listener];
-	}
-
-	emit(eventName: string, event: Record<string, unknown>) {
-		for (const listener of this.listeners[eventName] || []) {
-			listener(event);
-		}
-	}
-}
 
 jest.mock('react', () => ({
 	useCallback: (callback: unknown) => callback,
@@ -74,20 +46,6 @@ jest.mock('expo-file-system/legacy', () => ({
 		Base64: 'base64',
 	},
 	writeAsStringAsync: mockWriteAsStringAsync,
-}));
-
-jest.mock('react-native-sse', () => ({
-	__esModule: true,
-	default: MockEventSource,
-}));
-
-jest.mock('@/modules/audio-stream', () => ({
-	get isPcmAudioPlaybackAvailable() {
-		return mockIsPcmAudioPlaybackAvailable;
-	},
-	startPcmAudioPlayback: mockStartPcmAudioPlayback,
-	enqueuePcmAudioPlaybackChunk: mockEnqueuePcmAudioPlaybackChunk,
-	stopPcmAudioPlayback: mockStopPcmAudioPlayback,
 }));
 
 jest.mock('@/utils/api-config', () => ({
@@ -136,11 +94,6 @@ describe('useAssistantAudio', () => {
 		mockAudioPlayer.replace.mockReset();
 		mockUseAudioPlayer.mockClear();
 		mockWriteAsStringAsync.mockReset();
-		mockIsPcmAudioPlaybackAvailable = false;
-		mockStartPcmAudioPlayback.mockClear();
-		mockEnqueuePcmAudioPlaybackChunk.mockClear();
-		mockStopPcmAudioPlayback.mockClear();
-		MockEventSource.instances = [];
 		process.env.EXPO_PUBLIC_AUTH_TOKEN = 'test-token';
 		global.fetch = jest.fn();
 		jest.spyOn(console, 'log').mockImplementation(() => {});
@@ -237,35 +190,39 @@ describe('useAssistantAudio', () => {
 		expect(mockAudioPlayer.play).toHaveBeenCalled();
 	});
 
-	test('streams TTS audio to native PCM playback on Android', async () => {
+	test('requests server TTS audio as wav on Android', async () => {
 		Platform.OS = 'android';
-		mockIsPcmAudioPlaybackAvailable = true;
+		jest.mocked(global.fetch).mockResolvedValue(
+			new Response('wav-data', {
+				status: 200,
+				headers: { 'content-type': 'audio/wav' },
+			}),
+		);
 		const harness = createHarness();
 
-		const playPromise = harness.api.playAssistantAudio('Stream audio');
-		await Promise.resolve();
+		await harness.api.playAssistantAudio('Android audio');
 
-		expect(mockStartPcmAudioPlayback).toHaveBeenCalled();
-		expect(MockEventSource.instances).toHaveLength(1);
-		expect(MockEventSource.instances[0].url).toBe('https://api.example.test/api/tts/stream');
-		expect(MockEventSource.instances[0].options).toMatchObject({
-			method: 'POST',
-			headers: {
-				Accept: 'text/event-stream',
-				Authorization: 'Bearer test-token',
-				'Content-Type': 'application/json',
-			},
-			body: JSON.stringify({ text: 'Stream audio' }),
-		});
-		expect(global.fetch).not.toHaveBeenCalled();
-
-		MockEventSource.instances[0].emit('audio_chunk', { data: 'AQIDBA==' });
-		await Promise.resolve();
-		MockEventSource.instances[0].emit('audio_done', { data: '4' });
-		await playPromise;
-
-		expect(mockEnqueuePcmAudioPlaybackChunk).toHaveBeenCalledWith('AQIDBA==');
-		expect(MockEventSource.instances[0].close).toHaveBeenCalled();
+		expect(global.fetch).toHaveBeenCalledWith(
+			'https://api.example.test/api/tts',
+			expect.objectContaining({
+				method: 'POST',
+				headers: {
+					Accept: 'audio/wav',
+					Authorization: 'Bearer test-token',
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({ text: 'Android audio' }),
+			}),
+		);
+		expect(mockWriteAsStringAsync).toHaveBeenCalledWith(
+			'file:///documents/assistant_response.wav',
+			'd2F2LWRhdGE=',
+			{ encoding: 'base64' },
+		);
+		expect(mockAudioPlayer.replace).toHaveBeenCalledWith(
+			'file:///documents/assistant_response.wav',
+		);
+		expect(mockAudioPlayer.play).toHaveBeenCalled();
 		expect(harness.setIsGenerating).toHaveBeenCalledWith(false);
 	});
 
