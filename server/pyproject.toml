@@ -22,6 +22,8 @@ dependencies = [
     "rank-bm25 (>=0.2.2,<0.3.0)",
     "websockets (>=13.0,<15.0)",
     "psycopg[binary] (>=3.3.4,<4.0.0)",
+    "azure-ai-documentintelligence (>=1.0.2,<2.0.0)",
+    "bs4 (>=0.0.2,<0.0.3)",
 ]
 
 [dependency-groups]
