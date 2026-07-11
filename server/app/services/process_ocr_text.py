@@ -1,4 +1,3 @@
-
 import re
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString, Tag
@@ -102,16 +101,10 @@ def html_one_table_to_markdown(table: Tag) -> str:
         r.extend([""] * (max_cols - len(r)))
 
     # remove empty columns and rows
-    keep_cols = [
-        i for i in range(max_cols)
-        if any(row[i].strip() for row in rows)
-    ]
+    keep_cols = [i for i in range(max_cols) if any(row[i].strip() for row in rows)]
     rows = [[row[i] for i in keep_cols] for row in rows]
 
-    rows = [
-        row for row in rows
-        if any(cell.strip() for cell in row)
-    ]
+    rows = [row for row in rows if any(cell.strip() for cell in row)]
 
     # change to markdown
     header = rows[0]
@@ -141,7 +134,7 @@ def process_ocr_text(text: str) -> str:
     """
     Remove page comments and picture text, convert html tables to markdown
     """
-    
+
     formatted_content = re.sub(r"<!--\s*Page.*?-->", "", text)
     formatted_content = remove_picture_text(formatted_content)
     formatted_content = html_tables_to_markdown(formatted_content)

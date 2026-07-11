@@ -49,20 +49,25 @@ async def ingest_pdf_to_attachment(
     seen_chunks: set[str] = set()
 
     for page_num, page in enumerate(doc.pages()):
-            
         markdown_text = ""
-        
+
         if page.get_text().strip():
             # extract text
-            markdown_text = str(pymupdf4llm.to_markdown(
-                pdf_path, pages=[page_num], header=False, footer=False, use_ocr = False
-            ))
+            markdown_text = str(
+                pymupdf4llm.to_markdown(
+                    pdf_path,
+                    pages=[page_num],
+                    header=False,
+                    footer=False,
+                    use_ocr=False,
+                )
+            )
         else:
             # perform OCR
             poller = ocr_client.begin_analyze_document(
                 "prebuilt-layout",
                 body=page.get_pixmap().tobytes("png"),
-                output_content_format=DocumentContentFormat.MARKDOWN
+                output_content_format=DocumentContentFormat.MARKDOWN,
             )
 
             result = poller.result()
