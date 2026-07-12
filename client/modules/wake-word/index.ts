@@ -26,7 +26,7 @@ const nativeModule = requireOptionalNativeModule<WakeWordNativeModule>('WakeWord
 export const isWakeWordAvailable = nativeModule !== null;
 
 export const startWakeWordDetection = (
-	threshold = 0.915,
+	threshold = 0.49,
 	requiredHits = 2,
 	cooldownMillis = 1500,
 ) => nativeModule?.start(threshold, requiredHits, cooldownMillis) ?? Promise.resolve();
