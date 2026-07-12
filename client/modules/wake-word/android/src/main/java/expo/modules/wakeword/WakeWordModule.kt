@@ -21,6 +21,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.tanh
 
 private const val SAMPLE_RATE = 16_000
 private const val WINDOW_SAMPLES = 24_000
@@ -28,7 +29,8 @@ private const val HOP_SAMPLES = 4_000
 private const val FFT_SIZE = 512
 private const val FFT_BINS = FFT_SIZE / 2 + 1
 private const val SPECTROGRAM_FRAMES = 151
-private const val MIN_ACTIVE_RMS = 1e-4f
+private const val MIN_ACTIVE_RMS = 2e-3f
+private const val MIN_ACTIVE_FRAME_RATIO = 0.06f
 private const val MAX_STREAMING_THRESHOLD = 1.0f
 private const val LOG_TAG = "WakeWord"
 
@@ -192,20 +194,41 @@ private class FiksoDetector(input: DataInputStream) {
   }
 
   fun predict(audio: FloatArray): Float {
-    var squareSum = 0.0
-    for (sample in audio) squareSum += sample * sample
-    if (sqrt(squareSum / audio.size) < MIN_ACTIVE_RMS) return 0f
+    if (!isActiveAudio(audio)) return 0f
 
     var features = logMelSpectrogram(audio)
-    features = relu(batchNorm(conv(features, 1, 40, SPECTROGRAM_FRAMES, tensor("cnn.0.weight"), tensor("cnn.0.bias"), 12), 12, tensor("cnn.1.weight"), tensor("cnn.1.bias"), tensor("cnn.1.running_mean"), tensor("cnn.1.running_var")))
-    features = maxPool(features, 12, 40, SPECTROGRAM_FRAMES)
-    features = relu(batchNorm(conv(features, 12, 20, 75, tensor("cnn.4.weight"), tensor("cnn.4.bias"), 24), 24, tensor("cnn.5.weight"), tensor("cnn.5.bias"), tensor("cnn.5.running_mean"), tensor("cnn.5.running_var")))
-    features = maxPool(features, 24, 20, 75)
-    features = relu(conv(features, 24, 10, 37, tensor("cnn.8.weight"), tensor("cnn.8.bias"), 32))
-    features = adaptiveAveragePool(features, 32, 10, 37, 4, 8)
-    val hidden = relu(linear(features, tensor("head.2.weight"), tensor("head.2.bias"), 64))
-    val logit = linear(hidden, tensor("head.5.weight"), tensor("head.5.bias"), 1)[0]
+    features = relu(batchNorm(conv(features, 1, 40, SPECTROGRAM_FRAMES, tensor("cnn.0.weight"), tensor("cnn.0.bias"), 24), 24, tensor("cnn.1.weight"), tensor("cnn.1.bias"), tensor("cnn.1.running_mean"), tensor("cnn.1.running_var")))
+    features = maxPool(features, 24, 40, SPECTROGRAM_FRAMES)
+    features = relu(batchNorm(conv(features, 24, 20, 75, tensor("cnn.4.weight"), tensor("cnn.4.bias"), 48), 48, tensor("cnn.5.weight"), tensor("cnn.5.bias"), tensor("cnn.5.running_mean"), tensor("cnn.5.running_var")))
+    features = maxPool(features, 48, 20, 75)
+    features = relu(batchNorm(conv(features, 48, 10, 37, tensor("cnn.8.weight"), tensor("cnn.8.bias"), 64), 64, tensor("cnn.9.weight"), tensor("cnn.9.bias"), tensor("cnn.9.running_mean"), tensor("cnn.9.running_var")))
+    val sequence = meanFrequency(features, 64, 10, 37)
+    val temporal = gru(sequence, 37, 64, 64, tensor("temporal.weight_ih_l0"), tensor("temporal.weight_hh_l0"), tensor("temporal.bias_ih_l0"), tensor("temporal.bias_hh_l0"))
+    val hidden = relu(linear(temporal, tensor("head.1.weight"), tensor("head.1.bias"), 64))
+    val logit = linear(hidden, tensor("head.4.weight"), tensor("head.4.bias"), 1)[0]
     return (1.0 / (1.0 + exp(-logit.toDouble()))).toFloat()
+  }
+
+  private fun isActiveAudio(audio: FloatArray): Boolean {
+    var squareSum = 0.0
+    for (sample in audio) squareSum += sample * sample
+    if (sqrt(squareSum / audio.size) < MIN_ACTIVE_RMS) return false
+
+    val frameSamples = (SAMPLE_RATE * 0.03f).toInt()
+    val hopSamples = (SAMPLE_RATE * 0.01f).toInt()
+    var activeFrames = 0
+    var totalFrames = 0
+    var start = 0
+    while (start + frameSamples <= audio.size) {
+      var frameSquareSum = 0.0
+      for (index in start until start + frameSamples) {
+        frameSquareSum += audio[index] * audio[index]
+      }
+      if (sqrt(frameSquareSum / frameSamples) >= MIN_ACTIVE_RMS) activeFrames++
+      totalFrames++
+      start += hopSamples
+    }
+    return activeFrames.toFloat() / max(totalFrames, 1) >= MIN_ACTIVE_FRAME_RATIO
   }
 
   private fun logMelSpectrogram(audio: FloatArray): FloatArray {
@@ -333,6 +356,63 @@ private class FiksoDetector(input: DataInputStream) {
     }
     return output
   }
+
+  private fun meanFrequency(input: FloatArray, channels: Int, height: Int, width: Int): FloatArray {
+    val output = FloatArray(width * channels)
+    for (column in 0 until width) {
+      for (channel in 0 until channels) {
+        var sum = 0f
+        for (row in 0 until height) {
+          sum += input[(channel * height + row) * width + column]
+        }
+        output[column * channels + channel] = sum / height
+      }
+    }
+    return output
+  }
+
+  private fun gru(
+    sequence: FloatArray,
+    steps: Int,
+    inputSize: Int,
+    hiddenSize: Int,
+    weightInput: FloatArray,
+    weightHidden: FloatArray,
+    biasInput: FloatArray,
+    biasHidden: FloatArray
+  ): FloatArray {
+    val hidden = FloatArray(hiddenSize)
+    val inputGates = FloatArray(hiddenSize * 3)
+    val hiddenGates = FloatArray(hiddenSize * 3)
+
+    for (step in 0 until steps) {
+      val stepOffset = step * inputSize
+      for (gateIndex in 0 until hiddenSize * 3) {
+        var inputValue = biasInput[gateIndex]
+        for (index in 0 until inputSize) {
+          inputValue += sequence[stepOffset + index] * weightInput[gateIndex * inputSize + index]
+        }
+        inputGates[gateIndex] = inputValue
+
+        var hiddenValue = biasHidden[gateIndex]
+        for (index in 0 until hiddenSize) {
+          hiddenValue += hidden[index] * weightHidden[gateIndex * hiddenSize + index]
+        }
+        hiddenGates[gateIndex] = hiddenValue
+      }
+
+      for (index in 0 until hiddenSize) {
+        val reset = sigmoid(inputGates[index] + hiddenGates[index])
+        val update = sigmoid(inputGates[hiddenSize + index] + hiddenGates[hiddenSize + index])
+        val candidate = tanh((inputGates[2 * hiddenSize + index] + reset * hiddenGates[2 * hiddenSize + index]).toDouble()).toFloat()
+        hidden[index] = (1f - update) * candidate + update * hidden[index]
+      }
+    }
+
+    return hidden
+  }
+
+  private fun sigmoid(value: Float) = (1.0 / (1.0 + exp(-value.toDouble()))).toFloat()
 
   private fun linear(input: FloatArray, weights: FloatArray, bias: FloatArray, outputSize: Int): FloatArray {
     val output = FloatArray(outputSize)

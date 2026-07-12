@@ -120,42 +120,52 @@ class LogMelSpectrogram(nn.Module):
 
 
 class WakeWordCNN(nn.Module):
-    """Small CNN classifier over short log-mel windows."""
+    """Compact CNN + GRU classifier over short log-mel windows."""
 
-    def __init__(self, config: AudioConfig | None = None):
+    def __init__(self, config: AudioConfig | None = None, use_log_rms: bool = False):
         super().__init__()
         self.config = config or AudioConfig()
+        self.use_log_rms = use_log_rms
         self.features = LogMelSpectrogram(self.config)
         self.cnn = nn.Sequential(
-            nn.Conv2d(1, 12, kernel_size=3, padding=1),
-            nn.BatchNorm2d(12),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(12, 24, kernel_size=3, padding=1),
+            nn.Conv2d(1, 24, kernel_size=3, padding=1),
             nn.BatchNorm2d(24),
             nn.ReLU(),
             nn.MaxPool2d(2),
-            nn.Conv2d(24, 32, kernel_size=3, padding=1),
+            nn.Conv2d(24, 48, kernel_size=3, padding=1),
+            nn.BatchNorm2d(48),
             nn.ReLU(),
-            nn.AdaptiveAvgPool2d((4, 8)),
+            nn.MaxPool2d(2),
+            nn.Conv2d(48, 64, kernel_size=3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
         )
+        self.temporal = nn.GRU(input_size=64, hidden_size=64, batch_first=True)
         self.head = nn.Sequential(
-            nn.Flatten(),
-            nn.Dropout(0.15),
-            nn.Linear(32 * 4 * 8, 64),
+            nn.Dropout(0.20),
+            nn.Linear(65 if use_log_rms else 64, 64),
             nn.ReLU(),
-            nn.Dropout(0.15),
+            nn.Dropout(0.20),
             nn.Linear(64, 1),
         )
 
     def forward(self, audio: torch.Tensor) -> torch.Tensor:
-        return self.head(self.cnn(self.features(audio))).squeeze(1)
+        encoded = self.cnn(self.features(audio))
+        sequence = encoded.mean(dim=2).transpose(1, 2)
+        _, hidden = self.temporal(sequence)
+        representation = hidden[-1]
+        if self.use_log_rms:
+            rms = torch.sqrt(audio.pow(2).mean(dim=1).clamp_min(1e-9))
+            # Roughly: -40 dBFS -> 0, -60 dBFS -> -1, -20 dBFS -> +1.
+            log_rms = ((20.0 * torch.log10(rms) + 40.0) / 20.0).clamp(-2.0, 2.0)
+            representation = torch.cat([representation, log_rms.unsqueeze(1)], dim=1)
+        return self.head(representation).squeeze(1)
 
 
 def load_checkpoint(path: str | Path, device: str = "cpu") -> tuple[WakeWordCNN, dict]:
     checkpoint = torch.load(path, map_location=device, weights_only=False)
     config = AudioConfig(**checkpoint["audio_config"])
-    model = WakeWordCNN(config)
+    model = WakeWordCNN(config, use_log_rms=checkpoint.get("use_log_rms", False))
     model.load_state_dict(checkpoint["model_state"])
     model.to(device).eval()
     return model, checkpoint
