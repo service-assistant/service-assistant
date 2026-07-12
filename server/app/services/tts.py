@@ -1,7 +1,7 @@
 import base64
+import binascii
 import io
 import math
-import re
 import wave
 from typing import Any, Final
 
@@ -17,9 +17,6 @@ PCM_SAMPLE_WIDTH: Final[int] = 2  # s16le
 GEMINI_AUDIO_TOKENS_PER_SECOND: Final[int] = 25
 MAX_ERROR_DETAIL_CHARS: Final[int] = 500
 
-_SENTENCE_END: Final = re.compile(r"(?<=[.!?…])\s+")
-_MIN_SENTENCE_CHARS: Final[int] = 20
-
 
 class TtsError(Exception):
     pass
@@ -31,10 +28,14 @@ def _truncate_error_detail(detail: str) -> str:
     return f"{detail[:MAX_ERROR_DETAIL_CHARS]}..."
 
 
-def _extract_b64_audio(data: dict[str, Any]) -> str:
+def _extract_b64_audio(data: Any) -> str:
+    if not isinstance(data, dict):
+        raise TtsError("Unexpected Gemini TTS response shape")
+
     output_audio = data.get("output_audio")
     if isinstance(output_audio, dict) and isinstance(output_audio.get("data"), str):
-        return output_audio["data"]
+        if output_audio["data"]:
+            return output_audio["data"]
 
     b64_audio = _find_b64_audio(data)
     if b64_audio:
@@ -80,18 +81,6 @@ def _find_b64_audio(value: Any, *, in_audio_context: bool = False) -> str | None
     return None
 
 
-def extract_sentences(buffer: str) -> tuple[list[str], str]:
-    """Return (complete_sentences, remaining_buffer) splitting on sentence boundaries."""
-    sentences: list[str] = []
-    pos = 0
-    for m in _SENTENCE_END.finditer(buffer):
-        s = buffer[pos : m.start()].strip()
-        if len(s) >= _MIN_SENTENCE_CHARS:
-            sentences.append(s)
-            pos = m.end()
-    return sentences, buffer[pos:]
-
-
 def _truncate_for_tts(text: str, max_chars: int) -> str:
     text = text.strip()
     if len(text) <= max_chars:
@@ -116,15 +105,18 @@ async def synthesize_pcm(text: str, settings: Settings) -> bytes:
         },
     }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(
-            GEMINI_INTERACTIONS_URL,
-            headers={
-                "x-goog-api-key": settings.gemini_api_key,
-                "Content-Type": "application/json",
-            },
-            json=payload,
-        )
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                GEMINI_INTERACTIONS_URL,
+                headers={
+                    "x-goog-api-key": settings.gemini_api_key,
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+    except httpx.HTTPError as exc:
+        raise TtsError(f"Gemini TTS request failed: {exc}") from exc
 
     if response.status_code != 200:
         raise TtsError(
@@ -132,10 +124,18 @@ async def synthesize_pcm(text: str, settings: Settings) -> bytes:
             f"{_truncate_error_detail(response.text)}"
         )
 
-    data = response.json()
-    b64_audio = _extract_b64_audio(data)
+    try:
+        data = response.json()
+    except (ValueError, TypeError) as exc:
+        raise TtsError("Invalid JSON in Gemini TTS response") from exc
 
-    return base64.b64decode(b64_audio)
+    try:
+        b64_audio = _extract_b64_audio(data)
+        return base64.b64decode(b64_audio, validate=True)
+    except TtsError:
+        raise
+    except (binascii.Error, ValueError, TypeError) as exc:
+        raise TtsError("Invalid Base64 audio in Gemini TTS response") from exc
 
 
 def pcm_duration_seconds(pcm_bytes: int) -> float:

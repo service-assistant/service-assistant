@@ -1,3 +1,6 @@
+from pathlib import Path
+
+import httpx
 import pytest
 
 from app.config import Settings
@@ -6,51 +9,11 @@ from app.services.tts import (
     PCM_CHANNELS,
     PCM_SAMPLE_RATE,
     PCM_SAMPLE_WIDTH,
+    TtsError,
     _extract_b64_audio,
-    extract_sentences,
     pcm_to_wav,
     synthesize_pcm,
 )
-
-
-@pytest.mark.parametrize(
-    "buffer,expected_sentences,expected_remainder",
-    [
-        (
-            "This is the first sentence. And this is the second one. Still streaming",
-            ["This is the first sentence.", "And this is the second one."],
-            "Still streaming",
-        ),
-        (
-            "Only one long enough sentence. ",
-            ["Only one long enough sentence."],
-            "",
-        ),
-        (
-            "No boundary here just keeps going",
-            [],
-            "No boundary here just keeps going",
-        ),
-        (
-            # "Short." is < 20 chars so it merges with the next sentence
-            "Short. This sentence is long enough to pass the minimum length check. Tail",
-            ["Short. This sentence is long enough to pass the minimum length check."],
-            "Tail",
-        ),
-        (
-            # Both sentences are >= 20 chars so each is emitted independently
-            "Question mark works? Yes it does work fine. Remainder",
-            ["Question mark works?", "Yes it does work fine."],
-            "Remainder",
-        ),
-    ],
-)
-def test_should_extract_sentences_correctly(
-    buffer, expected_sentences, expected_remainder
-):
-    sentences, remainder = extract_sentences(buffer)
-    assert sentences == expected_sentences
-    assert remainder == expected_remainder
 
 
 def test_should_wrap_pcm_audio_as_wav():
@@ -144,7 +107,7 @@ async def test_should_call_gemini_interactions_api_for_tts(mocker):
         openai_api_key="openai-key",
         openai_chat_model="gpt-4o-mini",
         azure_openai_api_version="2024-01-01",
-        attachments_dir="/tmp",
+        attachments_dir=Path("/tmp"),
         gemini_api_key="gemini-key",
         gemini_tts_model="gemini-2.5-flash-preview-tts",
         gemini_tts_voice="Algenib",
@@ -164,3 +127,66 @@ async def test_should_call_gemini_interactions_api_for_tts(mocker):
         },
     }
 
+
+@pytest.mark.parametrize(
+    "failure,expected_message",
+    [
+        (
+            httpx.ReadTimeout("Gemini timed out"),
+            "Gemini TTS request failed: Gemini timed out",
+        ),
+        (
+            ValueError("response is not JSON"),
+            "Invalid JSON in Gemini TTS response",
+        ),
+        (
+            {"steps": [{"output_audio": {"data": "not-base64"}}]},
+            "Invalid Base64 audio in Gemini TTS response",
+        ),
+    ],
+)
+async def test_should_wrap_gemini_failures_as_tts_error(
+    mocker, failure, expected_message
+):
+    class FakeResponse:
+        status_code = 200
+
+        def json(self):
+            if isinstance(failure, Exception):
+                raise failure
+            return failure
+
+    class FakeAsyncClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, *args, **kwargs):
+            if isinstance(failure, httpx.HTTPError):
+                raise failure
+            return FakeResponse()
+
+    mocker.patch("app.services.tts.httpx.AsyncClient", FakeAsyncClient)
+    settings = Settings(
+        env="test",
+        database_url="postgresql+psycopg://postgres:postgres@localhost/test",
+        auth_token="token",
+        azure_openai_endpoint="https://azure.example.test",
+        azure_openai_api_key="azure-key",
+        azure_openai_embeddings_deployment="embedding",
+        openai_api_key="openai-key",
+        openai_chat_model="gpt-4o-mini",
+        azure_openai_api_version="2024-01-01",
+        attachments_dir=Path("/tmp"),
+        gemini_api_key="gemini-key",
+        gemini_tts_model="gemini-2.5-flash-preview-tts",
+        gemini_tts_voice="Algenib",
+    )
+
+    with pytest.raises(TtsError, match=expected_message):
+        await synthesize_pcm("Dzien dobry", settings)
