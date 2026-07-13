@@ -19,7 +19,6 @@ This test confirms that the built APK:
 - EAS `preview` environment contains:
     - `EXPO_PUBLIC_AUTH_URL`
     - `EXPO_PUBLIC_AUTH_TOKEN`
-    - `EXPO_PUBLIC_OPENAI_API_KEY`
 - `client/eas.json` preview profile uses:
     - `environment: "preview"`
     - `android.buildType: "apk"`

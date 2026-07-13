@@ -14,6 +14,7 @@ from app.routers import (
     images,
     messages,
     threads,
+    tts,
 )
 
 from .config import get_settings
@@ -78,6 +79,7 @@ app.include_router(threads.router, prefix="/api/threads", tags=["Chat Threads"])
 app.include_router(messages.router, prefix="/api/messages", tags=["Messages"])
 app.include_router(chunks.router, prefix="/api/chunks", tags=["Chunks"])
 app.include_router(images.router, prefix="/api/images", tags=["Images"])
+app.include_router(tts.router, prefix="/api/tts", tags=["Text-to-Speech"])
 app.include_router(admin.router, prefix="/admin", tags=["Admin"])
 
 

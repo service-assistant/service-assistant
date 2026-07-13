@@ -69,7 +69,9 @@ const createDeferred = <T>() => {
 	return { promise, resolve };
 };
 
-const createHarness = (params: { currentThreadId?: number | null } = {}) => {
+const createHarness = (
+	params: { currentThreadId?: number | null; ttsEnabled?: boolean } = {},
+) => {
 	let currentThreadId = params.currentThreadId ?? null;
 	let messages: ChatMessageItem[] = [];
 	let isLoading = false;
@@ -110,6 +112,7 @@ const createHarness = (params: { currentThreadId?: number | null } = {}) => {
 		setIsGenerating,
 		setCurrentImage,
 		playAssistantAudio,
+		ttsEnabled: params.ttsEnabled,
 		onServiceError,
 		authTokenOverride: 'test-token',
 	});
@@ -216,6 +219,29 @@ describe('useChatApi', () => {
 		expect(harness.state.messages[0].text).toBe('Final answer ::warning check battery');
 		expect(harness.playAssistantAudio).toHaveBeenCalledWith('Final answer check battery');
 		expect(harness.state.isLoading).toBe(false);
+	});
+
+	test('does not start assistant audio when TTS is disabled', async () => {
+		const fetchMock = jest.mocked(global.fetch);
+		fetchMock
+			.mockResolvedValueOnce(createJsonResponse({ id: 123 }))
+			.mockResolvedValueOnce(createJsonResponse([]));
+		const harness = createHarness({ ttsEnabled: false });
+
+		const request = harness.api.askAPI('How do I start this device?');
+		await flushPromises();
+
+		MockEventSource.instances[0].emit('message', {
+			data: JSON.stringify({
+				id: 555,
+				content: 'Final answer ::warning check battery',
+				image_url: null,
+			}),
+		});
+		await request;
+
+		expect(harness.playAssistantAudio).not.toHaveBeenCalled();
+		expect(harness.setIsGenerating).toHaveBeenCalledWith(false);
 	});
 
 	test('preserves spaces at the beginning of streamed chunks', async () => {
