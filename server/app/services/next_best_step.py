@@ -308,8 +308,7 @@ async def build_followup_plan(
         remaining = [
             action
             for action in actions
-            if action.id in applicable_ids
-            and action.id != decision.completed_action_id
+            if action.id in applicable_ids and action.id != decision.completed_action_id
         ]
         if not remaining:
             return True, (

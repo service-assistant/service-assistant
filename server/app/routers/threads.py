@@ -255,13 +255,14 @@ async def create_message(
                 }
                 for chunk in latest_system_message.chunks
             ]
-            is_diagnostic_result, followup_plan = (
-                await next_best_step.build_followup_plan(
-                    [chunk["content"] for chunk in diagnostic_chunks],
-                    latest_system_message.content,
-                    body.content,
-                    settings,
-                )
+            (
+                is_diagnostic_result,
+                followup_plan,
+            ) = await next_best_step.build_followup_plan(
+                [chunk["content"] for chunk in diagnostic_chunks],
+                latest_system_message.content,
+                body.content,
+                settings,
             )
             if is_diagnostic_result:
                 retrieved_chunks = diagnostic_chunks

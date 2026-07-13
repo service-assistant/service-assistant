@@ -11,7 +11,7 @@ def test_should_show_only_first_next_best_step_to_technician():
         "1. Sprawdź parametry\n2. Wymień A5",
     )
 
-    prompt = messages[-1]["content"]
+    prompt = messages[-1].get("content")
     assert isinstance(prompt, str)
     assert "WYŁĄCZNIE pierwszą akcję" in prompt
     assert "Nie używaj sekcji ::next" in prompt

@@ -1,6 +1,7 @@
 import json
 from types import SimpleNamespace
 
+from app.config import Settings
 from app.services.next_best_step import (
     ActionMetadata,
     DiagnosticAction,
@@ -12,6 +13,13 @@ from app.services.next_best_step import (
     is_supported_question,
     rank_actions,
 )
+
+
+def _settings() -> Settings:
+    return Settings.model_construct(
+        openai_api_key="test",
+        openai_chat_model="test-model",
+    )
 
 
 def _action(action_id: str, **metadata) -> DiagnosticAction:
@@ -96,10 +104,8 @@ async def test_should_extract_metadata_with_llm_and_rank_actions(mocker):
     mock_client = mocker.MagicMock()
     mock_client.chat.completions.create = mocker.AsyncMock(return_value=response)
     mocker.patch("app.services.next_best_step.AsyncOpenAI", return_value=mock_client)
-    settings = SimpleNamespace(openai_api_key="test", openai_chat_model="test-model")
-
     actions = await extract_and_rank_actions(
-        ["|2:002|Sprawdź parametry|", "|2:002|Wymień A5|"], settings
+        ["|2:002|Sprawdź parametry|", "|2:002|Wymień A5|"], _settings()
     )
 
     assert [action.id for action in actions] == ["check_parameters", "replace_a5"]
@@ -143,7 +149,7 @@ async def test_should_remove_completed_action_and_rank_followup(mocker):
         ["Dokumentacja"],
         "Sprawdź parametry",
         "Jeden parametr jest zły",
-        SimpleNamespace(openai_api_key="test", openai_chat_model="test"),
+        _settings(),
     )
 
     assert is_result
@@ -175,7 +181,7 @@ async def test_should_not_capture_unrelated_message_as_diagnostic_result(mocker)
         ["Dokumentacja"],
         "Sprawdź parametry",
         "Jak wymienić koło?",
-        SimpleNamespace(openai_api_key="test", openai_chat_model="test"),
+        _settings(),
     )
 
     assert not is_result

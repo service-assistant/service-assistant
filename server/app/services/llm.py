@@ -188,9 +188,7 @@ def _messages(
             "Nie pokazuj wartości score ani metadanych. Nie stwierdzaj, że znaleziono "
             "konkretną przyczynę, dopóki wynik sprawdzenia jej nie potwierdzi."
         )
-    plan_section = (
-        f"\n\n{ranked_plan}\n\n{plan_instruction}" if ranked_plan else ""
-    )
+    plan_section = f"\n\n{ranked_plan}\n\n{plan_instruction}" if ranked_plan else ""
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         *history_messages,
