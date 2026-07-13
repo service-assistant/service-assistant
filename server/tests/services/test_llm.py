@@ -1,6 +1,21 @@
 import pytest
 
-from app.services.llm import _build_context, stream_query
+from app.services.llm import _build_context, _messages, stream_query
+
+
+def test_should_show_only_first_next_best_step_to_technician():
+    messages = _messages(
+        "Mam błąd 2:002",
+        "Dokumentacja",
+        [],
+        "1. Sprawdź parametry\n2. Wymień A5",
+    )
+
+    prompt = messages[-1]["content"]
+    assert isinstance(prompt, str)
+    assert "WYŁĄCZNIE pierwszą akcję" in prompt
+    assert "Nie używaj sekcji ::next" in prompt
+    assert "Nie wspominaj o żadnej kolejnej akcji" in prompt
 
 
 @pytest.fixture

@@ -69,7 +69,12 @@ const createDeferred = <T>() => {
 	return { promise, resolve };
 };
 
-const createHarness = (params: { currentThreadId?: number | null } = {}) => {
+const createHarness = (
+	params: {
+		currentThreadId?: number | null;
+		diagnosticMode2002Enabled?: boolean;
+	} = {},
+) => {
 	let currentThreadId = params.currentThreadId ?? null;
 	let messages: ChatMessageItem[] = [];
 	let isLoading = false;
@@ -109,6 +114,7 @@ const createHarness = (params: { currentThreadId?: number | null } = {}) => {
 		setIsLoading,
 		setIsGenerating,
 		setCurrentImage,
+		diagnosticMode2002Enabled: params.diagnosticMode2002Enabled,
 		playAssistantAudio,
 		onServiceError,
 		authTokenOverride: 'test-token',
@@ -178,7 +184,10 @@ describe('useChatApi', () => {
 				Accept: 'text/event-stream',
 				Authorization: 'Bearer test-token',
 			},
-			body: JSON.stringify({ content: 'How do I start this device?' }),
+			body: JSON.stringify({
+				content: 'How do I start this device?',
+				diagnostic_mode_2002: true,
+			}),
 		});
 
 		MockEventSource.instances[0].emit('chunk', {
@@ -216,6 +225,28 @@ describe('useChatApi', () => {
 		expect(harness.state.messages[0].text).toBe('Final answer ::warning check battery');
 		expect(harness.playAssistantAudio).toHaveBeenCalledWith('Final answer check battery');
 		expect(harness.state.isLoading).toBe(false);
+	});
+
+	test('sends the disabled 2:002 diagnostic mode to the server', async () => {
+		const harness = createHarness({
+			currentThreadId: 321,
+			diagnosticMode2002Enabled: false,
+		});
+
+		const request = harness.api.askAPI('Mam błąd 2:002');
+		await flushPromises();
+
+		expect(MockEventSource.instances[0].options).toMatchObject({
+			body: JSON.stringify({
+				content: 'Mam błąd 2:002',
+				diagnostic_mode_2002: false,
+			}),
+		});
+
+		MockEventSource.instances[0].emit('message', {
+			data: JSON.stringify({ content: 'Standardowa odpowiedź RAG.' }),
+		});
+		await request;
 	});
 
 	test('preserves spaces at the beginning of streamed chunks', async () => {
