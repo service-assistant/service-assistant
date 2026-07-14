@@ -87,6 +87,21 @@ async def admin_root(request: Request, settings: Settings = Depends(get_settings
     return RedirectResponse("/admin/login")
 
 
+@router.get(
+    "/next-best-step",
+    response_class=HTMLResponse,
+    dependencies=[Depends(_require_auth)],
+)
+async def get_next_best_step_visualization(request: Request):
+    return templates.TemplateResponse(
+        "admin/next_best_step.html",
+        {
+            "request": request,
+            "active": "next_best_step",
+        },
+    )
+
+
 @dataclass
 class AttachmentRow:
     attachment: Attachment

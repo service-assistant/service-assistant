@@ -131,6 +131,27 @@ async def test_should_send_message_and_return_assistant_reply(
     assert isinstance(message_data["id"], int)
 
 
+async def test_should_skip_2002_diagnostic_mode_when_client_disables_it(
+    client, session, mock_azure_embeddings, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    build_ranked_plan = mocker.patch(
+        "app.routers.threads.next_best_step.build_ranked_plan",
+        new=mocker.AsyncMock(return_value="should not be used"),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "Mam błąd 2:002", "diagnostic_mode_2002": False},
+    )
+
+    assert response.status_code == 200
+    build_ranked_plan.assert_not_awaited()
+
+
 async def test_should_store_user_message_before_reply(
     client, session, mock_azure_embeddings, mock_openai_llm
 ):

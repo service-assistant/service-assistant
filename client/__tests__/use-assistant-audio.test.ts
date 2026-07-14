@@ -53,8 +53,8 @@ jest.mock('@/utils/api-config', () => ({
 	AUTH_URL_CONFIG_ERROR: null,
 }));
 
-import { Platform } from 'react-native';
 import { AUTH_SERVICE_FEATURE } from '@/utils/auth-errors';
+import { Platform } from 'react-native';
 import { useAssistantAudio } from '../hooks/use-assistant-audio';
 
 const originalAuthToken = process.env.EXPO_PUBLIC_AUTH_TOKEN;

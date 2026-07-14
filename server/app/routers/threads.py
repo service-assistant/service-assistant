@@ -18,7 +18,7 @@ from app.schemas import (
     ThreadCreate,
     TranscriptResponse,
 )
-from app.services import retrieval, llm, stt
+from app.services import retrieval, llm, next_best_step, stt
 from fastapi import WebSocket, WebSocketDisconnect
 from contextlib import suppress
 
@@ -178,6 +178,53 @@ async def create_message(
 
     context_chunks = [chunk["content"] for chunk in retrieved_chunks]
 
+    ranked_plan = ""
+    if body.diagnostic_mode_2002 and next_best_step.is_supported_question(body.content):
+        ranked_plan = await next_best_step.build_ranked_plan(context_chunks, settings)
+    elif (
+        body.diagnostic_mode_2002
+        and latest_system_message
+        and latest_system_message.chunks
+    ):
+        recent_messages = list(
+            (
+                await session.scalars(
+                    select(Message)
+                    .where(Message.thread_id == thread.id)
+                    .order_by(Message.created_at.desc())
+                    .limit(8)
+                )
+            ).all()
+        )
+        has_recent_2002_question = any(
+            message.sender == MessageSender.user
+            and next_best_step.is_supported_question(message.content)
+            for message in recent_messages
+        )
+        if has_recent_2002_question:
+            diagnostic_chunks = [
+                {
+                    "id": chunk.id,
+                    "content": chunk.content,
+                    "attachment_id": chunk.attachment_id,
+                    "extra_metadata": chunk.extra_metadata,
+                }
+                for chunk in latest_system_message.chunks
+            ]
+            (
+                is_diagnostic_result,
+                followup_plan,
+            ) = await next_best_step.build_followup_plan(
+                [chunk["content"] for chunk in diagnostic_chunks],
+                latest_system_message.content,
+                body.content,
+                settings,
+            )
+            if is_diagnostic_result:
+                retrieved_chunks = diagnostic_chunks
+                context_chunks = [chunk["content"] for chunk in diagnostic_chunks]
+                ranked_plan = followup_plan
+
     user_message = Message(
         content=body.content,
         thread_id=thread_id,
@@ -196,6 +243,7 @@ async def create_message(
             context_chunks,
             settings,
             exclude_message_id=user_message.id,
+            ranked_plan=ranked_plan,
         ):
             answer_parts.append(chunk)
             yield _sse("chunk", chunk)

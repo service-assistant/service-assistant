@@ -46,6 +46,7 @@ type UseChatApiParams<TMessage extends ChatMessageItem> = {
 	setIsLoading: Dispatch<SetStateAction<boolean>>;
 	setIsGenerating: Dispatch<SetStateAction<boolean>>;
 	setCurrentImage: Dispatch<SetStateAction<string | null>>;
+	diagnosticMode2002Enabled?: boolean;
 	playAssistantAudio: (text: string) => void | Promise<void>;
 	ttsEnabled?: boolean;
 	onServiceError?: (featureName: string, error: unknown) => void;
@@ -83,6 +84,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 	setIsLoading,
 	setIsGenerating,
 	setCurrentImage,
+	diagnosticMode2002Enabled = true,
 	playAssistantAudio,
 	ttsEnabled = true,
 	onServiceError,
@@ -187,7 +189,10 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 								Accept: 'text/event-stream',
 								Authorization: `Bearer ${AUTH_TOKEN}`,
 							},
-							body: JSON.stringify({ content: question }),
+							body: JSON.stringify({
+								content: question,
+								diagnostic_mode_2002: diagnosticMode2002Enabled,
+							}),
 							pollingInterval: 0,
 							timeoutBeforeConnection: 0,
 						},
@@ -456,6 +461,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 		},
 		[
 			authTokenOverride,
+			diagnosticMode2002Enabled,
 			ensureThread,
 			playAssistantAudio,
 			ttsEnabled,
