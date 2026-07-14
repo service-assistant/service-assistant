@@ -53,7 +53,6 @@ type ThreadMessagePayload = {
 	sender: 'user' | 'system';
 };
 
-const HARDCODED_DEVICE_ID = 1;
 const FILE_ICON_OPTIONS = [
 	{ icon: 'file-pdf-box', color: '#EF4444' },
 	{ icon: 'file-document-outline', color: '#06B6D4' },
@@ -70,7 +69,7 @@ const FILE_ICON_OPTIONS = [
  * Features include:
  * - Real-time voice recording with volume metering
  * - Server-side Speech-to-Text (STT)
- * - Integration with OpenAI for Text-to-Speech (TTS)
+ * - Server-side Text-to-Speech (TTS)
  * - Managing thread-based conversation history with the backend API
  * - Displaying attachments and schema images
  */
@@ -90,6 +89,9 @@ export default function ChatScreen() {
 		chatSession: string;
 		threadId?: string;
 	}>();
+	const parsedDeviceId = Number(deviceId);
+	const selectedDeviceId =
+		Number.isFinite(parsedDeviceId) && parsedDeviceId > 0 ? parsedDeviceId : null;
 	const sessionKey = `${deviceId ?? ''}:${chatSession ?? ''}:${threadId ?? ''}`;
 	const currentSource = deviceName || 'Wybierz maszynę';
 
@@ -115,23 +117,10 @@ export default function ChatScreen() {
 	const messagesScrollViewRef = useRef<ScrollView>(null);
 	const startPromptInputRef = useRef<TextInput>(null);
 	const askAPIRef = useRef<(question: string) => void>(() => undefined);
-	const hasShownOpenAiKeyErrorRef = useRef<boolean>(false);
 	const showServiceError = useCallback((featureName: string, error: unknown) => {
 		console.log(`Handled service error (${featureName}):`, error);
 		setServiceErrorFeature(featureName);
 	}, []);
-	const handleOpenAiKeyError = useCallback(
-		(error: unknown) => {
-			console.log('Handled OpenAI API key error:', error);
-			setIsVoiceOutputUnavailable(true);
-
-			if (hasShownOpenAiKeyErrorRef.current) return;
-
-			hasShownOpenAiKeyErrorRef.current = true;
-			showServiceError('odtwarzanie odpowiedzi głosowej', error);
-		},
-		[showServiceError],
-	);
 	const handleSpeechInputError = useCallback((error: unknown) => {
 		console.log('Handled speech input error:', error);
 		setIsSpeechInputUnavailable(true);
@@ -140,8 +129,10 @@ export default function ChatScreen() {
 	const { isAudioPlaying, playAssistantAudio, stopAssistantAudio } = useAssistantAudio({
 		setIsLoading,
 		setIsGenerating,
-		onServiceError: showServiceError,
-		onOpenAiKeyError: handleOpenAiKeyError,
+		onServiceError: (featureName, error) => {
+			setIsVoiceOutputUnavailable(true);
+			showServiceError(featureName, error);
+		},
 	});
 	const playAssistantAudioWhenEnabled = useCallback(
 		(text: string) => {
@@ -171,7 +162,7 @@ export default function ChatScreen() {
 
 	const { askAPI, ensureThread, stopChatApi } = useChatApi<ChatMessage>({
 		serverUrl: AUTH_URL,
-		deviceId: HARDCODED_DEVICE_ID,
+		deviceId: selectedDeviceId,
 		currentThreadId,
 		setCurrentThreadId,
 		setMessages,
@@ -180,6 +171,7 @@ export default function ChatScreen() {
 		setCurrentImage,
 		diagnosticMode2002Enabled,
 		playAssistantAudio: playAssistantAudioWhenEnabled,
+		ttsEnabled,
 		onServiceError: showServiceError,
 		authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
 	});
@@ -259,11 +251,15 @@ export default function ChatScreen() {
 			setIsAvailableFilesLoading(true);
 
 			try {
+				if (!selectedDeviceId) {
+					setAvailableFiles([]);
+					return;
+				}
 				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 				const authToken = CHAT_AUTH_TOKEN_OVERRIDE ?? getAuthTokenOrThrow();
 
 				const response = await fetch(
-					`${AUTH_URL}/api/devices/${HARDCODED_DEVICE_ID}/attachments`,
+					`${AUTH_URL}/api/devices/${selectedDeviceId}/attachments`,
 					{
 						headers: {
 							Accept: 'application/json',
@@ -308,7 +304,7 @@ export default function ChatScreen() {
 		fetchAvailableFiles();
 
 		return () => abortController.abort();
-	}, [showServiceError]);
+	}, [selectedDeviceId, showServiceError]);
 
 	useEffect(() => {
 		const abortController = new AbortController();

@@ -23,7 +23,6 @@ import { AUTH_SERVICE_FEATURE } from '@/utils/auth-errors';
 // --- CONFIGURATION & DATA TYPES ---
 
 const PRIMARY_ORANGE = '#FF6B00';
-const HARDCODED_DEVICE_ID = '1';
 
 // --- MAIN SCREEN ---
 
@@ -79,7 +78,7 @@ export default function HomeScreen() {
 		router.push({
 			pathname: '/chat',
 			params: {
-				deviceId: HARDCODED_DEVICE_ID,
+				deviceId: vehicle.id,
 				deviceName: vehicle.name,
 				chatSession: Date.now().toString(),
 				...(logoUrl ? { logoUrl } : {}),

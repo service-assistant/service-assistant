@@ -424,6 +424,16 @@ describe('tab screens', () => {
 			enabled: false,
 			onDetected: expect.any(Function),
 		});
+		expect(global.fetch).toHaveBeenCalledWith(
+			'https://api.example.test/api/devices/1/attachments',
+			expect.objectContaining({
+				headers: {
+					Accept: 'application/json',
+					Authorization: 'Bearer test-token',
+				},
+				signal: expect.any(AbortSignal),
+			}),
+		);
 		expect(findByType(tree, 'ServiceErrorModal')[0].props.visible).toBe(false);
 	});
 
@@ -589,6 +599,49 @@ describe('tab screens', () => {
 		expect(mockRouterPush).toHaveBeenCalledWith('/history');
 	});
 
+	test('home screen opens chat with the selected vehicle id', () => {
+		const HomeScreen = require('../app/(tabs)/home').default;
+
+		mockReactStateValues = [
+			'WSZYSTKIE',
+			'WSZYSTKIE',
+			'',
+			null,
+			[{ id: 1, name: 'Toyota', logo_url: 'logo.png', created_at: '', updated_at: '' }],
+			[{ id: 2, name: 'WĂłzek', created_at: '', updated_at: '' }],
+			[
+				{
+					id: 7,
+					brand_id: 1,
+					device_type_id: 2,
+					name: 'Toyota 8FG',
+					model_serial_code: '',
+					image_url: '',
+					created_at: '',
+					updated_at: '',
+				},
+			],
+			false,
+			false,
+			false,
+		];
+		const loadedTree = renderScreen(HomeScreen);
+		const vehicleList = findByType(loadedTree, 'Animated.FlatList')[0];
+		const vehicleCard = vehicleList.props.renderItem({ item: vehicleList.props.data[0] });
+		const vehicleButton = findByType(vehicleCard, 'TouchableOpacity')[0];
+
+		vehicleButton.props.onPress();
+
+		expect(mockRouterPush).toHaveBeenCalledWith({
+			pathname: '/chat',
+			params: expect.objectContaining({
+				deviceId: '7',
+				deviceName: 'Toyota 8FG',
+				logoUrl: 'logo.png',
+			}),
+		});
+	});
+
 	test('home screen shows an empty state when selected filters exclude all vehicles', async () => {
 		jest.mocked(global.fetch).mockImplementation((url) => {
 			const requestUrl = String(url);
@@ -657,6 +710,7 @@ describe('tab screens', () => {
 	test('chat screen shows a service error modal when thread history loading fails', async () => {
 		setupChatHooks();
 		mockSearchParams = {
+			deviceId: '3',
 			deviceName: 'Toyota 8FG',
 			chatSession: 'history-44',
 			threadId: '44',
