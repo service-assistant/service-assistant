@@ -48,10 +48,16 @@ jest.mock('expo-file-system/legacy', () => ({
 	writeAsStringAsync: mockWriteAsStringAsync,
 }));
 
+jest.mock('@/utils/api-config', () => ({
+	AUTH_URL: 'https://api.example.test',
+	AUTH_URL_CONFIG_ERROR: null,
+}));
+
+import { AUTH_SERVICE_FEATURE } from '@/utils/auth-errors';
 import { Platform } from 'react-native';
 import { useAssistantAudio } from '../hooks/use-assistant-audio';
 
-const originalOpenAiApiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+const originalAuthToken = process.env.EXPO_PUBLIC_AUTH_TOKEN;
 
 const createHarness = () => {
 	mockReactStateValues = [];
@@ -60,17 +66,14 @@ const createHarness = () => {
 	const setIsLoading = jest.fn();
 	const setIsGenerating = jest.fn();
 	const onServiceError = jest.fn();
-	const onOpenAiKeyError = jest.fn();
 	const api = useAssistantAudio({
 		setIsLoading,
 		setIsGenerating,
 		onServiceError,
-		onOpenAiKeyError,
 	});
 
 	return {
 		api,
-		onOpenAiKeyError,
 		onServiceError,
 		setIsGenerating,
 		setIsLoading,
@@ -91,25 +94,25 @@ describe('useAssistantAudio', () => {
 		mockAudioPlayer.replace.mockReset();
 		mockUseAudioPlayer.mockClear();
 		mockWriteAsStringAsync.mockReset();
-		process.env.EXPO_PUBLIC_OPENAI_API_KEY = ' openai-test-key ';
+		process.env.EXPO_PUBLIC_AUTH_TOKEN = 'test-token';
 		global.fetch = jest.fn();
 		jest.spyOn(console, 'log').mockImplementation(() => {});
 	});
 
 	afterEach(() => {
-		if (originalOpenAiApiKey === undefined) {
-			delete process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+		if (originalAuthToken === undefined) {
+			delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
 		} else {
-			process.env.EXPO_PUBLIC_OPENAI_API_KEY = originalOpenAiApiKey;
+			process.env.EXPO_PUBLIC_AUTH_TOKEN = originalAuthToken;
 		}
 		jest.restoreAllMocks();
 	});
 
-	test('requests TTS audio, writes it as base64 on native, and starts playback', async () => {
+	test('requests server TTS audio, writes it as base64 on native, and starts playback', async () => {
 		jest.mocked(global.fetch).mockResolvedValue(
-			new Response('mp3-data', {
+			new Response('wav-data', {
 				status: 200,
-				headers: { 'content-type': 'audio/mpeg' },
+				headers: { 'content-type': 'audio/wav' },
 			}),
 		);
 		const harness = createHarness();
@@ -117,27 +120,24 @@ describe('useAssistantAudio', () => {
 		await harness.api.playAssistantAudio('Dzień dobry');
 
 		expect(global.fetch).toHaveBeenCalledWith(
-			'https://api.openai.com/v1/audio/speech',
+			'https://api.example.test/api/tts',
 			expect.objectContaining({
 				method: 'POST',
 				headers: {
-					Authorization: 'Bearer openai-test-key',
+					Accept: 'audio/wav',
+					Authorization: 'Bearer test-token',
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({
-					model: 'tts-1',
-					input: 'Dzień dobry',
-					voice: 'alloy',
-				}),
+				body: JSON.stringify({ text: 'Dzień dobry' }),
 			}),
 		);
 		expect(mockWriteAsStringAsync).toHaveBeenCalledWith(
-			'file:///documents/chatgpt_response.mp3',
-			'bXAzLWRhdGE=',
+			'file:///documents/assistant_response.wav',
+			'd2F2LWRhdGE=',
 			{ encoding: 'base64' },
 		);
 		expect(mockAudioPlayer.replace).toHaveBeenCalledWith(
-			'file:///documents/chatgpt_response.mp3',
+			'file:///documents/assistant_response.wav',
 		);
 		expect(mockAudioPlayer.play).toHaveBeenCalled();
 		expect(harness.state.isAudioPlaying).toBe(true);
@@ -160,7 +160,7 @@ describe('useAssistantAudio', () => {
 
 		expect(harness.state.isAudioPlaying).toBe(true);
 
-		resolveFetch(new Response('mp3-data', { status: 200 }));
+		resolveFetch(new Response('wav-data', { status: 200 }));
 		await playPromise;
 
 		expect(harness.state.isAudioPlaying).toBe(true);
@@ -175,9 +175,9 @@ describe('useAssistantAudio', () => {
 			configurable: true,
 		});
 		jest.mocked(global.fetch).mockResolvedValue(
-			new Response('mp3-data', {
+			new Response('wav-data', {
 				status: 200,
-				headers: { 'content-type': 'audio/mpeg' },
+				headers: { 'content-type': 'audio/wav' },
 			}),
 		);
 		const harness = createHarness();
@@ -190,43 +190,82 @@ describe('useAssistantAudio', () => {
 		expect(mockAudioPlayer.play).toHaveBeenCalled();
 	});
 
-	test('reports missing OpenAI API keys through the key error callback', async () => {
-		delete process.env.EXPO_PUBLIC_OPENAI_API_KEY;
-		const harness = createHarness();
-
-		await harness.api.playAssistantAudio('No key');
-
-		expect(global.fetch).not.toHaveBeenCalled();
-		expect(harness.onOpenAiKeyError).toHaveBeenCalledWith(
-			expect.objectContaining({
-				message: 'Missing EXPO_PUBLIC_OPENAI_API_KEY',
-				isOpenAiKeyError: true,
+	test('requests server TTS audio as wav on Android', async () => {
+		Platform.OS = 'android';
+		jest.mocked(global.fetch).mockResolvedValue(
+			new Response('wav-data', {
+				status: 200,
+				headers: { 'content-type': 'audio/wav' },
 			}),
 		);
-		expect(harness.onServiceError).not.toHaveBeenCalled();
+		const harness = createHarness();
+
+		await harness.api.playAssistantAudio('Android audio');
+
+		expect(global.fetch).toHaveBeenCalledWith(
+			'https://api.example.test/api/tts',
+			expect.objectContaining({
+				method: 'POST',
+				headers: {
+					Accept: 'audio/wav',
+					Authorization: 'Bearer test-token',
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({ text: 'Android audio' }),
+			}),
+		);
+		expect(mockWriteAsStringAsync).toHaveBeenCalledWith(
+			'file:///documents/assistant_response.wav',
+			'd2F2LWRhdGE=',
+			{ encoding: 'base64' },
+		);
+		expect(mockAudioPlayer.replace).toHaveBeenCalledWith(
+			'file:///documents/assistant_response.wav',
+		);
+		expect(mockAudioPlayer.play).toHaveBeenCalled();
+		expect(harness.setIsGenerating).toHaveBeenCalledWith(false);
+	});
+
+	test('reports missing auth token through the service error callback', async () => {
+		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
+		const harness = createHarness();
+
+		await harness.api.playAssistantAudio('No token');
+
+		expect(global.fetch).not.toHaveBeenCalled();
+		expect(harness.onServiceError).toHaveBeenCalledWith(
+			AUTH_SERVICE_FEATURE,
+			expect.objectContaining({
+				message: 'Missing EXPO_PUBLIC_AUTH_TOKEN',
+			}),
+		);
 		expect(harness.setIsLoading).toHaveBeenLastCalledWith(false);
 		expect(harness.setIsGenerating).toHaveBeenCalledWith(false);
 		expect(harness.state.isAudioPlaying).toBe(false);
 	});
 
-	test('treats 401 and 403 responses as OpenAI key errors', async () => {
+	test('treats 401 and 403 responses as auth service errors', async () => {
 		jest.mocked(global.fetch).mockResolvedValue(new Response(null, { status: 401 }));
 		const harness = createHarness();
 
-		await harness.api.playAssistantAudio('Bad key');
+		await harness.api.playAssistantAudio('Bad token');
 
-		expect(harness.onOpenAiKeyError).toHaveBeenCalledWith(
+		expect(harness.onServiceError).toHaveBeenCalledWith(
+			AUTH_SERVICE_FEATURE,
 			expect.objectContaining({
-				message: 'OpenAI API error: 401',
-				isOpenAiKeyError: true,
+				message: 'Invalid EXPO_PUBLIC_AUTH_TOKEN: 401',
 			}),
 		);
-		expect(harness.onServiceError).not.toHaveBeenCalled();
 		expect(mockAudioPlayer.play).not.toHaveBeenCalled();
 	});
 
 	test('reports non-auth TTS failures as assistant audio service errors', async () => {
-		jest.mocked(global.fetch).mockResolvedValue(new Response(null, { status: 500 }));
+		jest.mocked(global.fetch).mockResolvedValue(
+			new Response(JSON.stringify({ detail: 'Gemini TTS error 400: bad model' }), {
+				status: 502,
+				headers: { 'content-type': 'application/json' },
+			}),
+		);
 		const harness = createHarness();
 
 		await harness.api.playAssistantAudio('Server error');
@@ -234,20 +273,18 @@ describe('useAssistantAudio', () => {
 		expect(harness.onServiceError).toHaveBeenCalledWith(
 			'odtwarzanie odpowiedzi głosowej',
 			expect.objectContaining({
-				message: 'OpenAI API error: 500',
-				isOpenAiKeyError: false,
+				message: 'Gemini TTS error 400: bad model',
 			}),
 		);
-		expect(harness.onOpenAiKeyError).not.toHaveBeenCalled();
 		expect(mockAudioPlayer.play).not.toHaveBeenCalled();
 		expect(harness.state.isAudioPlaying).toBe(false);
 	});
 
 	test('pauses current playback only once when stopped repeatedly', async () => {
 		jest.mocked(global.fetch).mockResolvedValue(
-			new Response('mp3-data', {
+			new Response('wav-data', {
 				status: 200,
-				headers: { 'content-type': 'audio/mpeg' },
+				headers: { 'content-type': 'audio/wav' },
 			}),
 		);
 		const harness = createHarness();

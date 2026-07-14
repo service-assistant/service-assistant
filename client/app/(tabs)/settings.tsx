@@ -17,7 +17,14 @@ const PRIMARY_ORANGE = '#FF6B00';
 
 export default function SettingsScreen() {
 	const router = useRouter();
-	const { wakeWordEnabled, ttsEnabled, setWakeWordEnabled, setTtsEnabled } = useAppSettings();
+	const {
+		wakeWordEnabled,
+		ttsEnabled,
+		diagnosticMode2002Enabled,
+		setWakeWordEnabled,
+		setTtsEnabled,
+		setDiagnosticMode2002Enabled,
+	} = useAppSettings();
 	const { width, height } = useWindowDimensions();
 	const shortestScreenSide = Math.min(width, height);
 	const isTablet = shortestScreenSide >= 600;
@@ -82,9 +89,14 @@ export default function SettingsScreen() {
 						activeOpacity={0.75}
 						className='flex-row items-center justify-between px-4 border-b border-white/5'
 						style={{ paddingVertical: rowPaddingVertical }}>
-						<Text className='text-white text-base font-semibold flex-1 mr-4'>
-							Słowo wybudzające (eksperymentalne)
-						</Text>
+						<View className='flex-row items-center flex-1 mr-4'>
+							<View className='w-10 h-10 rounded-[10px] bg-[#26170D] items-center justify-center mr-3'>
+								<Feather name='mic' size={20} color={PRIMARY_ORANGE} />
+							</View>
+							<Text className='text-white text-base font-semibold flex-1'>
+								Słowo wybudzające (eksperymentalne)
+							</Text>
+						</View>
 						<Switch
 							value={wakeWordEnabled}
 							onValueChange={setWakeWordEnabled}
@@ -95,14 +107,51 @@ export default function SettingsScreen() {
 					</TouchableOpacity>
 
 					<TouchableOpacity
+						onPress={() => setDiagnosticMode2002Enabled(!diagnosticMode2002Enabled)}
+						accessibilityRole='switch'
+						accessibilityState={{ checked: diagnosticMode2002Enabled }}
+						accessibilityLabel='Tryb diagnostyczny dla błędu 2:002'
+						activeOpacity={0.75}
+						className='flex-row items-center justify-between px-4 border-b border-white/5'
+						style={{ paddingVertical: rowPaddingVertical }}>
+						<View className='flex-row items-center flex-1 mr-4'>
+							<View className='w-10 h-10 rounded-[10px] bg-[#26170D] items-center justify-center mr-3'>
+								<Feather name='tool' size={20} color={PRIMARY_ORANGE} />
+							</View>
+							<View className='flex-1'>
+								<Text className='text-white text-base font-semibold'>
+									Tryb diagnostyczny 2:002
+								</Text>
+								<Text className='text-zinc-400 text-sm mt-1'>
+									Prowadzi technika krok po kroku i pokazuje jedną akcję naraz.
+								</Text>
+							</View>
+						</View>
+						<Switch
+							value={diagnosticMode2002Enabled}
+							onValueChange={setDiagnosticMode2002Enabled}
+							trackColor={switchTrackColor}
+							thumbColor={diagnosticMode2002Enabled ? PRIMARY_ORANGE : '#A1A1AA'}
+							ios_backgroundColor='#27272A'
+						/>
+					</TouchableOpacity>
+
+					<TouchableOpacity
 						onPress={() => setTtsEnabled(!ttsEnabled)}
 						accessibilityRole='switch'
 						accessibilityState={{ checked: ttsEnabled }}
-						accessibilityLabel='TTS'
+						accessibilityLabel='Czytanie odpowiedzi na głos'
 						activeOpacity={0.75}
 						className='flex-row items-center justify-between px-4'
 						style={{ paddingVertical: rowPaddingVertical }}>
-						<Text className='text-white text-base font-semibold flex-1 mr-4'>TTS</Text>
+						<View className='flex-row items-center flex-1 mr-4'>
+							<View className='w-10 h-10 rounded-[10px] bg-[#26170D] items-center justify-center mr-3'>
+								<Feather name='volume-2' size={20} color={PRIMARY_ORANGE} />
+							</View>
+							<Text className='text-white text-base font-semibold flex-1'>
+								Czytanie odpowiedzi na głos
+							</Text>
+						</View>
 						<Switch
 							value={ttsEnabled}
 							onValueChange={setTtsEnabled}

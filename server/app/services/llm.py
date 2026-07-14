@@ -162,14 +162,39 @@ def _build_history_messages(
 
 
 def _messages(
-    question: str, context_text: str, history_messages: list[ChatCompletionMessageParam]
+    question: str,
+    context_text: str,
+    history_messages: list[ChatCompletionMessageParam],
+    ranked_plan: str = "",
 ) -> list[ChatCompletionMessageParam]:
+    plan_instruction = ""
+    if ranked_plan.startswith("WYNIK DIAGNOSTYKI"):
+        plan_instruction = (
+            "Krótko potwierdź wynik technika i zakończenie diagnostyki. "
+            "Nie dodawaj checklisty ani kolejnej akcji."
+        )
+    elif ranked_plan.startswith("BRAK NASTĘPNEJ AKCJI"):
+        plan_instruction = (
+            "Krótko potwierdź wynik technika i powiedz, że dokumentacja nie pozwala "
+            "wskazać następnego kroku. Nie dodawaj checklisty ani własnych działań."
+        )
+    elif ranked_plan:
+        plan_instruction = (
+            "Dla kodu 2:002 pokaż technikowi WYŁĄCZNIE pierwszą akcję z planu. "
+            "Nie wspominaj o żadnej kolejnej akcji, możliwej wymianie części ani pełnej "
+            "kolejności diagnostyki. Odpowiedź ma zawierać: jedno krótkie zdanie, po co "
+            "wykonać ten krok; sekcję ::checklist z dokładnie jednym konkretnym zadaniem; "
+            "oraz krótką prośbę o podanie wyniku sprawdzenia. Nie używaj sekcji ::next. "
+            "Nie pokazuj wartości score ani metadanych. Nie stwierdzaj, że znaleziono "
+            "konkretną przyczynę, dopóki wynik sprawdzenia jej nie potwierdzi."
+        )
+    plan_section = f"\n\n{ranked_plan}\n\n{plan_instruction}" if ranked_plan else ""
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         *history_messages,
         {
             "role": "user",
-            "content": f"Context:\n{context_text}\n\nQuestion:\n{question}\n\nAnswer in Polish.",
+            "content": f"Context:\n{context_text}{plan_section}\n\nQuestion:\n{question}\n\nAnswer in Polish.",
         },
     ]
 
@@ -182,6 +207,7 @@ async def stream_query(
     settings: Settings,
     *,
     exclude_message_id: int | None = None,
+    ranked_plan: str = "",
 ) -> AsyncGenerator[str, None]:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     context_text = _build_context(chunks)
@@ -190,7 +216,7 @@ async def stream_query(
         session, thread_id, 16, exclude_id=exclude_message_id
     )
     history_messages = _build_history_messages(recent_thread_messages)
-    messages = _messages(question, context_text, history_messages)
+    messages = _messages(question, context_text, history_messages, ranked_plan)
 
     stream = await client.chat.completions.create(
         model=settings.openai_chat_model,

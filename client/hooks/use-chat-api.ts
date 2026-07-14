@@ -39,14 +39,16 @@ type AttachmentPayload = {
 
 type UseChatApiParams<TMessage extends ChatMessageItem> = {
 	serverUrl: string;
-	deviceId: number;
+	deviceId: number | null;
 	currentThreadId: number | null;
 	setCurrentThreadId: Dispatch<SetStateAction<number | null>>;
 	setMessages: Dispatch<SetStateAction<TMessage[]>>;
 	setIsLoading: Dispatch<SetStateAction<boolean>>;
 	setIsGenerating: Dispatch<SetStateAction<boolean>>;
 	setCurrentImage: Dispatch<SetStateAction<string | null>>;
+	diagnosticMode2002Enabled?: boolean;
 	playAssistantAudio: (text: string) => void | Promise<void>;
+	ttsEnabled?: boolean;
 	onServiceError?: (featureName: string, error: unknown) => void;
 	authTokenOverride?: string | null;
 };
@@ -82,7 +84,9 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 	setIsLoading,
 	setIsGenerating,
 	setCurrentImage,
+	diagnosticMode2002Enabled = true,
 	playAssistantAudio,
+	ttsEnabled = true,
 	onServiceError,
 	authTokenOverride,
 }: UseChatApiParams<TMessage>) => {
@@ -114,6 +118,9 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 			const activeThreadId = currentThreadIdRef.current;
 
 			if (activeThreadId) return activeThreadId;
+			if (!deviceId) {
+				throw new Error('Cannot create a chat thread without a selected device.');
+			}
 
 			const threadResponse = await fetch(`${serverUrl}/api/threads`, {
 				method: 'POST',
@@ -182,7 +189,10 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 								Accept: 'text/event-stream',
 								Authorization: `Bearer ${AUTH_TOKEN}`,
 							},
-							body: JSON.stringify({ content: question }),
+							body: JSON.stringify({
+								content: question,
+								diagnostic_mode_2002: diagnosticMode2002Enabled,
+							}),
 							pollingInterval: 0,
 							timeoutBeforeConnection: 0,
 						},
@@ -280,6 +290,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 
 				const startAssistantAudio = () => {
 					if (
+						!ttsEnabled ||
 						hasStartedAssistantAudio ||
 						abortController.signal.aborted ||
 						fullText.length === 0
@@ -450,8 +461,10 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 		},
 		[
 			authTokenOverride,
+			diagnosticMode2002Enabled,
 			ensureThread,
 			playAssistantAudio,
+			ttsEnabled,
 			onServiceError,
 			serverUrl,
 			setCurrentImage,

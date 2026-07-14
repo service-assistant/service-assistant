@@ -8,13 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
 from ..models import AttachmentDevice, Chunk
+from .document_language import get_device_document_language
 from .embedding import RetrievedChunk, embed_question
+from .translation import translate_query
 
-TOKEN_RE = re.compile(r"[A-Za-z0-9]+(?:[:.-][A-Za-z0-9]+)*")
-ERROR_CODE_RE = re.compile(r"\b\d+[:.]\d+\b|\b\d{3,}\b")
+TOKEN_RE = re.compile(r"[^\W_]+(?:[-:.][^\W_]+)*")
 
 SEMANTIC_LIMIT = 7
 BM25_LIMIT = 3
+EXACT_LIMIT = 3
 
 
 def tokenize(text: str) -> list[str]:
@@ -88,6 +90,43 @@ async def get_semantic_chunks(
     ]
 
 
+def _content_matches_token(content_lower: str, token: str) -> bool:
+    if token.lower() in content_lower:
+        return True
+    return any(
+        variant.lower() in content_lower for variant in _identifier_variants(token)
+    )
+
+
+def get_exact_match_chunks(
+    rows: list[RetrievedChunk],
+    question: str,
+    *,
+    limit: int = EXACT_LIMIT,
+) -> list[RetrievedChunk]:
+    """Return chunks that contain query tokens (or code variants).
+
+    Rows are ranked by the number of matched tokens and returned up to
+    ``limit``. This keeps the stage useful even when only a subset of the
+    query (e.g. a technical code) matches the English documentation.
+    """
+    query_tokens = tokenize(question)
+    if not query_tokens:
+        return []
+
+    scored: list[tuple[int, RetrievedChunk]] = []
+    for row in rows:
+        content_lower = row["content"].lower()
+        score = sum(
+            1 for token in query_tokens if _content_matches_token(content_lower, token)
+        )
+        if score:
+            scored.append((score, row))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [row for _, row in scored[:limit]]
+
+
 def _score_bm25(corpus_tokens: list[list[str]], query_tokens: list[str]) -> list[float]:
     if not corpus_tokens or not query_tokens:
         return [0.0] * len(corpus_tokens)
@@ -111,16 +150,6 @@ async def get_bm25_chunks(
     corpus_tokens = [tokenize(r["content"]) for r in rows]
     query_tokens = tokenize(question)
 
-    code_match = ERROR_CODE_RE.search(question)
-    if code_match:
-        code = code_match.group(0)
-        variants = _identifier_variants(code)
-        exact = [
-            r for r in rows if any(v.lower() in r["content"].lower() for v in variants)
-        ]
-        if exact:
-            return exact[:limit]
-
     loop = asyncio.get_running_loop()
     scores = await loop.run_in_executor(
         None,
@@ -143,21 +172,16 @@ async def get_bm25_chunks(
 
 
 def merge_hybrid_chunks(
-    semantic: list[RetrievedChunk],
-    bm25: list[RetrievedChunk],
+    *lists: list[RetrievedChunk],
 ) -> list[RetrievedChunk]:
     seen: set[int] = set()
     merged: list[RetrievedChunk] = []
-    for chunk in semantic:
-        cid = chunk["id"]
-        if cid not in seen:
-            merged.append(chunk)
-            seen.add(cid)
-    for chunk in bm25:
-        cid = chunk["id"]
-        if cid not in seen:
-            merged.append(chunk)
-            seen.add(cid)
+    for chunk_list in lists:
+        for chunk in chunk_list:
+            cid = chunk["id"]
+            if cid not in seen:
+                merged.append(chunk)
+                seen.add(cid)
     return merged
 
 
@@ -167,12 +191,27 @@ async def retrieve_context_chunks(
     device_id: int,
     settings: Settings,
 ) -> list[RetrievedChunk]:
-    vector = await embed_question(question, settings)
+    target_language = get_device_document_language(device_id)
 
-    device_rows = await _fetch_device_chunks(session, device_id)
+    (vector, translated_query), rows = await asyncio.gather(
+        asyncio.gather(
+            embed_question(question, settings),
+            translate_query(
+                question,
+                settings,
+                target_language=target_language,
+            ),
+        ),
+        _fetch_device_chunks(session, device_id),
+    )
+
+    exact = get_exact_match_chunks(rows, question, limit=EXACT_LIMIT)
 
     semantic, bm25 = await asyncio.gather(
-        get_semantic_chunks(session, vector, device_id),
-        get_bm25_chunks(session, question, device_id, rows=device_rows),
+        get_semantic_chunks(session, vector, device_id, limit=SEMANTIC_LIMIT),
+        get_bm25_chunks(
+            session, translated_query, device_id, rows=rows, limit=BM25_LIMIT
+        ),
     )
-    return merge_hybrid_chunks(semantic, bm25)
+
+    return merge_hybrid_chunks(exact, semantic, bm25)

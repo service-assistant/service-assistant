@@ -28,10 +28,18 @@ TENSOR_NAMES = [
     "cnn.5.running_var",
     "cnn.8.weight",
     "cnn.8.bias",
-    "head.2.weight",
-    "head.2.bias",
-    "head.5.weight",
-    "head.5.bias",
+    "cnn.9.weight",
+    "cnn.9.bias",
+    "cnn.9.running_mean",
+    "cnn.9.running_var",
+    "temporal.weight_ih_l0",
+    "temporal.weight_hh_l0",
+    "temporal.bias_ih_l0",
+    "temporal.bias_hh_l0",
+    "head.1.weight",
+    "head.1.bias",
+    "head.4.weight",
+    "head.4.bias",
 ]
 
 

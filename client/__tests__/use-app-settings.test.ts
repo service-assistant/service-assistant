@@ -70,6 +70,7 @@ describe('use-app-settings store', () => {
 				[STORAGE_KEY]: JSON.stringify({
 					wakeWordEnabled: true,
 					ttsEnabled: true,
+					diagnosticMode2002Enabled: false,
 				}),
 			}),
 		);
@@ -80,6 +81,7 @@ describe('use-app-settings store', () => {
 			expect(getAppSettings()).toMatchObject({
 				wakeWordEnabled: true,
 				ttsEnabled: true,
+				diagnosticMode2002Enabled: false,
 			});
 		});
 	});
@@ -93,12 +95,14 @@ describe('use-app-settings store', () => {
 
 			setAppSetting('wakeWordEnabled', true);
 			setAppSetting('ttsEnabled', true);
+			setAppSetting('diagnosticMode2002Enabled', false);
 
 			expect(localStorage.setItem).toHaveBeenLastCalledWith(
 				STORAGE_KEY,
 				JSON.stringify({
 					wakeWordEnabled: true,
 					ttsEnabled: true,
+					diagnosticMode2002Enabled: false,
 				}),
 			);
 		});
@@ -111,6 +115,7 @@ describe('use-app-settings store', () => {
 			JSON.stringify({
 				wakeWordEnabled: true,
 				ttsEnabled: true,
+				diagnosticMode2002Enabled: false,
 			}),
 		);
 
@@ -120,6 +125,7 @@ describe('use-app-settings store', () => {
 			expect(getAppSettings()).toMatchObject({
 				wakeWordEnabled: false,
 				ttsEnabled: false,
+				diagnosticMode2002Enabled: true,
 			});
 
 			await loadAppSettings();
@@ -129,6 +135,7 @@ describe('use-app-settings store', () => {
 			expect(getAppSettings()).toMatchObject({
 				wakeWordEnabled: true,
 				ttsEnabled: true,
+				diagnosticMode2002Enabled: false,
 			});
 		});
 	});
@@ -141,6 +148,7 @@ describe('use-app-settings store', () => {
 
 			setAppSetting('wakeWordEnabled', true);
 			setAppSetting('ttsEnabled', true);
+			setAppSetting('diagnosticMode2002Enabled', false);
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			expect(mockWriteAsStringAsync).toHaveBeenLastCalledWith(
@@ -148,6 +156,7 @@ describe('use-app-settings store', () => {
 				JSON.stringify({
 					wakeWordEnabled: true,
 					ttsEnabled: true,
+					diagnosticMode2002Enabled: false,
 				}),
 			);
 		});

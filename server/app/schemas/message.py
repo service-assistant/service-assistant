@@ -10,6 +10,12 @@ class MessageCreate(BaseModel):
         description="Text of the user message.",
         examples=["What does fault code E-23 mean and how do I clear it?"],
     )
+    diagnostic_mode_2002: bool = Field(
+        default=True,
+        description=(
+            "Whether the experimental Next Best Step flow should handle error 2:002."
+        ),
+    )
 
 
 class TranscriptResponse(BaseModel):
