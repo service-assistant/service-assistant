@@ -26,7 +26,7 @@ async def test_ingest_pdf_to_attachment(mocker, settings):
 
     mocker.patch(
         "app.services.ingest.pymupdf4llm.to_markdown",
-        return_value="# Test\n\nSome markdown"
+        return_value="# Test\n\nSome markdown",
     )
 
     mock_client = mocker.AsyncMock()

@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,8 +23,8 @@ class Settings(BaseSettings):
     gemini_tts_voice: str = "Algenib"
     gemini_tts_max_chars: int = 2000
 
-    azure_document_intelligence_endpoint: str
-    azure_document_intelligence_key: str
+    azure_document_intelligence_endpoint: str = Field(...)
+    azure_document_intelligence_key: str = Field(...)
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
