@@ -2,10 +2,16 @@ from openai import AsyncAzureOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import delete as sql_delete
 
+from azure.ai.documentintelligence import DocumentIntelligenceClient
+from azure.ai.documentintelligence.models import DocumentContentFormat
+from azure.core.credentials import AzureKeyCredential
+
 import fitz  # pymupdf
+import pymupdf4llm
 
 from ..config import Settings
 from ..models import Chunk
+from .process_ocr_text import process_ocr_text
 from .extract_images import extract_page_images
 from .chunking import chunk_page
 
@@ -32,6 +38,10 @@ async def ingest_pdf_to_attachment(
         azure_endpoint=settings.azure_openai_endpoint,
         api_key=settings.azure_openai_api_key,
     )
+    ocr_client = DocumentIntelligenceClient(
+        endpoint=settings.azure_document_intelligence_endpoint,
+        credential=AzureKeyCredential(settings.azure_document_intelligence_key),
+    )
 
     doc = fitz.open(pdf_path)
     rows: list[tuple[str, list[float], int, list[str]]] = []
@@ -39,8 +49,32 @@ async def ingest_pdf_to_attachment(
     seen_chunks: set[str] = set()
 
     for page_num, page in enumerate(doc.pages()):
+        markdown_text = ""
+
+        if page.get_text().strip():
+            # extract text
+            markdown_text = str(
+                pymupdf4llm.to_markdown(
+                    pdf_path,
+                    pages=[page_num],
+                    header=False,
+                    footer=False,
+                    use_ocr=False,
+                )
+            )
+        else:
+            # perform OCR
+            poller = ocr_client.begin_analyze_document(
+                "prebuilt-layout",
+                body=page.get_pixmap().tobytes("png"),
+                output_content_format=DocumentContentFormat.MARKDOWN,
+            )
+
+            result = poller.result()
+            markdown_text = process_ocr_text(result.content)
+
         # extract text
-        chunks = chunk_page(pdf_path, page_num)
+        chunks = chunk_page(markdown_text)
 
         # extract images
         page_images = extract_page_images(

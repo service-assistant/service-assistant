@@ -1,5 +1,4 @@
 import re
-import pymupdf4llm
 from langchain_text_splitters import (
     MarkdownHeaderTextSplitter,
     RecursiveCharacterTextSplitter,
@@ -127,16 +126,12 @@ def remove_picture_text(text: str) -> str:
 
 
 def chunk_page(
-    path: str, page_num: int, chunk_size: int = 1000, overlap: int = 200
+    markdown_text: str, chunk_size: int = 1000, overlap: int = 200
 ) -> list[str]:
     """
     Chunks a PDF page into smaller sections using markdown headers and table structure as delimiters.\n
     Returns a list of text chunks
     """
-
-    markdown_text = pymupdf4llm.to_markdown(
-        path, pages=[page_num], header=False, footer=False
-    )
 
     headers = [
         ("#", "h1"),
@@ -183,7 +178,7 @@ def chunk_page(
 
             if is_table:
                 table_headers, table_content = split_table_header_content(subsection)
-                chunk = table_headers if table_headers else ""
+                chunk = table_headers + "\n" if table_headers else ""
 
                 if TABLES_TO_TEXT:
                     table_headers, table_content = split_table_cells(
@@ -213,7 +208,7 @@ def chunk_page(
                         if len(chunk + line) > chunk_size:
                             if chunk.strip():
                                 subchunks.append(chunk.strip())
-                            chunk = table_headers if table_headers else ""
+                            chunk = table_headers + "\n" if table_headers else ""
 
                         chunk += line + "\n"
 
