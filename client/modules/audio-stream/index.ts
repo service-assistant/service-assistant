@@ -38,14 +38,12 @@ export const startPcmAudioStream = () => nativeModule?.startPcmStream?.() ?? Pro
 
 export const stopPcmAudioStream = () => nativeModule?.stopPcmStream?.() ?? Promise.resolve();
 
-export const startPcmAudioPlayback = () =>
-	nativeModule?.startPcmPlayback?.() ?? Promise.resolve();
+export const startPcmAudioPlayback = () => nativeModule?.startPcmPlayback?.() ?? Promise.resolve();
 
 export const enqueuePcmAudioPlaybackChunk = (chunkBase64: string) =>
 	nativeModule?.enqueuePcmPlaybackChunk?.(chunkBase64) ?? Promise.resolve();
 
-export const stopPcmAudioPlayback = () =>
-	nativeModule?.stopPcmPlayback?.() ?? Promise.resolve();
+export const stopPcmAudioPlayback = () => nativeModule?.stopPcmPlayback?.() ?? Promise.resolve();
 
 export const addPcmAudioListener = (listener: (event: PcmAudio) => void) =>
 	hasPcmAudioStream && nativeModule

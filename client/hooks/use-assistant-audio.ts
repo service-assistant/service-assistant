@@ -10,13 +10,13 @@ import {
 } from 'react';
 import { Platform } from 'react-native';
 
-import * as FileSystem from 'expo-file-system/legacy';
 import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
 	getAuthTokenOrThrow,
 	getServiceErrorFeature,
 	throwIfAuthResponseError,
 } from '@/utils/auth-errors';
+import * as FileSystem from 'expo-file-system/legacy';
 
 const PLAYBACK_START_GRACE_MS = 1000;
 const VOICE_OUTPUT_FEATURE = 'odtwarzanie odpowiedzi głosowej';

@@ -249,6 +249,8 @@ describe('useChatApi', () => {
 			data: JSON.stringify({ content: 'Standardowa odpowiedź RAG.' }),
 		});
 		await request;
+	});
+
 	test('does not start assistant audio when TTS is disabled', async () => {
 		const fetchMock = jest.mocked(global.fetch);
 		fetchMock

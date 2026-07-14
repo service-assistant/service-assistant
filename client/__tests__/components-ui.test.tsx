@@ -51,8 +51,14 @@ jest.mock('react-native', () => {
 		Animated: {
 			Text: createHost('Animated.Text'),
 			Value: jest.fn(animatedValue),
-			parallel: jest.fn(() => ({ start: (callback?: () => void) => callback?.() })),
-			timing: jest.fn(() => ({ start: (callback?: () => void) => callback?.() })),
+			parallel: jest.fn(() => ({
+				start: (callback?: (result: { finished: boolean }) => void) =>
+					callback?.({ finished: true }),
+			})),
+			timing: jest.fn(() => ({
+				start: (callback?: (result: { finished: boolean }) => void) =>
+					callback?.({ finished: true }),
+			})),
 		},
 		Modal: createHost('Modal'),
 		Pressable: createHost('Pressable'),

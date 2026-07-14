@@ -18,7 +18,7 @@ from app.schemas import (
     ThreadCreate,
     TranscriptResponse,
 )
-from app.services import retrieval, llm, next_best_step, stt, tts
+from app.services import retrieval, llm, next_best_step, stt
 from fastapi import WebSocket, WebSocketDisconnect
 from contextlib import suppress
 
