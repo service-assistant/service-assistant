@@ -73,7 +73,7 @@ const createHarness = (
 	params: {
 		currentThreadId?: number | null;
 		diagnosticMode2002Enabled?: boolean;
-    ttsEnabled?: boolean;
+		ttsEnabled?: boolean;
 	} = {},
 ) => {
 	let currentThreadId = params.currentThreadId ?? null;
