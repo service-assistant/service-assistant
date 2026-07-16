@@ -53,6 +53,10 @@ jest.mock('react', () => {
 	};
 });
 
+jest.mock('@/hooks/use-network-status', () => ({
+	useNetworkStatus: () => ({ isOffline: false, reconnectCount: 0 }),
+}));
+
 jest.mock('react-native', () => {
 	const React = require('react');
 	const createHost = (name: string) =>
@@ -681,7 +685,7 @@ describe('tab screens', () => {
 		);
 	});
 
-	test('home screen shows a service error modal when device data loading fails', async () => {
+	test('home screen does not block the app when device data loading loses connection', async () => {
 		jest.mocked(global.fetch).mockRejectedValue(new Error('network down'));
 		const HomeScreen = require('../app/(tabs)/home').default;
 
@@ -690,11 +694,10 @@ describe('tab screens', () => {
 		const rerenderedTree = renderScreen(HomeScreen);
 		const modal = findByType(rerenderedTree, 'ServiceErrorModal')[0];
 
-		expect(modal.props.visible).toBe(true);
-		expect(modal.props.featureName).toBe('lista maszyn');
+		expect(modal.props.visible).toBe(false);
 	});
 
-	test('history screen shows a service error modal when history loading fails', async () => {
+	test('history screen does not block the app for a temporary server failure', async () => {
 		jest.mocked(global.fetch).mockResolvedValue(new Response(null, { status: 500 }));
 		const HistoryScreen = require('../app/(tabs)/history').default;
 
@@ -703,11 +706,10 @@ describe('tab screens', () => {
 		const rerenderedTree = renderScreen(HistoryScreen);
 		const modal = findByType(rerenderedTree, 'ServiceErrorModal')[0];
 
-		expect(modal.props.visible).toBe(true);
-		expect(modal.props.featureName).toBe('historia czatów');
+		expect(modal.props.visible).toBe(false);
 	});
 
-	test('chat screen shows a service error modal when thread history loading fails', async () => {
+	test('chat screen does not block the app for a temporary thread history failure', async () => {
 		setupChatHooks();
 		mockSearchParams = {
 			deviceId: '3',
@@ -725,8 +727,7 @@ describe('tab screens', () => {
 		const rerenderedTree = renderScreen(ChatScreen);
 		const modal = findByType(rerenderedTree, 'ServiceErrorModal')[0];
 
-		expect(modal.props.visible).toBe(true);
-		expect(modal.props.featureName).toBe('historia wątku');
+		expect(modal.props.visible).toBe(false);
 	});
 });
 

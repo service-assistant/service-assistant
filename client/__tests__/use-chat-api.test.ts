@@ -478,6 +478,27 @@ describe('useChatApi', () => {
 		expect(harness.state.isLoading).toBe(false);
 	});
 
+	test('preserves a partial answer when the SSE connection is interrupted', async () => {
+		const harness = createHarness({ currentThreadId: 321 });
+
+		const request = harness.api.askAPI('Temporary connection issue');
+		await flushPromises();
+
+		MockEventSource.instances[0].emit('chunk', { data: 'Partial answer' });
+		MockEventSource.instances[0].emit('error', { xhrStatus: 0 });
+		await request;
+
+		expect(harness.state.messages[0]).toMatchObject({
+			text: 'Partial answer',
+			retryQuestion: 'Temporary connection issue',
+		});
+		expect(harness.onServiceError).toHaveBeenCalledWith(
+			'odpowiedź asystenta',
+			expect.any(TypeError),
+		);
+		expect(harness.state.isGenerating).toBe(false);
+	});
+
 	test('aborts in-flight requests and removes an empty AI placeholder', async () => {
 		const harness = createHarness({ currentThreadId: 321 });
 

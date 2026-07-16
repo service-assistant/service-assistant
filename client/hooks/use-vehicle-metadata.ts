@@ -6,6 +6,7 @@ import {
 	getServiceErrorFeature,
 	throwIfAuthResponseError,
 } from '@/utils/auth-errors';
+import { fetchWithRetry, HttpError } from '@/utils/network';
 
 export type Brand = {
 	id: number;
@@ -35,9 +36,13 @@ export type DeviceRaw = {
 
 type UseVehicleMetadataParams = {
 	onServiceError: (featureName: string, error: unknown) => void;
+	refreshKey?: number;
 };
 
-export const useVehicleMetadata = ({ onServiceError }: UseVehicleMetadataParams) => {
+export const useVehicleMetadata = ({
+	onServiceError,
+	refreshKey = 0,
+}: UseVehicleMetadataParams) => {
 	const [brands, setBrands] = useState<Brand[]>([]);
 	const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
 	const [rawDevices, setRawDevices] = useState<DeviceRaw[]>([]);
@@ -50,7 +55,7 @@ export const useVehicleMetadata = ({ onServiceError }: UseVehicleMetadataParams)
 			try {
 				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 				const authToken = getAuthTokenOrThrow();
-				const response = await fetch(`${AUTH_URL}/api/brands`, {
+				const response = await fetchWithRetry(`${AUTH_URL}/api/brands`, {
 					method: 'GET',
 					headers: {
 						Authorization: `Bearer ${authToken}`,
@@ -59,7 +64,7 @@ export const useVehicleMetadata = ({ onServiceError }: UseVehicleMetadataParams)
 				});
 				if (!response.ok) {
 					throwIfAuthResponseError(response);
-					throw new Error(`Brands API error: ${response.status}`);
+					throw new HttpError(response.status, `Brands API error: ${response.status}`);
 				}
 				const data: Brand[] = await response.json();
 				setBrands(data);
@@ -75,7 +80,7 @@ export const useVehicleMetadata = ({ onServiceError }: UseVehicleMetadataParams)
 			try {
 				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 				const authToken = getAuthTokenOrThrow();
-				const response = await fetch(`${AUTH_URL}/api/device_types`, {
+				const response = await fetchWithRetry(`${AUTH_URL}/api/device_types`, {
 					method: 'GET',
 					headers: {
 						Authorization: `Bearer ${authToken}`,
@@ -84,7 +89,7 @@ export const useVehicleMetadata = ({ onServiceError }: UseVehicleMetadataParams)
 				});
 				if (!response.ok) {
 					throwIfAuthResponseError(response);
-					throw new Error(`Types API error: ${response.status}`);
+					throw new HttpError(response.status, `Types API error: ${response.status}`);
 				}
 				const data: DeviceType[] = await response.json();
 				setDeviceTypes(data);
@@ -100,7 +105,7 @@ export const useVehicleMetadata = ({ onServiceError }: UseVehicleMetadataParams)
 			try {
 				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 				const authToken = getAuthTokenOrThrow();
-				const response = await fetch(`${AUTH_URL}/api/devices`, {
+				const response = await fetchWithRetry(`${AUTH_URL}/api/devices`, {
 					method: 'GET',
 					headers: {
 						Authorization: `Bearer ${authToken}`,
@@ -109,7 +114,7 @@ export const useVehicleMetadata = ({ onServiceError }: UseVehicleMetadataParams)
 				});
 				if (!response.ok) {
 					throwIfAuthResponseError(response);
-					throw new Error(`Devices API error: ${response.status}`);
+					throw new HttpError(response.status, `Devices API error: ${response.status}`);
 				}
 				const data: DeviceRaw[] = await response.json();
 				setRawDevices(data);
@@ -124,7 +129,7 @@ export const useVehicleMetadata = ({ onServiceError }: UseVehicleMetadataParams)
 		fetchBrands();
 		fetchDeviceTypes();
 		fetchDevices();
-	}, [onServiceError]);
+	}, [onServiceError, refreshKey]);
 
 	return {
 		brands,

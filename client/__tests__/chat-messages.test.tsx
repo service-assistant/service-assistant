@@ -67,6 +67,8 @@ describe('ChatMessages', () => {
 		schemaAspectRatio: 1.4,
 		onOpenSchema: jest.fn(),
 		onOpenSource: jest.fn(),
+		onRetryMessage: jest.fn(),
+		onUserMessageLayout: jest.fn(),
 	};
 
 	test('strips response directives for speech', () => {
@@ -95,6 +97,49 @@ describe('ChatMessages', () => {
 		expect(findByType(tree, 'Icon').some((icon) => icon.props.name === 'thumbs-up')).toBe(
 			false,
 		);
+	});
+
+	test('reports the rendered position of a user message', () => {
+		const onUserMessageLayout = jest.fn();
+		const userMessage: ChatMessageItem = { id: 1, sender: 'user', text: 'Nowe pytanie' };
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[userMessage]}
+				onUserMessageLayout={onUserMessageLayout}
+			/>
+		);
+		const userBubble = findByType(tree, 'View').find(
+			(view) => view.props.onLayout && getTextContent(view).includes('Nowe pytanie'),
+		);
+
+		userBubble?.props.onLayout({ nativeEvent: { layout: { y: 240 } } });
+		expect(onUserMessageLayout).toHaveBeenCalledWith(userMessage, 240);
+	});
+
+	test('renders retry action for an interrupted answer', () => {
+		const onRetryMessage = jest.fn();
+		const interruptedMessage: ChatMessageItem = {
+			id: 2,
+			sender: 'ai',
+			text: 'Połączenie zostało przerwane.',
+			retryQuestion: 'Jak sprawdzić olej?',
+		};
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[interruptedMessage]}
+				onRetryMessage={onRetryMessage}
+			/>
+		);
+		const retryButton = findByType(tree, 'TouchableOpacity').find(
+			(button) => button.props.accessibilityLabel === 'Wyślij pytanie ponownie',
+		);
+
+		expect(findByText(tree, 'WYŚLIJ PONOWNIE')).toBeTruthy();
+		expect(findByText(tree, 'Czy ta odpowiedź była pomocna?')).toBeFalsy();
+		retryButton?.props.onPress();
+		expect(onRetryMessage).toHaveBeenCalledWith(interruptedMessage);
 	});
 
 	test('renders local feedback controls only for completed assistant messages', () => {

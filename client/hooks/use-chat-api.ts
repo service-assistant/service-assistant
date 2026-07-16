@@ -13,6 +13,7 @@ import {
 	throwIfAuthResponseError,
 } from '@/utils/auth-errors';
 import { buildChunkImageUrl, formatStreamingText, parseStreamData } from '@/utils/chat-stream';
+import { fetchWithRetry, HttpError, isTransientNetworkError } from '@/utils/network';
 
 type StreamEvent = 'chunk';
 
@@ -58,14 +59,14 @@ const fetchAuthorizedImageDataUrl = async (
 	authToken: string,
 	signal: AbortSignal,
 ) => {
-	const response = await fetch(imageUrl, {
+	const response = await fetchWithRetry(imageUrl, {
 		headers: { Authorization: `Bearer ${authToken}` },
 		signal,
 	});
 
 	if (!response.ok) {
 		throwIfAuthResponseError(response);
-		throw new Error(`Failed to load source image: ${response.status}`);
+		throw new HttpError(response.status, `Failed to load source image: ${response.status}`);
 	}
 
 	const contentType = response.headers.get('content-type') || 'image/png';
@@ -162,6 +163,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 			setIsLoading(true);
 			setIsGenerating(true);
 			const aiMessageId = Date.now() + Math.random();
+			let fullText = '';
 
 			setMessages((prev) => [
 				...prev,
@@ -175,7 +177,6 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 				const AUTH_TOKEN = authTokenOverride ?? getAuthTokenOrThrow();
 				const activeThreadId = await ensureThread(question, abortController.signal);
 
-				let fullText = '';
 				let imageUrl: string | null = null;
 				let systemMessageId: number | null = null;
 
@@ -260,7 +261,13 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 								reject(createInvalidAuthTokenError(status));
 								return;
 							}
-							reject(new Error(`API server error: ${event.xhrStatus}`));
+							if (!Number.isFinite(status) || status === 0) {
+								reject(
+									new TypeError('Network connection lost during response stream'),
+								);
+								return;
+							}
+							reject(new HttpError(status, `API server error: ${status}`));
 						} else if ('message' in event) {
 							reject(new Error(event.message));
 						} else {
@@ -320,7 +327,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 				}
 
 				if (systemMessageId) {
-					const chunksResponse = await fetch(
+					const chunksResponse = await fetchWithRetry(
 						`${serverUrl}/api/messages/${systemMessageId}/chunks`,
 						{
 							headers: {
@@ -373,7 +380,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 								}
 							}
 
-							const attachmentResponse = await fetch(
+							const attachmentResponse = await fetchWithRetry(
 								`${serverUrl}/api/attachments/${sourceAttachmentId}`,
 								{
 									headers: {
@@ -438,6 +445,21 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 
 					if (serviceFeature === AUTH_SERVICE_FEATURE) {
 						setMessages((prev) => prev.filter((message) => message.id !== aiMessageId));
+					} else if (isTransientNetworkError(error)) {
+						setMessages((prev) =>
+							prev.map((message) =>
+								message.id === aiMessageId
+									? ({
+											...message,
+											text:
+												message.text ||
+												fullText ||
+												'Połączenie zostało przerwane. Spróbuj wysłać pytanie ponownie.',
+											retryQuestion: question,
+										} as TMessage)
+									: message,
+							),
+						);
 					} else {
 						setMessages((prev) =>
 							prev.map((message) =>
