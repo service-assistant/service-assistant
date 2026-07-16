@@ -14,7 +14,7 @@ import {
 } from '@/utils/auth-errors';
 import { buildChunkImageUrl, formatStreamingText, parseStreamData } from '@/utils/chat-stream';
 
-type StreamEvent = 'chunk';
+type StreamEvent = 'chunk' | 'route';
 
 type AssistantMessagePayload = {
 	id?: number;
@@ -46,7 +46,7 @@ type UseChatApiParams<TMessage extends ChatMessageItem> = {
 	setIsLoading: Dispatch<SetStateAction<boolean>>;
 	setIsGenerating: Dispatch<SetStateAction<boolean>>;
 	setCurrentImage: Dispatch<SetStateAction<string | null>>;
-	diagnosticMode2002Enabled?: boolean;
+	diagnosticModeEnabled?: boolean;
 	playAssistantAudio: (text: string) => void | Promise<void>;
 	ttsEnabled?: boolean;
 	onServiceError?: (featureName: string, error: unknown) => void;
@@ -84,7 +84,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 	setIsLoading,
 	setIsGenerating,
 	setCurrentImage,
-	diagnosticMode2002Enabled = true,
+	diagnosticModeEnabled = false,
 	playAssistantAudio,
 	ttsEnabled = true,
 	onServiceError,
@@ -191,7 +191,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 							},
 							body: JSON.stringify({
 								content: question,
-								diagnostic_mode_2002: diagnosticMode2002Enabled,
+								diagnostic_mode_enabled: diagnosticModeEnabled,
 							}),
 							pollingInterval: 0,
 							timeoutBeforeConnection: 0,
@@ -220,6 +220,19 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 							prev.map((message) =>
 								message.id === aiMessageId
 									? ({ ...message, text: displayText } as TMessage)
+									: message,
+							),
+						);
+					};
+
+					const handleRoute = (event: EventSourceEvent<'route'>) => {
+						const routerDecision = event.data?.trim();
+						if (!routerDecision || abortController.signal.aborted) return;
+
+						setMessages((prev) =>
+							prev.map((message) =>
+								message.id === aiMessageId
+									? ({ ...message, routerDecision } as TMessage)
 									: message,
 							),
 						);
@@ -269,6 +282,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 					};
 
 					abortController.signal.addEventListener('abort', handleAbort);
+					eventSource.addEventListener('route', handleRoute);
 					eventSource.addEventListener('chunk', handleChunk);
 					eventSource.addEventListener('message', handleMessage);
 					eventSource.addEventListener('error', handleError);
@@ -461,7 +475,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 		},
 		[
 			authTokenOverride,
-			diagnosticMode2002Enabled,
+			diagnosticModeEnabled,
 			ensureThread,
 			playAssistantAudio,
 			ttsEnabled,

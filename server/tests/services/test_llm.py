@@ -1,6 +1,11 @@
 import pytest
 
-from app.services.llm import _build_context, _messages, stream_query
+from app.services.llm import (
+    _build_context,
+    _messages,
+    stream_query,
+)
+from app.services.next_best_step import DiagnosticPlan, DiagnosticPlanStatus
 
 
 def test_should_show_only_first_next_best_step_to_technician():
@@ -8,14 +13,23 @@ def test_should_show_only_first_next_best_step_to_technician():
         "Mam błąd 2:002",
         "Dokumentacja",
         [],
-        "1. Sprawdź parametry\n2. Wymień A5",
+        DiagnosticPlan(
+            status=DiagnosticPlanStatus.actions,
+            problem="2:002",
+        ),
     )
 
     prompt = messages[-1].get("content")
     assert isinstance(prompt, str)
     assert "WYŁĄCZNIE pierwszą akcję" in prompt
-    assert "Nie używaj sekcji ::next" in prompt
-    assert "Nie wspominaj o żadnej kolejnej akcji" in prompt
+    assert "Nie dodawaj sekcji ::next" in prompt
+    assert "Nie pokazuj pełnej kolejności diagnostyki" in prompt
+    assert "Nie nazywaj ani nie opisuj żadnej przyszłej akcji" in prompt
+    assert "Nie dodawaj wstępu, nagłówka" in prompt
+    assert "Zacznij odpowiedź bezpośrednio od sekcji ::checklist" in prompt
+    assert "Nie proś o opis obserwacji, wartość, jednostkę" in prompt
+    assert "expected_information" not in prompt
+    assert '"status": "actions"' in prompt
 
 
 @pytest.fixture

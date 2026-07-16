@@ -92,12 +92,17 @@ async def admin_root(request: Request, settings: Settings = Depends(get_settings
     response_class=HTMLResponse,
     dependencies=[Depends(_require_auth)],
 )
-async def get_next_best_step_visualization(request: Request):
+async def get_next_best_step_visualization(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+):
+    devices = await list_devices(session=session)
     return templates.TemplateResponse(
         "admin/next_best_step.html",
         {
             "request": request,
             "active": "next_best_step",
+            "devices": devices,
         },
     )
 

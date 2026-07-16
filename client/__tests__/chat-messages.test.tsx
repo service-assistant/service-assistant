@@ -1,7 +1,10 @@
 import React from 'react';
 
 import type { ChatMessageItem } from '@/components/ChatMessages';
-import ChatMessages, { stripResponseDirectivesForSpeech } from '../components/ChatMessages';
+import ChatMessages, {
+	parseAssistantResponseBlocks,
+	stripResponseDirectivesForSpeech,
+} from '../components/ChatMessages';
 import { findByText, findByType, getTextContent } from '../test-utils/react-tree';
 
 jest.mock('react', () => {
@@ -77,6 +80,33 @@ describe('ChatMessages', () => {
 		).toBe('Intro\ncheck oil\ncheck battery\nstop');
 	});
 
+	test('does not split a numeric range into separate checklist items', () => {
+		expect(
+			parseAssistantResponseBlocks(
+				'::checklist\n- Zmierz rezystancję; oczekiwany zakres to 54 - 66 omów.',
+			),
+		).toEqual([
+			{
+				type: 'checklist',
+				items: ['Zmierz rezystancję; oczekiwany zakres to 54 - 66 omów.'],
+			},
+		]);
+	});
+
+	test('parses next directive glued to Polish text', () => {
+		expect(
+			parseAssistantResponseBlocks(
+				'e poprawnie: tak/nie?::nextJeśli problem pozostanie po aktualnym sprawdzeniu',
+			),
+		).toEqual([
+			{ type: 'text', content: 'e poprawnie: tak/nie?' },
+			{
+				type: 'next',
+				content: 'Jeśli problem pozostanie po aktualnym sprawdzeniu',
+			},
+		]);
+	});
+
 	test('renders user and assistant text messages', () => {
 		const messages: ChatMessageItem[] = [
 			{ id: 1, sender: 'user', text: 'Jak sprawdzić olej?' },
@@ -94,6 +124,27 @@ describe('ChatMessages', () => {
 		expect(findByType(tree, 'Animated.View').length).toBeGreaterThanOrEqual(3);
 		expect(findByType(tree, 'Icon').some((icon) => icon.props.name === 'thumbs-up')).toBe(
 			false,
+		);
+	});
+
+	test('renders the router decision before the assistant message', () => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[
+					{
+						id: 1,
+						sender: 'ai',
+						text: 'Odpowiedź',
+						routerDecision: 'standard_query',
+					},
+				]}
+			/>
+		);
+
+		expect(getTextContent(tree)).toContain('Router: standard_query');
+		expect(getTextContent(tree).indexOf('Router: standard_query')).toBeLessThan(
+			getTextContent(tree).indexOf('Odpowiedź'),
 		);
 	});
 
@@ -149,7 +200,7 @@ describe('ChatMessages', () => {
 			true,
 		);
 		expect(findByType(tree, 'Icon').some((icon) => icon.props.name === 'arrow-right')).toBe(
-			true,
+			false,
 		);
 	});
 

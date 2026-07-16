@@ -1,8 +1,9 @@
 import asyncio
 import json
+import time
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -10,7 +11,13 @@ from sqlalchemy.orm import selectinload
 
 from app.config import Settings, get_settings
 from app.database import get_session
-from app.models import ChatThread, ChunkMessage, Device, Message, MessageSender
+from app.models import (
+    ChatThread,
+    ChunkMessage,
+    Device,
+    Message,
+    MessageSender,
+)
 from app.schemas import (
     ChatThreadRead,
     MessageCreate,
@@ -18,7 +25,7 @@ from app.schemas import (
     ThreadCreate,
     TranscriptResponse,
 )
-from app.services import retrieval, llm, next_best_step, stt
+from app.services import llm, message_router, next_best_step, retrieval, stt
 from fastapi import WebSocket, WebSocketDisconnect
 from contextlib import suppress
 
@@ -103,6 +110,10 @@ def _looks_like_continuation(content: str) -> bool:
     return len(lower.split()) <= 4 or any(hint in lower for hint in _CONTINUATION_HINTS)
 
 
+def _diagnostic_plan_cache_key(message: Message) -> str:
+    return f"{message.thread_id}:{message.id}"
+
+
 @router.post(
     "/{thread_id}/messages",
     response_class=StreamingResponse,
@@ -124,27 +135,120 @@ async def create_message(
     body: MessageCreate,
     settings: Annotated[Settings, Depends(get_settings)],
     session: AsyncSession = Depends(get_session),
+    debug: bool = Query(
+        default=False,
+        description="Emit diagnostic pipeline details as `debug` SSE events.",
+    ),
 ):
+    started_at = time.perf_counter()
     thread = await session.get(ChatThread, thread_id)
     if not thread:
         raise HTTPException(status_code=404, detail="Thread not found")
 
     device_id = thread.device_id
 
-    latest_system_message = await session.scalar(
-        select(Message)
-        .where(Message.thread_id == thread.id)
-        .where(Message.sender == MessageSender.assistant)
-        .order_by(Message.created_at.desc())
-        .limit(1)
-        .options(selectinload(Message.chunks))
+    recent_messages = list(
+        (
+            await session.scalars(
+                select(Message)
+                .where(Message.thread_id == thread.id)
+                .order_by(Message.created_at.desc())
+                .limit(20)
+                .options(selectinload(Message.chunks))
+            )
+        ).all()
     )
+    latest_system_message = next(
+        (
+            message
+            for message in recent_messages
+            if message.sender == MessageSender.assistant
+        ),
+        None,
+    )
+    routing_history: list[message_router.RoutingHistoryMessage] = [
+        {
+            "id": message.id,
+            "sender": message.sender.value,
+            "content": message.content[-3000:],
+            "has_chunks": bool(message.chunks),
+        }
+        for message in reversed(recent_messages)
+    ]
+
+    route_decision = message_router.RouteDecision(
+        route=message_router.MessageRoute.standard_query,
+        confidence=1,
+        recognized_problem=None,
+        diagnostic_message_id=None,
+    )
+    if body.diagnostic_mode_enabled:
+        route_decision = await message_router.route_message(
+            body.content,
+            settings,
+            recent_messages=routing_history,
+        )
+        if next_best_step.requests_next_action(body.content):
+            cached_message_and_plan = next(
+                (
+                    (message, plan)
+                    for message in recent_messages
+                    if message.sender == MessageSender.assistant and message.chunks
+                    if (
+                        plan := next_best_step.get_cached_diagnostic_plan(
+                            _diagnostic_plan_cache_key(message)
+                        )
+                    )
+                ),
+                None,
+            )
+            if cached_message_and_plan:
+                cached_message, cached_plan = cached_message_and_plan
+                route_decision = message_router.RouteDecision(
+                    route=message_router.MessageRoute.diagnostic_followup,
+                    confidence=1,
+                    recognized_problem=cached_plan.problem,
+                    diagnostic_message_id=cached_message.id,
+                )
+    routed_at = time.perf_counter()
+    diagnostic_route = route_decision.route
+    diagnostic_message = next(
+        (
+            message
+            for message in recent_messages
+            if message.id == route_decision.diagnostic_message_id
+            and message.sender == MessageSender.assistant
+            and message.chunks
+        ),
+        None,
+    )
+    current_diagnostic_plan: next_best_step.DiagnosticPlan | None = None
+    if diagnostic_message:
+        current_diagnostic_plan = next_best_step.get_cached_diagnostic_plan(
+            _diagnostic_plan_cache_key(diagnostic_message)
+        )
+    if (
+        diagnostic_route == message_router.MessageRoute.diagnostic_followup
+        and current_diagnostic_plan is None
+    ):
+        diagnostic_route = message_router.MessageRoute.standard_query
 
     might_continue = latest_system_message is not None and _looks_like_continuation(
         body.content
     )
 
-    if might_continue:
+    if current_diagnostic_plan and diagnostic_message:
+        is_continuation = False
+        fresh_chunks = [
+            {
+                "id": chunk.id,
+                "content": chunk.content,
+                "attachment_id": chunk.attachment_id,
+                "extra_metadata": chunk.extra_metadata,
+            }
+            for chunk in diagnostic_message.chunks
+        ]
+    elif might_continue:
         is_continuation, fresh_chunks = await asyncio.gather(
             llm.is_message_continuation_request(body.content, settings),
             retrieval.retrieve_context_chunks(
@@ -175,55 +279,34 @@ async def create_message(
         ]
     else:
         retrieved_chunks = fresh_chunks
+    retrieved_at = time.perf_counter()
 
     context_chunks = [chunk["content"] for chunk in retrieved_chunks]
 
-    ranked_plan = ""
-    if body.diagnostic_mode_2002 and next_best_step.is_supported_question(body.content):
-        ranked_plan = await next_best_step.build_ranked_plan(context_chunks, settings)
+    diagnostic_plan: next_best_step.DiagnosticPlan | None = None
+    if diagnostic_route == message_router.MessageRoute.start_diagnostic:
+        diagnostic_problem = route_decision.recognized_problem or body.content
+        diagnostic_plan = await next_best_step.build_diagnostic_plan(
+            context_chunks, diagnostic_problem, settings
+        )
     elif (
-        body.diagnostic_mode_2002
-        and latest_system_message
-        and latest_system_message.chunks
+        diagnostic_route == message_router.MessageRoute.diagnostic_followup
+        and diagnostic_message
+        and current_diagnostic_plan
     ):
-        recent_messages = list(
-            (
-                await session.scalars(
-                    select(Message)
-                    .where(Message.thread_id == thread.id)
-                    .order_by(Message.created_at.desc())
-                    .limit(8)
-                )
-            ).all()
+        (
+            is_diagnostic_result,
+            followup_plan,
+        ) = await next_best_step.build_followup_plan(
+            current_diagnostic_plan,
+            diagnostic_message.content,
+            body.content,
+            settings,
         )
-        has_recent_2002_question = any(
-            message.sender == MessageSender.user
-            and next_best_step.is_supported_question(message.content)
-            for message in recent_messages
-        )
-        if has_recent_2002_question:
-            diagnostic_chunks = [
-                {
-                    "id": chunk.id,
-                    "content": chunk.content,
-                    "attachment_id": chunk.attachment_id,
-                    "extra_metadata": chunk.extra_metadata,
-                }
-                for chunk in latest_system_message.chunks
-            ]
-            (
-                is_diagnostic_result,
-                followup_plan,
-            ) = await next_best_step.build_followup_plan(
-                [chunk["content"] for chunk in diagnostic_chunks],
-                latest_system_message.content,
-                body.content,
-                settings,
-            )
-            if is_diagnostic_result:
-                retrieved_chunks = diagnostic_chunks
-                context_chunks = [chunk["content"] for chunk in diagnostic_chunks]
-                ranked_plan = followup_plan
+        if is_diagnostic_result:
+            diagnostic_plan = followup_plan
+    planned_at = time.perf_counter()
+    response_plan = diagnostic_plan.current_action_only() if diagnostic_plan else None
 
     user_message = Message(
         content=body.content,
@@ -236,6 +319,69 @@ async def create_message(
     async def event_stream():
         answer_parts: list[str] = []
 
+        if debug:
+            yield _sse(
+                "debug",
+                {
+                    "step": "route",
+                    "label": "Router wiadomości",
+                    "duration_ms": round((routed_at - started_at) * 1000),
+                    "data": {
+                        **route_decision.model_dump(mode="json"),
+                        "effective_route": diagnostic_route.value,
+                        "history_messages": len(routing_history),
+                    },
+                },
+            )
+            yield _sse(
+                "debug",
+                {
+                    "step": "retrieval",
+                    "label": "Retrieval dokumentacji",
+                    "duration_ms": round((retrieved_at - routed_at) * 1000),
+                    "data": {
+                        "device_id": device_id,
+                        "continuation": is_continuation,
+                        "chunks": [
+                            {
+                                "id": chunk["id"],
+                                "attachment_id": chunk["attachment_id"],
+                                "preview": chunk["content"][:500],
+                                "metadata": chunk.get("extra_metadata") or {},
+                            }
+                            for chunk in retrieved_chunks
+                        ],
+                    },
+                },
+            )
+            yield _sse(
+                "debug",
+                {
+                    "step": "plan",
+                    "label": "Next Best Step",
+                    "duration_ms": round((planned_at - retrieved_at) * 1000),
+                    "data": {
+                        "active": diagnostic_plan is not None,
+                        **(
+                            diagnostic_plan.model_dump(mode="json")
+                            if diagnostic_plan
+                            else {}
+                        ),
+                    },
+                },
+            )
+            yield _sse(
+                "debug",
+                {
+                    "step": "generation",
+                    "label": "Generowanie odpowiedzi",
+                    "duration_ms": None,
+                    "data": {"status": "started"},
+                },
+            )
+
+        yield _sse("route", diagnostic_route.value)
+
         async for chunk in llm.stream_query(
             session,
             thread_id,
@@ -243,7 +389,7 @@ async def create_message(
             context_chunks,
             settings,
             exclude_message_id=user_message.id,
-            ranked_plan=ranked_plan,
+            diagnostic_plan=response_plan,
         ):
             answer_parts.append(chunk)
             yield _sse("chunk", chunk)
@@ -258,6 +404,11 @@ async def create_message(
         session.add(assistant_message)
         await session.flush()
 
+        if diagnostic_plan:
+            next_best_step.cache_diagnostic_plan(
+                _diagnostic_plan_cache_key(assistant_message), diagnostic_plan
+            )
+
         if not llm.is_no_source_answer(answer):
             for chunk in retrieved_chunks:
                 session.add(
@@ -265,6 +416,21 @@ async def create_message(
                 )
 
         await session.commit()
+
+        if debug:
+            yield _sse(
+                "debug",
+                {
+                    "step": "complete",
+                    "label": "Odpowiedź zapisana",
+                    "duration_ms": round((time.perf_counter() - planned_at) * 1000),
+                    "data": {
+                        "message_id": assistant_message.id,
+                        "answer_characters": len(answer),
+                        "source_count": len(retrieved_chunks),
+                    },
+                },
+            )
 
         yield _sse(
             "message", MessageRead.model_validate(assistant_message).model_dump_json()

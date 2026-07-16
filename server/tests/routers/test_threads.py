@@ -3,17 +3,32 @@ from contextlib import asynccontextmanager
 
 from sqlalchemy import select
 
-from app.models import ChatThread, Message, MessageSender
+from app.models import ChatThread, ChunkMessage, Message, MessageSender
+from app.services.message_router import MessageRoute, RouteDecision
+from app.services.next_best_step import (
+    DiagnosticPlan,
+    DiagnosticPlanStatus,
+    cache_diagnostic_plan,
+)
 from app.services.stt import SttError
 
 from tests.routers.factories import (
     create_brand,
+    create_attachment,
+    create_chunk,
     create_device,
     create_device_type,
     create_message,
     create_thread,
     make_thread,
 )
+
+
+def _diagnostic_plan(problem: str) -> DiagnosticPlan:
+    return DiagnosticPlan(
+        status=DiagnosticPlanStatus.actions,
+        problem=problem,
+    )
 
 
 async def test_should_create_thread_when_valid_data_provided(client, session):
@@ -131,25 +146,227 @@ async def test_should_send_message_and_return_assistant_reply(
     assert isinstance(message_data["id"], int)
 
 
-async def test_should_skip_2002_diagnostic_mode_when_client_disables_it(
+async def test_should_skip_diagnostic_mode_when_client_disables_it(
     client, session, mock_azure_embeddings, mock_openai_llm, mocker
 ):
     brand = await create_brand(session)
     dt = await create_device_type(session)
     device = await create_device(session, brand.id, dt.id)
     thread = await create_thread(session, device.id)
-    build_ranked_plan = mocker.patch(
-        "app.routers.threads.next_best_step.build_ranked_plan",
+    build_diagnostic_plan = mocker.patch(
+        "app.routers.threads.next_best_step.build_diagnostic_plan",
         new=mocker.AsyncMock(return_value="should not be used"),
     )
 
     response = await client.post(
         f"/api/threads/{thread.id}/messages",
-        json={"content": "Mam błąd 2:002", "diagnostic_mode_2002": False},
+        json={"content": "Mam błąd 2:002", "diagnostic_mode_enabled": False},
     )
 
     assert response.status_code == 200
-    build_ranked_plan.assert_not_awaited()
+    build_diagnostic_plan.assert_not_awaited()
+
+
+async def test_should_start_diagnostic_for_any_error_when_mode_is_enabled(
+    client, session, mock_azure_embeddings, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    build_diagnostic_plan = mocker.patch(
+        "app.routers.threads.next_best_step.build_diagnostic_plan",
+        new=mocker.AsyncMock(return_value=_diagnostic_plan("2:004")),
+    )
+    mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "Mam błąd 2:004", "diagnostic_mode_enabled": True},
+    )
+
+    assert response.status_code == 200
+    assert "event: route\ndata: start_diagnostic" in response.text
+    build_diagnostic_plan.assert_awaited_once_with([], "2:004", mocker.ANY)
+
+
+async def test_should_emit_pipeline_trace_when_debug_is_requested(
+    client, session, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "app.routers.threads.next_best_step.build_diagnostic_plan",
+        new=mocker.AsyncMock(return_value=_diagnostic_plan("2:004")),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages?debug=true",
+        json={"content": "Mam błąd 2:004", "diagnostic_mode_enabled": True},
+    )
+
+    assert response.status_code == 200
+    events = response.text.split("\n\n")
+    debug_payloads = [
+        json.loads(event.split("data: ", maxsplit=1)[1])
+        for event in events
+        if event.startswith("event: debug\n")
+    ]
+    assert [payload["step"] for payload in debug_payloads] == [
+        "route",
+        "retrieval",
+        "plan",
+        "generation",
+        "complete",
+    ]
+    assert debug_payloads[0]["data"]["effective_route"] == "start_diagnostic"
+    assert debug_payloads[2]["data"] == {
+        "active": True,
+        "status": "actions",
+        "problem": "2:004",
+        "actions": [],
+        "observation_summary": "",
+        "technician_response": "",
+        "completed_action_id": None,
+    }
+    assert debug_payloads[-1]["data"]["answer_characters"] == len("Test response")
+
+
+async def test_should_send_side_question_through_standard_rag_during_diagnostic(
+    client, session, mock_azure_embeddings, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    chunk = await create_chunk(session, attachment.id, content="Procedura 2:002")
+    await create_message(
+        session,
+        thread.id,
+        content="Mam błąd 2:002",
+        sender=MessageSender.user,
+    )
+    assistant_message = await create_message(
+        session,
+        thread.id,
+        content="Sprawdź parametry fabryczne.",
+        sender=MessageSender.assistant,
+    )
+    session.add(ChunkMessage(message_id=assistant_message.id, chunk_id=chunk.id))
+    await session.commit()
+
+    mocker.patch(
+        "app.routers.threads.message_router.route_message",
+        new=mocker.AsyncMock(
+            return_value=RouteDecision(
+                route=MessageRoute.standard_query,
+                confidence=0.99,
+                recognized_problem=None,
+                diagnostic_message_id=None,
+            )
+        ),
+    )
+    build_followup_plan = mocker.patch(
+        "app.routers.threads.next_best_step.build_followup_plan",
+        new=mocker.AsyncMock(return_value=(True, "should not be used")),
+    )
+    mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "app.routers.threads.llm.is_message_continuation_request",
+        new=mocker.AsyncMock(return_value=False),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={
+            "content": "Jak bezpiecznie podnosić urządzenie?",
+            "diagnostic_mode_enabled": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Test response" in response.text
+    build_followup_plan.assert_not_awaited()
+
+
+async def test_should_reconstruct_diagnostic_from_history_for_any_problem(
+    client, session, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    chunk = await create_chunk(session, attachment.id, content="Procedura błędu E-23")
+    diagnostic_message = await create_message(
+        session,
+        thread.id,
+        content="Sprawdź ciśnienie układu.",
+        sender=MessageSender.assistant,
+    )
+    session.add(ChunkMessage(message_id=diagnostic_message.id, chunk_id=chunk.id))
+    await session.commit()
+    cache_diagnostic_plan(
+        f"{thread.id}:{diagnostic_message.id}",
+        _diagnostic_plan("E-23"),
+    )
+
+    mocker.patch(
+        "app.routers.threads.message_router.route_message",
+        new=mocker.AsyncMock(
+            return_value=RouteDecision(
+                route=MessageRoute.diagnostic_followup,
+                confidence=0.99,
+                recognized_problem="E-23",
+                diagnostic_message_id=diagnostic_message.id,
+            )
+        ),
+    )
+    mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "app.routers.threads.llm.is_message_continuation_request",
+        new=mocker.AsyncMock(return_value=False),
+    )
+    build_followup_plan = mocker.patch(
+        "app.routers.threads.next_best_step.build_followup_plan",
+        new=mocker.AsyncMock(
+            return_value=(
+                True,
+                _diagnostic_plan("E-23"),
+            )
+        ),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={
+            "content": "Ciśnienie jest za niskie",
+            "diagnostic_mode_enabled": True,
+        },
+    )
+
+    assert response.status_code == 200
+    build_followup_plan.assert_awaited_once_with(
+        _diagnostic_plan("E-23"),
+        "Sprawdź ciśnienie układu.",
+        "Ciśnienie jest za niskie",
+        mocker.ANY,
+    )
 
 
 async def test_should_store_user_message_before_reply(

@@ -20,10 +20,10 @@ export default function SettingsScreen() {
 	const {
 		wakeWordEnabled,
 		ttsEnabled,
-		diagnosticMode2002Enabled,
+		diagnosticModeEnabled,
 		setWakeWordEnabled,
 		setTtsEnabled,
-		setDiagnosticMode2002Enabled,
+		setDiagnosticModeEnabled,
 	} = useAppSettings();
 	const { width, height } = useWindowDimensions();
 	const shortestScreenSide = Math.min(width, height);
@@ -107,10 +107,10 @@ export default function SettingsScreen() {
 					</TouchableOpacity>
 
 					<TouchableOpacity
-						onPress={() => setDiagnosticMode2002Enabled(!diagnosticMode2002Enabled)}
+						onPress={() => setDiagnosticModeEnabled(!diagnosticModeEnabled)}
 						accessibilityRole='switch'
-						accessibilityState={{ checked: diagnosticMode2002Enabled }}
-						accessibilityLabel='Tryb diagnostyczny dla błędu 2:002'
+						accessibilityState={{ checked: diagnosticModeEnabled }}
+						accessibilityLabel='Tryb diagnostyczny Next Best Step'
 						activeOpacity={0.75}
 						className='flex-row items-center justify-between px-4 border-b border-white/5'
 						style={{ paddingVertical: rowPaddingVertical }}>
@@ -120,7 +120,7 @@ export default function SettingsScreen() {
 							</View>
 							<View className='flex-1'>
 								<Text className='text-white text-base font-semibold'>
-									Tryb diagnostyczny 2:002
+									Tryb diagnostyczny
 								</Text>
 								<Text className='text-zinc-400 text-sm mt-1'>
 									Prowadzi technika krok po kroku i pokazuje jedną akcję naraz.
@@ -128,10 +128,10 @@ export default function SettingsScreen() {
 							</View>
 						</View>
 						<Switch
-							value={diagnosticMode2002Enabled}
-							onValueChange={setDiagnosticMode2002Enabled}
+							value={diagnosticModeEnabled}
+							onValueChange={setDiagnosticModeEnabled}
 							trackColor={switchTrackColor}
-							thumbColor={diagnosticMode2002Enabled ? PRIMARY_ORANGE : '#A1A1AA'}
+							thumbColor={diagnosticModeEnabled ? PRIMARY_ORANGE : '#A1A1AA'}
 							ios_backgroundColor='#27272A'
 						/>
 					</TouchableOpacity>
