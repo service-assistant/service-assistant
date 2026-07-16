@@ -1,6 +1,13 @@
 import { Feather } from '@expo/vector-icons';
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Platform, Text, TouchableOpacity, View } from 'react-native';
+import {
+	Animated,
+	type LayoutChangeEvent,
+	Platform,
+	Text,
+	TouchableOpacity,
+	View,
+} from 'react-native';
 import { WebView } from 'react-native-webview';
 
 const PRIMARY_ORANGE = '#FF7A00';
@@ -14,6 +21,7 @@ export type ChatMessageItem = {
 	sourceAttachmentId?: number;
 	sourceAttachmentName?: string;
 	sourceAttachmentPage?: number;
+	retryQuestion?: string;
 };
 
 type ChatMessagesProps<TMessage extends ChatMessageItem> = {
@@ -24,6 +32,9 @@ type ChatMessagesProps<TMessage extends ChatMessageItem> = {
 	schemaAspectRatio: number;
 	onOpenSchema: (imageUrl: string) => void;
 	onOpenSource: (message: TMessage) => void;
+	onRetryMessage: (message: TMessage) => void;
+	isRetryDisabled?: boolean;
+	onUserMessageLayout: (message: TMessage, y: number) => void;
 };
 
 type AssistantResponseBlock =
@@ -393,6 +404,9 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 	schemaAspectRatio,
 	onOpenSchema,
 	onOpenSource,
+	onRetryMessage,
+	isRetryDisabled = false,
+	onUserMessageLayout,
 }: ChatMessagesProps<TMessage>) {
 	const [messageFeedback, setMessageFeedback] = useState<Record<number, MessageFeedback>>({});
 
@@ -414,6 +428,9 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 				message.sender === 'user' ? (
 					<View
 						key={message.id}
+						onLayout={(event: LayoutChangeEvent) =>
+							onUserMessageLayout(message, event.nativeEvent.layout.y)
+						}
 						className={
 							compact
 								? 'self-end bg-[#B85000] rounded-[18px] px-4 py-3 mb-5'
@@ -481,7 +498,25 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 								</Text>
 							</TouchableOpacity>
 						) : null}
-						{message.text ? (
+						{message.retryQuestion ? (
+							<TouchableOpacity
+								onPress={() => onRetryMessage(message)}
+								disabled={isRetryDisabled}
+								accessibilityRole='button'
+								accessibilityLabel='Wyślij pytanie ponownie'
+								className='mt-4 self-start flex-row items-center rounded-lg border border-[#FF7A00] px-4 py-3'
+								style={{ opacity: isRetryDisabled ? 0.5 : 1 }}>
+								<Feather
+									name='refresh-cw'
+									size={compact ? 18 : 20}
+									color={PRIMARY_ORANGE}
+								/>
+								<Text className='ml-2 text-[13px] font-bold tracking-wide text-[#FF7A00]'>
+									WYŚLIJ PONOWNIE
+								</Text>
+							</TouchableOpacity>
+						) : null}
+						{message.text && !message.retryQuestion ? (
 							<View className='mt-4' accessibilityLabel='Oceń odpowiedź asystenta'>
 								<Text className='text-[#AEB3BA] text-[13px] mb-2'>
 									Czy ta odpowiedź była pomocna?

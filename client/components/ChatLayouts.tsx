@@ -302,6 +302,9 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	onShouldFocusStartPromptInputChange: (shouldFocus: boolean) => void;
 	onOpenSchema: (imageUrl: string) => void;
 	onOpenSource: (message: TMessage) => void;
+	onRetryMessage: (message: TMessage) => void;
+	isRetryDisabled?: boolean;
+	onUserMessageLayout: (message: TMessage, y: number) => void;
 	onMicPress: () => void;
 	onWritingPress: () => void;
 };
@@ -401,6 +404,9 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	onShouldFocusStartPromptInputChange,
 	onOpenSchema,
 	onOpenSource,
+	onRetryMessage,
+	isRetryDisabled,
+	onUserMessageLayout,
 	onMicPress,
 	onWritingPress,
 	insets,
@@ -506,7 +512,9 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 					ref={messagesScrollViewRef}
 					className='flex-1 mt-5 px-4'
 					showsVerticalScrollIndicator={false}
-					contentContainerStyle={{ paddingBottom: portraitMessagesBottomPadding }}>
+					contentContainerStyle={{
+						paddingBottom: Math.max(portraitMessagesBottomPadding, height),
+					}}>
 					<ChatMessages
 						messages={messages}
 						compact
@@ -515,6 +523,9 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 						schemaAspectRatio={currentImageAspectRatio}
 						onOpenSchema={onOpenSchema}
 						onOpenSource={onOpenSource}
+						onRetryMessage={onRetryMessage}
+						isRetryDisabled={isRetryDisabled}
+						onUserMessageLayout={onUserMessageLayout}
 					/>
 				</ScrollView>
 			) : (
@@ -606,6 +617,9 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	onShouldFocusStartPromptInputChange,
 	onOpenSchema,
 	onOpenSource,
+	onRetryMessage,
+	isRetryDisabled,
+	onUserMessageLayout,
 	onMicPress,
 	onWritingPress,
 }: SharedLayoutProps<TMessage>) {
@@ -658,7 +672,7 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 					<ScrollView
 						ref={messagesScrollViewRef}
 						className='flex-1 pr-8'
-						contentContainerStyle={{ paddingBottom: 30 }}>
+						contentContainerStyle={{ paddingBottom: Math.max(30, height) }}>
 						<ChatMessages
 							messages={messages}
 							isListening={isListening}
@@ -666,6 +680,9 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 							schemaAspectRatio={currentImageAspectRatio}
 							onOpenSchema={onOpenSchema}
 							onOpenSource={onOpenSource}
+							onRetryMessage={onRetryMessage}
+							isRetryDisabled={isRetryDisabled}
+							onUserMessageLayout={onUserMessageLayout}
 						/>
 					</ScrollView>
 				) : (

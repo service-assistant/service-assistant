@@ -136,6 +136,8 @@ const createLayoutProps = () => ({
 	onShouldFocusStartPromptInputChange: jest.fn(),
 	onOpenSchema: jest.fn(),
 	onOpenSource: jest.fn(),
+	onRetryMessage: jest.fn(),
+	onUserMessageLayout: jest.fn(),
 	onMicPress: jest.fn(),
 	onWritingPress: jest.fn(),
 });
@@ -157,6 +159,11 @@ describe('ChatLayouts', () => {
 		expect(buttons[1].props.disabled).toBe(true);
 		expect(props.onOpenMachineInfo).not.toHaveBeenCalled();
 		expect(props.onOpenFilesPanel).toHaveBeenCalled();
+		expect(findByType(tree, 'ScrollView')[0].props.contentContainerStyle.paddingBottom).toBe(
+			800,
+		);
+		findByType(tree, 'ChatMessages')[0].props.onUserMessageLayout(messages[0], 120);
+		expect(props.onUserMessageLayout).toHaveBeenCalledWith(messages[0], 120);
 	});
 
 	test('DesktopChatLayout renders start prompt before chat starts', () => {
@@ -198,6 +205,11 @@ describe('ChatLayouts', () => {
 		expect(findByType(tree, 'SourcePanel')[0].props.headerHeight).toBe(74);
 		expect(findByType(tree, 'SourcePanel')[0].props.backButtonSize).toBe(42);
 		expect(findByType(tree, 'SourcePanel')[0].props.backIconSize).toBe(21);
+		expect(findByType(tree, 'ScrollView')[0].props.contentContainerStyle.paddingBottom).toBe(
+			800,
+		);
+		findByType(tree, 'ChatMessages')[0].props.onUserMessageLayout(messages[0], 120);
+		expect(props.onUserMessageLayout).toHaveBeenCalledWith(messages[0], 120);
 	});
 
 	test('PortraitChatLayout keeps three file columns on tablets', () => {

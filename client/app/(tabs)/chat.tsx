@@ -23,6 +23,7 @@ import { useAppSettings } from '@/hooks/use-app-settings';
 import { useAssistantAudio } from '@/hooks/use-assistant-audio';
 import { useChatApi } from '@/hooks/use-chat-api';
 import { useMicrophone } from '@/hooks/use-microphone';
+import { useNetworkStatus } from '@/hooks/use-network-status';
 import { useSourcePanelFiles } from '@/hooks/use-source-panel-files';
 import { useWakeWord } from '@/hooks/use-wake-word';
 import type { AvailableFile, Message } from '@/types/chat';
@@ -32,6 +33,7 @@ import {
 	getServiceErrorFeature,
 	throwIfAuthResponseError,
 } from '@/utils/auth-errors';
+import { fetchWithRetry, HttpError, isTransientNetworkError } from '@/utils/network';
 
 const CHAT_AUTH_TOKEN_OVERRIDE: string | null = null;
 
@@ -40,6 +42,7 @@ type ChatMessage = Message & {
 	sourceAttachmentId?: number;
 	sourceAttachmentName?: string;
 	sourceAttachmentPage?: number;
+	retryQuestion?: string;
 };
 
 type DeviceAttachmentPayload = {
@@ -112,25 +115,39 @@ export default function ChatScreen() {
 	const [isSpeechInputUnavailable, setIsSpeechInputUnavailable] = useState<boolean>(false);
 	const [isVoiceOutputUnavailable, setIsVoiceOutputUnavailable] = useState<boolean>(false);
 	const [isChatFocused, setIsChatFocused] = useState<boolean>(false);
+	const { reconnectCount } = useNetworkStatus();
 
 	const hasStartedChat = messages.length > 0 || Boolean(threadId);
 	const messagesScrollViewRef = useRef<ScrollView>(null);
 	const startPromptInputRef = useRef<TextInput>(null);
+	const retryInProgressRef = useRef(false);
 	const askAPIRef = useRef<(question: string) => void>(() => undefined);
 	const showServiceError = useCallback((featureName: string, error: unknown) => {
 		console.log(`Handled service error (${featureName}):`, error);
+		if (isTransientNetworkError(error)) return;
 		setServiceErrorFeature(featureName);
 	}, []);
 	const handleSpeechInputError = useCallback((error: unknown) => {
 		console.log('Handled speech input error:', error);
+		if (isTransientNetworkError(error)) return;
 		setIsSpeechInputUnavailable(true);
 	}, []);
+	const latestUserMessageId = [...messages]
+		.reverse()
+		.find((message) => message.sender === 'user')?.id;
+	const handleUserMessageLayout = useCallback(
+		(message: ChatMessage, y: number) => {
+			if (message.id !== latestUserMessageId) return;
+			messagesScrollViewRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+		},
+		[latestUserMessageId],
+	);
 
 	const { isAudioPlaying, playAssistantAudio, stopAssistantAudio } = useAssistantAudio({
 		setIsLoading,
 		setIsGenerating,
 		onServiceError: (featureName, error) => {
-			setIsVoiceOutputUnavailable(true);
+			if (!isTransientNetworkError(error)) setIsVoiceOutputUnavailable(true);
 			showServiceError(featureName, error);
 		},
 	});
@@ -258,7 +275,7 @@ export default function ChatScreen() {
 				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 				const authToken = CHAT_AUTH_TOKEN_OVERRIDE ?? getAuthTokenOrThrow();
 
-				const response = await fetch(
+				const response = await fetchWithRetry(
 					`${AUTH_URL}/api/devices/${selectedDeviceId}/attachments`,
 					{
 						headers: {
@@ -271,7 +288,10 @@ export default function ChatScreen() {
 
 				if (!response.ok) {
 					throwIfAuthResponseError(response);
-					throw new Error(`Failed to load attachments: ${response.status}`);
+					throw new HttpError(
+						response.status,
+						`Failed to load attachments: ${response.status}`,
+					);
 				}
 
 				const attachments = (await response.json()) as DeviceAttachmentPayload[];
@@ -304,7 +324,7 @@ export default function ChatScreen() {
 		fetchAvailableFiles();
 
 		return () => abortController.abort();
-	}, [selectedDeviceId, showServiceError]);
+	}, [reconnectCount, selectedDeviceId, showServiceError]);
 
 	useEffect(() => {
 		const abortController = new AbortController();
@@ -335,17 +355,23 @@ export default function ChatScreen() {
 				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 				const authToken = CHAT_AUTH_TOKEN_OVERRIDE ?? getAuthTokenOrThrow();
 
-				const response = await fetch(`${AUTH_URL}/api/threads/${parsedThreadId}/messages`, {
-					headers: {
-						Accept: 'application/json',
-						Authorization: `Bearer ${authToken}`,
+				const response = await fetchWithRetry(
+					`${AUTH_URL}/api/threads/${parsedThreadId}/messages`,
+					{
+						headers: {
+							Accept: 'application/json',
+							Authorization: `Bearer ${authToken}`,
+						},
+						signal: abortController.signal,
 					},
-					signal: abortController.signal,
-				});
+				);
 
 				if (!response.ok) {
 					throwIfAuthResponseError(response);
-					throw new Error(`Failed to load thread messages: ${response.status}`);
+					throw new HttpError(
+						response.status,
+						`Failed to load thread messages: ${response.status}`,
+					);
 				}
 
 				const threadMessages = (await response.json()) as ThreadMessagePayload[];
@@ -424,6 +450,22 @@ export default function ChatScreen() {
 		askAPI(trimmedInput);
 		setInputText('');
 		setShowTextInput(false);
+	};
+
+	const handleRetryMessage = (message: ChatMessage) => {
+		const question = message.retryQuestion?.trim();
+		if (!question || isLoading || isGenerating || retryInProgressRef.current) return;
+
+		retryInProgressRef.current = true;
+		handleStop();
+		setMessages((currentMessages) => [
+			...currentMessages.filter((currentMessage) => currentMessage.id !== message.id),
+			{ id: Date.now(), sender: 'user', text: question, isSpeaking: false },
+		]);
+
+		void askAPI(question).finally(() => {
+			retryInProgressRef.current = false;
+		});
 	};
 
 	const handleMicPressWithFeedback = () => {
@@ -513,6 +555,9 @@ export default function ChatScreen() {
 		onShouldFocusStartPromptInputChange: setShouldFocusStartPromptInput,
 		onOpenSchema: openSchemaFullscreen,
 		onOpenSource: openMessageSource,
+		onRetryMessage: handleRetryMessage,
+		isRetryDisabled: isLoading || isGenerating,
+		onUserMessageLayout: handleUserMessageLayout,
 		onMicPress: handleMicPressWithFeedback,
 		onWritingPress: handleWritingPress,
 	};

@@ -16,9 +16,11 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import ServiceErrorModal from '@/components/ServiceErrorModal';
 import VehicleCard, { type Vehicle } from '@/components/VehicleCard';
 import VehicleFilters from '@/components/VehicleFilters';
+import { useNetworkStatus } from '@/hooks/use-network-status';
 import { useVehicleMetadata } from '@/hooks/use-vehicle-metadata';
 import { CONFIG_SERVICE_FEATURE } from '@/utils/api-config';
 import { AUTH_SERVICE_FEATURE } from '@/utils/auth-errors';
+import { isTransientNetworkError } from '@/utils/network';
 
 // --- CONFIGURATION & DATA TYPES ---
 
@@ -40,14 +42,16 @@ export default function HomeScreen() {
 	const [activeTypeFilter, setActiveTypeFilter] = useState<string>('WSZYSTKIE');
 	const [searchQuery] = useState<string>('');
 	const [serviceErrorFeature, setServiceErrorFeature] = useState<string | null>(null);
+	const { reconnectCount } = useNetworkStatus();
 
 	const showServiceError = useCallback((featureName: string, error: unknown) => {
 		console.log(`Handled service error (${featureName}):`, error);
+		if (isTransientNetworkError(error)) return;
 		setServiceErrorFeature(featureName);
 	}, []);
 
 	const { brands, deviceTypes, rawDevices, isLoadingBrands, isLoadingTypes, isLoadingDevices } =
-		useVehicleMetadata({ onServiceError: showServiceError });
+		useVehicleMetadata({ onServiceError: showServiceError, refreshKey: reconnectCount });
 
 	// --- MAP DEVICES TO UI FORMAT ---
 	const mappedVehicles: Vehicle[] = rawDevices.map((device) => {
