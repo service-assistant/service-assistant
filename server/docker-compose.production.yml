@@ -1,14 +1,11 @@
-name: service-assistant-production
-
 services:
-
   app:
     build: .
     env_file: .env
     command: >
       sh -c "alembic upgrade head && fastapi run --host 0.0.0.0 --port 8000 --workers 1"
     ports:
-      - "127.0.0.1:8002:8000"
+      - "127.0.0.1:${PORT}:8000"
     volumes:
       - attachments:/attachments
     healthcheck:
@@ -18,6 +15,16 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:${DOCKER_GATEWAY}"
 
 volumes:
   attachments:
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+      # Constant subnet to let Postgres know what ąddress to listen on
+        - subnet: ${DOCKER_SUBNET}
