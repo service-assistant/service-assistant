@@ -165,6 +165,31 @@ export default function ControlPanel({
 					experimentalBlurMethod: 'dimezisBlurView',
 				} as const)
 			: { intensity: Platform.OS === 'web' ? 18 : 24 };
+	const panelBackdropStyle = {
+		borderRadius: panelRadius,
+		borderWidth: 1,
+		borderColor: '#242833',
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 10 },
+		shadowOpacity: 0.22,
+		shadowRadius: 22,
+		elevation: 6,
+		zIndex: 0,
+		backgroundColor: useEdgeToEdge ? 'rgba(12, 14, 20, 0.84)' : 'rgba(20, 22, 30, 0.92)',
+		bottom: useEdgeToEdge ? -4 : 0,
+		...(useEdgeToEdge
+			? {
+					borderLeftWidth: 0,
+					borderRightWidth: 0,
+					borderBottomWidth: 0,
+					borderTopLeftRadius: 0,
+					borderTopRightRadius: 0,
+				}
+			: {}),
+		...(Platform.OS === 'web' && !useEdgeToEdge
+			? ({ backdropFilter: 'blur(8px)' } as any)
+			: {}),
+	};
 
 	const renderSideButton = (type: 'camera' | 'writing') => {
 		const isWritingButton = type === 'writing';
@@ -342,34 +367,31 @@ export default function ControlPanel({
 
 	return (
 		<View className='relative' style={{ width: panelWidth, height: panelHeight }}>
-			<BlurView
-				{...controlPanelBlurProps}
-				tint='dark'
-				pointerEvents='none'
-				className='absolute inset-0 overflow-hidden'
-				style={{
-					borderRadius: panelRadius,
-					borderWidth: 1,
-					borderColor: '#242833',
-					shadowColor: '#000',
-					shadowOffset: { width: 0, height: 10 },
-					shadowOpacity: 0.22,
-					shadowRadius: 22,
-					elevation: 6,
-					zIndex: 0,
-					backgroundColor: 'rgba(20, 22, 30, 0.92)',
-					...(useEdgeToEdge
-						? {
-								borderLeftWidth: 0,
-								borderRightWidth: 0,
-								borderBottomWidth: 0,
-								borderTopLeftRadius: 0,
-								borderTopRightRadius: 0,
-							}
-						: {}),
-					...(Platform.OS === 'web' ? ({ backdropFilter: 'blur(8px)' } as any) : {}),
-				}}
-			/>
+			{useEdgeToEdge ? (
+				<View
+					testID='control-panel-frosted-backdrop'
+					pointerEvents='none'
+					className='absolute inset-0 overflow-hidden'
+					style={panelBackdropStyle}>
+					<View
+						testID='control-panel-frosted-haze'
+						className='absolute inset-0'
+						style={{ backgroundColor: 'rgba(40, 48, 55, 0.25)' }}
+					/>
+					<View
+						className='absolute left-0 right-0 top-0'
+						style={{ height: 1, backgroundColor: 'rgba(255, 255, 255, 0.12)' }}
+					/>
+				</View>
+			) : (
+				<BlurView
+					{...controlPanelBlurProps}
+					tint='dark'
+					pointerEvents='none'
+					className='absolute inset-0 overflow-hidden'
+					style={panelBackdropStyle}
+				/>
+			)}
 			<View
 				className={`${isHorizontal ? 'flex-row' : 'flex-col'} items-center px-3`}
 				style={

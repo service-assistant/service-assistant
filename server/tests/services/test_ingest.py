@@ -24,10 +24,18 @@ async def test_ingest_pdf_to_attachment(mocker, settings):
 
     mocker.patch("fitz.open", return_value=mock_doc)
 
+    mocker.patch(
+        "app.services.ingest.pymupdf4llm.to_markdown",
+        return_value="# Test\n\nSome markdown",
+    )
+
     mock_client = mocker.AsyncMock()
 
     mock_client.embeddings.create.return_value = mocker.Mock(
-        data=[mocker.Mock(embedding=fake_embedding) for _ in range(32)]
+        data=[
+            mocker.Mock(embedding=fake_embedding),
+            mocker.Mock(embedding=fake_embedding),
+        ]
     )
 
     mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=mock_client)

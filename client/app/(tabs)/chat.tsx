@@ -23,6 +23,7 @@ import { useAppSettings } from '@/hooks/use-app-settings';
 import { useAssistantAudio } from '@/hooks/use-assistant-audio';
 import { useChatApi } from '@/hooks/use-chat-api';
 import { useMicrophone } from '@/hooks/use-microphone';
+import { useNetworkStatus } from '@/hooks/use-network-status';
 import { useSourcePanelFiles } from '@/hooks/use-source-panel-files';
 import { useWakeWord } from '@/hooks/use-wake-word';
 import type { AvailableFile, Message } from '@/types/chat';
@@ -32,6 +33,7 @@ import {
 	getServiceErrorFeature,
 	throwIfAuthResponseError,
 } from '@/utils/auth-errors';
+import { fetchWithRetry, HttpError, isTransientNetworkError } from '@/utils/network';
 
 const CHAT_AUTH_TOKEN_OVERRIDE: string | null = null;
 
@@ -40,6 +42,7 @@ type ChatMessage = Message & {
 	sourceAttachmentId?: number;
 	sourceAttachmentName?: string;
 	sourceAttachmentPage?: number;
+	retryQuestion?: string;
 };
 
 type DeviceAttachmentPayload = {
@@ -53,7 +56,6 @@ type ThreadMessagePayload = {
 	sender: 'user' | 'system';
 };
 
-const HARDCODED_DEVICE_ID = 1;
 const FILE_ICON_OPTIONS = [
 	{ icon: 'file-pdf-box', color: '#EF4444' },
 	{ icon: 'file-document-outline', color: '#06B6D4' },
@@ -70,7 +72,7 @@ const FILE_ICON_OPTIONS = [
  * Features include:
  * - Real-time voice recording with volume metering
  * - Server-side Speech-to-Text (STT)
- * - Integration with OpenAI for Text-to-Speech (TTS)
+ * - Server-side Text-to-Speech (TTS)
  * - Managing thread-based conversation history with the backend API
  * - Displaying attachments and schema images
  */
@@ -81,7 +83,7 @@ export default function ChatScreen() {
 	const sourcePanelFullScreen = isPortrait;
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
-	const { wakeWordEnabled, ttsEnabled } = useAppSettings();
+	const { wakeWordEnabled, ttsEnabled, diagnosticMode2002Enabled } = useAppSettings();
 
 	const { deviceId, deviceName, logoUrl, chatSession, threadId } = useLocalSearchParams<{
 		deviceId: string;
@@ -90,10 +92,13 @@ export default function ChatScreen() {
 		chatSession: string;
 		threadId?: string;
 	}>();
+	const parsedDeviceId = Number(deviceId);
+	const selectedDeviceId =
+		Number.isFinite(parsedDeviceId) && parsedDeviceId > 0 ? parsedDeviceId : null;
 	const sessionKey = `${deviceId ?? ''}:${chatSession ?? ''}:${threadId ?? ''}`;
 	const currentSource = deviceName || 'Wybierz maszynę';
 
-	const [isLoading, setIsLoading] = useState<boolean>(true);
+	const [isLoading, setIsLoading] = useState<boolean>(() => Boolean(threadId));
 	const [isGenerating, setIsGenerating] = useState<boolean>(false);
 	const [availableFiles, setAvailableFiles] = useState<AvailableFile[]>([]);
 	const [isAvailableFilesLoading, setIsAvailableFilesLoading] = useState<boolean>(true);
@@ -110,38 +115,41 @@ export default function ChatScreen() {
 	const [isSpeechInputUnavailable, setIsSpeechInputUnavailable] = useState<boolean>(false);
 	const [isVoiceOutputUnavailable, setIsVoiceOutputUnavailable] = useState<boolean>(false);
 	const [isChatFocused, setIsChatFocused] = useState<boolean>(false);
+	const { reconnectCount } = useNetworkStatus();
 
 	const hasStartedChat = messages.length > 0 || Boolean(threadId);
 	const messagesScrollViewRef = useRef<ScrollView>(null);
 	const startPromptInputRef = useRef<TextInput>(null);
+	const retryInProgressRef = useRef(false);
 	const askAPIRef = useRef<(question: string) => void>(() => undefined);
-	const hasShownOpenAiKeyErrorRef = useRef<boolean>(false);
 	const showServiceError = useCallback((featureName: string, error: unknown) => {
 		console.log(`Handled service error (${featureName}):`, error);
+		if (isTransientNetworkError(error)) return;
 		setServiceErrorFeature(featureName);
 	}, []);
-	const handleOpenAiKeyError = useCallback(
-		(error: unknown) => {
-			console.log('Handled OpenAI API key error:', error);
-			setIsVoiceOutputUnavailable(true);
-
-			if (hasShownOpenAiKeyErrorRef.current) return;
-
-			hasShownOpenAiKeyErrorRef.current = true;
-			showServiceError('odtwarzanie odpowiedzi głosowej', error);
-		},
-		[showServiceError],
-	);
 	const handleSpeechInputError = useCallback((error: unknown) => {
 		console.log('Handled speech input error:', error);
+		if (isTransientNetworkError(error)) return;
 		setIsSpeechInputUnavailable(true);
 	}, []);
+	const latestUserMessageId = [...messages]
+		.reverse()
+		.find((message) => message.sender === 'user')?.id;
+	const handleUserMessageLayout = useCallback(
+		(message: ChatMessage, y: number) => {
+			if (message.id !== latestUserMessageId) return;
+			messagesScrollViewRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+		},
+		[latestUserMessageId],
+	);
 
 	const { isAudioPlaying, playAssistantAudio, stopAssistantAudio } = useAssistantAudio({
 		setIsLoading,
 		setIsGenerating,
-		onServiceError: showServiceError,
-		onOpenAiKeyError: handleOpenAiKeyError,
+		onServiceError: (featureName, error) => {
+			if (!isTransientNetworkError(error)) setIsVoiceOutputUnavailable(true);
+			showServiceError(featureName, error);
+		},
 	});
 	const playAssistantAudioWhenEnabled = useCallback(
 		(text: string) => {
@@ -169,25 +177,18 @@ export default function ChatScreen() {
 			authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
 		});
 
-	useFocusEffect(
-		useCallback(() => {
-			setIsChatFocused(true);
-
-			return () => {
-				setIsChatFocused(false);
-			};
-		}, []),
-	);
 	const { askAPI, ensureThread, stopChatApi } = useChatApi<ChatMessage>({
 		serverUrl: AUTH_URL,
-		deviceId: HARDCODED_DEVICE_ID,
+		deviceId: selectedDeviceId,
 		currentThreadId,
 		setCurrentThreadId,
 		setMessages,
 		setIsLoading,
 		setIsGenerating,
 		setCurrentImage,
+		diagnosticMode2002Enabled,
 		playAssistantAudio: playAssistantAudioWhenEnabled,
+		ttsEnabled,
 		onServiceError: showServiceError,
 		authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
 	});
@@ -224,6 +225,19 @@ export default function ChatScreen() {
 		onSpeechInputError: handleSpeechInputError,
 	});
 
+	useFocusEffect(
+		useCallback(() => {
+			setIsChatFocused(true);
+
+			return () => {
+				setIsChatFocused(false);
+				stopChatApi();
+				stopAssistantAudio();
+				abortVoiceInput();
+			};
+		}, [abortVoiceInput, stopAssistantAudio, stopChatApi]),
+	);
+
 	useEffect(() => {
 		const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
 		const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -254,11 +268,15 @@ export default function ChatScreen() {
 			setIsAvailableFilesLoading(true);
 
 			try {
+				if (!selectedDeviceId) {
+					setAvailableFiles([]);
+					return;
+				}
 				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 				const authToken = CHAT_AUTH_TOKEN_OVERRIDE ?? getAuthTokenOrThrow();
 
-				const response = await fetch(
-					`${AUTH_URL}/api/devices/${HARDCODED_DEVICE_ID}/attachments`,
+				const response = await fetchWithRetry(
+					`${AUTH_URL}/api/devices/${selectedDeviceId}/attachments`,
 					{
 						headers: {
 							Accept: 'application/json',
@@ -270,7 +288,10 @@ export default function ChatScreen() {
 
 				if (!response.ok) {
 					throwIfAuthResponseError(response);
-					throw new Error(`Failed to load attachments: ${response.status}`);
+					throw new HttpError(
+						response.status,
+						`Failed to load attachments: ${response.status}`,
+					);
 				}
 
 				const attachments = (await response.json()) as DeviceAttachmentPayload[];
@@ -303,7 +324,7 @@ export default function ChatScreen() {
 		fetchAvailableFiles();
 
 		return () => abortController.abort();
-	}, [showServiceError]);
+	}, [reconnectCount, selectedDeviceId, showServiceError]);
 
 	useEffect(() => {
 		const abortController = new AbortController();
@@ -334,17 +355,23 @@ export default function ChatScreen() {
 				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 				const authToken = CHAT_AUTH_TOKEN_OVERRIDE ?? getAuthTokenOrThrow();
 
-				const response = await fetch(`${AUTH_URL}/api/threads/${parsedThreadId}/messages`, {
-					headers: {
-						Accept: 'application/json',
-						Authorization: `Bearer ${authToken}`,
+				const response = await fetchWithRetry(
+					`${AUTH_URL}/api/threads/${parsedThreadId}/messages`,
+					{
+						headers: {
+							Accept: 'application/json',
+							Authorization: `Bearer ${authToken}`,
+						},
+						signal: abortController.signal,
 					},
-					signal: abortController.signal,
-				});
+				);
 
 				if (!response.ok) {
 					throwIfAuthResponseError(response);
-					throw new Error(`Failed to load thread messages: ${response.status}`);
+					throw new HttpError(
+						response.status,
+						`Failed to load thread messages: ${response.status}`,
+					);
 				}
 
 				const threadMessages = (await response.json()) as ThreadMessagePayload[];
@@ -405,6 +432,11 @@ export default function ChatScreen() {
 		abortVoiceInput();
 	};
 
+	const handleBack = () => {
+		handleStop();
+		router.push('/home');
+	};
+
 	const handleSendText = () => {
 		const trimmedInput = inputText.trim();
 		if (trimmedInput.length === 0) return;
@@ -418,6 +450,22 @@ export default function ChatScreen() {
 		askAPI(trimmedInput);
 		setInputText('');
 		setShowTextInput(false);
+	};
+
+	const handleRetryMessage = (message: ChatMessage) => {
+		const question = message.retryQuestion?.trim();
+		if (!question || isLoading || isGenerating || retryInProgressRef.current) return;
+
+		retryInProgressRef.current = true;
+		handleStop();
+		setMessages((currentMessages) => [
+			...currentMessages.filter((currentMessage) => currentMessage.id !== message.id),
+			{ id: Date.now(), sender: 'user', text: question, isSpeaking: false },
+		]);
+
+		void askAPI(question).finally(() => {
+			retryInProgressRef.current = false;
+		});
 	};
 
 	const handleMicPressWithFeedback = () => {
@@ -498,7 +546,7 @@ export default function ChatScreen() {
 		messagesScrollViewRef,
 		sourcePanelProps,
 		sourcePanelFullScreen,
-		onBack: () => router.push('/home'),
+		onBack: handleBack,
 		onOpenMachineInfo: sourcePanelProps.onClose,
 		onOpenFilesPanel: openFilesPanel,
 		onSendText: handleSendText,
@@ -507,6 +555,9 @@ export default function ChatScreen() {
 		onShouldFocusStartPromptInputChange: setShouldFocusStartPromptInput,
 		onOpenSchema: openSchemaFullscreen,
 		onOpenSource: openMessageSource,
+		onRetryMessage: handleRetryMessage,
+		isRetryDisabled: isLoading || isGenerating,
+		onUserMessageLayout: handleUserMessageLayout,
 		onMicPress: handleMicPressWithFeedback,
 		onWritingPress: handleWritingPress,
 	};

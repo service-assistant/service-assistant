@@ -261,6 +261,22 @@ describe('useMicrophone', () => {
 		jest.useRealTimers();
 	});
 
+	test('keeps the microphone idle during initial screen loading', () => {
+		const harness = createHarness({ isLoading: true });
+
+		expect(harness.api.isMicProcessing).toBe(false);
+		expect(harness.api.isListening).toBe(false);
+	});
+
+	test('shows microphone processing once conversation work is active', () => {
+		const harness = createHarness({
+			isLoading: true,
+			messages: [{ id: 1, sender: 'user', text: 'Pomoc' }],
+		});
+
+		expect(harness.api.isMicProcessing).toBe(true);
+	});
+
 	test('reports auth configuration errors before requesting permissions', async () => {
 		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
 		const harness = createHarness({ authTokenOverride: null });

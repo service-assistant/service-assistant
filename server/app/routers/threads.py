@@ -18,7 +18,7 @@ from app.schemas import (
     ThreadCreate,
     TranscriptResponse,
 )
-from app.services import retrieval, llm, stt, tts
+from app.services import retrieval, llm, next_best_step, stt
 from fastapi import WebSocket, WebSocketDisconnect
 from contextlib import suppress
 
@@ -85,50 +85,6 @@ async def delete_thread(thread_id: int, session: AsyncSession = Depends(get_sess
         raise HTTPException(status_code=404, detail="Thread not found")
     await session.delete(thread)
     await session.commit()
-
-
-async def _synthesize_and_enqueue(
-    idx: int,
-    text: str,
-    queue: asyncio.Queue[tuple[int, bytes | None, str | None]],
-    settings: Settings,
-) -> None:
-    try:
-        pcm = await tts.synthesize_pcm(text, settings)
-        await queue.put((idx, pcm, None))
-    except tts.TtsError as exc:
-        await queue.put((idx, None, str(exc)))
-
-
-def _drain_ready_audio(
-    audio_queue: asyncio.Queue[tuple[int, bytes | None, str | None]],
-    pending: dict[int, tuple[bytes | None, str | None]],
-    next_to_emit: int,
-) -> tuple[list[str], int]:
-    while not audio_queue.empty():
-        idx, pcm, err = audio_queue.get_nowait()
-        pending[idx] = (pcm, err)
-    events: list[str] = []
-    while next_to_emit in pending:
-        audio, err = pending.pop(next_to_emit)
-        if audio is not None:
-            for payload in tts.iter_audio_chunk_payloads(audio):
-                events.append(
-                    _sse("audio_chunk", {**payload, "sentence": next_to_emit})
-                )
-            events.append(
-                _sse(
-                    "audio_done",
-                    {
-                        **tts.audio_done_payload(total_bytes=len(audio)),
-                        "sentence": next_to_emit,
-                    },
-                )
-            )
-        elif err is not None:
-            events.append(_sse("tts_error", {"sentence": next_to_emit, "detail": err}))
-        next_to_emit += 1
-    return events, next_to_emit
 
 
 def _sse(event: str, payload: object) -> str:
@@ -222,6 +178,53 @@ async def create_message(
 
     context_chunks = [chunk["content"] for chunk in retrieved_chunks]
 
+    ranked_plan = ""
+    if body.diagnostic_mode_2002 and next_best_step.is_supported_question(body.content):
+        ranked_plan = await next_best_step.build_ranked_plan(context_chunks, settings)
+    elif (
+        body.diagnostic_mode_2002
+        and latest_system_message
+        and latest_system_message.chunks
+    ):
+        recent_messages = list(
+            (
+                await session.scalars(
+                    select(Message)
+                    .where(Message.thread_id == thread.id)
+                    .order_by(Message.created_at.desc())
+                    .limit(8)
+                )
+            ).all()
+        )
+        has_recent_2002_question = any(
+            message.sender == MessageSender.user
+            and next_best_step.is_supported_question(message.content)
+            for message in recent_messages
+        )
+        if has_recent_2002_question:
+            diagnostic_chunks = [
+                {
+                    "id": chunk.id,
+                    "content": chunk.content,
+                    "attachment_id": chunk.attachment_id,
+                    "extra_metadata": chunk.extra_metadata,
+                }
+                for chunk in latest_system_message.chunks
+            ]
+            (
+                is_diagnostic_result,
+                followup_plan,
+            ) = await next_best_step.build_followup_plan(
+                [chunk["content"] for chunk in diagnostic_chunks],
+                latest_system_message.content,
+                body.content,
+                settings,
+            )
+            if is_diagnostic_result:
+                retrieved_chunks = diagnostic_chunks
+                context_chunks = [chunk["content"] for chunk in diagnostic_chunks]
+                ranked_plan = followup_plan
+
     user_message = Message(
         content=body.content,
         thread_id=thread_id,
@@ -232,16 +235,6 @@ async def create_message(
 
     async def event_stream():
         answer_parts: list[str] = []
-        sentence_buffer = ""
-        sentence_idx = 0
-        tts_enabled = bool(settings.gemini_api_key)
-        audio_queue: asyncio.Queue[tuple[int, bytes | None, str | None]] = (
-            asyncio.Queue()
-        )
-        tts_tasks: list[asyncio.Task[None]] = []
-
-        pending: dict[int, tuple[bytes | None, str | None]] = {}
-        next_to_emit = 0
 
         async for chunk in llm.stream_query(
             session,
@@ -250,38 +243,12 @@ async def create_message(
             context_chunks,
             settings,
             exclude_message_id=user_message.id,
+            ranked_plan=ranked_plan,
         ):
             answer_parts.append(chunk)
             yield _sse("chunk", chunk)
-            if tts_enabled:
-                sentence_buffer += chunk
-                sentences, sentence_buffer = tts.extract_sentences(sentence_buffer)
-                for sentence in sentences:
-                    tts_tasks.append(
-                        asyncio.create_task(
-                            _synthesize_and_enqueue(
-                                sentence_idx, sentence, audio_queue, settings
-                            )
-                        )
-                    )
-                    sentence_idx += 1
-                events, next_to_emit = _drain_ready_audio(
-                    audio_queue, pending, next_to_emit
-                )
-                for ev in events:
-                    yield ev
 
         answer = "".join(answer_parts)
-
-        if tts_enabled and sentence_buffer.strip():
-            tts_tasks.append(
-                asyncio.create_task(
-                    _synthesize_and_enqueue(
-                        sentence_idx, sentence_buffer.strip(), audio_queue, settings
-                    )
-                )
-            )
-            sentence_idx += 1
 
         assistant_message = Message(
             content=answer,
@@ -298,17 +265,6 @@ async def create_message(
                 )
 
         await session.commit()
-
-        total_tts = len(tts_tasks)
-        while next_to_emit < total_tts:
-            events, next_to_emit = _drain_ready_audio(
-                audio_queue, pending, next_to_emit
-            )
-            for ev in events:
-                yield ev
-            if next_to_emit < total_tts:
-                idx, pcm, err = await audio_queue.get()
-                pending[idx] = (pcm, err)
 
         yield _sse(
             "message", MessageRead.model_validate(assistant_message).model_dump_json()

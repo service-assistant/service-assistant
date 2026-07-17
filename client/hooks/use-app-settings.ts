@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 export type AppSettings = {
 	wakeWordEnabled: boolean;
 	ttsEnabled: boolean;
+	diagnosticMode2002Enabled: boolean;
 };
 
 const STORAGE_KEY = 'service-assistant:app-settings';
@@ -15,6 +16,7 @@ const STORAGE_FILE_URI = FileSystem.documentDirectory
 const DEFAULT_APP_SETTINGS: AppSettings = {
 	wakeWordEnabled: false,
 	ttsEnabled: false,
+	diagnosticMode2002Enabled: true,
 };
 
 const parseStoredAppSettings = (storedValue: string | null): Partial<AppSettings> => {
@@ -28,6 +30,9 @@ const parseStoredAppSettings = (storedValue: string | null): Partial<AppSettings
 			: {}),
 		...(typeof parsedValue.ttsEnabled === 'boolean'
 			? { ttsEnabled: parsedValue.ttsEnabled }
+			: {}),
+		...(typeof parsedValue.diagnosticMode2002Enabled === 'boolean'
+			? { diagnosticMode2002Enabled: parsedValue.diagnosticMode2002Enabled }
 			: {}),
 	};
 };
@@ -135,5 +140,7 @@ export const useAppSettings = () => {
 		...settings,
 		setWakeWordEnabled: (value: boolean) => setAppSetting('wakeWordEnabled', value),
 		setTtsEnabled: (value: boolean) => setAppSetting('ttsEnabled', value),
+		setDiagnosticMode2002Enabled: (value: boolean) =>
+			setAppSetting('diagnosticMode2002Enabled', value),
 	};
 };

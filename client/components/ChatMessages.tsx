@@ -1,6 +1,13 @@
 import { Feather } from '@expo/vector-icons';
-import React, { useEffect, useRef } from 'react';
-import { Animated, Platform, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import {
+	Animated,
+	type LayoutChangeEvent,
+	Platform,
+	Text,
+	TouchableOpacity,
+	View,
+} from 'react-native';
 import { WebView } from 'react-native-webview';
 
 const PRIMARY_ORANGE = '#FF7A00';
@@ -14,6 +21,7 @@ export type ChatMessageItem = {
 	sourceAttachmentId?: number;
 	sourceAttachmentName?: string;
 	sourceAttachmentPage?: number;
+	retryQuestion?: string;
 };
 
 type ChatMessagesProps<TMessage extends ChatMessageItem> = {
@@ -24,6 +32,9 @@ type ChatMessagesProps<TMessage extends ChatMessageItem> = {
 	schemaAspectRatio: number;
 	onOpenSchema: (imageUrl: string) => void;
 	onOpenSource: (message: TMessage) => void;
+	onRetryMessage: (message: TMessage) => void;
+	isRetryDisabled?: boolean;
+	onUserMessageLayout: (message: TMessage, y: number) => void;
 };
 
 type AssistantResponseBlock =
@@ -31,6 +42,8 @@ type AssistantResponseBlock =
 	| { type: 'checklist'; items: string[] }
 	| { type: 'warning'; content: string }
 	| { type: 'next'; content: string };
+
+type MessageFeedback = 'like' | 'dislike';
 
 const getInvertedImageHtml = (imageUrl: string, zoomable = false) => `
 	<!DOCTYPE html>
@@ -391,13 +404,33 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 	schemaAspectRatio,
 	onOpenSchema,
 	onOpenSource,
+	onRetryMessage,
+	isRetryDisabled = false,
+	onUserMessageLayout,
 }: ChatMessagesProps<TMessage>) {
+	const [messageFeedback, setMessageFeedback] = useState<Record<number, MessageFeedback>>({});
+
+	const toggleFeedback = (messageId: number, feedback: MessageFeedback) => {
+		setMessageFeedback((currentFeedback) => {
+			if (currentFeedback[messageId] === feedback) {
+				const nextFeedback = { ...currentFeedback };
+				delete nextFeedback[messageId];
+				return nextFeedback;
+			}
+
+			return { ...currentFeedback, [messageId]: feedback };
+		});
+	};
+
 	return (
 		<>
 			{messages.map((message) =>
 				message.sender === 'user' ? (
 					<View
 						key={message.id}
+						onLayout={(event: LayoutChangeEvent) =>
+							onUserMessageLayout(message, event.nativeEvent.layout.y)
+						}
 						className={
 							compact
 								? 'self-end bg-[#B85000] rounded-[18px] px-4 py-3 mb-5'
@@ -464,6 +497,69 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 									POKAŻ ŹRÓDŁO ODPOWIEDZI
 								</Text>
 							</TouchableOpacity>
+						) : null}
+						{message.retryQuestion ? (
+							<TouchableOpacity
+								onPress={() => onRetryMessage(message)}
+								disabled={isRetryDisabled}
+								accessibilityRole='button'
+								accessibilityLabel='Wyślij pytanie ponownie'
+								className='mt-4 self-start flex-row items-center rounded-lg border border-[#FF7A00] px-4 py-3'
+								style={{ opacity: isRetryDisabled ? 0.5 : 1 }}>
+								<Feather
+									name='refresh-cw'
+									size={compact ? 18 : 20}
+									color={PRIMARY_ORANGE}
+								/>
+								<Text className='ml-2 text-[13px] font-bold tracking-wide text-[#FF7A00]'>
+									WYŚLIJ PONOWNIE
+								</Text>
+							</TouchableOpacity>
+						) : null}
+						{message.text && !message.retryQuestion ? (
+							<View className='mt-4' accessibilityLabel='Oceń odpowiedź asystenta'>
+								<Text className='text-[#AEB3BA] text-[13px] mb-2'>
+									Czy ta odpowiedź była pomocna?
+								</Text>
+								<View className='flex-row items-center gap-2'>
+									{(['like', 'dislike'] as const).map((feedback) => {
+										const isSelected = messageFeedback[message.id] === feedback;
+										const isLike = feedback === 'like';
+										const feedbackColor = isLike ? '#22C55E' : '#EF4444';
+
+										return (
+											<TouchableOpacity
+												key={feedback}
+												onPress={() => toggleFeedback(message.id, feedback)}
+												accessibilityRole='button'
+												accessibilityLabel={
+													isLike
+														? 'Lubię tę odpowiedź'
+														: 'Nie lubię tej odpowiedzi'
+												}
+												accessibilityState={{ selected: isSelected }}
+												hitSlop={8}
+												className='items-center justify-center rounded-full border w-10 h-10'
+												style={{
+													borderColor: isSelected
+														? feedbackColor
+														: '#34383F',
+													backgroundColor: isSelected
+														? isLike
+															? '#12351F'
+															: '#3B1518'
+														: 'transparent',
+												}}>
+												<Feather
+													name={isLike ? 'thumbs-up' : 'thumbs-down'}
+													size={compact ? 18 : 20}
+													color={isSelected ? feedbackColor : '#8F959E'}
+												/>
+											</TouchableOpacity>
+										);
+									})}
+								</View>
+							</View>
 						) : null}
 					</View>
 				),

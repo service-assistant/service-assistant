@@ -157,9 +157,12 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 	const micProcessingStartedAtRef = useRef<number | null>(null);
 	const hasPendingVoiceInput = messages.some((message) => message.isSpeaking);
 	const canStreamPcmAudio = Platform.OS === 'android' && isPcmAudioStreamAvailable;
+	const hasConversationActivity = messages.length > 0;
 	const isMicProcessing =
 		!isListening &&
-		(hasPendingVoiceInput || isTranscribing || isLoading || isGenerating || isAudioPlaying);
+		(hasPendingVoiceInput ||
+			isTranscribing ||
+			(hasConversationActivity && (isLoading || isGenerating || isAudioPlaying)));
 
 	const clearMetering = useCallback(() => {
 		if (meteringIntervalRef.current) {

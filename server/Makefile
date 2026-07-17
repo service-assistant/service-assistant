@@ -36,9 +36,7 @@ help:
 install:
 	poetry install
 dev:
-	docker compose -f docker-compose.dev.yml up --build
-staging:
-	docker compose -f docker-compose.staging.yml up --build
+	docker compose -f docker-compose.dev.yml up
 production:
 	docker compose -f docker-compose.production.yml up --build
 docs:

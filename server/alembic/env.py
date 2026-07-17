@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
+
 load_dotenv()
 
 import app.models  # noqa: E402, F401

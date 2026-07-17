@@ -8,13 +8,14 @@ import {
 	ScrollView,
 	Text,
 	TouchableOpacity,
-	View,
 	useWindowDimensions,
+	View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ServiceErrorModal from '@/components/ServiceErrorModal';
 import VehicleFilters from '@/components/VehicleFilters';
+import { useNetworkStatus } from '@/hooks/use-network-status';
 import { useVehicleMetadata } from '@/hooks/use-vehicle-metadata';
 import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
@@ -22,6 +23,7 @@ import {
 	getServiceErrorFeature,
 	throwIfAuthResponseError,
 } from '@/utils/auth-errors';
+import { fetchWithRetry, HttpError, isTransientNetworkError } from '@/utils/network';
 
 const PRIMARY_ORANGE = '#FF6B00';
 
@@ -89,9 +91,11 @@ export default function HistoryScreen() {
 	const [activeTypeFilter, setActiveTypeFilter] = useState('WSZYSTKIE');
 	const [isLoadingThreads, setIsLoadingThreads] = useState(true);
 	const [serviceErrorFeature, setServiceErrorFeature] = useState<string | null>(null);
+	const { reconnectCount } = useNetworkStatus();
 
 	const showServiceError = useCallback((featureName: string, error: unknown) => {
 		console.log(`Handled service error (${featureName}):`, error);
+		if (isTransientNetworkError(error)) return;
 		setServiceErrorFeature(featureName);
 	}, []);
 
@@ -102,11 +106,13 @@ export default function HistoryScreen() {
 		isLoadingBrands,
 		isLoadingTypes,
 		isLoadingDevices,
-	} = useVehicleMetadata({ onServiceError: showServiceError });
+	} = useVehicleMetadata({ onServiceError: showServiceError, refreshKey: reconnectCount });
 	const isLoading = isLoadingThreads || isLoadingBrands || isLoadingTypes || isLoadingDevices;
 
 	useFocusEffect(
 		useCallback(() => {
+			// Recreate this focus effect whenever the global connection recovers.
+			void reconnectCount;
 			const abortController = new AbortController();
 
 			const loadHistory = async () => {
@@ -115,7 +121,7 @@ export default function HistoryScreen() {
 				try {
 					if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 					const authToken = getAuthTokenOrThrow();
-					const threadsResponse = await fetch(`${AUTH_URL}/api/threads`, {
+					const threadsResponse = await fetchWithRetry(`${AUTH_URL}/api/threads`, {
 						headers: {
 							Accept: 'application/json',
 							Authorization: `Bearer ${authToken}`,
@@ -126,7 +132,7 @@ export default function HistoryScreen() {
 					throwIfAuthResponseError(threadsResponse);
 
 					if (!threadsResponse.ok) {
-						throw new Error('Failed to load chat history.');
+						throw new HttpError(threadsResponse.status, 'Failed to load chat history.');
 					}
 
 					const loadedThreads = (await threadsResponse.json()) as ChatThread[];
@@ -146,7 +152,7 @@ export default function HistoryScreen() {
 			loadHistory();
 
 			return () => abortController.abort();
-		}, [showServiceError]),
+		}, [reconnectCount, showServiceError]),
 	);
 
 	const historyItems: HistoryItem[] = [...threads]

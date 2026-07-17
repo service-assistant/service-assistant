@@ -2,24 +2,33 @@ package expo.modules.audiostream
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.util.Base64
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 import kotlin.math.max
 import kotlin.math.sqrt
 
 private const val SAMPLE_RATE = 16_000
+private const val PLAYBACK_SAMPLE_RATE = 24_000
 private const val PCM_STREAM_CHUNK_SAMPLES = 1_600
 
 class AudioStreamModule : Module() {
   @Volatile private var isPcmStreaming = false
+  @Volatile private var isPcmPlaying = false
   private var pcmStreamingThread: Thread? = null
+  private var pcmPlaybackThread: Thread? = null
   private var pcmAudioRecord: AudioRecord? = null
+  private var pcmAudioTrack: AudioTrack? = null
+  private val pcmPlaybackQueue = LinkedBlockingQueue<ByteArray>()
 
   override fun definition() = ModuleDefinition {
     Name("AudioStream")
@@ -33,8 +42,21 @@ class AudioStreamModule : Module() {
       stopPcmStreaming()
     }
 
+    AsyncFunction("startPcmPlayback") {
+      startPcmPlayback()
+    }
+
+    AsyncFunction("enqueuePcmPlaybackChunk") { chunkBase64: String ->
+      enqueuePcmPlaybackChunk(chunkBase64)
+    }
+
+    AsyncFunction("stopPcmPlayback") {
+      stopPcmPlayback()
+    }
+
     OnDestroy {
       stopPcmStreaming()
+      stopPcmPlayback()
     }
   }
 
@@ -121,5 +143,82 @@ class AudioStreamModule : Module() {
     val currentThread = pcmStreamingThread
     if (currentThread != Thread.currentThread()) currentThread?.join(750)
     pcmStreamingThread = null
+  }
+
+  private fun startPcmPlayback() {
+    if (isPcmPlaying) {
+      return
+    }
+
+    val minBufferSize = AudioTrack.getMinBufferSize(
+      PLAYBACK_SAMPLE_RATE,
+      AudioFormat.CHANNEL_OUT_MONO,
+      AudioFormat.ENCODING_PCM_16BIT
+    )
+    val track = AudioTrack.Builder()
+      .setAudioAttributes(
+        AudioAttributes.Builder()
+          .setUsage(AudioAttributes.USAGE_MEDIA)
+          .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+          .build()
+      )
+      .setAudioFormat(
+        AudioFormat.Builder()
+          .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+          .setSampleRate(PLAYBACK_SAMPLE_RATE)
+          .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+          .build()
+      )
+      .setBufferSizeInBytes(max(minBufferSize, PLAYBACK_SAMPLE_RATE))
+      .setTransferMode(AudioTrack.MODE_STREAM)
+      .build()
+
+    pcmPlaybackQueue.clear()
+    pcmAudioTrack = track
+    isPcmPlaying = true
+    pcmPlaybackThread = thread(name = "fikso-pcm-playback") {
+      try {
+        track.play()
+        while (isPcmPlaying || pcmPlaybackQueue.isNotEmpty()) {
+          val bytes = pcmPlaybackQueue.poll(250, TimeUnit.MILLISECONDS) ?: continue
+          var offset = 0
+          while (offset < bytes.size && (isPcmPlaying || pcmPlaybackQueue.isNotEmpty())) {
+            val written = track.write(bytes, offset, bytes.size - offset)
+            if (written <= 0) break
+            offset += written
+          }
+        }
+      } catch (error: Exception) {
+        sendEvent("onPcmStreamError", mapOf("message" to (error.message ?: "Unknown PCM playback error")))
+      } finally {
+        try {
+          track.stop()
+        } catch (_: IllegalStateException) {
+        }
+        track.release()
+        if (pcmAudioTrack === track) pcmAudioTrack = null
+      }
+    }
+  }
+
+  private fun enqueuePcmPlaybackChunk(chunkBase64: String) {
+    if (!isPcmPlaying) {
+      startPcmPlayback()
+    }
+    pcmPlaybackQueue.offer(Base64.decode(chunkBase64, Base64.NO_WRAP))
+  }
+
+  private fun stopPcmPlayback() {
+    isPcmPlaying = false
+    pcmPlaybackQueue.clear()
+    try {
+      pcmAudioTrack?.pause()
+      pcmAudioTrack?.flush()
+      pcmAudioTrack?.stop()
+    } catch (_: IllegalStateException) {
+    }
+    val currentThread = pcmPlaybackThread
+    if (currentThread != Thread.currentThread()) currentThread?.join(750)
+    pcmPlaybackThread = null
   }
 }

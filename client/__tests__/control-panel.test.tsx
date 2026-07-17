@@ -80,6 +80,25 @@ describe('ControlPanel', () => {
 		expect(baseProps.onWritingPress).toHaveBeenCalled();
 	});
 
+	test('uses a lightweight frosted backdrop for the phone edge-to-edge panel', () => {
+		const tree = <ControlPanel {...baseProps} edgeToEdge />;
+		const backdrop = findByType(tree, 'View').find(
+			(view) => view.props.testID === 'control-panel-frosted-backdrop',
+		);
+		const haze = findByType(tree, 'View').find(
+			(view) => view.props.testID === 'control-panel-frosted-haze',
+		);
+
+		expect(findByType(tree, 'BlurView')).toHaveLength(0);
+		expect(backdrop?.props.style).toMatchObject({
+			backgroundColor: 'rgba(12, 14, 20, 0.84)',
+			bottom: -4,
+		});
+		expect(haze?.props.style).toMatchObject({
+			backgroundColor: 'rgba(40, 48, 55, 0.25)',
+		});
+	});
+
 	test('renders vertical controls with writing button first', () => {
 		const tree = <ControlPanel {...baseProps} orientation='vertical' />;
 		const buttons = findByType(tree, 'TouchableOpacity');

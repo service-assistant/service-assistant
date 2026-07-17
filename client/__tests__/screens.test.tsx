@@ -53,6 +53,10 @@ jest.mock('react', () => {
 	};
 });
 
+jest.mock('@/hooks/use-network-status', () => ({
+	useNetworkStatus: () => ({ isOffline: false, reconnectCount: 0 }),
+}));
+
 jest.mock('react-native', () => {
 	const React = require('react');
 	const createHost = (name: string) =>
@@ -414,6 +418,7 @@ describe('tab screens', () => {
 		);
 		expect(mockUseMicrophone).toHaveBeenCalledWith(
 			expect.objectContaining({
+				isLoading: false,
 				isSpeechInputUnavailable: false,
 				onStopExternal: expect.any(Function),
 				onTranscript: expect.any(Function),
@@ -423,11 +428,21 @@ describe('tab screens', () => {
 			enabled: false,
 			onDetected: expect.any(Function),
 		});
+		expect(global.fetch).toHaveBeenCalledWith(
+			'https://api.example.test/api/devices/1/attachments',
+			expect.objectContaining({
+				headers: {
+					Accept: 'application/json',
+					Authorization: 'Bearer test-token',
+				},
+				signal: expect.any(AbortSignal),
+			}),
+		);
 		expect(findByType(tree, 'ServiceErrorModal')[0].props.visible).toBe(false);
 	});
 
 	test('chat screen uses portrait layout and navigates back to home', () => {
-		setupChatHooks();
+		const hooks = setupChatHooks();
 		mockWindowDimensions = { width: 500, height: 900 };
 		mockSearchParams = { deviceName: 'Still RX', chatSession: 'abc' };
 		jest.mocked(global.fetch).mockResolvedValue(createJsonResponse([]));
@@ -435,9 +450,15 @@ describe('tab screens', () => {
 
 		const tree = renderScreen(ChatScreen);
 		const layout = findByType(tree, 'PortraitChatLayout')[0];
+		hooks.stopChatApi.mockClear();
+		hooks.stopAssistantAudio.mockClear();
+		hooks.abortVoiceInput.mockClear();
 
 		layout.props.onBack();
 
+		expect(hooks.stopChatApi).toHaveBeenCalledTimes(1);
+		expect(hooks.stopAssistantAudio).toHaveBeenCalledTimes(1);
+		expect(hooks.abortVoiceInput).toHaveBeenCalledTimes(1);
 		expect(layout.props.insets).toBe(mockSafeAreaInsets);
 		expect(mockRouterPush).toHaveBeenCalledWith('/home');
 	});
@@ -582,6 +603,49 @@ describe('tab screens', () => {
 		expect(mockRouterPush).toHaveBeenCalledWith('/history');
 	});
 
+	test('home screen opens chat with the selected vehicle id', () => {
+		const HomeScreen = require('../app/(tabs)/home').default;
+
+		mockReactStateValues = [
+			'WSZYSTKIE',
+			'WSZYSTKIE',
+			'',
+			null,
+			[{ id: 1, name: 'Toyota', logo_url: 'logo.png', created_at: '', updated_at: '' }],
+			[{ id: 2, name: 'WĂłzek', created_at: '', updated_at: '' }],
+			[
+				{
+					id: 7,
+					brand_id: 1,
+					device_type_id: 2,
+					name: 'Toyota 8FG',
+					model_serial_code: '',
+					image_url: '',
+					created_at: '',
+					updated_at: '',
+				},
+			],
+			false,
+			false,
+			false,
+		];
+		const loadedTree = renderScreen(HomeScreen);
+		const vehicleList = findByType(loadedTree, 'Animated.FlatList')[0];
+		const vehicleCard = vehicleList.props.renderItem({ item: vehicleList.props.data[0] });
+		const vehicleButton = findByType(vehicleCard, 'TouchableOpacity')[0];
+
+		vehicleButton.props.onPress();
+
+		expect(mockRouterPush).toHaveBeenCalledWith({
+			pathname: '/chat',
+			params: expect.objectContaining({
+				deviceId: '7',
+				deviceName: 'Toyota 8FG',
+				logoUrl: 'logo.png',
+			}),
+		});
+	});
+
 	test('home screen shows an empty state when selected filters exclude all vehicles', async () => {
 		jest.mocked(global.fetch).mockImplementation((url) => {
 			const requestUrl = String(url);
@@ -621,7 +685,7 @@ describe('tab screens', () => {
 		);
 	});
 
-	test('home screen shows a service error modal when device data loading fails', async () => {
+	test('home screen does not block the app when device data loading loses connection', async () => {
 		jest.mocked(global.fetch).mockRejectedValue(new Error('network down'));
 		const HomeScreen = require('../app/(tabs)/home').default;
 
@@ -630,11 +694,10 @@ describe('tab screens', () => {
 		const rerenderedTree = renderScreen(HomeScreen);
 		const modal = findByType(rerenderedTree, 'ServiceErrorModal')[0];
 
-		expect(modal.props.visible).toBe(true);
-		expect(modal.props.featureName).toBe('lista maszyn');
+		expect(modal.props.visible).toBe(false);
 	});
 
-	test('history screen shows a service error modal when history loading fails', async () => {
+	test('history screen does not block the app for a temporary server failure', async () => {
 		jest.mocked(global.fetch).mockResolvedValue(new Response(null, { status: 500 }));
 		const HistoryScreen = require('../app/(tabs)/history').default;
 
@@ -643,13 +706,13 @@ describe('tab screens', () => {
 		const rerenderedTree = renderScreen(HistoryScreen);
 		const modal = findByType(rerenderedTree, 'ServiceErrorModal')[0];
 
-		expect(modal.props.visible).toBe(true);
-		expect(modal.props.featureName).toBe('historia czatów');
+		expect(modal.props.visible).toBe(false);
 	});
 
-	test('chat screen shows a service error modal when thread history loading fails', async () => {
+	test('chat screen does not block the app for a temporary thread history failure', async () => {
 		setupChatHooks();
 		mockSearchParams = {
+			deviceId: '3',
 			deviceName: 'Toyota 8FG',
 			chatSession: 'history-44',
 			threadId: '44',
@@ -664,8 +727,7 @@ describe('tab screens', () => {
 		const rerenderedTree = renderScreen(ChatScreen);
 		const modal = findByType(rerenderedTree, 'ServiceErrorModal')[0];
 
-		expect(modal.props.visible).toBe(true);
-		expect(modal.props.featureName).toBe('historia wątku');
+		expect(modal.props.visible).toBe(false);
 	});
 });
 
