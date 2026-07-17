@@ -342,6 +342,7 @@ describe('tab screens', () => {
 		mockUseSourcePanelFiles.mockReset();
 		mockUseWakeWord.mockClear();
 		mockKeyboardAddListener.mockClear();
+		mockAnimatedValueSetValue.mockClear();
 		mockImpactAsync.mockClear();
 		mockSelectionAsync.mockClear();
 		mockOrientationLockAsync.mockClear();
@@ -599,6 +600,8 @@ describe('tab screens', () => {
 			}),
 		);
 		expect(getTextContent(tree)).toContain('Wybierz Pojazd');
+		expect(getTextContent(tree)).toContain('Ładowanie maszyn...');
+		expect(mockAnimatedValueSetValue).toHaveBeenCalledWith(0);
 		expect(mockUseCameraPermissions).not.toHaveBeenCalled();
 		expect(mockRouterPush).toHaveBeenCalledWith('/history');
 	});
@@ -633,9 +636,13 @@ describe('tab screens', () => {
 		const vehicleList = findByType(loadedTree, 'Animated.FlatList')[0];
 		const vehicleCard = vehicleList.props.renderItem({ item: vehicleList.props.data[0] });
 		const vehicleButton = findByType(vehicleCard, 'TouchableOpacity')[0];
+		const vehicleIcons = findByType(vehicleCard, 'Icon');
 
 		vehicleButton.props.onPress();
 
+		expect(getTextContent(vehicleCard)).toContain('Brak zdjęcia');
+		expect(vehicleIcons.some((icon) => icon.props.name === 'forklift')).toBe(true);
+		expect(vehicleList.props.extraData).toBe(false);
 		expect(mockRouterPush).toHaveBeenCalledWith({
 			pathname: '/chat',
 			params: expect.objectContaining({

@@ -1,10 +1,10 @@
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useState } from 'react';
 import {
 	ActivityIndicator,
-	Image,
 	ScrollView,
 	Text,
 	TouchableOpacity,
@@ -14,7 +14,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ServiceErrorModal from '@/components/ServiceErrorModal';
+import ThemeAwareLogo from '@/components/ThemeAwareLogo';
 import VehicleFilters from '@/components/VehicleFilters';
+import { useAppSettings } from '@/hooks/use-app-settings';
 import { useNetworkStatus } from '@/hooks/use-network-status';
 import { useVehicleMetadata } from '@/hooks/use-vehicle-metadata';
 import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
@@ -107,6 +109,7 @@ export default function HistoryScreen() {
 		isLoadingTypes,
 		isLoadingDevices,
 	} = useVehicleMetadata({ onServiceError: showServiceError, refreshKey: reconnectCount });
+	const { lightThemeEnabled } = useAppSettings();
 	const isLoading = isLoadingThreads || isLoadingBrands || isLoadingTypes || isLoadingDevices;
 
 	useFocusEffect(
@@ -197,7 +200,13 @@ export default function HistoryScreen() {
 	const historyCardMarginBottom = useTabletHistoryRefresh ? 12 : 12;
 
 	return (
-		<SafeAreaView className='flex-1 bg-[#09090b]' edges={['top', 'left', 'right']}>
+		<SafeAreaView
+			className={`flex-1 ${lightThemeEnabled ? 'bg-[#F7F7F8]' : 'bg-[#09090B]'}`}
+			edges={['top', 'left', 'right']}>
+			<StatusBar
+				style={lightThemeEnabled ? 'dark' : 'light'}
+				backgroundColor={lightThemeEnabled ? '#F7F7F8' : '#09090B'}
+			/>
 			<ScrollView
 				className='flex-1'
 				contentContainerStyle={{
@@ -213,7 +222,11 @@ export default function HistoryScreen() {
 						onPress={() => router.push('/home')}
 						accessibilityRole='button'
 						accessibilityLabel='Wstecz'
-						className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D]'
+						className={`flex-row items-center justify-center border rounded-[10px] ${
+							lightThemeEnabled
+								? 'border-[#E4E4E7] bg-white'
+								: 'border-[#2A2A2A] bg-[#0D0D0D]'
+						}`}
 						style={{
 							height: headerBackButtonHeight,
 							width: headerBackButtonIconOnly ? headerBackButtonHeight : undefined,
@@ -232,7 +245,7 @@ export default function HistoryScreen() {
 						)}
 					</TouchableOpacity>
 					<Text
-						className={`${headerTitleClassName} text-white font-bold flex-1`}
+						className={`${headerTitleClassName} ${lightThemeEnabled ? 'text-[#18181B]' : 'text-white'} font-bold flex-1`}
 						numberOfLines={1}
 						adjustsFontSizeToFit>
 						Historia czatów
@@ -248,6 +261,7 @@ export default function HistoryScreen() {
 					onTypeFilterChange={setActiveTypeFilter}
 					useTabletRefresh={useTabletFilterStyle}
 					primaryColor={PRIMARY_ORANGE}
+					lightMode={lightThemeEnabled}
 				/>
 
 				<View className='h-4' />
@@ -255,9 +269,15 @@ export default function HistoryScreen() {
 				{isLoading ? (
 					<ActivityIndicator size='large' color={PRIMARY_ORANGE} className='mt-12' />
 				) : filteredHistoryItems.length === 0 ? (
-					<View className='items-center justify-center bg-[#18181b] border border-white/5 rounded-[12px] px-6 py-12'>
+					<View
+						className={`items-center justify-center border rounded-[12px] px-6 py-12 ${
+							lightThemeEnabled
+								? 'bg-white border-[#E4E4E7]'
+								: 'bg-[#18181B] border-white/5'
+						}`}>
 						<MaterialCommunityIcons name='history' size={36} color='#71717A' />
-						<Text className='text-gray-400 text-center mt-3'>
+						<Text
+							className={`${lightThemeEnabled ? 'text-[#52525B]' : 'text-gray-400'} text-center mt-3`}>
 							Brak czatów pasujących do wybranych filtrów.
 						</Text>
 					</View>
@@ -282,7 +302,11 @@ export default function HistoryScreen() {
 								}
 								accessibilityRole='button'
 								accessibilityLabel={`Otwórz czat: ${item.title}`}
-								className='flex-row items-center bg-[#18181b] border border-white/5 px-4'
+								className={`flex-row items-center border px-4 ${
+									lightThemeEnabled
+										? 'bg-white border-[#E4E4E7]'
+										: 'bg-[#18181B] border-white/5'
+								}`}
 								style={{
 									paddingVertical: historyCardPaddingVertical,
 									borderRadius: historyCardBorderRadius,
@@ -305,17 +329,21 @@ export default function HistoryScreen() {
 								/>
 								<View className='flex-1 min-w-0'>
 									<Text
-										className='text-white text-base font-bold'
+										className={`${lightThemeEnabled ? 'text-[#18181B]' : 'text-white'} text-base font-bold`}
 										numberOfLines={1}>
 										{item.title}
 									</Text>
 									<View className='flex-row items-center flex-wrap mt-2'>
 										{item.brandLogoUrl ? (
-											<Image
-												source={{ uri: item.brandLogoUrl }}
-												style={{ width: 66, height: 18, marginRight: 7 }}
-												resizeMode='contain'
-											/>
+											<View style={{ marginRight: 7 }}>
+												<ThemeAwareLogo
+													source={{ uri: item.brandLogoUrl }}
+													width={66}
+													height={18}
+													lightMode={lightThemeEnabled}
+													resizeMode='contain'
+												/>
+											</View>
 										) : (
 											<Text className='text-[#FF8A4C] text-[11px] font-bold mr-2'>
 												{item.brandName.toUpperCase()}
@@ -335,7 +363,8 @@ export default function HistoryScreen() {
 										</Text>
 									</View>
 								</View>
-								<View className='w-10 h-10 rounded-full bg-[#202024] items-center justify-center ml-3'>
+								<View
+									className={`w-10 h-10 rounded-full items-center justify-center ml-3 ${lightThemeEnabled ? 'bg-[#F4F4F5]' : 'bg-[#202024]'}`}>
 									<MaterialCommunityIcons
 										name='chevron-right'
 										size={24}
@@ -351,6 +380,7 @@ export default function HistoryScreen() {
 				visible={Boolean(serviceErrorFeature)}
 				featureName={serviceErrorFeature || 'wybrana funkcja'}
 				onClose={() => setServiceErrorFeature(null)}
+				lightMode={lightThemeEnabled}
 			/>
 		</SafeAreaView>
 	);

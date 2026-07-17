@@ -13,11 +13,13 @@ export default function PdfViewer({
 	page,
 	preserveTop = false,
 	onError,
+	lightMode = false,
 }: {
 	source: any;
 	page: number;
 	preserveTop?: boolean;
 	onError?: (error: unknown) => void;
+	lightMode?: boolean;
 }) {
 	const [isLoading, setIsLoading] = useState(true);
 	const sourceKey = useMemo(() => {
@@ -37,7 +39,8 @@ export default function PdfViewer({
 	}, [sourceKey, page]);
 
 	return (
-		<View className='flex-1 bg-black overflow-hidden justify-center items-center relative'>
+		<View
+			className={`flex-1 overflow-hidden justify-center items-center relative ${lightMode ? 'bg-white' : 'bg-black'}`}>
 			{/* 
               Android-specific configuration:
               - trustAllCerts: false prevents loading errors from certain sources
@@ -45,12 +48,14 @@ export default function PdfViewer({
             */}
 			<Pdf
 				source={source}
+				darkMode={!lightMode}
 				page={page}
 				trustAllCerts={false}
 				fitPolicy={0}
 				spacing={0}
 				renderActivityIndicator={() => (
-					<View className='flex-1 bg-black items-center justify-center'>
+					<View
+						className={`flex-1 items-center justify-center ${lightMode ? 'bg-white' : 'bg-black'}`}>
 						<ActivityIndicator color={PRIMARY_ORANGE} size='large' />
 					</View>
 				)}
@@ -70,15 +75,17 @@ export default function PdfViewer({
 					flex: 1,
 					width: '100%',
 					height: '100%',
-					backgroundColor: '#000000',
+					backgroundColor: lightMode ? '#FFFFFF' : '#000000',
 					// Scale 1.06 is used to eliminate extra margins/borders on Android
 					transform: preserveTop ? [{ scale: 1 }] : [{ scale: 1.06 }, { translateX: 0 }],
 				}}
 			/>
 			{isLoading ? (
-				<View className='absolute inset-0 bg-black items-center justify-center z-20'>
+				<View
+					className={`absolute inset-0 items-center justify-center z-20 ${lightMode ? 'bg-white' : 'bg-black'}`}>
 					<ActivityIndicator color={PRIMARY_ORANGE} size='large' />
-					<Text className='text-neutral-400 text-[11px] font-bold uppercase tracking-widest mt-4'>
+					<Text
+						className={`${lightMode ? 'text-[#52525B]' : 'text-neutral-400'} text-[11px] font-bold uppercase tracking-widest mt-4`}>
 						Ladowanie pliku...
 					</Text>
 				</View>

@@ -18,6 +18,7 @@ type AvailableFilesListProps = {
 	gridColumns?: 2 | 3;
 	onOpenFile: (file: AvailableFile) => void;
 	onDeleteDownloadedFile?: (file: AvailableFile) => void;
+	lightMode?: boolean;
 };
 
 export default function AvailableFilesList({
@@ -32,8 +33,11 @@ export default function AvailableFilesList({
 	gridColumns = 3,
 	onOpenFile,
 	onDeleteDownloadedFile,
+	lightMode = false,
 }: AvailableFilesListProps) {
 	const gridItemWidth = gridColumns === 2 ? '46%' : '30%';
+	const pendingFileIconColor = lightMode ? '#52525B' : '#FFFFFF';
+	const deleteIconColor = lightMode ? '#52525B' : '#C9CDD3';
 
 	const title = showTitle ? (
 		<Text
@@ -52,7 +56,8 @@ export default function AvailableFilesList({
 				{title}
 				<View className='flex-1 items-center justify-center'>
 					<ActivityIndicator size='large' color={PRIMARY_ORANGE} />
-					<Text className='text-[#AEB3BA] text-[13px] tracking-wide'>
+					<Text
+						className={`${lightMode ? 'text-[#52525B]' : 'text-[#AEB3BA]'} text-[13px] tracking-wide`}>
 						Ładowanie plików...
 					</Text>
 				</View>
@@ -65,7 +70,8 @@ export default function AvailableFilesList({
 			<>
 				{title}
 				<View className='flex-1 items-center justify-center px-4'>
-					<Text className='text-[#AEB3BA] text-[13px] text-center'>
+					<Text
+						className={`${lightMode ? 'text-[#52525B]' : 'text-[#AEB3BA]'} text-[13px] text-center`}>
 						Brak plików do wyświetlenia.
 					</Text>
 				</View>
@@ -86,14 +92,22 @@ export default function AvailableFilesList({
 							key={file.id}
 							onPress={() => onOpenFile(file)}
 							disabled={isFileDownloading}
-							className='aspect-square py-5 px-3 border rounded-2xl items-center justify-center bg-[#141418] border-[#26262C] relative'
+							className={`aspect-square py-5 px-3 border rounded-2xl items-center justify-center relative ${
+								lightMode
+									? 'bg-white border-[#E4E4E7]'
+									: 'bg-[#141418] border-[#26262C]'
+							}`}
 							style={{ width: gridItemWidth }}>
 							{isDownloaded && onDeleteDownloadedFile ? (
 								<TouchableOpacity
 									onPress={() => onDeleteDownloadedFile(file)}
 									disabled={isFileDownloading}
-									className='absolute top-2 right-2 w-7 h-7 rounded-full bg-black/80 border border-white/15 items-center justify-center z-10'>
-									<Feather name='x' size={16} color='#C9CDD3' />
+									className={`absolute top-2 right-2 w-7 h-7 rounded-full border items-center justify-center z-10 ${
+										lightMode
+											? 'bg-[#F4F4F5] border-[#D4D4D8]'
+											: 'bg-black/80 border-white/15'
+									}`}>
+									<Feather name='x' size={16} color={deleteIconColor} />
 								</TouchableOpacity>
 							) : null}
 
@@ -107,12 +121,15 @@ export default function AvailableFilesList({
 								{isDownloaded ? null : (
 									<View className='absolute inset-0 items-center justify-center'>
 										{isThisFileDownloading ? (
-											<ActivityIndicator size='large' color='#FFFFFF' />
+											<ActivityIndicator
+												size='large'
+												color={pendingFileIconColor}
+											/>
 										) : (
 											<Feather
 												name='download-cloud'
 												size={28}
-												color='#FFFFFF'
+												color={pendingFileIconColor}
 											/>
 										)}
 									</View>
@@ -120,7 +137,7 @@ export default function AvailableFilesList({
 							</View>
 
 							<Text
-								className='text-[13px] mt-4 leading-4 font-semibold text-center text-[#C9CDD3]'
+								className={`text-[13px] mt-4 leading-4 font-semibold text-center ${lightMode ? 'text-[#3F3F46]' : 'text-[#C9CDD3]'}`}
 								numberOfLines={2}>
 								{file.name}
 							</Text>
@@ -134,13 +151,18 @@ export default function AvailableFilesList({
 					<TouchableOpacity
 						key={file.id}
 						onPress={() => onOpenFile(file)}
-						className='flex-row items-center rounded-xl border border-white/10 bg-[#18181C] px-4 py-4 mb-3'>
+						className={`flex-row items-center rounded-xl border px-4 py-4 mb-3 ${
+							lightMode ? 'border-[#E4E4E7] bg-white' : 'border-white/10 bg-[#18181C]'
+						}`}>
 						<MaterialCommunityIcons
 							name={file.icon as any}
 							size={24}
 							color={file.color}
 						/>
-						<Text className='text-[#D8DCE2] text-[14px] ml-3 flex-1'>{file.name}</Text>
+						<Text
+							className={`${lightMode ? 'text-[#3F3F46]' : 'text-[#D8DCE2]'} text-[14px] ml-3 flex-1`}>
+							{file.name}
+						</Text>
 					</TouchableOpacity>
 				))}
 			</>

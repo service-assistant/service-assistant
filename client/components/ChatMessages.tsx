@@ -1,5 +1,5 @@
 import { Feather } from '@expo/vector-icons';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
 	Animated,
 	type LayoutChangeEvent,
@@ -35,6 +35,7 @@ type ChatMessagesProps<TMessage extends ChatMessageItem> = {
 	onRetryMessage: (message: TMessage) => void;
 	isRetryDisabled?: boolean;
 	onUserMessageLayout: (message: TMessage, y: number) => void;
+	lightMode?: boolean;
 };
 
 type AssistantResponseBlock =
@@ -43,17 +44,15 @@ type AssistantResponseBlock =
 	| { type: 'warning'; content: string }
 	| { type: 'next'; content: string };
 
-type MessageFeedback = 'like' | 'dislike';
-
-const getInvertedImageHtml = (imageUrl: string, zoomable = false) => `
+const getSchemaImageHtml = (imageUrl: string, zoomable = false, lightMode = false) => `
 	<!DOCTYPE html>
 	<html>
 	<head>
 		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=${zoomable ? '6.0' : '1.0'}, user-scalable=${zoomable ? 'yes' : 'no'}" />
 		<style>
-			html, body { width: 100%; height: 100%; margin: 0; padding: 0; background-color: #000000; overflow: ${zoomable ? 'auto' : 'hidden'}; }
+			html, body { width: 100%; height: 100%; margin: 0; padding: 0; background-color: ${lightMode ? '#FFFFFF' : '#000000'}; overflow: ${zoomable ? 'auto' : 'hidden'}; }
 			body { display: flex; align-items: center; justify-content: center; }
-			img { display: block; width: 100%; height: 100%; object-fit: contain; filter: invert(100%); }
+			img { display: block; width: 100%; height: 100%; object-fit: contain; filter: ${lightMode ? 'none' : 'invert(100%)'}; }
 		</style>
 	</head>
 	<body>
@@ -72,16 +71,18 @@ export const InvertedSchemaPreview = ({
 	imageUrl,
 	aspectRatio,
 	zoomable = false,
+	lightMode = false,
 }: {
 	imageUrl: string;
 	aspectRatio: number;
 	zoomable?: boolean;
+	lightMode?: boolean;
 }) => (
 	<View
 		style={{
 			width: '100%',
 			...(zoomable ? { flex: 1 } : { aspectRatio }),
-			backgroundColor: '#000000',
+			backgroundColor: lightMode ? '#FFFFFF' : '#000000',
 			overflow: 'hidden',
 		}}>
 		{Platform.OS === 'web' ? (
@@ -92,15 +93,15 @@ export const InvertedSchemaPreview = ({
 					width: '100%',
 					height: zoomable ? '100%' : 'auto',
 					objectFit: zoomable ? 'contain' : undefined,
-					filter: 'invert(100%)',
+					filter: lightMode ? 'none' : 'invert(100%)',
 				}}
 				alt='Schemat pomocniczy'
 			/>
 		) : (
 			<WebView
 				pointerEvents={zoomable ? 'auto' : 'none'}
-				source={{ html: getInvertedImageHtml(imageUrl, zoomable) }}
-				style={{ flex: 1, backgroundColor: '#000000' }}
+				source={{ html: getSchemaImageHtml(imageUrl, zoomable, lightMode) }}
+				style={{ flex: 1, backgroundColor: lightMode ? '#FFFFFF' : '#000000' }}
 				scrollEnabled={zoomable}
 				nestedScrollEnabled={zoomable}
 				scalesPageToFit
@@ -258,17 +259,19 @@ const parseAssistantResponseBlocks = (text: string): AssistantResponseBlock[] =>
 const StructuredAssistantResponse = ({
 	text,
 	compact = false,
+	lightMode = false,
 }: {
 	text: string;
 	compact?: boolean;
+	lightMode?: boolean;
 }) => {
 	const blocks = parseAssistantResponseBlocks(text);
 	const paragraphClassName = compact
-		? 'text-[#D8DCE2] text-[16px] leading-[23px]'
-		: 'text-[#D7D9DE] text-[18px] leading-7';
+		? `${lightMode ? 'text-[#27272A]' : 'text-[#D8DCE2]'} text-[16px] leading-[23px]`
+		: `${lightMode ? 'text-[#27272A]' : 'text-[#D7D9DE]'} text-[18px] leading-7`;
 	const checklistBoxSize = compact ? 23 : 28;
 	const checklistTextStyle = {
-		color: '#F3F4F6',
+		color: lightMode ? '#27272A' : '#F3F4F6',
 		fontSize: compact ? 16 : 18,
 		lineHeight: compact ? 22 : 25,
 		paddingTop: compact ? 2 : 3,
@@ -327,7 +330,7 @@ const StructuredAssistantResponse = ({
 								borderWidth: 1,
 								borderColor: '#FF2D55',
 								borderRadius: 8,
-								backgroundColor: '#2B050B',
+								backgroundColor: lightMode ? '#FFF1F2' : '#2B050B',
 							}}>
 							<View style={{ flexShrink: 0 }}>
 								<Feather
@@ -341,7 +344,7 @@ const StructuredAssistantResponse = ({
 									flex: 1,
 									minWidth: 0,
 									marginLeft: 12,
-									color: '#F5F5F5',
+									color: lightMode ? '#881337' : '#F5F5F5',
 									fontSize: compact ? 15 : 18,
 									lineHeight: compact ? 21 : 25,
 								}}>
@@ -365,7 +368,7 @@ const StructuredAssistantResponse = ({
 								<Feather
 									name='arrow-right'
 									size={compact ? 22 : 27}
-									color='#F4F4F5'
+									color={lightMode ? '#3F3F46' : '#F4F4F5'}
 								/>
 							</View>
 							<Text
@@ -374,7 +377,7 @@ const StructuredAssistantResponse = ({
 									minWidth: 0,
 									marginLeft: 12,
 									paddingTop: compact ? 3 : 4,
-									color: '#F4F4F5',
+									color: lightMode ? '#27272A' : '#F4F4F5',
 									fontSize: compact ? 16 : 18,
 									lineHeight: compact ? 23 : 25,
 								}}>
@@ -407,21 +410,8 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 	onRetryMessage,
 	isRetryDisabled = false,
 	onUserMessageLayout,
+	lightMode = false,
 }: ChatMessagesProps<TMessage>) {
-	const [messageFeedback, setMessageFeedback] = useState<Record<number, MessageFeedback>>({});
-
-	const toggleFeedback = (messageId: number, feedback: MessageFeedback) => {
-		setMessageFeedback((currentFeedback) => {
-			if (currentFeedback[messageId] === feedback) {
-				const nextFeedback = { ...currentFeedback };
-				delete nextFeedback[messageId];
-				return nextFeedback;
-			}
-
-			return { ...currentFeedback, [messageId]: feedback };
-		});
-	};
-
 	return (
 		<>
 			{messages.map((message) =>
@@ -460,23 +450,34 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 						className={compact ? 'self-start mb-5' : 'self-start mb-7'}
 						style={{ maxWidth: compact ? '96%' : '78%' }}>
 						{message.text ? (
-							<StructuredAssistantResponse text={message.text} compact={compact} />
+							<StructuredAssistantResponse
+								text={message.text}
+								compact={compact}
+								lightMode={lightMode}
+							/>
 						) : (
 							<TypingDotsIndicator color={PRIMARY_ORANGE} />
 						)}
 						{message.schemaImage ? (
 							<TouchableOpacity
 								onPress={() => onOpenSchema(message.schemaImage || '')}
-								className='rounded-xl overflow-hidden border border-[#292D33] bg-[#111318] mt-4'
+								className={`rounded-xl overflow-hidden border mt-4 ${
+									lightMode
+										? 'border-[#D4D4D8] bg-white'
+										: 'border-[#292D33] bg-[#111318]'
+								}`}
 								style={compact ? { maxWidth: 610 } : { width: 410 }}>
-								<Text className='text-[#AEB3BA] text-[14px] px-3 py-2 bg-[#111318]'>
+								<Text
+									className={`${lightMode ? 'text-[#52525B] bg-white' : 'text-[#AEB3BA] bg-[#111318]'} text-[14px] px-3 py-2`}>
 									Schemat pomocniczy
 								</Text>
 								<InvertedSchemaPreview
 									imageUrl={message.schemaImage}
 									aspectRatio={schemaAspectRatio}
+									lightMode={lightMode}
 								/>
-								<Text className='text-[#AEB3BA] text-[14px] px-3 py-2.5 bg-[#111318]'>
+								<Text
+									className={`${lightMode ? 'text-[#52525B] bg-white' : 'text-[#AEB3BA] bg-[#111318]'} text-[14px] px-3 py-2.5`}>
 									Naciśnij, aby powiększyć
 								</Text>
 							</TouchableOpacity>
@@ -515,51 +516,6 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 									WYŚLIJ PONOWNIE
 								</Text>
 							</TouchableOpacity>
-						) : null}
-						{message.text && !message.retryQuestion ? (
-							<View className='mt-4' accessibilityLabel='Oceń odpowiedź asystenta'>
-								<Text className='text-[#AEB3BA] text-[13px] mb-2'>
-									Czy ta odpowiedź była pomocna?
-								</Text>
-								<View className='flex-row items-center gap-2'>
-									{(['like', 'dislike'] as const).map((feedback) => {
-										const isSelected = messageFeedback[message.id] === feedback;
-										const isLike = feedback === 'like';
-										const feedbackColor = isLike ? '#22C55E' : '#EF4444';
-
-										return (
-											<TouchableOpacity
-												key={feedback}
-												onPress={() => toggleFeedback(message.id, feedback)}
-												accessibilityRole='button'
-												accessibilityLabel={
-													isLike
-														? 'Lubię tę odpowiedź'
-														: 'Nie lubię tej odpowiedzi'
-												}
-												accessibilityState={{ selected: isSelected }}
-												hitSlop={8}
-												className='items-center justify-center rounded-full border w-10 h-10'
-												style={{
-													borderColor: isSelected
-														? feedbackColor
-														: '#34383F',
-													backgroundColor: isSelected
-														? isLike
-															? '#12351F'
-															: '#3B1518'
-														: 'transparent',
-												}}>
-												<Feather
-													name={isLike ? 'thumbs-up' : 'thumbs-down'}
-													size={compact ? 18 : 20}
-													color={isSelected ? feedbackColor : '#8F959E'}
-												/>
-											</TouchableOpacity>
-										);
-									})}
-								</View>
-							</View>
 						) : null}
 					</View>
 				),

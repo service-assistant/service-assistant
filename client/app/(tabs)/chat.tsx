@@ -1,6 +1,7 @@
 import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
 	Image,
@@ -83,7 +84,8 @@ export default function ChatScreen() {
 	const sourcePanelFullScreen = isPortrait;
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
-	const { wakeWordEnabled, ttsEnabled, diagnosticMode2002Enabled } = useAppSettings();
+	const { lightThemeEnabled, wakeWordEnabled, ttsEnabled, diagnosticMode2002Enabled } =
+		useAppSettings();
 
 	const { deviceId, deviceName, logoUrl, chatSession, threadId } = useLocalSearchParams<{
 		deviceId: string;
@@ -525,6 +527,7 @@ export default function ChatScreen() {
 	};
 
 	const commonLayoutProps = {
+		lightMode: lightThemeEnabled,
 		currentSource,
 		logoUrl,
 		isTablet,
@@ -565,7 +568,9 @@ export default function ChatScreen() {
 	if (showFullscreenSchema && currentImage) {
 		return (
 			<>
+				<StatusBar style={lightThemeEnabled ? 'dark' : 'light'} />
 				<FullscreenSchemaView
+					lightMode={lightThemeEnabled}
 					imageUrl={currentImage}
 					aspectRatio={currentImageAspectRatio}
 					insets={insets}
@@ -576,6 +581,7 @@ export default function ChatScreen() {
 					visible={Boolean(serviceErrorFeature)}
 					featureName={serviceErrorFeature || 'wybrana funkcja'}
 					onClose={() => setServiceErrorFeature(null)}
+					lightMode={lightThemeEnabled}
 				/>
 			</>
 		);
@@ -584,11 +590,13 @@ export default function ChatScreen() {
 	if (isPortrait) {
 		return (
 			<>
+				<StatusBar style={lightThemeEnabled ? 'dark' : 'light'} />
 				<PortraitChatLayout {...commonLayoutProps} insets={insets} />
 				<ServiceErrorModal
 					visible={Boolean(serviceErrorFeature)}
 					featureName={serviceErrorFeature || 'wybrana funkcja'}
 					onClose={() => setServiceErrorFeature(null)}
+					lightMode={lightThemeEnabled}
 				/>
 			</>
 		);
@@ -596,11 +604,13 @@ export default function ChatScreen() {
 
 	return (
 		<>
+			<StatusBar style={lightThemeEnabled ? 'dark' : 'light'} />
 			<DesktopChatLayout {...commonLayoutProps} />
 			<ServiceErrorModal
 				visible={Boolean(serviceErrorFeature)}
 				featureName={serviceErrorFeature || 'wybrana funkcja'}
 				onClose={() => setServiceErrorFeature(null)}
+				lightMode={lightThemeEnabled}
 			/>
 		</>
 	);

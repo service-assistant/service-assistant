@@ -17,6 +17,7 @@ type ControlPanelProps = {
 	isVoiceOutputUnavailable?: boolean;
 	onMicPress: () => void;
 	onWritingPress: () => void;
+	lightMode?: boolean;
 };
 
 const ListeningPulse = () => {
@@ -70,6 +71,7 @@ export default function ControlPanel({
 	isVoiceOutputUnavailable = false,
 	onMicPress,
 	onWritingPress,
+	lightMode = false,
 }: ControlPanelProps) {
 	const isHorizontal = orientation === 'horizontal';
 	const useEdgeToEdge = isHorizontal && edgeToEdge;
@@ -106,7 +108,7 @@ export default function ControlPanel({
 					shadowRadius: 24,
 					iconColor: '#FFFFFF',
 					label: 'PRZETWARZAM...',
-					labelColor: '#FFFFFF',
+					labelColor: lightMode ? '#5B21B6' : '#FFFFFF',
 				}
 			: micState === 'listening'
 				? {
@@ -117,7 +119,7 @@ export default function ControlPanel({
 						shadowRadius: 26,
 						iconColor: '#FFFFFF',
 						label: 'SŁUCHAM...',
-						labelColor: '#FFFFFF',
+						labelColor: lightMode ? '#0E7490' : '#FFFFFF',
 					}
 				: micState === 'unavailable'
 					? {
@@ -128,17 +130,17 @@ export default function ControlPanel({
 							shadowRadius: 14,
 							iconColor: '#FCA5A5',
 							label: 'MOWA NIEDOSTĘPNA',
-							labelColor: '#FCA5A5',
+							labelColor: lightMode ? '#B91C1C' : '#FCA5A5',
 						}
 					: {
-							backgroundColor: '#202028',
-							borderColor: '#34313A',
+							backgroundColor: lightMode ? '#FFFFFF' : '#202028',
+							borderColor: lightMode ? '#D4D4D8' : '#34313A',
 							shadowColor: '#000000',
 							shadowOpacity: 0,
 							shadowRadius: 0,
-							iconColor: '#F0F0F0',
+							iconColor: lightMode ? '#3F3F46' : '#F0F0F0',
 							label: 'Naciśnij, aby mówić',
-							labelColor: 'rgba(229, 231, 235, 0.58)',
+							labelColor: lightMode ? '#52525B' : 'rgba(229, 231, 235, 0.58)',
 						};
 	const micLabel = isMicProcessing
 		? 'Przetwarzam...'
@@ -154,8 +156,8 @@ export default function ControlPanel({
 		height: 82,
 		borderRadius: 16,
 		borderWidth: 1,
-		borderColor: '#2A2D36',
-		backgroundColor: '#1B1D25',
+		borderColor: lightMode ? '#D4D4D8' : '#2A2D36',
+		backgroundColor: lightMode ? '#FFFFFF' : '#1B1D25',
 	};
 	const controlPanelBlurProps =
 		Platform.OS === 'android'
@@ -168,14 +170,20 @@ export default function ControlPanel({
 	const panelBackdropStyle = {
 		borderRadius: panelRadius,
 		borderWidth: 1,
-		borderColor: '#242833',
+		borderColor: lightMode ? '#D4D4D8' : '#242833',
 		shadowColor: '#000',
 		shadowOffset: { width: 0, height: 10 },
 		shadowOpacity: 0.22,
 		shadowRadius: 22,
 		elevation: 6,
 		zIndex: 0,
-		backgroundColor: useEdgeToEdge ? 'rgba(12, 14, 20, 0.84)' : 'rgba(20, 22, 30, 0.92)',
+		backgroundColor: lightMode
+			? useEdgeToEdge
+				? 'rgba(255, 255, 255, 0.94)'
+				: 'rgba(250, 250, 250, 0.96)'
+			: useEdgeToEdge
+				? 'rgba(12, 14, 20, 0.84)'
+				: 'rgba(20, 22, 30, 0.92)',
 		bottom: useEdgeToEdge ? -4 : 0,
 		...(useEdgeToEdge
 			? {
@@ -208,12 +216,18 @@ export default function ControlPanel({
 					width: sideButtonSize,
 					height: sideButtonSize,
 					backgroundColor: isDisabled
-						? '#161820'
+						? lightMode
+							? '#F4F4F5'
+							: '#161820'
 						: isActive
-							? '#242028'
+							? lightMode
+								? '#FFF7ED'
+								: '#242028'
 							: controlButtonStyle.backgroundColor,
 					borderColor: isDisabled
-						? 'rgba(63, 68, 82, 0.42)'
+						? lightMode
+							? '#E4E4E7'
+							: 'rgba(63, 68, 82, 0.42)'
 						: isActive
 							? 'rgba(255, 122, 0, 0.72)'
 							: controlButtonStyle.borderColor,
@@ -227,7 +241,7 @@ export default function ControlPanel({
 					<MaterialCommunityIcons
 						name='send'
 						size={sideIconSize}
-						color={isActive ? '#FF7A00' : '#D4D4D8'}
+						color={isActive ? '#FF7A00' : lightMode ? '#52525B' : '#D4D4D8'}
 					/>
 				) : (
 					<Image
@@ -236,7 +250,7 @@ export default function ControlPanel({
 							width: sideIconSize,
 							height: sideIconSize,
 							opacity: 0.38,
-							tintColor: '#7A7F8C',
+							tintColor: lightMode ? '#71717A' : '#7A7F8C',
 						}}
 						resizeMode='contain'
 					/>
@@ -350,7 +364,7 @@ export default function ControlPanel({
 						fontSize: 11,
 						lineHeight: 14,
 						letterSpacing: 0.8,
-						textShadowColor: 'rgba(0, 0, 0, 0.8)',
+						textShadowColor: lightMode ? 'transparent' : 'rgba(0, 0, 0, 0.8)',
 						textShadowOffset: { width: 0, height: 1 },
 						textShadowRadius: 3,
 					}}
@@ -376,7 +390,11 @@ export default function ControlPanel({
 					<View
 						testID='control-panel-frosted-haze'
 						className='absolute inset-0'
-						style={{ backgroundColor: 'rgba(40, 48, 55, 0.25)' }}
+						style={{
+							backgroundColor: lightMode
+								? 'rgba(255, 255, 255, 0.45)'
+								: 'rgba(40, 48, 55, 0.25)',
+						}}
 					/>
 					<View
 						className='absolute left-0 right-0 top-0'
@@ -386,7 +404,7 @@ export default function ControlPanel({
 			) : (
 				<BlurView
 					{...controlPanelBlurProps}
-					tint='dark'
+					tint={lightMode ? 'light' : 'dark'}
 					pointerEvents='none'
 					className='absolute inset-0 overflow-hidden'
 					style={panelBackdropStyle}
