@@ -16,6 +16,7 @@ import { getPortraitChatHeaderMetrics } from '@/components/chat-header-metrics';
 import ChatMessages, {
 	InvertedSchemaPreview,
 	type ChatMessageItem,
+	type ChatMessageSourceReference,
 } from '@/components/ChatMessages';
 import ControlPanel from '@/components/ControlPanel';
 import SourcePanel from '@/components/SourcePanel';
@@ -311,7 +312,7 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	onShowTextInputChange: (visible: boolean) => void;
 	onShouldFocusStartPromptInputChange: (shouldFocus: boolean) => void;
 	onOpenSchema: (imageUrl: string) => void;
-	onOpenSource: (message: TMessage) => void;
+	onOpenSource: (source: TMessage | ChatMessageSourceReference) => void;
 	onRetryMessage: (message: TMessage) => void;
 	isRetryDisabled?: boolean;
 	onUserMessageLayout: (message: TMessage, y: number) => void;
@@ -555,7 +556,6 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 						compact
 						isListening={isListening}
 						soundLevelAnim={soundLevelAnim}
-						schemaAspectRatio={currentImageAspectRatio}
 						onOpenSchema={onOpenSchema}
 						onOpenSource={onOpenSource}
 						onRetryMessage={onRetryMessage}
@@ -735,7 +735,6 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 							messages={messages}
 							isListening={isListening}
 							soundLevelAnim={soundLevelAnim}
-							schemaAspectRatio={currentImageAspectRatio}
 							onOpenSchema={onOpenSchema}
 							onOpenSource={onOpenSource}
 							onRetryMessage={onRetryMessage}

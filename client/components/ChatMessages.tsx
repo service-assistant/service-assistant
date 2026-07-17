@@ -1,9 +1,10 @@
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
 import {
 	Animated,
 	type LayoutChangeEvent,
 	Platform,
+	ScrollView,
 	Text,
 	TouchableOpacity,
 	View,
@@ -12,15 +13,24 @@ import { WebView } from 'react-native-webview';
 
 const PRIMARY_ORANGE = '#FF7A00';
 
+export type ChatMessageSourceReference = {
+	sourceAttachmentId: number;
+	sourceAttachmentName?: string;
+	sourceAttachmentPage?: number;
+	previewImage?: string;
+};
+
 export type ChatMessageItem = {
 	id: number;
 	sender: 'user' | 'ai';
 	text: string;
 	isSpeaking?: boolean;
 	schemaImage?: string;
+	schemaImages?: string[];
 	sourceAttachmentId?: number;
 	sourceAttachmentName?: string;
 	sourceAttachmentPage?: number;
+	sourceReferences?: ChatMessageSourceReference[];
 	retryQuestion?: string;
 };
 
@@ -29,9 +39,8 @@ type ChatMessagesProps<TMessage extends ChatMessageItem> = {
 	compact?: boolean;
 	isListening: boolean;
 	soundLevelAnim: Animated.Value;
-	schemaAspectRatio: number;
 	onOpenSchema: (imageUrl: string) => void;
-	onOpenSource: (message: TMessage) => void;
+	onOpenSource: (source: TMessage | ChatMessageSourceReference) => void;
 	onRetryMessage: (message: TMessage) => void;
 	isRetryDisabled?: boolean;
 	onUserMessageLayout: (message: TMessage, y: number) => void;
@@ -404,7 +413,6 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 	compact = false,
 	isListening,
 	soundLevelAnim,
-	schemaAspectRatio,
 	onOpenSchema,
 	onOpenSource,
 	onRetryMessage,
@@ -448,7 +456,14 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 					<View
 						key={message.id}
 						className={compact ? 'self-start mb-5' : 'self-start mb-7'}
-						style={{ maxWidth: compact ? '96%' : '78%' }}>
+						style={
+							message.schemaImage ||
+							message.schemaImages?.length ||
+							message.sourceAttachmentId ||
+							message.sourceReferences?.length
+								? { width: compact ? '96%' : '78%' }
+								: { maxWidth: compact ? '96%' : '78%' }
+						}>
 						{message.text ? (
 							<StructuredAssistantResponse
 								text={message.text}
@@ -458,47 +473,136 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 						) : (
 							<TypingDotsIndicator color={PRIMARY_ORANGE} />
 						)}
-						{message.schemaImage ? (
-							<TouchableOpacity
-								onPress={() => onOpenSchema(message.schemaImage || '')}
-								className={`rounded-xl overflow-hidden border mt-4 ${
-									lightMode
-										? 'border-[#D4D4D8] bg-white'
-										: 'border-[#292D33] bg-[#111318]'
-								}`}
-								style={compact ? { maxWidth: 610 } : { width: 410 }}>
-								<Text
-									className={`${lightMode ? 'text-[#52525B] bg-white' : 'text-[#AEB3BA] bg-[#111318]'} text-[14px] px-3 py-2`}>
-									Schemat pomocniczy
-								</Text>
-								<InvertedSchemaPreview
-									imageUrl={message.schemaImage}
-									aspectRatio={schemaAspectRatio}
-									lightMode={lightMode}
-								/>
-								<Text
-									className={`${lightMode ? 'text-[#52525B] bg-white' : 'text-[#AEB3BA] bg-[#111318]'} text-[14px] px-3 py-2.5`}>
-									Naciśnij, aby powiększyć
-								</Text>
-							</TouchableOpacity>
-						) : null}
-						{message.sourceAttachmentId ? (
-							<TouchableOpacity
-								onPress={() => onOpenSource(message)}
-								className='self-start flex-row items-center mt-4'>
-								<Feather
-									name='arrow-up-right'
-									size={compact ? 21 : 23}
-									color={PRIMARY_ORANGE}
-								/>
-								<Text
-									className={`text-[#FF7A00] ml-2 tracking-wide ${
-										compact ? 'text-[12px]' : 'text-[13px]'
-									}`}>
-									POKAŻ ŹRÓDŁO ODPOWIEDZI
-								</Text>
-							</TouchableOpacity>
-						) : null}
+						{(() => {
+							const schemaImages = (
+								message.schemaImages?.length
+									? message.schemaImages
+									: message.schemaImage
+										? [message.schemaImage]
+										: []
+							).slice(0, 5);
+							const sourceReferences = (
+								message.sourceReferences?.length
+									? message.sourceReferences
+									: message.sourceAttachmentId
+										? [message as ChatMessageSourceReference]
+										: []
+							).slice(0, 5);
+
+							if (schemaImages.length === 0 && sourceReferences.length === 0)
+								return null;
+
+							const materials = Array.from(
+								{
+									length: Math.min(
+										5,
+										Math.max(schemaImages.length, sourceReferences.length),
+									),
+								},
+								(_, index) => {
+									const schemaImage = schemaImages[index];
+									const source =
+										sourceReferences.find(
+											(reference) => reference.previewImage === schemaImage,
+										) || sourceReferences[index];
+
+									return { schemaImage, source };
+								},
+							);
+
+							return (
+								<View className='mt-4'>
+									<Text
+										className={`${lightMode ? 'text-[#52525B]' : 'text-[#AEB3BA]'} text-[14px]`}>
+										Schematy z dokumentacji
+									</Text>
+									<Text
+										className={`${lightMode ? 'text-[#71717A]' : 'text-[#7F858D]'} text-[12px] mb-2`}>
+										Kliknij schemat, aby otworzyć go w pełnym rozmiarze.
+									</Text>
+									<ScrollView
+										horizontal
+										showsHorizontalScrollIndicator={false}
+										style={{ width: '100%' }}
+										contentContainerStyle={
+											compact
+												? { gap: 8, paddingRight: 4 }
+												: { gap: 8, width: '100%' }
+										}>
+										{materials.map(({ schemaImage, source }, index) => (
+											<View
+												key={`${schemaImage || source?.sourceAttachmentId || 'material'}-${index}`}
+												className={`rounded-lg overflow-hidden border ${
+													lightMode
+														? 'border-[#D4D4D8] bg-white'
+														: 'border-[#292D33] bg-[#111318]'
+												}`}
+												style={
+													compact
+														? { width: 136 }
+														: { flex: 1, minWidth: 0 }
+												}>
+												<TouchableOpacity
+													onPress={() =>
+														schemaImage && onOpenSchema(schemaImage)
+													}
+													disabled={!schemaImage}
+													accessibilityRole='button'
+													accessibilityLabel={`Powiększ schemat ${index + 1}`}
+													className='items-center justify-center'
+													style={{ width: '100%', aspectRatio: 1 }}>
+													{schemaImage ? (
+														<InvertedSchemaPreview
+															imageUrl={schemaImage}
+															aspectRatio={1}
+															lightMode={lightMode}
+														/>
+													) : (
+														<Feather
+															name='file-text'
+															size={compact ? 22 : 28}
+															color={PRIMARY_ORANGE}
+														/>
+													)}
+												</TouchableOpacity>
+												{source ? (
+													<TouchableOpacity
+														onPress={() => onOpenSource(source)}
+														accessibilityRole='button'
+														accessibilityLabel={`Otwórz źródło ${index + 1}`}
+														className={`flex-row items-center border-t px-2.5 py-2 ${
+															lightMode
+																? 'border-[#E4E4E7] bg-[#FAFAFA]'
+																: 'border-[#292D33] bg-[#111318]'
+														}`}
+														style={{ minHeight: compact ? 48 : 56 }}>
+														<MaterialCommunityIcons
+															name='file-pdf-box'
+															size={compact ? 18 : 21}
+															color='#EF4444'
+															style={{
+																marginRight: 6,
+																flexShrink: 0,
+															}}
+														/>
+														<Text
+															className={`${lightMode ? 'text-[#27272A]' : 'text-[#F4F4F5]'} flex-1 font-semibold`}
+															style={{
+																fontSize: compact ? 12 : 13,
+																lineHeight: compact ? 16 : 17,
+															}}
+															numberOfLines={2}>
+															{source.sourceAttachmentName ||
+																`Dokument_${source.sourceAttachmentId}.pdf`}
+														</Text>
+													</TouchableOpacity>
+												) : null}
+											</View>
+										))}
+									</ScrollView>
+								</View>
+							);
+						})()}
 						{message.retryQuestion ? (
 							<TouchableOpacity
 								onPress={() => onRetryMessage(message)}

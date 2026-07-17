@@ -18,6 +18,7 @@ import {
 	FullscreenSchemaView,
 	PortraitChatLayout,
 } from '@/components/ChatLayouts';
+import type { ChatMessageSourceReference } from '@/components/ChatMessages';
 import ServiceErrorModal from '@/components/ServiceErrorModal';
 import type { KeyboardFrame } from '@/components/StartPromptView';
 import { useAppSettings } from '@/hooks/use-app-settings';
@@ -40,9 +41,11 @@ const CHAT_AUTH_TOKEN_OVERRIDE: string | null = null;
 
 type ChatMessage = Message & {
 	schemaImage?: string;
+	schemaImages?: string[];
 	sourceAttachmentId?: number;
 	sourceAttachmentName?: string;
 	sourceAttachmentPage?: number;
+	sourceReferences?: ChatMessageSourceReference[];
 	retryQuestion?: string;
 };
 

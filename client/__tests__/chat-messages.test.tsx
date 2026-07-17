@@ -56,6 +56,7 @@ jest.mock('@expo/vector-icons', () => {
 
 	return {
 		Feather: Icon,
+		MaterialCommunityIcons: Icon,
 	};
 });
 
@@ -64,7 +65,6 @@ describe('ChatMessages', () => {
 		compact: false,
 		isListening: false,
 		soundLevelAnim: new (jest.requireMock('react-native').Animated.Value)(0.2),
-		schemaAspectRatio: 1.4,
 		onOpenSchema: jest.fn(),
 		onOpenSource: jest.fn(),
 		onRetryMessage: jest.fn(),
@@ -196,14 +196,29 @@ describe('ChatMessages', () => {
 	test('opens schema previews and answer sources', () => {
 		const onOpenSchema = jest.fn();
 		const onOpenSource = jest.fn();
+		const sourceReferences = Array.from({ length: 6 }, (_, index) => ({
+			sourceAttachmentId: 88,
+			sourceAttachmentName: 'manual.pdf',
+			sourceAttachmentPage: index + 1,
+			previewImage: `data:image/png;base64,source-${index}`,
+		}));
 		const sourceMessage: ChatMessageItem = {
 			id: 1,
 			sender: 'ai',
 			text: 'Zobacz źródło.',
 			schemaImage: 'data:image/png;base64,abc',
+			schemaImages: [
+				'data:image/png;base64,abc',
+				'data:image/png;base64,def',
+				'data:image/png;base64,ghi',
+				'data:image/png;base64,jkl',
+				'data:image/png;base64,mno',
+				'data:image/png;base64,ignored',
+			],
 			sourceAttachmentId: 88,
 			sourceAttachmentName: 'manual.pdf',
 			sourceAttachmentPage: 3,
+			sourceReferences,
 		};
 		const tree = (
 			<ChatMessages
@@ -214,13 +229,24 @@ describe('ChatMessages', () => {
 			/>
 		);
 		const buttons = findByType(tree, 'TouchableOpacity');
+		const schemaButtons = buttons.filter((button) =>
+			button.props.accessibilityLabel?.startsWith('Powiększ schemat'),
+		);
+		const sourceButtons = buttons.filter((button) =>
+			button.props.accessibilityLabel?.startsWith('Otwórz źródło'),
+		);
 
-		buttons[0].props.onPress();
-		buttons[1].props.onPress();
+		schemaButtons[0].props.onPress();
+		sourceButtons[0].props.onPress();
 
-		expect(findByText(tree, 'Schemat pomocniczy')).toBeTruthy();
-		expect(findByText(tree, 'POKAŻ ŹRÓDŁO ODPOWIEDZI')).toBeTruthy();
+		expect(findByText(tree, 'Schematy z dokumentacji')).toBeTruthy();
+		expect(
+			findByText(tree, 'Kliknij schemat, aby otworzyć go w pełnym rozmiarze.'),
+		).toBeTruthy();
+		expect(findByText(tree, 'manual.pdf')).toBeTruthy();
+		expect(schemaButtons).toHaveLength(5);
+		expect(sourceButtons).toHaveLength(5);
 		expect(onOpenSchema).toHaveBeenCalledWith('data:image/png;base64,abc');
-		expect(onOpenSource).toHaveBeenCalledWith(sourceMessage);
+		expect(onOpenSource).toHaveBeenCalledWith(sourceReferences[0]);
 	});
 });

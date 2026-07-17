@@ -365,6 +365,14 @@ describe('useChatApi', () => {
 			sourceAttachmentName: 'manual.pdf',
 			sourceAttachmentPage: 4,
 			schemaImage: 'data:image/png;base64,aW1hZ2UtZGF0YQ==',
+			sourceReferences: [
+				{
+					sourceAttachmentId: 77,
+					sourceAttachmentName: 'manual.pdf',
+					sourceAttachmentPage: 4,
+					previewImage: 'data:image/png;base64,aW1hZ2UtZGF0YQ==',
+				},
+			],
 		});
 	});
 
@@ -414,7 +422,7 @@ describe('useChatApi', () => {
 		});
 	});
 
-	test('loads only the first chunk image for the schema preview', async () => {
+	test('loads at most five chunk images for schema previews', async () => {
 		const fetchMock = jest.mocked(global.fetch);
 		fetchMock
 			.mockResolvedValueOnce(
@@ -422,13 +430,24 @@ describe('useChatApi', () => {
 					{
 						attachment_id: 77,
 						metadata: {
-							images: ['manual/page 2.png', 'manual/page 3.png'],
+							images: [
+								'manual/page 2.png',
+								'manual/page 3.png',
+								'manual/page 4.png',
+								'manual/page 5.png',
+								'manual/page 6.png',
+								'manual/page 7.png',
+							],
 							page: 4,
 						},
 					},
 				]),
 			)
 			.mockResolvedValueOnce(createImageResponse('first-image'))
+			.mockResolvedValueOnce(createImageResponse('second-image'))
+			.mockResolvedValueOnce(createImageResponse('third-image'))
+			.mockResolvedValueOnce(createImageResponse('fourth-image'))
+			.mockResolvedValueOnce(createImageResponse('fifth-image'))
 			.mockResolvedValueOnce(createJsonResponse({ original_filename: 'manual.pdf' }));
 		const harness = createHarness({ currentThreadId: 321 });
 
@@ -449,11 +468,18 @@ describe('useChatApi', () => {
 			expect.anything(),
 		);
 		expect(fetchMock).not.toHaveBeenCalledWith(
-			'https://api.example.test/api/images/manual%2Fpage%203.png',
+			'https://api.example.test/api/images/manual%2Fpage%207.png',
 			expect.anything(),
 		);
 		expect(harness.state.messages[0]).toMatchObject({
 			schemaImage: 'data:image/png;base64,Zmlyc3QtaW1hZ2U=',
+			schemaImages: [
+				'data:image/png;base64,Zmlyc3QtaW1hZ2U=',
+				'data:image/png;base64,c2Vjb25kLWltYWdl',
+				'data:image/png;base64,dGhpcmQtaW1hZ2U=',
+				'data:image/png;base64,Zm91cnRoLWltYWdl',
+				'data:image/png;base64,ZmlmdGgtaW1hZ2U=',
+			],
 		});
 	});
 
