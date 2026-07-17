@@ -1,6 +1,8 @@
-import React from 'react';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
 import { Image, ImageSourcePropType, Text, TouchableOpacity, View } from 'react-native';
 
+import ThemeAwareLogo from '@/components/ThemeAwareLogo';
 import { FILTER_LOGO_SIZES } from '@/components/VehicleFilters';
 
 export type Vehicle = {
@@ -8,7 +10,7 @@ export type Vehicle = {
 	name: string;
 	brand: string;
 	type: string;
-	imageUrl: ImageSourcePropType;
+	imageUrl?: ImageSourcePropType;
 	imageOffsetY: number;
 	imageZoom: number;
 };
@@ -24,6 +26,7 @@ type VehicleCardProps = {
 	useTabletRefresh: boolean;
 	onOpen: (vehicle: Vehicle) => void;
 	getBrandLogoUrl: (brandName: string) => string | null;
+	lightMode?: boolean;
 };
 
 export default function VehicleCard({
@@ -37,9 +40,18 @@ export default function VehicleCard({
 	useTabletRefresh,
 	onOpen,
 	getBrandLogoUrl,
+	lightMode = false,
 }: VehicleCardProps) {
+	const [imageLoadFailed, setImageLoadFailed] = useState(false);
+	const imageSourceKey = JSON.stringify(vehicle.imageUrl);
+
+	useEffect(() => {
+		setImageLoadFailed(false);
+	}, [imageSourceKey, vehicle.id]);
+
 	const logoUrl = getBrandLogoUrl(vehicle.brand);
 	const logoHeight = useTabletRefresh ? 22 : isTablet || isWeb ? 24 : 20;
+	const logoDims = FILTER_LOGO_SIZES[vehicle.brand.toUpperCase()] || FILTER_LOGO_SIZES.DEFAULT;
 	const brandToRemove = vehicle.brand.toLowerCase() + ' ';
 	const cleanName = vehicle.name.toLowerCase().startsWith(brandToRemove)
 		? vehicle.name.substring(brandToRemove.length)
@@ -47,26 +59,26 @@ export default function VehicleCard({
 
 	const renderCardInfo = () => {
 		if (isWeb) {
-			const logoDims =
-				FILTER_LOGO_SIZES[vehicle.brand.toUpperCase()] || FILTER_LOGO_SIZES.DEFAULT;
-
 			return (
 				<View
 					className='w-full flex-row items-center justify-center px-2'
 					style={{ marginBottom: useTabletRefresh ? 10 : 16 }}>
 					{logoUrl && (
-						<Image
-							source={{ uri: logoUrl }}
+						<View
 							style={{
-								height: logoHeight,
-								width: logoDims.width,
 								marginRight: 12,
-							}}
-							resizeMode='contain'
-						/>
+							}}>
+							<ThemeAwareLogo
+								source={{ uri: logoUrl }}
+								width={logoDims.width}
+								height={logoHeight}
+								lightMode={lightMode}
+								resizeMode='contain'
+							/>
+						</View>
 					)}
 					<Text
-						className={`text-white font-bold ${useTabletRefresh ? 'text-lg' : 'text-xl'}`}
+						className={`${lightMode ? 'text-[#18181B]' : 'text-white'} font-bold ${useTabletRefresh ? 'text-lg' : 'text-xl'}`}
 						numberOfLines={1}>
 						{cleanName.toUpperCase()}
 					</Text>
@@ -81,19 +93,20 @@ export default function VehicleCard({
 				{logoUrl && (
 					<View
 						style={{
-							width: '100%',
-							height: logoHeight,
+							alignSelf: 'center',
 							marginBottom: 5,
 						}}>
-						<Image
+						<ThemeAwareLogo
 							source={{ uri: logoUrl }}
-							style={{ width: '100%', height: '100%' }}
+							width={logoDims.width}
+							height={logoHeight}
+							lightMode={lightMode}
 							resizeMode='contain'
 						/>
 					</View>
 				)}
 				<Text
-					className={`text-white font-bold text-center ${
+					className={`${lightMode ? 'text-[#18181B]' : 'text-white'} font-bold text-center ${
 						useTabletRefresh ? 'text-lg' : isTablet ? 'text-xl' : 'text-lg'
 					}`}
 					numberOfLines={3}
@@ -111,7 +124,7 @@ export default function VehicleCard({
 		<TouchableOpacity
 			activeOpacity={isWeb ? 1 : 0.9}
 			onPress={isWeb ? undefined : () => onOpen(vehicle)}
-			className='bg-[#18181b] overflow-hidden flex-col'
+			className={`${lightMode ? 'bg-white border border-[#E4E4E7]' : 'bg-[#18181b]'} overflow-hidden flex-col`}
 			style={
 				{
 					width: cardWidth,
@@ -122,25 +135,42 @@ export default function VehicleCard({
 				} as any
 			}>
 			<View
-				className='w-full items-center justify-center bg-[#27272a] overflow-hidden'
+				className={`w-full items-center justify-center ${lightMode ? 'bg-[#F4F4F5]' : 'bg-[#27272a]'} overflow-hidden`}
 				style={{ height: imageHeight, position: 'relative' }}>
-				<Image
-					source={vehicle.imageUrl}
-					style={{
-						position: 'absolute',
-						width: '100%',
-						height: '100%',
-						transform: [
-							{ scale: imageZoom * vehicle.imageZoom },
-							{ translateY: vehicle.imageOffsetY },
-						],
-					}}
-					resizeMode='cover'
-				/>
+				{vehicle.imageUrl && !imageLoadFailed ? (
+					<Image
+						source={vehicle.imageUrl}
+						onError={() => setImageLoadFailed(true)}
+						style={{
+							position: 'absolute',
+							width: '100%',
+							height: '100%',
+							transform: [
+								{ scale: imageZoom * vehicle.imageZoom },
+								{ translateY: vehicle.imageOffsetY },
+							],
+						}}
+						resizeMode='cover'
+					/>
+				) : (
+					<View
+						className='items-center justify-center'
+						accessibilityLabel='Brak zdjęcia pojazdu'>
+						<MaterialCommunityIcons
+							name='forklift'
+							size={useTabletRefresh ? 60 : isTablet || isWeb ? 68 : 52}
+							color={lightMode ? '#71717A' : '#A1A1AA'}
+						/>
+						<Text
+							className={`${lightMode ? 'text-[#52525B]' : 'text-[#D4D4D8]'} mt-2 text-[13px] font-semibold uppercase tracking-wide`}>
+							Brak zdjęcia
+						</Text>
+					</View>
+				)}
 			</View>
 
 			<View
-				className='bg-[#18181b] flex-1 border-t border-[#3f3f46] justify-center items-center'
+				className={`${lightMode ? 'bg-white border-[#E4E4E7]' : 'bg-[#18181b] border-[#3f3f46]'} flex-1 border-t justify-center items-center`}
 				style={{
 					paddingHorizontal: useTabletRefresh ? 12 : 16,
 					paddingVertical: useTabletRefresh ? 8 : 10,

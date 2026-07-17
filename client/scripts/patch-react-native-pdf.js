@@ -16,6 +16,29 @@ const pdfViewPath = path.join(
 	'pdf',
 	'PdfView.java',
 );
+const pdfManagerPath = path.join(
+	__dirname,
+	'..',
+	'node_modules',
+	'react-native-pdf',
+	'android',
+	'src',
+	'main',
+	'java',
+	'org',
+	'wonday',
+	'pdf',
+	'PdfManager.java',
+);
+const pdfFabricSpecPath = path.join(
+	__dirname,
+	'..',
+	'node_modules',
+	'react-native-pdf',
+	'fabric',
+	'RNPDFPdfNativeComponent.js',
+);
+const pdfTypesPath = path.join(__dirname, '..', 'node_modules', 'react-native-pdf', 'index.d.ts');
 
 if (!fs.existsSync(pdfIndexPath)) {
 	console.warn('react-native-pdf index.js not found; skipping patch.');
@@ -24,10 +47,28 @@ if (!fs.existsSync(pdfIndexPath)) {
 
 let source = fs.readFileSync(pdfIndexPath, 'utf8');
 
+if (!source.includes('darkMode: PropTypes.bool,')) {
+	source = source.replace(
+		'        singlePage: PropTypes.bool,\n',
+		'        singlePage: PropTypes.bool,\n        darkMode: PropTypes.bool,\n',
+	);
+	source = source.replace(
+		'        singlePage: false,\n',
+		'        singlePage: false,\n        darkMode: true,\n',
+	);
+}
+
 if (!source.includes('_getNativeProps = () => ({')) {
 	source = source.replace(
 		`    _onError = (error) => {\n\n        this.props.onError && this.props.onError(error);\n\n    };\n\n`,
 		`    _onError = (error) => {\n\n        this.props.onError && this.props.onError(error);\n\n    };\n\n    _getNativeProps = () => ({\n        page: this.props.page,\n        scale: this.props.scale,\n        minScale: this.props.minScale,\n        maxScale: this.props.maxScale,\n        horizontal: this.props.horizontal,\n        spacing: this.props.spacing,\n        password: this.props.password,\n        enableAntialiasing: this.props.enableAntialiasing,\n        enableAnnotationRendering: this.props.enableAnnotationRendering,\n        showsHorizontalScrollIndicator: this.props.showsHorizontalScrollIndicator,\n        showsVerticalScrollIndicator: this.props.showsVerticalScrollIndicator,\n        scrollEnabled: this.props.scrollEnabled,\n        enablePaging: this.props.enablePaging,\n        enableRTL: this.props.enableRTL,\n        fitPolicy: this.props.fitPolicy,\n        singlePage: this.props.singlePage,\n    });\n\n`,
+	);
+}
+
+if (!source.includes('darkMode: this.props.darkMode,')) {
+	source = source.replace(
+		'        singlePage: this.props.singlePage,\n    });',
+		'        singlePage: this.props.singlePage,\n        darkMode: this.props.darkMode,\n    });',
 	);
 }
 
@@ -64,6 +105,13 @@ if (fs.existsSync(pdfViewPath)) {
 		);
 	}
 
+	if (!pdfViewSource.includes('private boolean darkMode = true;')) {
+		pdfViewSource = pdfViewSource.replace(
+			'    private final Paint darkPdfPaint = new Paint();\n',
+			'    private final Paint darkPdfPaint = new Paint();\n    private boolean darkMode = true;\n',
+		);
+	}
+
 	if (!pdfViewSource.includes('private void configureDarkPdfPaint()')) {
 		pdfViewSource = pdfViewSource.replace(
 			'    public PdfView(Context context, AttributeSet set){\n        super(context, set);\n    }\n',
@@ -71,7 +119,70 @@ if (fs.existsSync(pdfViewPath)) {
 		);
 	}
 
+	if (!pdfViewSource.includes('public void setDarkMode(boolean darkMode)')) {
+		pdfViewSource = pdfViewSource.replace(
+			'    @Override\n    public void draw(Canvas canvas) {\n        int saveCount = canvas.saveLayer(0, 0, getWidth(), getHeight(), darkPdfPaint);\n        super.draw(canvas);\n        canvas.restoreToCount(saveCount);\n    }\n',
+			`    public void setDarkMode(boolean darkMode) {
+        this.darkMode = darkMode;
+        setBackgroundColor(darkMode ? Color.BLACK : Color.WHITE);
+        invalidate();
+    }
+
+    @Override
+    public void draw(Canvas canvas) {
+        if (!darkMode) {
+            super.draw(canvas);
+            return;
+        }
+
+        int saveCount = canvas.saveLayer(0, 0, getWidth(), getHeight(), darkPdfPaint);
+        super.draw(canvas);
+        canvas.restoreToCount(saveCount);
+    }
+`,
+		);
+	}
+
 	fs.writeFileSync(pdfViewPath, pdfViewSource);
 }
 
-console.log('react-native-pdf patched for Fabric native props and dark PDF rendering.');
+if (fs.existsSync(pdfManagerPath)) {
+	let managerSource = fs.readFileSync(pdfManagerPath, 'utf8');
+	if (!managerSource.includes('@ReactProp(name = "darkMode")')) {
+		managerSource = managerSource.replace(
+			'    @ReactProp(name = "singlePage")\n',
+			`    @ReactProp(name = "darkMode")
+    public void setDarkMode(PdfView pdfView, boolean darkMode) {
+        pdfView.setDarkMode(darkMode);
+    }
+
+    @ReactProp(name = "singlePage")
+`,
+		);
+	}
+	fs.writeFileSync(pdfManagerPath, managerSource);
+}
+
+if (fs.existsSync(pdfFabricSpecPath)) {
+	let fabricSource = fs.readFileSync(pdfFabricSpecPath, 'utf8');
+	if (!fabricSource.includes('darkMode: ?boolean,')) {
+		fabricSource = fabricSource.replace(
+			'   singlePage: ?boolean,\n',
+			'   singlePage: ?boolean,\n   darkMode: ?boolean,\n',
+		);
+	}
+	fs.writeFileSync(pdfFabricSpecPath, fabricSource);
+}
+
+if (fs.existsSync(pdfTypesPath)) {
+	let typesSource = fs.readFileSync(pdfTypesPath, 'utf8');
+	if (!typesSource.includes('darkMode?: boolean,')) {
+		typesSource = typesSource.replace(
+			'    singlePage?: boolean,\n',
+			'    singlePage?: boolean,\n    darkMode?: boolean,\n',
+		);
+	}
+	fs.writeFileSync(pdfTypesPath, typesSource);
+}
+
+console.log('react-native-pdf patched for Fabric native props and theme-aware PDF rendering.');

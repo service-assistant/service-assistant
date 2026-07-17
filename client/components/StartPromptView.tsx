@@ -38,6 +38,7 @@ type StartPromptViewProps = {
 	onSend: () => void;
 	onShowTextInputChange: (show: boolean) => void;
 	onShouldFocusStartPromptInputChange: (shouldFocus: boolean) => void;
+	lightMode?: boolean;
 };
 
 export default function StartPromptView({
@@ -52,6 +53,7 @@ export default function StartPromptView({
 	onSend,
 	onShowTextInputChange,
 	onShouldFocusStartPromptInputChange,
+	lightMode = false,
 }: StartPromptViewProps) {
 	const promptMaxWidth = compact ? '100%' : 980;
 	const chipWidth = compact ? '100%' : '48%';
@@ -193,16 +195,18 @@ export default function StartPromptView({
 				alignSelf: keyboardFrame ? 'center' : undefined,
 				height: compact ? 56 : 68,
 				borderRadius: compact ? 28 : 34,
-				backgroundColor: '#242424',
+				backgroundColor: lightMode ? '#FFFFFF' : '#242424',
+				borderWidth: lightMode ? 1 : 0,
+				borderColor: lightMode ? '#D4D4D8' : 'transparent',
 				paddingLeft: compact ? 18 : 32,
 				paddingRight: compact ? 7 : 10,
 				marginBottom: keyboardFrame ? undefined : compact ? 20 : 22,
 			}}>
 			<TextInput
 				ref={inputRef}
-				className='flex-1 text-white'
+				className={`flex-1 ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
 				placeholder={nativePlaceholder}
-				placeholderTextColor='#A1A1AA'
+				placeholderTextColor={lightMode ? '#71717A' : '#A1A1AA'}
 				value={inputText}
 				onChangeText={onChangeText}
 				onSubmitEditing={onSend}
@@ -256,7 +260,7 @@ export default function StartPromptView({
 					width: compact ? 44 : 54,
 					height: compact ? 44 : 54,
 					borderRadius: compact ? 22 : 27,
-					backgroundColor: '#1E2028',
+					backgroundColor: lightMode ? '#FFF7ED' : '#1E2028',
 					borderWidth: 1,
 					borderColor: 'rgba(255, 122, 0, 0.5)',
 				}}>
@@ -280,7 +284,7 @@ export default function StartPromptView({
 				}}>
 				<View style={{ opacity: keyboardFrame ? 0 : 1 }}>
 					<Text
-						className='text-white font-semibold'
+						className={`${lightMode ? 'text-[#18181B]' : 'text-white'} font-semibold`}
 						numberOfLines={1}
 						style={{
 							fontSize: compact ? 22 : 26,
@@ -295,7 +299,7 @@ export default function StartPromptView({
 						adjustsFontSizeToFit={!compact}
 						minimumFontScale={0.86}
 						style={{
-							color: 'rgba(244, 244, 245, 0.84)',
+							color: lightMode ? '#52525B' : 'rgba(244, 244, 245, 0.84)',
 							fontSize: compact ? 14 : 17,
 							lineHeight: compact ? 20 : 24,
 							marginBottom: compact ? 24 : 34,
@@ -332,8 +336,8 @@ export default function StartPromptView({
 								paddingHorizontal: compact ? 12 : 18,
 								borderRadius: compact ? 17 : 18,
 								borderWidth: 1,
-								borderColor: 'rgba(255, 255, 255, 0.09)',
-								backgroundColor: 'rgba(5, 5, 5, 0.72)',
+								borderColor: lightMode ? '#D4D4D8' : 'rgba(255, 255, 255, 0.09)',
+								backgroundColor: lightMode ? '#FFFFFF' : 'rgba(5, 5, 5, 0.72)',
 							}}>
 							<Text
 								className='text-center'
@@ -341,7 +345,7 @@ export default function StartPromptView({
 								adjustsFontSizeToFit
 								minimumFontScale={0.82}
 								style={{
-									color: 'rgba(244, 244, 245, 0.9)',
+									color: lightMode ? '#3F3F46' : 'rgba(244, 244, 245, 0.9)',
 									fontSize: compact ? 13 : 16,
 									lineHeight: compact ? 17 : 21,
 								}}>
@@ -360,7 +364,7 @@ export default function StartPromptView({
 						zIndex: 20,
 					}}>
 					<Text
-						className='text-white font-semibold'
+						className={`${lightMode ? 'text-[#18181B]' : 'text-white'} font-semibold`}
 						numberOfLines={1}
 						style={{
 							width: '100%',
@@ -381,7 +385,7 @@ export default function StartPromptView({
 							width: '100%',
 							maxWidth: promptMaxWidth,
 							alignSelf: 'center',
-							color: 'rgba(244, 244, 245, 0.84)',
+							color: lightMode ? '#52525B' : 'rgba(244, 244, 245, 0.84)',
 							fontSize: compact ? 14 : 17,
 							lineHeight: compact ? 20 : 24,
 							marginBottom: compact ? 24 : 34,

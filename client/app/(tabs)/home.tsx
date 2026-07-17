@@ -1,10 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
 	ActivityIndicator,
 	Animated,
-	Image,
 	Platform,
 	Text,
 	TouchableOpacity,
@@ -14,8 +14,10 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import ServiceErrorModal from '@/components/ServiceErrorModal';
+import ThemeAwareLogo from '@/components/ThemeAwareLogo';
 import VehicleCard, { type Vehicle } from '@/components/VehicleCard';
 import VehicleFilters from '@/components/VehicleFilters';
+import { useAppSettings } from '@/hooks/use-app-settings';
 import { useNetworkStatus } from '@/hooks/use-network-status';
 import { useVehicleMetadata } from '@/hooks/use-vehicle-metadata';
 import { CONFIG_SERVICE_FEATURE } from '@/utils/api-config';
@@ -63,9 +65,7 @@ export default function HomeScreen() {
 			name: device.name,
 			brand: brand ? brand.name : 'NIEZNANA MARKA',
 			type: type ? type.name : 'NIEZNANY TYP',
-			imageUrl: device.image_url
-				? { uri: device.image_url }
-				: require('../../assets/images/fixo3.png'), // Fallback if image is missing
+			imageUrl: device.image_url?.trim() ? { uri: device.image_url } : undefined,
 			imageOffsetY: 0, // Default values, API images are not manually calibrated
 			imageZoom: 1.0,
 		};
@@ -92,12 +92,13 @@ export default function HomeScreen() {
 
 	const [headerHeight, setHeaderHeight] = useState(0);
 	const scrollY = useRef(new Animated.Value(0)).current;
+	const { lightThemeEnabled } = useAppSettings();
 
 	useEffect(() => {
-		if (isWeb) {
+		if (isWeb || isTablet) {
 			scrollY.setValue(0);
 		}
-	}, [CURRENT_SCREEN_WIDTH, isWeb, scrollY]);
+	}, [CURRENT_SCREEN_WIDTH, isTablet, isWeb, scrollY]);
 
 	const headerTranslateY = scrollY.interpolate({
 		inputRange: [0, headerHeight || 1],
@@ -177,7 +178,13 @@ export default function HomeScreen() {
 			? 16
 			: 18;
 	return (
-		<SafeAreaView className='flex-1 bg-[#09090b]' edges={['top', 'left', 'right']}>
+		<SafeAreaView
+			className={`flex-1 ${lightThemeEnabled ? 'bg-[#F7F7F8]' : 'bg-[#09090B]'}`}
+			edges={['top', 'left', 'right']}>
+			<StatusBar
+				style={lightThemeEnabled ? 'dark' : 'light'}
+				backgroundColor={lightThemeEnabled ? '#FFFFFF' : '#09090B'}
+			/>
 			<View className='flex-1'>
 				<Animated.View
 					onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
@@ -192,7 +199,9 @@ export default function HomeScreen() {
 						paddingTop: headerPaddingVertical,
 						paddingBottom: headerPaddingVertical,
 						zIndex: 10,
-						backgroundColor: '#09090b',
+						backgroundColor: lightThemeEnabled ? '#FFFFFF' : '#09090B',
+						borderBottomWidth: 1,
+						borderBottomColor: lightThemeEnabled ? '#E4E4E7' : '#09090B',
 					}}>
 					<View
 						className={`flex-row justify-between items-center ${
@@ -209,17 +218,17 @@ export default function HomeScreen() {
 						<View
 							className='flex-row items-center flex-1 min-w-0'
 							style={{ transform: [{ translateY: titleGroupOffsetY }] }}>
-							<Image
-								source={require('../../assets/images/fixo3.png')}
-								className={usePhonePortraitHeader ? 'mr-2' : 'mr-3'}
-								style={{
-									width: headerLogoWidth,
-									height: headerLogoHeight,
-								}}
-								resizeMode='contain'
-							/>
+							<View className={usePhonePortraitHeader ? 'mr-2' : 'mr-3'}>
+								<ThemeAwareLogo
+									source={require('../../assets/images/fixo3.png')}
+									width={headerLogoWidth}
+									height={headerLogoHeight}
+									lightMode={lightThemeEnabled}
+									resizeMode='contain'
+								/>
+							</View>
 							<Text
-								className={`${headerTitleClassName} text-white font-bold flex-1`}
+								className={`${headerTitleClassName} ${lightThemeEnabled ? 'text-[#18181B]' : 'text-white'} font-bold flex-1`}
 								numberOfLines={1}
 								adjustsFontSizeToFit>
 								Wybierz Pojazd
@@ -231,7 +240,11 @@ export default function HomeScreen() {
 								onPress={() => router.push('/settings')}
 								accessibilityRole='button'
 								accessibilityLabel='Ustawienia'
-								className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#111111]'
+								className={`flex-row items-center justify-center border rounded-[10px] ${
+									lightThemeEnabled
+										? 'border-[#E4E4E7] bg-[#FAFAFA]'
+										: 'border-[#2A2A2A] bg-[#111111]'
+								}`}
 								style={{
 									height: headerButtonHeight,
 									width: useIconOnlyHeaderButtons
@@ -246,7 +259,8 @@ export default function HomeScreen() {
 									color='#FF7A00'
 								/>
 								{useIconOnlyHeaderButtons ? null : (
-									<Text className='text-[#E6E6E6] ml-4 text-[13px] font-semibold tracking-wider'>
+									<Text
+										className={`${lightThemeEnabled ? 'text-[#3F3F46]' : 'text-[#E6E6E6]'} ml-4 text-[13px] font-semibold tracking-wider`}>
 										USTAWIENIA
 									</Text>
 								)}
@@ -255,7 +269,11 @@ export default function HomeScreen() {
 								onPress={() => router.push('/history')}
 								accessibilityRole='button'
 								accessibilityLabel='Historia czatów'
-								className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#111111]'
+								className={`flex-row items-center justify-center border rounded-[10px] ${
+									lightThemeEnabled
+										? 'border-[#E4E4E7] bg-[#FAFAFA]'
+										: 'border-[#2A2A2A] bg-[#111111]'
+								}`}
 								style={{
 									height: headerButtonHeight,
 									width: useIconOnlyHeaderButtons
@@ -266,7 +284,8 @@ export default function HomeScreen() {
 								}}>
 								<MaterialCommunityIcons name='history' size={21} color='#FF7A00' />
 								{useIconOnlyHeaderButtons ? null : (
-									<Text className='text-[#E6E6E6] ml-4 text-[13px] font-semibold tracking-wider'>
+									<Text
+										className={`${lightThemeEnabled ? 'text-[#3F3F46]' : 'text-[#E6E6E6]'} ml-4 text-[13px] font-semibold tracking-wider`}>
 										HISTORIA CZATÓW
 									</Text>
 								)}
@@ -285,6 +304,7 @@ export default function HomeScreen() {
 						isLoadingBrands={isLoadingBrands}
 						isLoadingTypes={isLoadingTypes}
 						primaryColor={PRIMARY_ORANGE}
+						lightMode={lightThemeEnabled}
 					/>
 				</Animated.View>
 
@@ -293,12 +313,16 @@ export default function HomeScreen() {
 						className='flex-1 justify-center items-center'
 						style={{ paddingTop: headerHeight + 50 }}>
 						<ActivityIndicator size='large' color={PRIMARY_ORANGE} />
-						<Text className='text-gray-400 mt-4'>Ĺadowanie maszyn...</Text>
+						<Text
+							className={`${lightThemeEnabled ? 'text-[#52525B]' : 'text-gray-400'} mt-4`}>
+							Ładowanie maszyn...
+						</Text>
 					</View>
 				) : (
 					<Animated.FlatList
-						key={`grid-${columns}`}
+						key={`grid-${columns}-${lightThemeEnabled ? 'light' : 'dark'}`}
 						data={filteredVehicles}
+						extraData={lightThemeEnabled}
 						keyExtractor={(item) => item.id}
 						renderItem={({ item }) => (
 							<VehicleCard
@@ -312,12 +336,14 @@ export default function HomeScreen() {
 								useTabletRefresh={useTabletHomeRefresh}
 								onOpen={openChat}
 								getBrandLogoUrl={getRemoteBrandLogo}
+								lightMode={lightThemeEnabled}
 							/>
 						)}
 						ListEmptyComponent={
 							<View className='w-full items-center justify-center px-6 py-12'>
 								<MaterialCommunityIcons name='forklift' size={36} color='#71717A' />
-								<Text className='text-gray-400 text-center mt-3'>
+								<Text
+									className={`${lightThemeEnabled ? 'text-[#52525B]' : 'text-gray-400'} text-center mt-3`}>
 									Nie ma pojazdów pasujących do wybranych filtrów.
 								</Text>
 							</View>
@@ -345,6 +371,7 @@ export default function HomeScreen() {
 				visible={Boolean(serviceErrorFeature)}
 				featureName={serviceErrorFeature || 'wybrana funkcja'}
 				onClose={() => setServiceErrorFeature(null)}
+				lightMode={lightThemeEnabled}
 				dismissible={
 					serviceErrorFeature !== AUTH_SERVICE_FEATURE &&
 					serviceErrorFeature !== CONFIG_SERVICE_FEATURE

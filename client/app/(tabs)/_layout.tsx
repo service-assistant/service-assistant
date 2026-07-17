@@ -7,10 +7,11 @@ import { useWindowDimensions } from 'react-native';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { getAppSettings } from '@/hooks/use-app-settings';
 
 export default function TabLayout() {
-	const colorScheme = useColorScheme();
+	const { lightThemeEnabled } = getAppSettings();
+	const colorScheme = lightThemeEnabled ? 'light' : 'dark';
 	const { width, height } = useWindowDimensions();
 	const isPhone = Math.min(width, height) < 600;
 
@@ -30,7 +31,7 @@ export default function TabLayout() {
 
 			<Tabs
 				screenOptions={{
-					tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
+					tabBarActiveTintColor: Colors[colorScheme].tint,
 					headerShown: false,
 					tabBarButton: HapticTab,
 					// Disable the bottom navigation bar to maintain a full-screen UI

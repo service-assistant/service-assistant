@@ -18,11 +18,13 @@ export default function PdfViewer({
 	source,
 	preserveTop = false,
 	onError,
+	lightMode = false,
 }: {
 	source: any;
 	page?: number;
 	preserveTop?: boolean;
 	onError?: (error: unknown) => void;
+	lightMode?: boolean;
 }) {
 	const pdfUri = getPdfUri(source);
 	const [isLoading, setIsLoading] = useState(true);
@@ -36,7 +38,8 @@ export default function PdfViewer({
 
 	return (
 		// The container uses overflow-hidden to crop the oversized iframe inside it
-		<View className='flex-1 w-full h-full overflow-hidden bg-black relative'>
+		<View
+			className={`flex-1 w-full h-full overflow-hidden relative ${lightMode ? 'bg-white' : 'bg-black'}`}>
 			<iframe
 				// URL parameters hide the browser's default PDF viewer UI (toolbar, scrollbar)
 				// and force the document to fit horizontally (view=FitH)
@@ -55,14 +58,16 @@ export default function PdfViewer({
 					marginTop: preserveTop ? 0 : '-2%',
 					border: 'none',
 					// CSS hack to simulate "Dark Mode" for the PDF content
-					filter: 'grayscale(100%) invert(100%) brightness(0.9)',
+					filter: lightMode ? 'none' : 'grayscale(100%) invert(100%) brightness(0.9)',
 				}}
 				title='Instrukcja PDF'
 			/>
 			{isLoading ? (
-				<View className='absolute inset-0 bg-black items-center justify-center z-20'>
+				<View
+					className={`absolute inset-0 items-center justify-center z-20 ${lightMode ? 'bg-white' : 'bg-black'}`}>
 					<ActivityIndicator color={PRIMARY_ORANGE} size='large' />
-					<Text className='text-neutral-400 text-[11px] font-bold uppercase tracking-widest mt-4'>
+					<Text
+						className={`${lightMode ? 'text-[#52525B]' : 'text-neutral-400'} text-[11px] font-bold uppercase tracking-widest mt-4`}>
 						Ladowanie pliku...
 					</Text>
 				</View>

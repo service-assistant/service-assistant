@@ -142,7 +142,7 @@ describe('ChatMessages', () => {
 		expect(onRetryMessage).toHaveBeenCalledWith(interruptedMessage);
 	});
 
-	test('renders local feedback controls only for completed assistant messages', () => {
+	test('does not render feedback controls for completed assistant messages', () => {
 		const tree = (
 			<ChatMessages
 				{...baseProps}
@@ -161,14 +161,9 @@ describe('ChatMessages', () => {
 			),
 		);
 
-		expect(feedbackIcons.map((icon) => icon.props.name)).toEqual(['thumbs-up', 'thumbs-down']);
-		expect(findByText(tree, 'Czy ta odpowiedź była pomocna?')).toBeTruthy();
-		expect(feedbackIcons.map((icon) => icon.props.color)).toEqual(['#8F959E', '#8F959E']);
-		expect(feedbackButtons).toHaveLength(2);
-		expect(feedbackButtons.every((button) => button.props.accessibilityRole === 'button')).toBe(
-			true,
-		);
-		feedbackButtons.forEach((button) => button.props.onPress());
+		expect(feedbackIcons).toHaveLength(0);
+		expect(findByText(tree, 'Czy ta odpowiedź była pomocna?')).toBeFalsy();
+		expect(feedbackButtons).toHaveLength(0);
 	});
 
 	test('renders structured assistant directives', () => {

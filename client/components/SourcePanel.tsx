@@ -35,6 +35,7 @@ type SourcePanelProps = {
 	onDeleteDownloadedFile: (file: AvailableFile) => void;
 	onPdfError?: (error: unknown) => void;
 	onClose: () => void;
+	lightMode?: boolean;
 };
 
 export default function SourcePanel({
@@ -58,6 +59,7 @@ export default function SourcePanel({
 	onDeleteDownloadedFile,
 	onPdfError,
 	onClose,
+	lightMode = false,
 }: SourcePanelProps) {
 	if (!showSourcePanel) return null;
 
@@ -68,13 +70,17 @@ export default function SourcePanel({
 	const resolvedHeaderTitleFontSize = headerTitleFontSize ?? (fullScreen ? 16 : 20);
 	const resolvedHeaderTitleLineHeight = headerTitleLineHeight ?? resolvedHeaderTitleFontSize + 5;
 	const content = sourcePanelPdf ? (
-		<View className='flex-1 bg-black pt-3 pb-6 border-t border-white/10'>
-			<View className='flex-1 overflow-hidden bg-black'>
+		<View
+			className={`flex-1 pt-3 pb-6 border-t ${
+				lightMode ? 'bg-white border-[#E4E4E7]' : 'bg-black border-white/10'
+			}`}>
+			<View className={`flex-1 overflow-hidden ${lightMode ? 'bg-white' : 'bg-black'}`}>
 				<PdfViewer
 					source={sourcePanelPdf.source}
 					page={sourcePanelPdf.page || 1}
 					preserveTop
 					onError={onPdfError}
+					lightMode={lightMode}
 				/>
 			</View>
 		</View>
@@ -91,6 +97,7 @@ export default function SourcePanel({
 				downloadedFileIds={downloadedFileIds}
 				onOpenFile={onOpenFile}
 				onDeleteDownloadedFile={onDeleteDownloadedFile}
+				lightMode={lightMode}
 			/>
 		</View>
 	);
@@ -105,7 +112,9 @@ export default function SourcePanel({
 				/>
 			)}
 			<View
-				className={`relative bg-[#07080A] ${fullScreen ? '' : 'border-l border-white/10'}`}
+				className={`relative ${
+					lightMode ? 'bg-[#F7F7F8]' : 'bg-[#07080A]'
+				} ${fullScreen ? '' : lightMode ? 'border-l border-[#E4E4E7]' : 'border-l border-white/10'}`}
 				style={{
 					width: fullScreen ? '100%' : '60%',
 					shadowColor: '#000000',
@@ -114,7 +123,9 @@ export default function SourcePanel({
 					shadowOffset: { width: -10, height: 0 },
 				}}>
 				<View
-					className='flex-row items-center px-4 bg-[#0D0D0D] border-b border-[#1F1F1F]'
+					className={`flex-row items-center px-4 border-b ${
+						lightMode ? 'bg-white border-[#E4E4E7]' : 'bg-[#0D0D0D] border-[#1F1F1F]'
+					}`}
 					style={{
 						height: resolvedHeaderHeight,
 						paddingTop: resolvedHeaderPaddingTop,
@@ -123,7 +134,11 @@ export default function SourcePanel({
 						onPress={onClose}
 						accessibilityRole='button'
 						accessibilityLabel='Wstecz'
-						className='border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D] items-center justify-center'
+						className={`border rounded-[10px] items-center justify-center ${
+							lightMode
+								? 'border-[#E4E4E7] bg-white'
+								: 'border-[#2A2A2A] bg-[#0D0D0D]'
+						}`}
 						style={{
 							width: backButtonSize,
 							height: backButtonSize,
@@ -133,7 +148,7 @@ export default function SourcePanel({
 						<Feather name='arrow-left' size={backIconSize} color='#FF7A00' />
 					</TouchableOpacity>
 					<Text
-						className='flex-1 text-center text-white font-bold'
+						className={`flex-1 text-center font-bold ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
 						style={{
 							fontSize: resolvedHeaderTitleFontSize,
 							lineHeight: resolvedHeaderTitleLineHeight,
@@ -146,10 +161,14 @@ export default function SourcePanel({
 				{content}
 				{sourcePanelPdf ? (
 					<View
-						className='absolute bottom-4 left-4 h-11 rounded-full bg-black/85 border border-white/15 px-4 justify-center'
+						className={`absolute bottom-4 left-4 h-11 rounded-full border px-4 justify-center ${
+							lightMode
+								? 'bg-white/95 border-[#D4D4D8]'
+								: 'bg-black/85 border-white/15'
+						}`}
 						style={{ zIndex: 2, elevation: 2, maxWidth: '72%' }}>
 						<Text
-							className='text-[#D8DCE2] text-[12px] font-bold tracking-widest uppercase'
+							className={`${lightMode ? 'text-[#3F3F46]' : 'text-[#D8DCE2]'} text-[12px] font-bold tracking-widest uppercase`}
 							numberOfLines={1}>
 							{sourcePanelPdf.name || 'Dokument.pdf'}
 						</Text>
