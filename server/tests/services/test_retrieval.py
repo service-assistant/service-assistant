@@ -455,7 +455,14 @@ async def test_reranker_failure_falls_back_to_existing_hybrid_limits(
         [
             *((f"semantic guide {index}", _embedding(1.0)) for index in range(10)),
             *(
-                (f"translated query procedure {index}", _embedding(0.0))
+                (
+                    (
+                        f"translated query procedure {index}"
+                        if index < 3
+                        else f"procedure notes {index}"
+                    ),
+                    _embedding(0.0),
+                )
                 for index in range(10)
             ),
         ],
