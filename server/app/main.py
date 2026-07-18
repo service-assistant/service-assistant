@@ -1,4 +1,5 @@
 from fastapi import Depends, FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -67,6 +68,18 @@ async def bearer_auth_middleware(request: Request, call_next):
         )
 
     return await call_next(request)
+
+
+# Keep CORS outside the authentication middleware so browser preflight requests
+# are answered before bearer-token validation. The API uses bearer authentication
+# rather than cookies, so clients from any origin can safely reach every instance.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 app.include_router(brands.router, prefix="/api/brands", tags=["Brands"])
