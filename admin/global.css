@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Hide Expo's web-only Fast Refresh lightning toast during development. */
+.__expo_fast_refresh {
+  display: none !important;
+}
