@@ -1,8 +1,11 @@
-import { Buffer } from 'buffer';
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import EventSource, { EventSourceEvent } from 'react-native-sse';
 
-import type { ChatMessageItem, ChatMessageSourceReference } from '@/components/ChatMessages';
+import type {
+	ChatMessageItem,
+	ChatMessageSourceReference,
+	SchemaImageSource,
+} from '@/components/ChatMessages';
 import { stripResponseDirectivesForSpeech } from '@/components/ChatMessages';
 import { AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
@@ -48,7 +51,7 @@ type UseChatApiParams<TMessage extends ChatMessageItem> = {
 	setMessages: Dispatch<SetStateAction<TMessage[]>>;
 	setIsLoading: Dispatch<SetStateAction<boolean>>;
 	setIsGenerating: Dispatch<SetStateAction<boolean>>;
-	setCurrentImage: Dispatch<SetStateAction<string | null>>;
+	setCurrentImage: Dispatch<SetStateAction<SchemaImageSource | null>>;
 	diagnosticMode2002Enabled?: boolean;
 	playAssistantAudio: (text: string) => void | Promise<void>;
 	ttsEnabled?: boolean;
@@ -56,27 +59,13 @@ type UseChatApiParams<TMessage extends ChatMessageItem> = {
 	authTokenOverride?: string | null;
 };
 
-const fetchAuthorizedImageDataUrl = async (
-	imageUrl: string,
-	authToken: string,
-	signal: AbortSignal,
-) => {
-	const response = await fetchWithRetry(imageUrl, {
-		headers: { Authorization: `Bearer ${authToken}` },
-		signal,
-	});
+const createAuthorizedImageSource = (imageUrl: string, authToken: string): SchemaImageSource => ({
+	uri: imageUrl,
+	headers: { Authorization: `Bearer ${authToken}` },
+});
 
-	if (!response.ok) {
-		throwIfAuthResponseError(response);
-		throw new HttpError(response.status, `Failed to load source image: ${response.status}`);
-	}
-
-	const contentType = response.headers.get('content-type') || 'image/png';
-	const arrayBuffer = await response.arrayBuffer();
-	const base64 = Buffer.from(arrayBuffer).toString('base64');
-
-	return `data:${contentType};base64,${base64}`;
-};
+const getSchemaImageKey = (source: SchemaImageSource) =>
+	typeof source === 'string' ? source : source.uri;
 
 export const useChatApi = <TMessage extends ChatMessageItem>({
 	serverUrl,
@@ -295,7 +284,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 				let sourceAttachmentName = '';
 				let sourceAttachmentPage = 1;
 				let sourceReferences: ChatMessageSourceReference[] = [];
-				let schemaImages: string[] = [];
+				let schemaImages: SchemaImageSource[] = [];
 				let hasStartedAssistantAudio = false;
 
 				const startAssistantAudio = () => {
@@ -312,11 +301,16 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 					playAssistantAudio(stripResponseDirectivesForSpeech(fullText));
 				};
 
-				const applySchemaImages = (nextImageUrls: string[]) => {
-					schemaImages = Array.from(new Set(nextImageUrls.filter(Boolean))).slice(
-						0,
-						MAX_SCHEMA_IMAGES,
-					);
+				const applySchemaImages = (nextImageUrls: SchemaImageSource[]) => {
+					schemaImages = nextImageUrls
+						.filter(
+							(source, index, sources) =>
+								sources.findIndex(
+									(candidate) =>
+										getSchemaImageKey(candidate) === getSchemaImageKey(source),
+								) === index,
+						)
+						.slice(0, MAX_SCHEMA_IMAGES);
 					if (schemaImages.length === 0) return;
 
 					setCurrentImage(schemaImages[0]);
@@ -386,31 +380,24 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 								.slice(0, MAX_SCHEMA_IMAGES - schemaImages.length);
 							let loadedImageEntries: {
 								chunk: SourceChunkPayload;
-								url: string;
+								url: SchemaImageSource;
 							}[] = [];
 
 							if (uniqueImageEntries.length > 0) {
-								const loadedChunkImages = await Promise.all(
-									uniqueImageEntries.map(({ path }) =>
-										fetchAuthorizedImageDataUrl(
-											buildChunkImageUrl(serverUrl, path),
-											AUTH_TOKEN,
-											abortController.signal,
-										).catch((error) => {
-											if (abortController.signal.aborted) throw error;
-											console.log('Handled source image load error:', error);
-											return null;
-										}),
+								// Pass authenticated URLs directly to the native image loader. This
+								// avoids downloading every file into JS, duplicating it as base64 and
+								// blocking the answer until all conversions have completed.
+								loadedImageEntries = uniqueImageEntries.map(({ chunk, path }) => ({
+									chunk,
+									url: createAuthorizedImageSource(
+										buildChunkImageUrl(serverUrl, path),
+										AUTH_TOKEN,
 									),
-								);
-								loadedImageEntries = loadedChunkImages.flatMap((url, index) =>
-									url ? [{ chunk: uniqueImageEntries[index].chunk, url }] : [],
-								);
+								}));
 								applySchemaImages([
 									...schemaImages,
 									...loadedImageEntries.map((entry) => entry.url),
 								]);
-								imageUrl = schemaImages[0] || null;
 							}
 
 							const sourceChunks = chunks

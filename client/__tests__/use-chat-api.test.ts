@@ -43,7 +43,7 @@ jest.mock('@/components/ChatMessages', () => ({
 			.trim(),
 }));
 
-import type { ChatMessageItem } from '@/components/ChatMessages';
+import type { ChatMessageItem, SchemaImageSource } from '@/components/ChatMessages';
 import { useChatApi } from '../hooks/use-chat-api';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -52,12 +52,6 @@ const createJsonResponse = (body: unknown, status = 200) =>
 	new Response(JSON.stringify(body), {
 		status,
 		headers: { 'content-type': 'application/json' },
-	});
-
-const createImageResponse = (body = 'image-data', status = 200) =>
-	new Response(body, {
-		status,
-		headers: { 'content-type': 'image/png' },
 	});
 
 const createDeferred = <T>() => {
@@ -80,7 +74,7 @@ const createHarness = (
 	let messages: ChatMessageItem[] = [];
 	let isLoading = false;
 	let isGenerating = false;
-	let currentImage: string | null = null;
+	let currentImage: SchemaImageSource | null = null;
 
 	const setCurrentThreadId = jest.fn(
 		(value: number | null | ((prev: number | null) => number | null)) => {
@@ -99,7 +93,12 @@ const createHarness = (
 		isGenerating = typeof value === 'function' ? value(isGenerating) : value;
 	});
 	const setCurrentImage = jest.fn(
-		(value: string | null | ((prev: string | null) => string | null)) => {
+		(
+			value:
+				| SchemaImageSource
+				| null
+				| ((prev: SchemaImageSource | null) => SchemaImageSource | null),
+		) => {
 			currentImage = typeof value === 'function' ? value(currentImage) : value;
 		},
 	);
@@ -317,7 +316,6 @@ describe('useChatApi', () => {
 					},
 				]),
 			)
-			.mockResolvedValueOnce(createImageResponse())
 			.mockResolvedValueOnce(createJsonResponse({ original_filename: 'manual.pdf' }));
 		const harness = createHarness({ currentThreadId: 321 });
 
@@ -343,13 +341,6 @@ describe('useChatApi', () => {
 
 		expect(fetchMock).toHaveBeenNthCalledWith(
 			2,
-			'https://api.example.test/api/images/manual%2Fpage%202.png',
-			expect.objectContaining({
-				headers: { Authorization: 'Bearer test-token' },
-			}),
-		);
-		expect(fetchMock).toHaveBeenNthCalledWith(
-			3,
 			'https://api.example.test/api/attachments/77',
 			expect.objectContaining({
 				headers: {
@@ -358,19 +349,23 @@ describe('useChatApi', () => {
 				},
 			}),
 		);
-		expect(harness.state.currentImage).toBe('data:image/png;base64,aW1hZ2UtZGF0YQ==');
+		const authorizedImageSource = {
+			uri: 'https://api.example.test/api/images/manual%2Fpage%202.png',
+			headers: { Authorization: 'Bearer test-token' },
+		};
+		expect(harness.state.currentImage).toEqual(authorizedImageSource);
 		expect(harness.state.messages[0]).toMatchObject({
 			text: 'Use the diagram.',
 			sourceAttachmentId: 77,
 			sourceAttachmentName: 'manual.pdf',
 			sourceAttachmentPage: 4,
-			schemaImage: 'data:image/png;base64,aW1hZ2UtZGF0YQ==',
+			schemaImage: authorizedImageSource,
 			sourceReferences: [
 				{
 					sourceAttachmentId: 77,
 					sourceAttachmentName: 'manual.pdf',
 					sourceAttachmentPage: 4,
-					previewImage: 'data:image/png;base64,aW1hZ2UtZGF0YQ==',
+					previewImage: authorizedImageSource,
 				},
 			],
 		});
@@ -391,7 +386,6 @@ describe('useChatApi', () => {
 					},
 				]),
 			)
-			.mockResolvedValueOnce(createImageResponse())
 			.mockReturnValueOnce(attachmentResponse.promise);
 		const harness = createHarness({ currentThreadId: 321 });
 
@@ -408,9 +402,13 @@ describe('useChatApi', () => {
 		await flushPromises();
 		await flushPromises();
 
-		expect(harness.state.currentImage).toBe('data:image/png;base64,aW1hZ2UtZGF0YQ==');
+		const authorizedImageSource = {
+			uri: 'https://api.example.test/api/images/manual%2Fpage%202.png',
+			headers: { Authorization: 'Bearer test-token' },
+		};
+		expect(harness.state.currentImage).toEqual(authorizedImageSource);
 		expect(harness.state.messages[0]).toMatchObject({
-			schemaImage: 'data:image/png;base64,aW1hZ2UtZGF0YQ==',
+			schemaImage: authorizedImageSource,
 		});
 		expect(harness.playAssistantAudio).toHaveBeenCalledWith('Use the diagram.');
 
@@ -443,11 +441,6 @@ describe('useChatApi', () => {
 					},
 				]),
 			)
-			.mockResolvedValueOnce(createImageResponse('first-image'))
-			.mockResolvedValueOnce(createImageResponse('second-image'))
-			.mockResolvedValueOnce(createImageResponse('third-image'))
-			.mockResolvedValueOnce(createImageResponse('fourth-image'))
-			.mockResolvedValueOnce(createImageResponse('fifth-image'))
 			.mockResolvedValueOnce(createJsonResponse({ original_filename: 'manual.pdf' }));
 		const harness = createHarness({ currentThreadId: 321 });
 
@@ -463,22 +456,21 @@ describe('useChatApi', () => {
 		});
 		await request;
 
-		expect(fetchMock).toHaveBeenCalledWith(
-			'https://api.example.test/api/images/manual%2Fpage%202.png',
-			expect.anything(),
-		);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
 		expect(fetchMock).not.toHaveBeenCalledWith(
 			'https://api.example.test/api/images/manual%2Fpage%207.png',
 			expect.anything(),
 		);
 		expect(harness.state.messages[0]).toMatchObject({
-			schemaImage: 'data:image/png;base64,Zmlyc3QtaW1hZ2U=',
+			schemaImage: {
+				uri: 'https://api.example.test/api/images/manual%2Fpage%202.png',
+				headers: { Authorization: 'Bearer test-token' },
+			},
 			schemaImages: [
-				'data:image/png;base64,Zmlyc3QtaW1hZ2U=',
-				'data:image/png;base64,c2Vjb25kLWltYWdl',
-				'data:image/png;base64,dGhpcmQtaW1hZ2U=',
-				'data:image/png;base64,Zm91cnRoLWltYWdl',
-				'data:image/png;base64,ZmlmdGgtaW1hZ2U=',
+				...['2', '3', '4', '5', '6'].map((page) => ({
+					uri: `https://api.example.test/api/images/manual%2Fpage%20${page}.png`,
+					headers: { Authorization: 'Bearer test-token' },
+				})),
 			],
 		});
 	});

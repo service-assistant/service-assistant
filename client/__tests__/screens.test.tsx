@@ -68,6 +68,7 @@ jest.mock('react-native', () => {
 
 	return {
 		ActivityIndicator: createHost('ActivityIndicator'),
+		BackHandler: { addEventListener: jest.fn(() => ({ remove: jest.fn() })) },
 		Animated: {
 			View: AnimatedView,
 			FlatList: AnimatedFlatList,
@@ -88,6 +89,7 @@ jest.mock('react-native', () => {
 			select: (options: Record<string, unknown>) => options.ios ?? options.default,
 		},
 		ScrollView: createHost('ScrollView'),
+		StyleSheet: { absoluteFill: { position: 'absolute' } },
 		Switch: createHost('Switch'),
 		Text: createHost('Text'),
 		TextInput: createHost('TextInput'),
@@ -105,6 +107,14 @@ jest.mock('react-native-safe-area-context', () => {
 	return {
 		SafeAreaView,
 		useSafeAreaInsets: () => mockSafeAreaInsets,
+	};
+});
+
+jest.mock('react-native-gesture-handler', () => {
+	const React = require('react');
+	return {
+		GestureHandlerRootView: ({ children, ...props }: Record<string, unknown>) =>
+			React.createElement('GestureHandlerRootView', props, children),
 	};
 });
 
@@ -462,6 +472,19 @@ describe('tab screens', () => {
 		expect(hooks.abortVoiceInput).toHaveBeenCalledTimes(1);
 		expect(layout.props.insets).toBe(mockSafeAreaInsets);
 		expect(mockRouterPush).toHaveBeenCalledWith('/home');
+	});
+
+	test('keeps fullscreen schemas in the chat view instead of a native modal', () => {
+		setupChatHooks();
+		mockWindowDimensions = { width: 500, height: 900 };
+		mockSearchParams = { deviceName: 'Still RX', chatSession: 'schema-modal' };
+		jest.mocked(global.fetch).mockResolvedValue(createJsonResponse([]));
+		const ChatScreen = require('../app/(tabs)/chat').default;
+
+		const tree = renderScreen(ChatScreen);
+
+		expect(findByType(tree, 'PortraitChatLayout')).toHaveLength(1);
+		expect(findByType(tree, 'Modal')).toHaveLength(0);
 	});
 
 	test('history screen requests threads with auth headers', async () => {

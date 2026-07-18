@@ -1,7 +1,11 @@
 import React from 'react';
 
 import type { ChatMessageItem } from '@/components/ChatMessages';
-import ChatMessages, { stripResponseDirectivesForSpeech } from '../components/ChatMessages';
+import ChatMessages, {
+	clampSchemaTranslation,
+	getFocalSchemaTranslation,
+	stripResponseDirectivesForSpeech,
+} from '../components/ChatMessages';
 import { findByText, findByType, getTextContent } from '../test-utils/react-tree';
 
 jest.mock('react', () => {
@@ -34,6 +38,7 @@ jest.mock('react-native', () => {
 			loop: jest.fn(() => ({ start: jest.fn(), stop: jest.fn() })),
 			timing: jest.fn(() => ({ start: jest.fn() })),
 		},
+		Image: createHost('Image'),
 		Platform: { OS: 'ios' },
 		Text: createHost('Text'),
 		TouchableOpacity: createHost('TouchableOpacity'),
@@ -49,6 +54,50 @@ jest.mock('react-native-webview', () => {
 	};
 });
 
+jest.mock('react-native-gesture-handler', () => {
+	const React = require('react');
+	const createGesture = () => {
+		const gesture: Record<string, jest.Mock> = {};
+		gesture.maxPointers = jest.fn(() => gesture);
+		gesture.numberOfTaps = jest.fn(() => gesture);
+		gesture.onEnd = jest.fn(() => gesture);
+		gesture.onStart = jest.fn(() => gesture);
+		gesture.onTouchesCancelled = jest.fn(() => gesture);
+		gesture.onTouchesDown = jest.fn(() => gesture);
+		gesture.onTouchesMove = jest.fn(() => gesture);
+		gesture.onTouchesUp = jest.fn(() => gesture);
+		gesture.onUpdate = jest.fn(() => gesture);
+		return gesture;
+	};
+
+	return {
+		Gesture: {
+			Exclusive: jest.fn((...gestures) => gestures),
+			Manual: createGesture,
+			Pan: createGesture,
+			Pinch: createGesture,
+			Race: jest.fn((...gestures) => gestures),
+			Simultaneous: jest.fn((...gestures) => gestures),
+			Tap: createGesture,
+		},
+		GestureDetector: ({ children, ...props }: Record<string, unknown>) =>
+			React.createElement('GestureDetector', props, children),
+	};
+});
+
+jest.mock('react-native-reanimated', () => {
+	const React = require('react');
+	return {
+		__esModule: true,
+		default: {
+			View: ({ children, ...props }: Record<string, unknown>) =>
+				React.createElement('Reanimated.View', props, children),
+		},
+		useAnimatedStyle: (factory: () => unknown) => factory(),
+		useSharedValue: (value: unknown) => ({ value }),
+	};
+});
+
 jest.mock('@expo/vector-icons', () => {
 	const React = require('react');
 	const Icon = ({ children, ...props }: Record<string, unknown>) =>
@@ -61,6 +110,18 @@ jest.mock('@expo/vector-icons', () => {
 });
 
 describe('ChatMessages', () => {
+	test('keeps a zoomed schema within the viewport bounds', () => {
+		expect(clampSchemaTranslation(1000, 800, 2)).toBe(400);
+		expect(clampSchemaTranslation(-1000, 800, 2)).toBe(-400);
+		expect(clampSchemaTranslation(50, 800, 2)).toBe(50);
+		expect(clampSchemaTranslation(100, 800, 1)).toBe(0);
+	});
+
+	test('keeps the point between the fingers anchored while zooming', () => {
+		expect(getFocalSchemaTranslation(0, 150, 150, 2)).toBe(-150);
+		expect(getFocalSchemaTranslation(-100, 150, 200, 1.5)).toBe(-175);
+	});
+
 	const baseProps = {
 		compact: false,
 		isListening: false,
@@ -246,6 +307,8 @@ describe('ChatMessages', () => {
 		expect(findByText(tree, 'manual.pdf')).toBeTruthy();
 		expect(schemaButtons).toHaveLength(5);
 		expect(sourceButtons).toHaveLength(5);
+		expect(findByType(tree, 'WebView')).toHaveLength(0);
+		expect(findByType(tree, 'Image')).toHaveLength(5);
 		expect(onOpenSchema).toHaveBeenCalledWith('data:image/png;base64,abc');
 		expect(onOpenSource).toHaveBeenCalledWith(sourceReferences[0]);
 	});
