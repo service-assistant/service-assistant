@@ -73,6 +73,7 @@ async def bearer_auth_middleware(request: Request, call_next):
 # Keep CORS outside the authentication middleware so browser preflight requests
 # are answered before bearer-token validation. The API uses bearer authentication
 # rather than cookies, so clients from any origin can safely reach every instance.
+# TODO: fix it because it's insecure
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
