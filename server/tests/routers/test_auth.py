@@ -13,6 +13,21 @@ async def test_should_return_401_when_no_auth_header_provided(unauthenticated_cl
     assert response.json() == {"detail": "Unauthorized"}
 
 
+async def test_should_allow_cors_preflight_from_expo_web(unauthenticated_client):
+    response = await unauthenticated_client.options(
+        "/api/brands",
+        headers={
+            "Origin": "http://localhost:8081",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "*"
+    assert "authorization" in response.headers["access-control-allow-headers"].lower()
+
+
 def _api_routes():
     import re
     from fastapi.routing import APIRoute
