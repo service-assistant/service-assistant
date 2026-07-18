@@ -17,6 +17,7 @@ import ChatMessages, {
 	InvertedSchemaPreview,
 	type ChatMessageItem,
 	type ChatMessageSourceReference,
+	type SchemaImageSource,
 } from '@/components/ChatMessages';
 import ControlPanel from '@/components/ControlPanel';
 import SourcePanel from '@/components/SourcePanel';
@@ -292,6 +293,7 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	showTextInput: boolean;
 	inputText: string;
 	messages: TMessage[];
+	reserveMessageScrollSpace: boolean;
 	shouldFocusStartPromptInput: boolean;
 	isListening: boolean;
 	isMicProcessing: boolean;
@@ -311,7 +313,7 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	onChangeText: (text: string) => void;
 	onShowTextInputChange: (visible: boolean) => void;
 	onShouldFocusStartPromptInputChange: (shouldFocus: boolean) => void;
-	onOpenSchema: (imageUrl: string) => void;
+	onOpenSchema: (imageSource: SchemaImageSource) => void;
 	onOpenSource: (source: TMessage | ChatMessageSourceReference) => void;
 	onRetryMessage: (message: TMessage) => void;
 	isRetryDisabled?: boolean;
@@ -322,7 +324,7 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 
 type FullscreenSchemaViewProps = {
 	lightMode?: boolean;
-	imageUrl: string;
+	imageUrl: SchemaImageSource;
 	aspectRatio: number;
 	insets: EdgeInsets;
 	isTablet?: boolean;
@@ -407,6 +409,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	showTextInput,
 	inputText,
 	messages,
+	reserveMessageScrollSpace,
 	shouldFocusStartPromptInput,
 	isListening,
 	isMicProcessing,
@@ -546,10 +549,13 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 			{hasStartedChat ? (
 				<ScrollView
 					ref={messagesScrollViewRef}
-					className='flex-1 mt-5 px-4'
+					className='flex-1 px-4'
 					showsVerticalScrollIndicator={false}
 					contentContainerStyle={{
-						paddingBottom: Math.max(portraitMessagesBottomPadding, height),
+						paddingTop: 16,
+						paddingBottom: reserveMessageScrollSpace
+							? Math.max(portraitMessagesBottomPadding, height)
+							: portraitMessagesBottomPadding,
 					}}>
 					<ChatMessages
 						messages={messages}
@@ -638,6 +644,7 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	showTextInput,
 	inputText,
 	messages,
+	reserveMessageScrollSpace,
 	shouldFocusStartPromptInput,
 	isListening,
 	isMicProcessing,
@@ -725,12 +732,15 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 				</TouchableOpacity>
 			</View>
 
-			<View className='flex-1 flex-row px-6 py-5'>
+			<View className='flex-1 flex-row px-6 pb-5'>
 				{hasStartedChat ? (
 					<ScrollView
 						ref={messagesScrollViewRef}
 						className='flex-1 pr-8'
-						contentContainerStyle={{ paddingBottom: Math.max(30, height) }}>
+						contentContainerStyle={{
+							paddingTop: 20,
+							paddingBottom: reserveMessageScrollSpace ? Math.max(30, height) : 30,
+						}}>
 						<ChatMessages
 							messages={messages}
 							isListening={isListening}

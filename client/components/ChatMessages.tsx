@@ -2,6 +2,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
 import {
 	Animated,
+	Image,
 	type LayoutChangeEvent,
 	Platform,
 	ScrollView,
@@ -9,15 +10,25 @@ import {
 	TouchableOpacity,
 	View,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { Invert } from 'react-native-color-matrix-image-filters';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Reanimated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 
 const PRIMARY_ORANGE = '#FF7A00';
+
+export type SchemaImageSource = string | { uri: string; headers?: Record<string, string> };
+
+const getSchemaImageUri = (source: SchemaImageSource) =>
+	typeof source === 'string' ? source : source.uri;
+
+const getNativeSchemaImageSource = (source: SchemaImageSource) =>
+	typeof source === 'string' ? { uri: source } : source;
 
 export type ChatMessageSourceReference = {
 	sourceAttachmentId: number;
 	sourceAttachmentName?: string;
 	sourceAttachmentPage?: number;
-	previewImage?: string;
+	previewImage?: SchemaImageSource;
 };
 
 export type ChatMessageItem = {
@@ -25,8 +36,8 @@ export type ChatMessageItem = {
 	sender: 'user' | 'ai';
 	text: string;
 	isSpeaking?: boolean;
-	schemaImage?: string;
-	schemaImages?: string[];
+	schemaImage?: SchemaImageSource;
+	schemaImages?: SchemaImageSource[];
 	sourceAttachmentId?: number;
 	sourceAttachmentName?: string;
 	sourceAttachmentPage?: number;
@@ -39,7 +50,7 @@ type ChatMessagesProps<TMessage extends ChatMessageItem> = {
 	compact?: boolean;
 	isListening: boolean;
 	soundLevelAnim: Animated.Value;
-	onOpenSchema: (imageUrl: string) => void;
+	onOpenSchema: (imageSource: SchemaImageSource) => void;
 	onOpenSource: (source: TMessage | ChatMessageSourceReference) => void;
 	onRetryMessage: (message: TMessage) => void;
 	isRetryDisabled?: boolean;
@@ -53,28 +64,245 @@ type AssistantResponseBlock =
 	| { type: 'warning'; content: string }
 	| { type: 'next'; content: string };
 
-const getSchemaImageHtml = (imageUrl: string, zoomable = false, lightMode = false) => `
-	<!DOCTYPE html>
-	<html>
-	<head>
-		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=${zoomable ? '6.0' : '1.0'}, user-scalable=${zoomable ? 'yes' : 'no'}" />
-		<style>
-			html, body { width: 100%; height: 100%; margin: 0; padding: 0; background-color: ${lightMode ? '#FFFFFF' : '#000000'}; overflow: ${zoomable ? 'auto' : 'hidden'}; }
-			body { display: flex; align-items: center; justify-content: center; }
-			img { display: block; width: 100%; height: 100%; object-fit: contain; filter: ${lightMode ? 'none' : 'invert(100%)'}; }
-		</style>
-	</head>
-	<body>
-		<img src="${imageUrl}" />
-	</body>
-	</html>
-`;
-
 export const stripResponseDirectivesForSpeech = (text: string) =>
 	text
 		.replace(/::(checklist|warning|next)\b[ \t]*/gi, '')
 		.replace(/^\s*[-*]\s+/gm, '')
 		.trim();
+
+export const clampSchemaTranslation = (
+	translation: number,
+	viewportSize: number,
+	scale: number,
+) => {
+	'worklet';
+	const limit = (viewportSize * (scale - 1)) / 2;
+	return Math.min(limit, Math.max(-limit, translation));
+};
+
+export const getFocalSchemaTranslation = (
+	startTranslation: number,
+	startFocalOffset: number,
+	currentFocalOffset: number,
+	scaleRatio: number,
+) => {
+	'worklet';
+	return currentFocalOffset - (startFocalOffset - startTranslation) * scaleRatio;
+};
+
+const ZoomableSchemaImage = ({
+	imageSource,
+	lightMode,
+}: {
+	imageSource: SchemaImageSource;
+	lightMode: boolean;
+}) => {
+	const scale = useSharedValue(1);
+	const translateX = useSharedValue(0);
+	const translateY = useSharedValue(0);
+	const savedTranslateX = useSharedValue(0);
+	const savedTranslateY = useSharedValue(0);
+	const viewportWidth = useSharedValue(0);
+	const viewportHeight = useSharedValue(0);
+	const pinchStartScale = useSharedValue(1);
+	const pinchStartTranslateX = useSharedValue(0);
+	const pinchStartTranslateY = useSharedValue(0);
+	const pinchStartFocalX = useSharedValue(0);
+	const pinchStartFocalY = useSharedValue(0);
+	const pinchStartDistance = useSharedValue(1);
+	const gestureMode = useSharedValue(0); // 0 idle, 1 pan, 2 pinch, 3 wait for all fingers up
+	const panStartX = useSharedValue(0);
+	const panStartY = useSharedValue(0);
+	const panWasActivated = useSharedValue(false);
+
+	const resetTransform = () => {
+		'worklet';
+		scale.value = 1;
+		translateX.value = 0;
+		translateY.value = 0;
+		savedTranslateX.value = 0;
+		savedTranslateY.value = 0;
+	};
+
+	const doubleTapGesture = Gesture.Tap()
+		.numberOfTaps(2)
+		.onEnd((event) => {
+			if (scale.value > 1) {
+				resetTransform();
+			} else {
+				const nextTranslateX = clampSchemaTranslation(
+					viewportWidth.value / 2 - event.x,
+					viewportWidth.value,
+					2,
+				);
+				const nextTranslateY = clampSchemaTranslation(
+					viewportHeight.value / 2 - event.y,
+					viewportHeight.value,
+					2,
+				);
+				translateX.value = nextTranslateX;
+				translateY.value = nextTranslateY;
+				savedTranslateX.value = nextTranslateX;
+				savedTranslateY.value = nextTranslateY;
+				scale.value = 2;
+			}
+		});
+	const transformGesture = Gesture.Manual()
+		.onTouchesDown((event, stateManager) => {
+			if (gestureMode.value === 0) {
+				stateManager.begin();
+				gestureMode.value = 1;
+				panWasActivated.value = false;
+				panStartX.value = event.allTouches[0]?.x ?? 0;
+				panStartY.value = event.allTouches[0]?.y ?? 0;
+				pinchStartTranslateX.value = translateX.value;
+				pinchStartTranslateY.value = translateY.value;
+			}
+
+			if (event.numberOfTouches >= 2 && gestureMode.value !== 3) {
+				const first = event.allTouches[0];
+				const second = event.allTouches[1];
+				if (!first || !second) return;
+				const distanceX = second.x - first.x;
+				const distanceY = second.y - first.y;
+				const distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+				pinchStartDistance.value = distance >= 20 ? distance : 0;
+				pinchStartScale.value = scale.value;
+				pinchStartTranslateX.value = translateX.value;
+				pinchStartTranslateY.value = translateY.value;
+				pinchStartFocalX.value = (first.x + second.x) / 2 - viewportWidth.value / 2;
+				pinchStartFocalY.value = (first.y + second.y) / 2 - viewportHeight.value / 2;
+				gestureMode.value = 2;
+				stateManager.activate();
+			}
+		})
+		.onTouchesMove((event, stateManager) => {
+			if (gestureMode.value === 2 && event.numberOfTouches >= 2) {
+				const first = event.allTouches[0];
+				const second = event.allTouches[1];
+				if (!first || !second) return;
+				const distanceX = second.x - first.x;
+				const distanceY = second.y - first.y;
+				const distance = Math.sqrt(distanceX * distanceX + distanceY * distanceY);
+				if (distance < 20) return;
+				if (pinchStartDistance.value === 0) {
+					pinchStartDistance.value = distance;
+					pinchStartScale.value = scale.value;
+					pinchStartTranslateX.value = translateX.value;
+					pinchStartTranslateY.value = translateY.value;
+					pinchStartFocalX.value = (first.x + second.x) / 2 - viewportWidth.value / 2;
+					pinchStartFocalY.value = (first.y + second.y) / 2 - viewportHeight.value / 2;
+					return;
+				}
+				const nextScale = Math.min(
+					6,
+					Math.max(1, pinchStartScale.value * (distance / pinchStartDistance.value)),
+				);
+				const scaleRatio = nextScale / pinchStartScale.value;
+				const focalOffsetX = (first.x + second.x) / 2 - viewportWidth.value / 2;
+				const focalOffsetY = (first.y + second.y) / 2 - viewportHeight.value / 2;
+				scale.value = nextScale;
+				translateX.value = clampSchemaTranslation(
+					getFocalSchemaTranslation(
+						pinchStartTranslateX.value,
+						pinchStartFocalX.value,
+						focalOffsetX,
+						scaleRatio,
+					),
+					viewportWidth.value,
+					nextScale,
+				);
+				translateY.value = clampSchemaTranslation(
+					getFocalSchemaTranslation(
+						pinchStartTranslateY.value,
+						pinchStartFocalY.value,
+						focalOffsetY,
+						scaleRatio,
+					),
+					viewportHeight.value,
+					nextScale,
+				);
+				return;
+			}
+
+			if (gestureMode.value === 1 && event.numberOfTouches === 1 && scale.value > 1) {
+				const touch = event.allTouches[0];
+				if (!touch) return;
+				const deltaX = touch.x - panStartX.value;
+				const deltaY = touch.y - panStartY.value;
+				if (!panWasActivated.value && Math.abs(deltaX) + Math.abs(deltaY) > 3) {
+					panWasActivated.value = true;
+					stateManager.activate();
+				}
+				if (panWasActivated.value) {
+					translateX.value = clampSchemaTranslation(
+						pinchStartTranslateX.value + deltaX,
+						viewportWidth.value,
+						scale.value,
+					);
+					translateY.value = clampSchemaTranslation(
+						pinchStartTranslateY.value + deltaY,
+						viewportHeight.value,
+						scale.value,
+					);
+				}
+			}
+		})
+		.onTouchesUp((event, stateManager) => {
+			if (gestureMode.value === 2 && event.numberOfTouches < 2) {
+				savedTranslateX.value = translateX.value;
+				savedTranslateY.value = translateY.value;
+				gestureMode.value = 3;
+			}
+			if (event.numberOfTouches === 0) {
+				if (scale.value <= 1.01) resetTransform();
+				savedTranslateX.value = translateX.value;
+				savedTranslateY.value = translateY.value;
+				const handled = gestureMode.value !== 1 || panWasActivated.value;
+				gestureMode.value = 0;
+				panWasActivated.value = false;
+				if (handled) stateManager.end();
+				else stateManager.fail();
+			}
+		})
+		.onTouchesCancelled((_event, stateManager) => {
+			gestureMode.value = 0;
+			panWasActivated.value = false;
+			stateManager.fail();
+		});
+	const gesture = Gesture.Simultaneous(transformGesture, doubleTapGesture);
+	const animatedStyle = useAnimatedStyle(() => ({
+		transform: [
+			{ translateX: translateX.value },
+			{ translateY: translateY.value },
+			{ scale: scale.value },
+		],
+	}));
+	const image = (
+		<Image
+			source={getNativeSchemaImageSource(imageSource)}
+			resizeMode='contain'
+			style={{ width: '100%', height: '100%' }}
+		/>
+	);
+
+	return (
+		<GestureDetector gesture={gesture}>
+			<View
+				collapsable={false}
+				onLayout={(event) => {
+					viewportWidth.value = event.nativeEvent.layout.width;
+					viewportHeight.value = event.nativeEvent.layout.height;
+				}}
+				style={{ flex: 1, overflow: 'hidden' }}
+				accessibilityLabel='Powiększony schemat'>
+				<Reanimated.View style={[{ flex: 1 }, animatedStyle]}>
+					{lightMode ? image : <Invert style={{ flex: 1 }}>{image}</Invert>}
+				</Reanimated.View>
+			</View>
+		</GestureDetector>
+	);
+};
 
 export const InvertedSchemaPreview = ({
 	imageUrl,
@@ -82,7 +310,7 @@ export const InvertedSchemaPreview = ({
 	zoomable = false,
 	lightMode = false,
 }: {
-	imageUrl: string;
+	imageUrl: SchemaImageSource;
 	aspectRatio: number;
 	zoomable?: boolean;
 	lightMode?: boolean;
@@ -96,7 +324,7 @@ export const InvertedSchemaPreview = ({
 		}}>
 		{Platform.OS === 'web' ? (
 			<img
-				src={imageUrl}
+				src={getSchemaImageUri(imageUrl)}
 				style={{
 					display: 'block',
 					width: '100%',
@@ -106,19 +334,26 @@ export const InvertedSchemaPreview = ({
 				}}
 				alt='Schemat pomocniczy'
 			/>
-		) : (
-			<WebView
-				pointerEvents={zoomable ? 'auto' : 'none'}
-				source={{ html: getSchemaImageHtml(imageUrl, zoomable, lightMode) }}
-				style={{ flex: 1, backgroundColor: lightMode ? '#FFFFFF' : '#000000' }}
-				scrollEnabled={zoomable}
-				nestedScrollEnabled={zoomable}
-				scalesPageToFit
-				setBuiltInZoomControls={zoomable}
-				setDisplayZoomControls={false}
-				showsHorizontalScrollIndicator={zoomable}
-				showsVerticalScrollIndicator={zoomable}
+		) : zoomable ? (
+			<ZoomableSchemaImage
+				key={getSchemaImageUri(imageUrl)}
+				imageSource={imageUrl}
+				lightMode={lightMode}
 			/>
+		) : lightMode ? (
+			<Image
+				source={getNativeSchemaImageSource(imageUrl)}
+				resizeMode='contain'
+				style={{ width: '100%', height: '100%' }}
+			/>
+		) : (
+			<Invert style={{ flex: 1 }}>
+				<Image
+					source={getNativeSchemaImageSource(imageUrl)}
+					resizeMode='contain'
+					style={{ width: '100%', height: '100%' }}
+				/>
+			</Invert>
 		)}
 	</View>
 );
@@ -531,7 +766,7 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 										}>
 										{materials.map(({ schemaImage, source }, index) => (
 											<View
-												key={`${schemaImage || source?.sourceAttachmentId || 'material'}-${index}`}
+												key={`${schemaImage ? getSchemaImageUri(schemaImage) : source?.sourceAttachmentId || 'material'}-${index}`}
 												className={`rounded-lg overflow-hidden border ${
 													lightMode
 														? 'border-[#D4D4D8] bg-white'

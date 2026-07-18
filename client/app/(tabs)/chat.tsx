@@ -2,23 +2,34 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, {
+	type Dispatch,
+	forwardRef,
+	type SetStateAction,
+	useCallback,
+	useEffect,
+	useImperativeHandle,
+	useRef,
+	useState,
+} from 'react';
 import {
-	Image,
+	BackHandler,
 	Keyboard,
 	Platform,
 	ScrollView,
+	StyleSheet,
 	TextInput,
 	useWindowDimensions,
+	View,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { type EdgeInsets, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
 	DesktopChatLayout,
 	FullscreenSchemaView,
 	PortraitChatLayout,
 } from '@/components/ChatLayouts';
-import type { ChatMessageSourceReference } from '@/components/ChatMessages';
+import type { ChatMessageSourceReference, SchemaImageSource } from '@/components/ChatMessages';
 import ServiceErrorModal from '@/components/ServiceErrorModal';
 import type { KeyboardFrame } from '@/components/StartPromptView';
 import { useAppSettings } from '@/hooks/use-app-settings';
@@ -40,8 +51,8 @@ import { fetchWithRetry, HttpError, isTransientNetworkError } from '@/utils/netw
 const CHAT_AUTH_TOKEN_OVERRIDE: string | null = null;
 
 type ChatMessage = Message & {
-	schemaImage?: string;
-	schemaImages?: string[];
+	schemaImage?: SchemaImageSource;
+	schemaImages?: SchemaImageSource[];
 	sourceAttachmentId?: number;
 	sourceAttachmentName?: string;
 	sourceAttachmentPage?: number;
@@ -68,6 +79,77 @@ const FILE_ICON_OPTIONS = [
 	{ icon: 'wrench-outline', color: '#3B82F6' },
 	{ icon: 'shield-check-outline', color: '#22C55E' },
 ];
+
+type FullscreenSchemaOverlayHandle = {
+	prepare: (imageSource: SchemaImageSource | null) => void;
+	open: (imageSource: SchemaImageSource) => void;
+};
+
+const FullscreenSchemaOverlay = forwardRef<
+	FullscreenSchemaOverlayHandle,
+	{
+		lightMode: boolean;
+		insets: EdgeInsets;
+		isTablet: boolean;
+	}
+>(({ lightMode, insets, isTablet }, ref) => {
+	const [imageUrl, setImageUrl] = useState<SchemaImageSource | null>(null);
+	const [visible, setVisible] = useState(false);
+
+	useImperativeHandle(
+		ref,
+		() => ({
+			prepare: (nextImageUrl) => {
+				setImageUrl(nextImageUrl);
+				if (!nextImageUrl) setVisible(false);
+			},
+			open: (nextImageUrl) => {
+				setImageUrl(nextImageUrl);
+				setVisible(true);
+			},
+		}),
+		[],
+	);
+
+	useEffect(() => {
+		if (!visible) return;
+
+		const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+			setVisible(false);
+			return true;
+		});
+
+		return () => subscription.remove();
+	}, [visible]);
+
+	if (!imageUrl) return null;
+
+	return (
+		<View
+			pointerEvents={visible ? 'auto' : 'none'}
+			accessibilityElementsHidden={!visible}
+			importantForAccessibility={visible ? 'yes' : 'no-hide-descendants'}
+			style={[
+				StyleSheet.absoluteFill,
+				{
+					elevation: visible ? 1000 : 0,
+					opacity: visible ? 1 : 0,
+					zIndex: visible ? 1000 : -1,
+				},
+			]}>
+			<FullscreenSchemaView
+				lightMode={lightMode}
+				imageUrl={imageUrl}
+				aspectRatio={1}
+				insets={insets}
+				isTablet={isTablet}
+				onBack={() => setVisible(false)}
+			/>
+		</View>
+	);
+});
+
+FullscreenSchemaOverlay.displayName = 'FullscreenSchemaOverlay';
 
 /**
  * ChatScreen Component
@@ -111,9 +193,6 @@ export default function ChatScreen() {
 	const [inputText, setInputText] = useState<string>('');
 	const [shouldFocusStartPromptInput, setShouldFocusStartPromptInput] = useState<boolean>(false);
 	const [keyboardFrame, setKeyboardFrame] = useState<KeyboardFrame | null>(null);
-	const [currentImage, setCurrentImage] = useState<string | null>(null);
-	const [currentImageAspectRatio, setCurrentImageAspectRatio] = useState<number>(1);
-	const [showFullscreenSchema, setShowFullscreenSchema] = useState<boolean>(false);
 	const [currentThreadId, setCurrentThreadId] = useState<number | null>(null);
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const [serviceErrorFeature, setServiceErrorFeature] = useState<string | null>(null);
@@ -127,6 +206,17 @@ export default function ChatScreen() {
 	const startPromptInputRef = useRef<TextInput>(null);
 	const retryInProgressRef = useRef(false);
 	const askAPIRef = useRef<(question: string) => void>(() => undefined);
+	const schemaViewerRef = useRef<FullscreenSchemaOverlayHandle>(null);
+	const currentImageRef = useRef<SchemaImageSource | null>(null);
+	const setCurrentImage = useCallback<Dispatch<SetStateAction<SchemaImageSource | null>>>(
+		(nextValue) => {
+			const nextImageUrl =
+				typeof nextValue === 'function' ? nextValue(currentImageRef.current) : nextValue;
+			currentImageRef.current = nextImageUrl;
+			schemaViewerRef.current?.prepare(nextImageUrl);
+		},
+		[],
+	);
 	const showServiceError = useCallback((featureName: string, error: unknown) => {
 		console.log(`Handled service error (${featureName}):`, error);
 		if (isTransientNetworkError(error)) return;
@@ -140,12 +230,16 @@ export default function ChatScreen() {
 	const latestUserMessageId = [...messages]
 		.reverse()
 		.find((message) => message.sender === 'user')?.id;
+	const messageScrollTopPadding = isPortrait ? 16 : 20;
 	const handleUserMessageLayout = useCallback(
 		(message: ChatMessage, y: number) => {
 			if (message.id !== latestUserMessageId) return;
-			messagesScrollViewRef.current?.scrollTo({ y: Math.max(0, y), animated: true });
+			messagesScrollViewRef.current?.scrollTo({
+				y: Math.max(0, y - messageScrollTopPadding),
+				animated: true,
+			});
 		},
-		[latestUserMessageId],
+		[latestUserMessageId, messageScrollTopPadding],
 	);
 
 	const { isAudioPlaying, playAssistantAudio, stopAssistantAudio } = useAssistantAudio({
@@ -408,28 +502,12 @@ export default function ChatScreen() {
 		cancelDownload,
 		resetVoiceInput,
 		sessionKey,
+		setCurrentImage,
 		showServiceError,
 		stopAssistantAudio,
 		stopChatApi,
 		threadId,
 	]);
-
-	useEffect(() => {
-		if (!currentImage) {
-			setCurrentImageAspectRatio(1);
-			return;
-		}
-
-		Image.getSize(
-			currentImage,
-			(imageWidth, imageHeight) => {
-				if (imageWidth > 0 && imageHeight > 0) {
-					setCurrentImageAspectRatio(imageWidth / imageHeight);
-				}
-			},
-			() => setCurrentImageAspectRatio(1),
-		);
-	}, [currentImage]);
 
 	const handleStop = () => {
 		stopChatApi();
@@ -524,10 +602,9 @@ export default function ChatScreen() {
 		}
 	};
 
-	const openSchemaFullscreen = (imageUrl: string) => {
-		setCurrentImage(imageUrl);
-		setShowFullscreenSchema(true);
-	};
+	const openSchemaFullscreen = useCallback((imageSource: SchemaImageSource) => {
+		schemaViewerRef.current?.open(imageSource);
+	}, []);
 
 	const commonLayoutProps = {
 		lightMode: lightThemeEnabled,
@@ -540,6 +617,8 @@ export default function ChatScreen() {
 		showTextInput,
 		inputText,
 		messages,
+		reserveMessageScrollSpace:
+			isLoading || isGenerating || messages[messages.length - 1]?.sender === 'user',
 		shouldFocusStartPromptInput,
 		isListening,
 		isMicProcessing,
@@ -547,7 +626,7 @@ export default function ChatScreen() {
 		isSpeechInputUnavailable,
 		isVoiceOutputUnavailable,
 		soundLevelAnim,
-		currentImageAspectRatio,
+		currentImageAspectRatio: 1,
 		startPromptInputRef,
 		messagesScrollViewRef,
 		sourcePanelProps,
@@ -568,31 +647,9 @@ export default function ChatScreen() {
 		onWritingPress: handleWritingPress,
 	};
 
-	if (showFullscreenSchema && currentImage) {
-		return (
-			<>
-				<StatusBar style={lightThemeEnabled ? 'dark' : 'light'} />
-				<FullscreenSchemaView
-					lightMode={lightThemeEnabled}
-					imageUrl={currentImage}
-					aspectRatio={currentImageAspectRatio}
-					insets={insets}
-					isTablet={isTablet}
-					onBack={() => setShowFullscreenSchema(false)}
-				/>
-				<ServiceErrorModal
-					visible={Boolean(serviceErrorFeature)}
-					featureName={serviceErrorFeature || 'wybrana funkcja'}
-					onClose={() => setServiceErrorFeature(null)}
-					lightMode={lightThemeEnabled}
-				/>
-			</>
-		);
-	}
-
 	if (isPortrait) {
 		return (
-			<>
+			<View style={{ flex: 1 }}>
 				<StatusBar style={lightThemeEnabled ? 'dark' : 'light'} />
 				<PortraitChatLayout {...commonLayoutProps} insets={insets} />
 				<ServiceErrorModal
@@ -601,12 +658,18 @@ export default function ChatScreen() {
 					onClose={() => setServiceErrorFeature(null)}
 					lightMode={lightThemeEnabled}
 				/>
-			</>
+				<FullscreenSchemaOverlay
+					ref={schemaViewerRef}
+					lightMode={lightThemeEnabled}
+					insets={insets}
+					isTablet={isTablet}
+				/>
+			</View>
 		);
 	}
 
 	return (
-		<>
+		<View style={{ flex: 1 }}>
 			<StatusBar style={lightThemeEnabled ? 'dark' : 'light'} />
 			<DesktopChatLayout {...commonLayoutProps} />
 			<ServiceErrorModal
@@ -615,6 +678,12 @@ export default function ChatScreen() {
 				onClose={() => setServiceErrorFeature(null)}
 				lightMode={lightThemeEnabled}
 			/>
-		</>
+			<FullscreenSchemaOverlay
+				ref={schemaViewerRef}
+				lightMode={lightThemeEnabled}
+				insets={insets}
+				isTablet={isTablet}
+			/>
+		</View>
 	);
 }
