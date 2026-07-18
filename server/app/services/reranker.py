@@ -1,0 +1,93 @@
+import math
+from typing import Final
+
+import httpx
+
+from ..config import Settings
+from .embedding import RetrievedChunk
+
+VOYAGE_RERANK_URL: Final[str] = "https://api.voyageai.com/v1/rerank"
+
+
+class RerankerError(Exception):
+    """Raised when the reranker cannot return a valid complete ranking."""
+
+
+def _parse_ranking_indexes(payload: object, candidate_count: int) -> list[int]:
+    if not isinstance(payload, dict):
+        raise RerankerError("Voyage response must be a JSON object")
+
+    results = payload.get("data")
+    if not isinstance(results, list) or len(results) != candidate_count:
+        raise RerankerError("Voyage response does not contain a complete ranking")
+
+    indexes: list[int] = []
+    for result in results:
+        if not isinstance(result, dict):
+            raise RerankerError("Voyage ranking item must be an object")
+
+        index = result.get("index")
+        score = result.get("relevance_score")
+        if (
+            isinstance(index, bool)
+            or not isinstance(index, int)
+            or not 0 <= index < candidate_count
+            or index in indexes
+        ):
+            raise RerankerError("Voyage returned an invalid or duplicate index")
+        if (
+            isinstance(score, bool)
+            or not isinstance(score, (int, float))
+            or not math.isfinite(float(score))
+        ):
+            raise RerankerError("Voyage returned an invalid relevance score")
+        indexes.append(index)
+
+    return indexes
+
+
+async def rerank_chunks(
+    query: str,
+    chunks: list[RetrievedChunk],
+    settings: Settings,
+) -> list[RetrievedChunk]:
+    """Return chunks in Voyage's ranking order.
+
+    The provider boundary owns transport and response validation. Callers can
+    treat ``RerankerError`` as an optional-feature failure and use retrieval
+    fallback behavior.
+    """
+    if not chunks:
+        return []
+    if not settings.voyage_api_key:
+        raise RerankerError("Voyage API key is not configured")
+
+    payload = {
+        "model": settings.reranker_model,
+        "query": query,
+        "documents": [chunk["content"] for chunk in chunks],
+        "top_k": len(chunks),
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.voyage_api_key}",
+        "Content-Type": "application/json",
+    }
+
+    try:
+        async with httpx.AsyncClient(
+            timeout=settings.reranker_timeout_seconds
+        ) as client:
+            response = await client.post(
+                VOYAGE_RERANK_URL,
+                headers=headers,
+                json=payload,
+            )
+        if not 200 <= response.status_code < 300:
+            raise RerankerError(f"Voyage returned HTTP {response.status_code}")
+        indexes = _parse_ranking_indexes(response.json(), len(chunks))
+    except RerankerError:
+        raise
+    except Exception as exc:
+        raise RerankerError("Voyage reranking request failed") from exc
+
+    return [chunks[index] for index in indexes]
