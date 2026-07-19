@@ -36,6 +36,12 @@ class MessageRead(BaseModel):
     sender: MessageSender = Field(
         description="Who sent the message: `user` or `system` (assistant)."
     )
+    has_continuation: bool = Field(
+        description=(
+            "Whether the documentation contains a coherent continuation of this "
+            "assistant response."
+        )
+    )
     thread_id: int = Field(
         description="ID of the thread this message belongs to.", examples=[1]
     )

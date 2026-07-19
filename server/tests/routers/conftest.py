@@ -59,6 +59,8 @@ def mock_openai_llm(mocker):
 
     mock_client = mocker.MagicMock()
     mock_client.chat.completions.create = mocker.AsyncMock(return_value=_stream())
+    continuation_response = mocker.MagicMock(output_text="0")
+    mock_client.responses.create = mocker.AsyncMock(return_value=continuation_response)
     mocker.patch("app.services.llm.AsyncOpenAI", return_value=mock_client)
     return mock_client
 

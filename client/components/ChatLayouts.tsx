@@ -316,6 +316,7 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	onOpenSchema: (imageSource: SchemaImageSource) => void;
 	onOpenSource: (source: TMessage | ChatMessageSourceReference) => void;
 	onRetryMessage: (message: TMessage) => void;
+	onContinueMessage: (message: TMessage) => void;
 	isRetryDisabled?: boolean;
 	onUserMessageLayout: (message: TMessage, y: number) => void;
 	onMicPress: () => void;
@@ -431,6 +432,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	onOpenSchema,
 	onOpenSource,
 	onRetryMessage,
+	onContinueMessage,
 	isRetryDisabled,
 	onUserMessageLayout,
 	onMicPress,
@@ -565,6 +567,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 						onOpenSchema={onOpenSchema}
 						onOpenSource={onOpenSource}
 						onRetryMessage={onRetryMessage}
+						onContinueMessage={onContinueMessage}
 						isRetryDisabled={isRetryDisabled}
 						onUserMessageLayout={onUserMessageLayout}
 						lightMode={lightMode}
@@ -666,6 +669,7 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	onOpenSchema,
 	onOpenSource,
 	onRetryMessage,
+	onContinueMessage,
 	isRetryDisabled,
 	onUserMessageLayout,
 	onMicPress,
@@ -748,6 +752,7 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 							onOpenSchema={onOpenSchema}
 							onOpenSource={onOpenSource}
 							onRetryMessage={onRetryMessage}
+							onContinueMessage={onContinueMessage}
 							isRetryDisabled={isRetryDisabled}
 							onUserMessageLayout={onUserMessageLayout}
 							lightMode={lightMode}

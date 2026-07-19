@@ -103,6 +103,11 @@ def _looks_like_continuation(content: str) -> bool:
     return len(lower.split()) <= 4 or any(hint in lower for hint in _CONTINUATION_HINTS)
 
 
+def _is_explicit_continuation(content: str) -> bool:
+    normalized = content.lower().strip().rstrip(".!?")
+    return normalized in {"co dalej", "dalej", "kontynuuj"}
+
+
 @router.post(
     "/{thread_id}/messages",
     response_class=StreamingResponse,
@@ -144,7 +149,7 @@ async def create_message(
         body.content
     )
 
-    if might_continue:
+    if might_continue and not _is_explicit_continuation(body.content):
         is_continuation, fresh_chunks = await asyncio.gather(
             llm.is_message_continuation_request(body.content, settings),
             retrieval.retrieve_context_chunks(
@@ -155,7 +160,7 @@ async def create_message(
             ),
         )
     else:
-        is_continuation = False
+        is_continuation = might_continue
         fresh_chunks = await retrieval.retrieve_context_chunks(
             session,
             body.content,
@@ -233,6 +238,12 @@ async def create_message(
     session.add(user_message)
     await session.commit()
 
+    continuation_hint = (
+        llm.continuation_target(latest_system_message.content)
+        if is_continuation and latest_system_message
+        else ""
+    )
+
     async def event_stream():
         answer_parts: list[str] = []
 
@@ -244,21 +255,32 @@ async def create_message(
             settings,
             exclude_message_id=user_message.id,
             ranked_plan=ranked_plan,
+            continuation_requested=is_continuation,
+            continuation_hint=continuation_hint,
         ):
             answer_parts.append(chunk)
             yield _sse("chunk", chunk)
 
         answer = "".join(answer_parts)
+        answer = llm.promote_bare_checklist(answer)
+        if is_continuation:
+            answer = llm.ensure_continuation_intro(answer)
+        answer = llm.clean_completion_notice(answer)
+        answer = llm.limit_checklist_items(answer)
+        has_continuation = llm.has_continuation_marker(answer)
 
         assistant_message = Message(
             content=answer,
             thread_id=thread_id,
             sender=MessageSender.assistant,
+            has_continuation=has_continuation,
         )
         session.add(assistant_message)
         await session.flush()
 
-        if not llm.is_no_source_answer(answer):
+        if not llm.is_no_source_answer(answer) and not llm.is_completion_only_answer(
+            answer
+        ):
             for chunk in retrieved_chunks:
                 session.add(
                     ChunkMessage(message_id=assistant_message.id, chunk_id=chunk["id"])

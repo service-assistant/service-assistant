@@ -26,6 +26,7 @@ type AssistantMessagePayload = {
 	id?: number;
 	content?: string;
 	image_url?: string | null;
+	has_continuation?: boolean;
 };
 
 type SourceChunkPayload = {
@@ -155,6 +156,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 			setIsGenerating(true);
 			const aiMessageId = Date.now() + Math.random();
 			let fullText = '';
+			let hasContinuation = false;
 
 			setMessages((prev) => [
 				...prev,
@@ -224,12 +226,13 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 							fullText = message.content || fullText;
 							imageUrl = message.image_url || null;
 							systemMessageId = message.id || null;
+							hasContinuation = message.has_continuation === true;
 						}
 
 						setMessages((prev) =>
 							prev.map((msg) =>
 								msg.id === aiMessageId
-									? ({ ...msg, text: fullText } as TMessage)
+									? ({ ...msg, text: fullText, hasContinuation } as TMessage)
 									: msg,
 							),
 						);

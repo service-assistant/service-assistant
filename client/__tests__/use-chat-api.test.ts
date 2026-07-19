@@ -209,6 +209,7 @@ describe('useChatApi', () => {
 				id: 555,
 				content: 'Final answer ::warning check battery',
 				image_url: null,
+				has_continuation: true,
 			}),
 		});
 		await request;
@@ -224,6 +225,7 @@ describe('useChatApi', () => {
 			}),
 		);
 		expect(harness.state.messages[0].text).toBe('Final answer ::warning check battery');
+		expect(harness.state.messages[0].hasContinuation).toBe(true);
 		expect(harness.playAssistantAudio).toHaveBeenCalledWith('Final answer check battery');
 		expect(harness.state.isLoading).toBe(false);
 	});

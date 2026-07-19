@@ -3,6 +3,7 @@ export interface Message {
 	sender: 'ai' | 'user';
 	text: string;
 	isSpeaking?: boolean;
+	hasContinuation?: boolean;
 }
 
 export interface AvailableFile {
