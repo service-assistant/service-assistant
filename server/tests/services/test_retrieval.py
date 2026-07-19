@@ -1,3 +1,6 @@
+import httpx
+import pytest
+
 from app.services.embedding import RetrievedChunk
 from app.services.retrieval import (
     get_bm25_chunks,
@@ -6,7 +9,6 @@ from app.services.retrieval import (
     merge_hybrid_chunks,
     retrieve_context_chunks,
 )
-from app.services.reranker import RerankerError
 from app.models import Chunk
 from app.models import EMBEDDING_DIMENSIONS
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -445,26 +447,143 @@ async def test_disabled_reranking_keeps_existing_limits_and_does_not_call_provid
     rerank.assert_not_called()
 
 
-async def test_reranker_failure_falls_back_to_existing_hybrid_limits(
-    session, settings, mocker
+class _FakeVoyageResponse:
+    def __init__(
+        self,
+        status_code: int = 200,
+        payload: object = None,
+        *,
+        invalid_json: bool = False,
+    ):
+        self.status_code = status_code
+        self._payload = payload
+        self._invalid_json = invalid_json
+
+    def json(self) -> object:
+        if self._invalid_json:
+            raise ValueError("malformed JSON body")
+        return self._payload
+
+
+def _complete_ranking(candidate_count: int) -> dict:
+    return {
+        "data": [
+            {"index": index, "relevance_score": 1.0 - index * 0.01}
+            for index in range(candidate_count)
+        ]
+    }
+
+
+def _respond_timeout(candidate_count: int) -> _FakeVoyageResponse:
+    raise httpx.ReadTimeout("request timed out")
+
+
+def _respond_connection_failure(candidate_count: int) -> _FakeVoyageResponse:
+    raise httpx.ConnectError("connection refused")
+
+
+def _respond_server_error(candidate_count: int) -> _FakeVoyageResponse:
+    return _FakeVoyageResponse(status_code=503)
+
+
+def _respond_malformed_json(candidate_count: int) -> _FakeVoyageResponse:
+    return _FakeVoyageResponse(invalid_json=True)
+
+
+def _respond_missing_data_field(candidate_count: int) -> _FakeVoyageResponse:
+    return _FakeVoyageResponse(payload={"results": []})
+
+
+def _respond_missing_score_field(candidate_count: int) -> _FakeVoyageResponse:
+    payload = _complete_ranking(candidate_count)
+    del payload["data"][0]["relevance_score"]
+    return _FakeVoyageResponse(payload=payload)
+
+
+def _respond_missing_index_field(candidate_count: int) -> _FakeVoyageResponse:
+    payload = _complete_ranking(candidate_count)
+    del payload["data"][0]["index"]
+    return _FakeVoyageResponse(payload=payload)
+
+
+def _respond_duplicate_index(candidate_count: int) -> _FakeVoyageResponse:
+    payload = _complete_ranking(candidate_count)
+    payload["data"][1]["index"] = 0
+    return _FakeVoyageResponse(payload=payload)
+
+
+def _respond_out_of_range_index(candidate_count: int) -> _FakeVoyageResponse:
+    payload = _complete_ranking(candidate_count)
+    payload["data"][1]["index"] = candidate_count
+    return _FakeVoyageResponse(payload=payload)
+
+
+def _respond_incomplete_ranking(candidate_count: int) -> _FakeVoyageResponse:
+    payload = _complete_ranking(candidate_count)
+    payload["data"].pop()
+    return _FakeVoyageResponse(payload=payload)
+
+
+def _mock_voyage_http(mocker, respond):
+    """Patch the Voyage HTTP transport; returns captured client/request state."""
+    captured: dict = {"timeouts": [], "posts": 0}
+
+    class FakeAsyncClient:
+        def __init__(self, *, timeout):
+            captured["timeouts"].append(timeout)
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def post(self, url, *, headers, json):
+            captured["posts"] += 1
+            return respond(len(json["documents"]))
+
+    mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
+    return captured
+
+
+@pytest.mark.parametrize(
+    "respond",
+    [
+        pytest.param(_respond_timeout, id="request_timeout"),
+        pytest.param(_respond_connection_failure, id="connection_failure"),
+        pytest.param(_respond_server_error, id="non_success_http_status"),
+        pytest.param(_respond_malformed_json, id="malformed_json"),
+        pytest.param(_respond_missing_data_field, id="missing_data_field"),
+        pytest.param(_respond_missing_score_field, id="missing_score_field"),
+        pytest.param(_respond_missing_index_field, id="missing_index_field"),
+        pytest.param(_respond_duplicate_index, id="duplicate_index"),
+        pytest.param(_respond_out_of_range_index, id="out_of_range_index"),
+        pytest.param(_respond_incomplete_ranking, id="incomplete_ranking"),
+    ],
+)
+async def test_should_fall_back_to_hybrid_limits_when_voyage_fails(
+    session, settings, mocker, respond
 ):
     device, attachment = await _create_retrieval_context(session)
-    rows = await _add_chunks(
+    exact_rows = await _add_chunks(
+        session,
+        attachment.id,
+        [(f"Fault code E-23 exact {index}", _embedding(0.0)) for index in range(3)],
+    )
+    semantic_rows = await _add_chunks(
         session,
         attachment.id,
         [
-            *((f"semantic guide {index}", _embedding(1.0)) for index in range(10)),
-            *(
-                (
-                    (
-                        f"translated query procedure {index}"
-                        if index < 3
-                        else f"procedure notes {index}"
-                    ),
-                    _embedding(0.0),
-                )
-                for index in range(10)
-            ),
+            (f"semantic guide {index}", _embedding(0.9 - index * 0.01))
+            for index in range(15)
+        ],
+    )
+    bm25_rows = await _add_chunks(
+        session,
+        attachment.id,
+        [
+            (f"translated query procedure {index}", _embedding(0.0))
+            for index in range(15)
         ],
     )
     enabled_settings = settings.model_copy(
@@ -474,22 +593,50 @@ async def test_reranker_failure_falls_back_to_existing_hybrid_limits(
     mocker.patch(
         "app.services.retrieval.translate_query", return_value="translated query"
     )
-    rerank = mocker.patch(
-        "app.services.retrieval.rerank_chunks",
-        side_effect=RerankerError("provider unavailable"),
-    )
+    captured = _mock_voyage_http(mocker, respond)
+    scalars_spy = mocker.spy(session, "scalars")
 
-    result = await retrieve_context_chunks(
-        session, "unrelated question", device.id, enabled_settings
-    )
+    result = await retrieve_context_chunks(session, "E-23", device.id, enabled_settings)
 
-    semantic_rows = rows[:10]
-    bm25_rows = rows[10:]
     assert [chunk["id"] for chunk in result] == [
+        *(row.id for row in exact_rows),
         *(row.id for row in semantic_rows[:7]),
         *(row.id for row in bm25_rows[:3]),
     ]
-    rerank.assert_awaited_once()
+    assert len(result) == 13
+    assert captured["posts"] == 1
+    assert captured["timeouts"] == [enabled_settings.reranker_timeout_seconds]
+    assert scalars_spy.call_count == 2
+
+
+async def test_should_deduplicate_fallback_chunks_when_sources_overlap(
+    session, settings, mocker
+):
+    device, attachment = await _create_retrieval_context(session)
+    [shared_row] = await _add_chunks(
+        session,
+        attachment.id,
+        [("Fault code E-23 translated query overview", _embedding(1.0))],
+    )
+    other_rows = await _add_chunks(
+        session,
+        attachment.id,
+        [(f"semantic guide {index}", _embedding(0.5)) for index in range(2)],
+    )
+    enabled_settings = settings.model_copy(
+        update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
+    )
+    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
+    mocker.patch(
+        "app.services.retrieval.translate_query", return_value="translated query"
+    )
+    _mock_voyage_http(mocker, _respond_timeout)
+
+    result = await retrieve_context_chunks(session, "E-23", device.id, enabled_settings)
+
+    ids = [chunk["id"] for chunk in result]
+    assert ids[0] == shared_row.id
+    assert sorted(ids) == sorted([shared_row.id, *(row.id for row in other_rows)])
 
 
 async def test_diagnostic_mode_bypasses_enabled_reranking(session, settings, mocker):
