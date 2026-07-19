@@ -744,3 +744,133 @@ async def test_reranking_keeps_code_in_score_order_when_already_in_top_five(
     assert [chunk["id"] for chunk in result] == [
         chunk["id"] for chunk in captured["ranked"][:5]
     ]
+
+
+async def test_reranking_keeps_score_order_when_one_of_multiple_matches_is_in_top_five(
+    session, settings, mocker
+):
+    device, attachment = await _create_retrieval_context(session)
+    await _add_chunks(
+        session,
+        attachment.id,
+        [
+            ("Fault code E-23 primary", _embedding(0.0)),
+            ("Fault code E-23 secondary", _embedding(0.0)),
+            ("Fault code E-23 tertiary", _embedding(0.0)),
+            *(
+                (f"unrelated semantic guide {index}", _embedding(1.0))
+                for index in range(4)
+            ),
+        ],
+    )
+    enabled_settings = settings.model_copy(
+        update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
+    )
+    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
+    mocker.patch(
+        "app.services.retrieval.translate_query", return_value="translated query"
+    )
+    captured: dict[str, list[RetrievedChunk]] = {}
+
+    async def rank_one_match_into_top_five(query, candidates, received_settings):
+        primary, secondary, tertiary, *unrelated = candidates
+        ranked = [
+            unrelated[0],
+            secondary,
+            unrelated[1],
+            unrelated[2],
+            unrelated[3],
+            primary,
+            tertiary,
+        ]
+        captured["ranked"] = ranked
+        return ranked
+
+    mocker.patch(
+        "app.services.retrieval.rerank_chunks", side_effect=rank_one_match_into_top_five
+    )
+
+    result = await retrieve_context_chunks(
+        session, "What is E-23?", device.id, enabled_settings
+    )
+
+    assert [chunk["id"] for chunk in result] == [
+        chunk["id"] for chunk in captured["ranked"][:5]
+    ]
+
+
+async def test_reranking_returns_top_five_unchanged_when_no_chunk_matches_technical_code(
+    session, settings, mocker
+):
+    device, attachment = await _create_retrieval_context(session)
+    await _add_chunks(
+        session,
+        attachment.id,
+        [(f"unrelated semantic guide {index}", _embedding(1.0)) for index in range(6)],
+    )
+    enabled_settings = settings.model_copy(
+        update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
+    )
+    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
+    mocker.patch(
+        "app.services.retrieval.translate_query", return_value="translated query"
+    )
+    captured: dict[str, list[RetrievedChunk]] = {}
+
+    async def rank_identity(query, candidates, received_settings):
+        captured["ranked"] = candidates
+        return candidates
+
+    mocker.patch("app.services.retrieval.rerank_chunks", side_effect=rank_identity)
+
+    result = await retrieve_context_chunks(
+        session, "What is E-23?", device.id, enabled_settings
+    )
+
+    assert [chunk["id"] for chunk in result] == [
+        chunk["id"] for chunk in captured["ranked"][:5]
+    ]
+
+
+@pytest.mark.parametrize(
+    "unsupported_code",
+    [
+        pytest.param("ERR_102", id="underscore_separated"),
+        pytest.param("ERR/102", id="slash_separated"),
+    ],
+)
+async def test_reranking_leaves_top_five_unchanged_for_unsupported_slash_or_underscore_codes(
+    session, settings, mocker, unsupported_code
+):
+    device, attachment = await _create_retrieval_context(session)
+    await _add_chunks(
+        session,
+        attachment.id,
+        [
+            (f"Fault code {unsupported_code} details", _embedding(0.0)),
+            *(
+                (f"unrelated semantic guide {index}", _embedding(1.0))
+                for index in range(5)
+            ),
+        ],
+    )
+    enabled_settings = settings.model_copy(
+        update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
+    )
+    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
+    mocker.patch(
+        "app.services.retrieval.translate_query", return_value="translated query"
+    )
+
+    async def rank_code_last(query, candidates, received_settings):
+        unsupported, *rest = candidates
+        return [*rest, unsupported]
+
+    mocker.patch("app.services.retrieval.rerank_chunks", side_effect=rank_code_last)
+
+    result = await retrieve_context_chunks(
+        session, f"What is {unsupported_code}?", device.id, enabled_settings
+    )
+
+    assert len(result) == 5
+    assert all(unsupported_code not in chunk["content"] for chunk in result)
