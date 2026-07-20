@@ -42,9 +42,7 @@ const parseStoredAppSettings = (storedValue: string | null): Partial<AppSettings
 		...(typeof parsedValue.ttsEnabled === 'boolean'
 			? { ttsEnabled: parsedValue.ttsEnabled }
 			: {}),
-		...(typeof diagnosticModeEnabled === 'boolean'
-			? { diagnosticModeEnabled }
-			: {}),
+		...(typeof diagnosticModeEnabled === 'boolean' ? { diagnosticModeEnabled } : {}),
 	};
 };
 
@@ -152,7 +150,6 @@ export const useAppSettings = () => {
 		setLightThemeEnabled: (value: boolean) => setAppSetting('lightThemeEnabled', value),
 		setWakeWordEnabled: (value: boolean) => setAppSetting('wakeWordEnabled', value),
 		setTtsEnabled: (value: boolean) => setAppSetting('ttsEnabled', value),
-		setDiagnosticModeEnabled: (value: boolean) =>
-			setAppSetting('diagnosticModeEnabled', value),
+		setDiagnosticModeEnabled: (value: boolean) => setAppSetting('diagnosticModeEnabled', value),
 	};
 };

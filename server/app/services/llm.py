@@ -118,6 +118,10 @@ Nie rozpoczynaj pracy przy pompie przed odłączeniem akumulatora i zmniejszenie
 Po demontażu pompy następnym etapem jest kontrola elementów i przygotowanie pompy do ponownego montażu.
 """
 
+DOCUMENTATION_EXHAUSTED_ANSWER: Final[str] = (
+    "To już wszystko, co dokumentacja zawiera na ten temat."
+)
+
 _NO_SOURCE_PHRASES = [
     "dokumentacja nie zawiera",
     "dokumenty nie zawierają",
@@ -178,7 +182,7 @@ def clean_completion_notice(answer: str) -> str:
 
     if checklist_content:
         return cleaned
-    return "To już wszystko, co dokumentacja zawiera na ten temat."
+    return DOCUMENTATION_EXHAUSTED_ANSWER
 
 
 def promote_bare_checklist(answer: str) -> str:
@@ -317,6 +321,7 @@ def _messages(
     continuation_hint: str = "",
 ) -> list[ChatCompletionMessageParam]:
     plan_instruction = ""
+    continuation_instruction = ""
     if diagnostic_plan and diagnostic_plan.status == DiagnosticPlanStatus.complete:
         plan_instruction = (
             "Krótko potwierdź wynik technika i zakończenie diagnostyki. "
@@ -345,7 +350,6 @@ def _messages(
             "Nie pokazuj wartości score ani metadanych. Nie stwierdzaj, że znaleziono "
             "konkretną przyczynę, dopóki wynik sprawdzenia jej nie potwierdzi."
         )
-        continuation_instruction = ""
     if continuation_requested:
         target_instruction = (
             f' Zacznij od rozwinięcia tej zapowiedzianej części: "{continuation_hint}". '
@@ -371,9 +375,7 @@ def _messages(
     plan_section = ""
     if diagnostic_plan:
         plan_json = diagnostic_plan.model_dump_json(exclude_none=True, indent=2)
-        plan_section = (
-            f"\n\nDiagnostic plan JSON:\n{plan_json}\n\n{plan_instruction}"
-        )
+        plan_section = f"\n\nDiagnostic plan JSON:\n{plan_json}\n\n{plan_instruction}"
 
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -408,13 +410,13 @@ async def stream_query(
     )
     history_messages = _build_history_messages(recent_thread_messages)
     messages = _messages(
-    question,
-    context_text,
-    history_messages,
-    diagnostic_plan,
-    continuation_requested,
-    continuation_hint,
-)
+        question,
+        context_text,
+        history_messages,
+        diagnostic_plan,
+        continuation_requested,
+        continuation_hint,
+    )
 
     stream = await client.chat.completions.create(
         model=settings.openai_chat_model,

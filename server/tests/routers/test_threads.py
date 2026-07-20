@@ -110,7 +110,9 @@ def _mock_voyage_http(mocker, respond) -> dict:
 
     mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
     return captured
-  def _diagnostic_plan(problem: str) -> DiagnosticPlan:
+
+
+def _diagnostic_plan(problem: str) -> DiagnosticPlan:
     return DiagnosticPlan(
         status=DiagnosticPlanStatus.actions,
         problem=problem,
@@ -252,6 +254,57 @@ async def test_should_skip_diagnostic_mode_when_client_disables_it(
 
     assert response.status_code == 200
     build_diagnostic_plan.assert_not_awaited()
+
+
+async def test_standard_mode_should_not_use_diagnostic_flow_for_exhausted_continuation(
+    client, session, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    chunk = await create_chunk(
+        session, attachment.id, content="Procedura diagnostyczna"
+    )
+    diagnostic_message = await create_message(
+        session,
+        thread.id,
+        content="Sprawdź ciśnienie układu.",
+        sender=MessageSender.assistant,
+    )
+    session.add(ChunkMessage(message_id=diagnostic_message.id, chunk_id=chunk.id))
+    await session.commit()
+    cache_diagnostic_plan(
+        f"{thread.id}:{diagnostic_message.id}",
+        _diagnostic_plan("E-23"),
+    )
+    route_message = mocker.patch(
+        "app.routers.threads.message_router.route_message",
+        new=mocker.AsyncMock(),
+    )
+    build_followup_plan = mocker.patch(
+        "app.routers.threads.next_best_step.build_followup_plan",
+        new=mocker.AsyncMock(),
+    )
+    retrieve_context_chunks = mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "Co dalej?", "diagnostic_mode_enabled": False},
+    )
+
+    assert response.status_code == 200
+    assert _parse_message_event(response)["content"] == (
+        "To już wszystko, co dokumentacja zawiera na ten temat."
+    )
+    route_message.assert_not_awaited()
+    build_followup_plan.assert_not_awaited()
+    retrieve_context_chunks.assert_not_awaited()
+    mock_openai_llm.chat.completions.create.assert_not_awaited()
 
 
 async def test_should_start_diagnostic_for_any_error_when_mode_is_enabled(
@@ -809,49 +862,23 @@ def test_should_send_error_when_stt_service_fails_during_stream(ws_client, mocke
     assert "Deepgram connection failed" in data["message"]
 
 
-async def test_should_discard_speculative_rerank_and_reuse_previous_chunks_when_continuation_confirmed(
-    client,
-    session,
-    mock_azure_embeddings,
-    mock_openai_llm,
-    reranker_enabled_settings,
-    mocker,
+async def test_should_return_completion_without_retrieval_when_no_next_was_promised(
+    client, session, mock_openai_llm, mocker
 ):
     brand = await create_brand(session)
     dt = await create_device_type(session)
     device = await create_device(session, brand.id, dt.id)
     thread = await create_thread(session, device.id)
-    attachment = await create_attachment(session)
-    await link_attachment_device(session, attachment.id, device.id)
-
-    previous_chunk_a = await create_chunk(
-        session, attachment.id, content="Previous fragment A about hydraulics."
-    )
-    previous_chunk_b = await create_chunk(
-        session, attachment.id, content="Previous fragment B about hydraulics."
-    )
-    await create_chunk(
-        session, attachment.id, content="Distractor fragment found by fresh retrieval."
-    )
-
-    previous_message = await create_message(
+    await create_message(
         session,
         thread.id,
         content="Previous answer text",
         sender=MessageSender.assistant,
     )
-    session.add(
-        ChunkMessage(message_id=previous_message.id, chunk_id=previous_chunk_a.id)
+    retrieve_context_chunks = mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(),
     )
-    session.add(
-        ChunkMessage(message_id=previous_message.id, chunk_id=previous_chunk_b.id)
-    )
-    await session.commit()
-
-    mock_openai_llm.responses.create = mocker.AsyncMock(
-        return_value=mocker.MagicMock(output_text="1")
-    )
-    captured = _mock_voyage_http(mocker, _identity_ranking)
 
     response = await client.post(
         f"/api/threads/{thread.id}/messages",
@@ -859,16 +886,16 @@ async def test_should_discard_speculative_rerank_and_reuse_previous_chunks_when_
     )
 
     assert response.status_code == 200
-    assert captured["posts"] == 1
-
-    message_id = _parse_message_event(response)["id"]
+    message_data = _parse_message_event(response)
+    assert message_data["content"] == (
+        "To już wszystko, co dokumentacja zawiera na ten temat."
+    )
+    message_id = message_data["id"]
     persisted_ids = await _persisted_source_chunk_ids(session, message_id)
-    assert persisted_ids == {previous_chunk_a.id, previous_chunk_b.id}
-
-    context = _assistant_message_context(mock_openai_llm)
-    assert previous_chunk_a.content in context
-    assert previous_chunk_b.content in context
-    assert "Distractor fragment" not in context
+    assert persisted_ids == set()
+    retrieve_context_chunks.assert_not_awaited()
+    mock_openai_llm.responses.create.assert_not_awaited()
+    mock_openai_llm.chat.completions.create.assert_not_awaited()
 
 
 async def test_should_use_fresh_chunks_when_short_message_is_not_classified_as_continuation(

@@ -113,6 +113,8 @@ def _looks_like_continuation(content: str) -> bool:
 def _is_explicit_continuation(content: str) -> bool:
     normalized = content.lower().strip().rstrip(".!?")
     return normalized in {"co dalej", "dalej", "kontynuuj"}
+
+
 def _diagnostic_plan_cache_key(message: Message) -> str:
     return f"{message.thread_id}:{message.id}"
 
@@ -239,38 +241,56 @@ async def create_message(
     might_continue = latest_system_message is not None and _looks_like_continuation(
         body.content
     )
+    has_promised_continuation = bool(
+        latest_system_message
+        and (
+            latest_system_message.has_continuation
+            or llm.has_continuation_marker(latest_system_message.content)
+        )
+    )
+    standard_completion_answer = (
+        llm.DOCUMENTATION_EXHAUSTED_ANSWER
+        if not body.diagnostic_mode_enabled
+        and latest_system_message
+        and _is_explicit_continuation(body.content)
+        and not has_promised_continuation
+        else None
+    )
 
-    if current_diagnostic_plan and diagnostic_message:
-    is_continuation = False
-    fresh_chunks = [
-        {
-            "id": chunk.id,
-            "content": chunk.content,
-            "attachment_id": chunk.attachment_id,
-            "extra_metadata": chunk.extra_metadata,
-        }
-        for chunk in diagnostic_message.chunks
-    ]
-elif might_continue and not _is_explicit_continuation(body.content):
-    is_continuation, fresh_chunks = await asyncio.gather(
-        llm.is_message_continuation_request(body.content, settings),
-        retrieval.retrieve_context_chunks(
+    if standard_completion_answer:
+        is_continuation = False
+        fresh_chunks = []
+    elif current_diagnostic_plan and diagnostic_message:
+        is_continuation = False
+        fresh_chunks = [
+            {
+                "id": chunk.id,
+                "content": chunk.content,
+                "attachment_id": chunk.attachment_id,
+                "extra_metadata": chunk.extra_metadata,
+            }
+            for chunk in diagnostic_message.chunks
+        ]
+    elif might_continue and not _is_explicit_continuation(body.content):
+        is_continuation, fresh_chunks = await asyncio.gather(
+            llm.is_message_continuation_request(body.content, settings),
+            retrieval.retrieve_context_chunks(
+                session,
+                body.content,
+                device_id=device_id,
+                settings=settings,
+                diagnostic_mode_2002=body.diagnostic_mode_enabled,
+            ),
+        )
+    else:
+        is_continuation = might_continue
+        fresh_chunks = await retrieval.retrieve_context_chunks(
             session,
             body.content,
             device_id=device_id,
             settings=settings,
             diagnostic_mode_2002=body.diagnostic_mode_enabled,
-        ),
-    )
-else:
-    is_continuation = might_continue
-    fresh_chunks = await retrieval.retrieve_context_chunks(
-        session,
-        body.content,
-        device_id=device_id,
-        settings=settings,
-        diagnostic_mode_2002=body.diagnostic_mode_enabled,
-    )
+        )
 
     if is_continuation and latest_system_message and latest_system_message.chunks:
         retrieved_chunks = [
@@ -393,19 +413,23 @@ else:
 
         yield _sse("route", diagnostic_route.value)
 
-        async for chunk in llm.stream_query(
-    session,
-    thread_id,
-    body.content,
-    context_chunks,
-    settings,
-    exclude_message_id=user_message.id,
-    diagnostic_plan=response_plan,
-    continuation_requested=is_continuation,
-    continuation_hint=continuation_hint,
-):
-    answer_parts.append(chunk)
-    yield _sse("chunk", chunk)
+        if standard_completion_answer:
+            answer_parts.append(standard_completion_answer)
+            yield _sse("chunk", standard_completion_answer)
+        else:
+            async for chunk in llm.stream_query(
+                session,
+                thread_id,
+                body.content,
+                context_chunks,
+                settings,
+                exclude_message_id=user_message.id,
+                diagnostic_plan=response_plan,
+                continuation_requested=is_continuation,
+                continuation_hint=continuation_hint,
+            ):
+                answer_parts.append(chunk)
+                yield _sse("chunk", chunk)
 
         answer = "".join(answer_parts)
         answer = llm.promote_bare_checklist(answer)
@@ -425,15 +449,17 @@ else:
         await session.flush()
 
         if diagnostic_plan:
-    next_best_step.cache_diagnostic_plan(
-        _diagnostic_plan_cache_key(assistant_message), diagnostic_plan
-    )
+            next_best_step.cache_diagnostic_plan(
+                _diagnostic_plan_cache_key(assistant_message), diagnostic_plan
+            )
 
-if not llm.is_no_source_answer(answer) and not llm.is_completion_only_answer(answer):
-    for chunk in retrieved_chunks:
-        session.add(
-            ChunkMessage(message_id=assistant_message.id, chunk_id=chunk["id"])
-        )
+        if not llm.is_no_source_answer(answer) and not llm.is_completion_only_answer(
+            answer
+        ):
+            for chunk in retrieved_chunks:
+                session.add(
+                    ChunkMessage(message_id=assistant_message.id, chunk_id=chunk["id"])
+                )
 
         await session.commit()
 

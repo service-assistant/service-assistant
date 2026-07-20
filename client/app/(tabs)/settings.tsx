@@ -176,8 +176,8 @@ export default function SettingsScreen() {
 							</View>
 							<View className='flex-1'>
 								<Text className={`${rowTitleClassName} text-base font-semibold`}>
-	Tryb diagnostyczny
-</Text>
+									Tryb diagnostyczny
+								</Text>
 								<Text
 									className={`${lightThemeEnabled ? 'text-[#52525B]' : 'text-zinc-400'} text-sm mt-1`}>
 									Prowadzi technika krok po kroku i pokazuje jedną akcję naraz.
@@ -185,12 +185,12 @@ export default function SettingsScreen() {
 							</View>
 						</View>
 						<Switch
-	value={diagnosticModeEnabled}
-	onValueChange={setDiagnosticModeEnabled}
-	trackColor={switchTrackColor}
-	thumbColor={diagnosticModeEnabled ? PRIMARY_ORANGE : inactiveThumbColor}
-	ios_backgroundColor={switchBackgroundColor}
-/>
+							value={diagnosticModeEnabled}
+							onValueChange={setDiagnosticModeEnabled}
+							trackColor={switchTrackColor}
+							thumbColor={diagnosticModeEnabled ? PRIMARY_ORANGE : inactiveThumbColor}
+							ios_backgroundColor={switchBackgroundColor}
+						/>
 					</TouchableOpacity>
 
 					<TouchableOpacity

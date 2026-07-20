@@ -253,30 +253,30 @@ describe('ChatMessages', () => {
 		);
 	});
 
-  test('does not render feedback controls for completed assistant messages', () => {
-	const tree = (
-		<ChatMessages
-			{...baseProps}
-			messages={[
-				{ id: 1, sender: 'user', text: 'Pytanie' },
-				{ id: 2, sender: 'ai', text: 'Odpowiedź' },
-			]}
-		/>
-	);
-	const feedbackIcons = findByType(tree, 'Icon').filter((icon) =>
-		['thumbs-up', 'thumbs-down'].includes(icon.props.name),
-	);
-	const feedbackButtons = findByType(tree, 'TouchableOpacity').filter((button) =>
-		['Lubię tę odpowiedź', 'Nie lubię tej odpowiedzi'].includes(
-			button.props.accessibilityLabel,
-		),
-	);
+	test('does not render feedback controls for completed assistant messages', () => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[
+					{ id: 1, sender: 'user', text: 'Pytanie' },
+					{ id: 2, sender: 'ai', text: 'Odpowiedź' },
+				]}
+			/>
+		);
+		const feedbackIcons = findByType(tree, 'Icon').filter((icon) =>
+			['thumbs-up', 'thumbs-down'].includes(icon.props.name),
+		);
+		const feedbackButtons = findByType(tree, 'TouchableOpacity').filter((button) =>
+			['Lubię tę odpowiedź', 'Nie lubię tej odpowiedzi'].includes(
+				button.props.accessibilityLabel,
+			),
+		);
 
-	expect(feedbackIcons).toHaveLength(0);
-	expect(findByText(tree, 'Czy ta odpowiedź była pomocna?')).toBeFalsy();
-	expect(feedbackButtons).toHaveLength(0);
-});
-  
+		expect(feedbackIcons).toHaveLength(0);
+		expect(findByText(tree, 'Czy ta odpowiedź była pomocna?')).toBeFalsy();
+		expect(feedbackButtons).toHaveLength(0);
+	});
+
 	test('renders local feedback controls only for completed assistant messages', () => {
 		const tree = (
 			<ChatMessages
@@ -352,8 +352,30 @@ describe('ChatMessages', () => {
 			true,
 		);
 		expect(findByType(tree, 'Icon').some((icon) => icon.props.name === 'arrow-right')).toBe(
-			false,
+			true,
 		);
+	});
+
+	test('renders a checkbox for every checklist item', () => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[
+					{
+						id: 1,
+						sender: 'ai',
+						text: '::checklist\n- Sprawdź olej\n- Sprawdź przewody',
+					},
+				]}
+			/>
+		);
+
+		const checkboxes = findByType(tree, 'View').filter(
+			(view) => view.props.accessibilityRole === 'checkbox',
+		);
+		expect(checkboxes).toHaveLength(2);
+		expect(checkboxes[0].props.accessibilityState).toEqual({ checked: false });
+		expect(checkboxes[1].props.accessibilityState).toEqual({ checked: false });
 	});
 
 	test('opens schema previews and answer sources', () => {

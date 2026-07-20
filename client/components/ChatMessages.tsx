@@ -520,14 +520,35 @@ const StructuredAssistantResponse = ({
 							key={`${block.type}-${index}`}
 							style={{ width: '100%', marginTop: 12 }}>
 							{block.items.map((item, itemIndex) => (
-								<Text
+								<View
 									key={`${item}-${itemIndex}`}
 									style={{
-										...checklistTextStyle,
+										width: '100%',
+										flexDirection: 'row',
+										alignItems: 'flex-start',
 										marginBottom: 12,
 									}}>
-									{item}
-								</Text>
+									<View
+										accessible
+										accessibilityLabel={item}
+										accessibilityRole='checkbox'
+										accessibilityState={{ checked: false }}
+										style={{
+											width: checklistBoxSize,
+											height: checklistBoxSize,
+											flexShrink: 0,
+											marginRight: 12,
+											marginTop: 2,
+											borderWidth: 1,
+											borderColor: PRIMARY_ORANGE,
+											borderRadius: 6,
+											backgroundColor: 'transparent',
+										}}
+									/>
+									<View style={{ flex: 1, minWidth: 0 }}>
+										<Text style={checklistTextStyle}>{item}</Text>
+									</View>
+								</View>
 							))}
 						</View>
 					);
@@ -572,37 +593,37 @@ const StructuredAssistantResponse = ({
 				}
 
 				if (block.type === 'next') {
-	return (
-		<View
-			key={`${block.type}-${index}`}
-			style={{
-				width: '100%',
-				flexDirection: 'row',
-				alignItems: 'flex-start',
-				marginTop: 16,
-			}}>
-			<View style={{ flexShrink: 0, marginTop: compact ? 1 : 2 }}>
-				<Feather
-					name='arrow-right'
-					size={compact ? 22 : 27}
-					color={lightMode ? '#3F3F46' : '#F4F4F5'}
-				/>
-			</View>
-			<Text
-				style={{
-					flex: 1,
-					minWidth: 0,
-					marginLeft: 12,
-					paddingTop: compact ? 3 : 4,
-					color: lightMode ? '#27272A' : '#F4F4F5',
-					fontSize: compact ? 16 : 18,
-					lineHeight: compact ? 23 : 25,
-				}}>
-				{block.content}
-			</Text>
-		</View>
-	);
-}
+					return (
+						<View
+							key={`${block.type}-${index}`}
+							style={{
+								width: '100%',
+								flexDirection: 'row',
+								alignItems: 'flex-start',
+								marginTop: 16,
+							}}>
+							<View style={{ flexShrink: 0, marginTop: compact ? 1 : 2 }}>
+								<Feather
+									name='arrow-right'
+									size={compact ? 22 : 27}
+									color={lightMode ? '#3F3F46' : '#F4F4F5'}
+								/>
+							</View>
+							<Text
+								style={{
+									flex: 1,
+									minWidth: 0,
+									marginLeft: 12,
+									paddingTop: compact ? 3 : 4,
+									color: lightMode ? '#27272A' : '#F4F4F5',
+									fontSize: compact ? 16 : 18,
+									lineHeight: compact ? 23 : 25,
+								}}>
+								{block.content}
+							</Text>
+						</View>
+					);
+				}
 
 				return (
 					<Text
@@ -663,34 +684,34 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 					</View>
 				) : (
 					<View
-	key={message.id}
-	className={compact ? 'self-start mb-5' : 'self-start mb-7'}
-	style={
-		message.schemaImage ||
-		message.schemaImages?.length ||
-		message.sourceAttachmentId ||
-		message.sourceReferences?.length
-			? { width: compact ? '96%' : '78%' }
-			: { maxWidth: compact ? '96%' : '78%' }
-	}>
-	{message.routerDecision ? (
-		<Text
-			className={`${
-				lightMode ? 'text-[#52525B]' : 'text-[#AEB3BA]'
-			} text-[12px] tracking-wide mb-2`}>
-			Router: {message.routerDecision}
-		</Text>
-	) : null}
+						key={message.id}
+						className={compact ? 'self-start mb-5' : 'self-start mb-7'}
+						style={
+							message.schemaImage ||
+							message.schemaImages?.length ||
+							message.sourceAttachmentId ||
+							message.sourceReferences?.length
+								? { width: compact ? '96%' : '78%' }
+								: { maxWidth: compact ? '96%' : '78%' }
+						}>
+						{message.routerDecision ? (
+							<Text
+								className={`${
+									lightMode ? 'text-[#52525B]' : 'text-[#AEB3BA]'
+								} text-[12px] tracking-wide mb-2`}>
+								Router: {message.routerDecision}
+							</Text>
+						) : null}
 
-	{message.text ? (
-		<StructuredAssistantResponse
-			text={message.text}
-			compact={compact}
-			lightMode={lightMode}
-		/>
-	) : (
-		<TypingDotsIndicator color={PRIMARY_ORANGE} />
-	)}
+						{message.text ? (
+							<StructuredAssistantResponse
+								text={message.text}
+								compact={compact}
+								lightMode={lightMode}
+							/>
+						) : (
+							<TypingDotsIndicator color={PRIMARY_ORANGE} />
+						)}
 						{(() => {
 							const schemaImages = (
 								message.schemaImages?.length
