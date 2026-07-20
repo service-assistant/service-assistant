@@ -152,6 +152,7 @@ async def create_message(
                 body.content,
                 device_id=device_id,
                 settings=settings,
+                diagnostic_mode_2002=body.diagnostic_mode_2002,
             ),
         )
     else:
@@ -161,6 +162,7 @@ async def create_message(
             body.content,
             device_id=device_id,
             settings=settings,
+            diagnostic_mode_2002=body.diagnostic_mode_2002,
         )
 
     if is_continuation and latest_system_message and latest_system_message.chunks:

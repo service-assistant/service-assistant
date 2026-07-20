@@ -298,7 +298,7 @@ describe('ChatMessages', () => {
 		);
 
 		schemaButtons[0].props.onPress();
-		sourceButtons[0].props.onPress();
+		sourceButtons.forEach((button) => button.props.onPress());
 
 		expect(findByText(tree, 'Schematy z dokumentacji')).toBeTruthy();
 		expect(
@@ -310,6 +310,9 @@ describe('ChatMessages', () => {
 		expect(findByType(tree, 'WebView')).toHaveLength(0);
 		expect(findByType(tree, 'Image')).toHaveLength(5);
 		expect(onOpenSchema).toHaveBeenCalledWith('data:image/png;base64,abc');
-		expect(onOpenSource).toHaveBeenCalledWith(sourceReferences[0]);
+		expect(onOpenSource).toHaveBeenCalledTimes(5);
+		expect(onOpenSource.mock.calls.map(([source]) => source)).toEqual(
+			sourceReferences.slice(0, 5),
+		);
 	});
 });

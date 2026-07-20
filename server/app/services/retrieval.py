@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 from functools import partial
 
@@ -10,13 +11,19 @@ from ..config import Settings
 from ..models import AttachmentDevice, Chunk
 from .document_language import get_device_document_language
 from .embedding import RetrievedChunk, embed_question
+from .reranker import rerank_chunks
 from .translation import translate_query
 
 TOKEN_RE = re.compile(r"[^\W_]+(?:[-:.][^\W_]+)*")
+TECHNICAL_CODE_RE = re.compile(r"[A-Za-z0-9]+(?:[-:._/][A-Za-z0-9]+)*")
 
 SEMANTIC_LIMIT = 7
 BM25_LIMIT = 3
 EXACT_LIMIT = 3
+RERANKED_SEMANTIC_LIMIT = 15
+RERANKED_BM25_LIMIT = 15
+
+logger = logging.getLogger(__name__)
 
 
 def tokenize(text: str) -> list[str]:
@@ -185,13 +192,64 @@ def merge_hybrid_chunks(
     return merged
 
 
+def _matching_technical_code_chunks(
+    question: str, chunks: list[RetrievedChunk]
+) -> list[RetrievedChunk]:
+    codes = [
+        token
+        for token in TECHNICAL_CODE_RE.findall(question)
+        if any(character.isdigit() for character in token)
+        and "/" not in token
+        and "_" not in token
+    ]
+    if not codes:
+        return []
+    return [
+        chunk
+        for chunk in chunks
+        if any(_content_matches_token(chunk["content"].lower(), code) for code in codes)
+    ]
+
+
+def _select_reranked_chunks(
+    question: str,
+    ranked_chunks: list[RetrievedChunk],
+    candidate_chunks: list[RetrievedChunk],
+) -> list[RetrievedChunk]:
+    selected = ranked_chunks[:5]
+    if len(selected) < 5:
+        return selected
+
+    matching_chunks = _matching_technical_code_chunks(question, candidate_chunks)
+    if not matching_chunks:
+        return selected
+    if any(
+        chunk["id"] in {selected_chunk["id"] for selected_chunk in selected}
+        for chunk in matching_chunks
+    ):
+        return selected
+
+    highest_ranked_match = next(
+        chunk
+        for chunk in ranked_chunks
+        if chunk["id"] in {matching_chunk["id"] for matching_chunk in matching_chunks}
+    )
+    selected[-1] = highest_ranked_match
+    return selected
+
+
 async def retrieve_context_chunks(
     session: AsyncSession,
     question: str,
     device_id: int,
     settings: Settings,
+    *,
+    diagnostic_mode_2002: bool = False,
 ) -> list[RetrievedChunk]:
     target_language = get_device_document_language(device_id)
+    reranking_enabled = settings.reranker_enabled and not diagnostic_mode_2002
+    semantic_limit = RERANKED_SEMANTIC_LIMIT if reranking_enabled else SEMANTIC_LIMIT
+    bm25_limit = RERANKED_BM25_LIMIT if reranking_enabled else BM25_LIMIT
 
     (vector, translated_query), rows = await asyncio.gather(
         asyncio.gather(
@@ -208,10 +266,31 @@ async def retrieve_context_chunks(
     exact = get_exact_match_chunks(rows, question, limit=EXACT_LIMIT)
 
     semantic, bm25 = await asyncio.gather(
-        get_semantic_chunks(session, vector, device_id, limit=SEMANTIC_LIMIT),
+        get_semantic_chunks(session, vector, device_id, limit=semantic_limit),
         get_bm25_chunks(
-            session, translated_query, device_id, rows=rows, limit=BM25_LIMIT
+            session, translated_query, device_id, rows=rows, limit=bm25_limit
         ),
     )
 
-    return merge_hybrid_chunks(exact, semantic, bm25)
+    if not reranking_enabled:
+        return merge_hybrid_chunks(exact, semantic, bm25)
+
+    candidates = merge_hybrid_chunks(exact, semantic, bm25)
+    try:
+        ranked = await rerank_chunks(translated_query, candidates, settings)
+        candidate_ids = {chunk["id"] for chunk in candidates}
+        ranked_ids = {chunk["id"] for chunk in ranked}
+        if len(ranked) != len(candidates) or ranked_ids != candidate_ids:
+            raise ValueError("Reranker returned an incomplete or duplicate ranking")
+    except Exception:
+        logger.exception(
+            "Voyage reranking failed for %d candidates; using hybrid fallback",
+            len(candidates),
+        )
+        return merge_hybrid_chunks(
+            exact,
+            semantic[:SEMANTIC_LIMIT],
+            bm25[:BM25_LIMIT],
+        )
+
+    return _select_reranked_chunks(question, ranked, candidates)

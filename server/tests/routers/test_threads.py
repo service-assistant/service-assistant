@@ -1,19 +1,109 @@
 import json
 from contextlib import asynccontextmanager
 
+import pytest
 from sqlalchemy import select
 
-from app.models import ChatThread, Message, MessageSender
+from app.config import get_settings
+from app.main import app
+from app.models import ChatThread, ChunkMessage, Message, MessageSender
+from app.services import retrieval as retrieval_module
 from app.services.stt import SttError
 
 from tests.routers.factories import (
+    create_attachment,
     create_brand,
+    create_chunk,
     create_device,
     create_device_type,
     create_message,
     create_thread,
+    link_attachment_device,
     make_thread,
 )
+
+
+@pytest.fixture
+def reranker_enabled_settings(override_attachments_dir):
+    """Overrides the get_settings dependency to enable reranking with a Voyage key.
+
+    Depends on ``override_attachments_dir`` so this override is applied after
+    (and therefore wins over) that autouse fixture's own settings override.
+    """
+    enabled_settings = get_settings().model_copy(
+        update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
+    )
+    app.dependency_overrides[get_settings] = lambda: enabled_settings
+    yield enabled_settings
+    app.dependency_overrides.pop(get_settings, None)
+
+
+def _assistant_message_context(mock_openai_llm) -> str:
+    call_args = mock_openai_llm.chat.completions.create.call_args
+    messages = call_args.kwargs["messages"]
+    return messages[-1]["content"]
+
+
+def _parse_message_event(response) -> dict:
+    lines = response.text.splitlines()
+    for i, line in enumerate(lines):
+        if line == "event: message":
+            return json.loads(lines[i + 1].removeprefix("data: "))
+    raise AssertionError("No 'message' SSE event found in response")
+
+
+async def _persisted_source_chunk_ids(session, message_id: int) -> set[int]:
+    result = await session.execute(
+        select(ChunkMessage.chunk_id).where(ChunkMessage.message_id == message_id)
+    )
+    return set(result.scalars().all())
+
+
+class _FakeVoyageResponse:
+    def __init__(self, status_code: int = 200, payload: object = None):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self) -> object:
+        return self._payload
+
+
+def _identity_ranking(candidate_count: int) -> _FakeVoyageResponse:
+    """Rank candidates in their submitted order (highest score first)."""
+    return _FakeVoyageResponse(
+        payload={
+            "data": [
+                {"index": index, "relevance_score": 1.0 - index * 0.01}
+                for index in range(candidate_count)
+            ]
+        }
+    )
+
+
+def _voyage_unavailable(candidate_count: int) -> _FakeVoyageResponse:
+    return _FakeVoyageResponse(status_code=503)
+
+
+def _mock_voyage_http(mocker, respond) -> dict:
+    """Patch the Voyage HTTP transport; returns a dict tracking call count."""
+    captured = {"posts": 0}
+
+    class FakeAsyncClient:
+        def __init__(self, *, timeout):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def post(self, url, *, headers, json):
+            captured["posts"] += 1
+            return respond(len(json["documents"]))
+
+    mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
+    return captured
 
 
 async def test_should_create_thread_when_valid_data_provided(client, session):
@@ -431,3 +521,248 @@ def test_should_send_error_when_stt_service_fails_during_stream(ws_client, mocke
 
     assert data["type"] == "error"
     assert "Deepgram connection failed" in data["message"]
+
+
+async def test_should_discard_speculative_rerank_and_reuse_previous_chunks_when_continuation_confirmed(
+    client,
+    session,
+    mock_azure_embeddings,
+    mock_openai_llm,
+    reranker_enabled_settings,
+    mocker,
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    await link_attachment_device(session, attachment.id, device.id)
+
+    previous_chunk_a = await create_chunk(
+        session, attachment.id, content="Previous fragment A about hydraulics."
+    )
+    previous_chunk_b = await create_chunk(
+        session, attachment.id, content="Previous fragment B about hydraulics."
+    )
+    await create_chunk(
+        session, attachment.id, content="Distractor fragment found by fresh retrieval."
+    )
+
+    previous_message = await create_message(
+        session,
+        thread.id,
+        content="Previous answer text",
+        sender=MessageSender.assistant,
+    )
+    session.add(
+        ChunkMessage(message_id=previous_message.id, chunk_id=previous_chunk_a.id)
+    )
+    session.add(
+        ChunkMessage(message_id=previous_message.id, chunk_id=previous_chunk_b.id)
+    )
+    await session.commit()
+
+    mock_openai_llm.responses.create = mocker.AsyncMock(
+        return_value=mocker.MagicMock(output_text="1")
+    )
+    captured = _mock_voyage_http(mocker, _identity_ranking)
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "dalej", "diagnostic_mode_2002": False},
+    )
+
+    assert response.status_code == 200
+    assert captured["posts"] == 1
+
+    message_id = _parse_message_event(response)["id"]
+    persisted_ids = await _persisted_source_chunk_ids(session, message_id)
+    assert persisted_ids == {previous_chunk_a.id, previous_chunk_b.id}
+
+    context = _assistant_message_context(mock_openai_llm)
+    assert previous_chunk_a.content in context
+    assert previous_chunk_b.content in context
+    assert "Distractor fragment" not in context
+
+
+async def test_should_use_fresh_chunks_when_short_message_is_not_classified_as_continuation(
+    client, session, mock_azure_embeddings, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    await link_attachment_device(session, attachment.id, device.id)
+    # Deliberately not linked to the device, so fresh retrieval for this
+    # device cannot find it even though it was the prior answer's source.
+    unlinked_attachment = await create_attachment(session)
+
+    previous_chunk = await create_chunk(
+        session, unlinked_attachment.id, content="Stale fragment about a past topic."
+    )
+    fresh_chunk = await create_chunk(
+        session, attachment.id, content="Reset procedure explained here."
+    )
+
+    previous_message = await create_message(
+        session,
+        thread.id,
+        content="Previous answer text",
+        sender=MessageSender.assistant,
+    )
+    session.add(
+        ChunkMessage(message_id=previous_message.id, chunk_id=previous_chunk.id)
+    )
+    await session.commit()
+
+    mock_openai_llm.responses.create = mocker.AsyncMock(
+        return_value=mocker.MagicMock(output_text="0")
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "reset teraz", "diagnostic_mode_2002": False},
+    )
+
+    assert response.status_code == 200
+
+    message_id = _parse_message_event(response)["id"]
+    persisted_ids = await _persisted_source_chunk_ids(session, message_id)
+    assert persisted_ids == {fresh_chunk.id}
+
+    context = _assistant_message_context(mock_openai_llm)
+    assert fresh_chunk.content in context
+    assert previous_chunk.content not in context
+
+
+async def test_should_persist_five_sources_matching_llm_context_on_successful_rerank(
+    client,
+    session,
+    mock_azure_embeddings,
+    mock_openai_llm,
+    reranker_enabled_settings,
+    mocker,
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    await link_attachment_device(session, attachment.id, device.id)
+
+    for i in range(8):
+        await create_chunk(session, attachment.id, content=f"Manual fragment {i}")
+
+    _mock_voyage_http(mocker, _identity_ranking)
+    spy = mocker.spy(retrieval_module, "retrieve_context_chunks")
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={
+            "content": "Completely unrelated inquiry about nothing important",
+            "diagnostic_mode_2002": False,
+        },
+    )
+
+    assert response.status_code == 200
+    actual_chunks = spy.spy_return
+    assert len(actual_chunks) == 5
+
+    message_id = _parse_message_event(response)["id"]
+    persisted_ids = await _persisted_source_chunk_ids(session, message_id)
+    assert persisted_ids == {chunk["id"] for chunk in actual_chunks}
+
+    context = _assistant_message_context(mock_openai_llm)
+    for chunk in actual_chunks:
+        assert chunk["content"] in context
+
+
+async def test_should_persist_wider_sources_matching_llm_context_on_rerank_fallback(
+    client,
+    session,
+    mock_azure_embeddings,
+    mock_openai_llm,
+    reranker_enabled_settings,
+    mocker,
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    await link_attachment_device(session, attachment.id, device.id)
+
+    for i in range(10):
+        await create_chunk(session, attachment.id, content=f"Manual fragment {i}")
+
+    captured = _mock_voyage_http(mocker, _voyage_unavailable)
+    spy = mocker.spy(retrieval_module, "retrieve_context_chunks")
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={
+            "content": "Completely unrelated inquiry about nothing important",
+            "diagnostic_mode_2002": False,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["posts"] == 3
+    actual_chunks = spy.spy_return
+    # Fallback slices the already-fetched pool to at most 3 exact + 7 semantic
+    # + 3 BM25 (deduplicated), never the full 3/15/15 expanded pool.
+    assert 5 < len(actual_chunks) <= 13
+
+    message_id = _parse_message_event(response)["id"]
+    persisted_ids = await _persisted_source_chunk_ids(session, message_id)
+    assert persisted_ids == {chunk["id"] for chunk in actual_chunks}
+
+    context = _assistant_message_context(mock_openai_llm)
+    for chunk in actual_chunks:
+        assert chunk["content"] in context
+
+
+async def test_should_persist_wider_sources_matching_llm_context_on_diagnostic_bypass(
+    client,
+    session,
+    mock_azure_embeddings,
+    mock_openai_llm,
+    reranker_enabled_settings,
+    mocker,
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    await link_attachment_device(session, attachment.id, device.id)
+
+    for i in range(10):
+        await create_chunk(session, attachment.id, content=f"Manual fragment {i}")
+
+    captured = _mock_voyage_http(mocker, _identity_ranking)
+    spy = mocker.spy(retrieval_module, "retrieve_context_chunks")
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={
+            "content": "Completely unrelated inquiry about nothing important",
+            "diagnostic_mode_2002": True,
+        },
+    )
+
+    assert response.status_code == 200
+    assert captured["posts"] == 0
+
+    actual_chunks = spy.spy_return
+    # Bypass keeps the narrow 3/7/3 limits, never the expanded 3/15/15 pool.
+    assert 5 < len(actual_chunks) <= 13
+
+    message_id = _parse_message_event(response)["id"]
+    persisted_ids = await _persisted_source_chunk_ids(session, message_id)
+    assert persisted_ids == {chunk["id"] for chunk in actual_chunks}
+
+    context = _assistant_message_context(mock_openai_llm)
+    for chunk in actual_chunks:
+        assert chunk["content"] in context

@@ -141,7 +141,7 @@ export const useSourcePanelFiles = ({
 						Authorization: `Bearer ${authToken}`,
 					},
 				},
-				page: (message.sourceAttachmentPage || 1) + 1,
+				page: (message.sourceAttachmentPage ?? 0) + 1,
 			});
 		},
 		[authTokenOverride, onServiceError, openPdfInSourcePanel, serverUrl],

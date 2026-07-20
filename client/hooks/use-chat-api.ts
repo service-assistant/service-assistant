@@ -282,7 +282,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 
 				let sourceAttachmentId: number | null = null;
 				let sourceAttachmentName = '';
-				let sourceAttachmentPage = 1;
+				let sourceAttachmentPage = 0;
 				let sourceReferences: ChatMessageSourceReference[] = [];
 				let schemaImages: SchemaImageSource[] = [];
 				let hasStartedAssistantAudio = false;
@@ -358,7 +358,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 
 						if (sourceChunk?.attachment_id) {
 							sourceAttachmentId = sourceChunk.attachment_id;
-							sourceAttachmentPage = sourceChunk.metadata?.page || 1;
+							sourceAttachmentPage = sourceChunk.metadata?.page ?? 0;
 
 							imageUrl =
 								imageUrl ||
@@ -406,8 +406,8 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 										allChunks.findIndex(
 											(candidate) =>
 												candidate.attachment_id === chunk.attachment_id &&
-												(candidate.metadata?.page || 1) ===
-													(chunk.metadata?.page || 1),
+												(candidate.metadata?.page ?? 0) ===
+													(chunk.metadata?.page ?? 0),
 										) === index,
 								)
 								.slice(0, MAX_SCHEMA_IMAGES);
@@ -448,13 +448,13 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 							sourceReferences = sourceChunks.map((chunk) => ({
 								sourceAttachmentId: chunk.attachment_id,
 								sourceAttachmentName: attachmentNames.get(chunk.attachment_id),
-								sourceAttachmentPage: chunk.metadata?.page || 1,
+								sourceAttachmentPage: chunk.metadata?.page ?? 0,
 								previewImage:
 									loadedImageEntries.find(
 										(entry) =>
 											entry.chunk.attachment_id === chunk.attachment_id &&
-											(entry.chunk.metadata?.page || 1) ===
-												(chunk.metadata?.page || 1),
+											(entry.chunk.metadata?.page ?? 0) ===
+												(chunk.metadata?.page ?? 0),
 									)?.url || (chunk === sourceChunk ? schemaImages[0] : undefined),
 							}));
 							sourceAttachmentName =

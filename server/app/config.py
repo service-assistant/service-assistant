@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,10 +23,23 @@ class Settings(BaseSettings):
     gemini_tts_voice: str = "Algenib"
     gemini_tts_max_chars: int = 2000
 
+    reranker_enabled: bool = False
+    voyage_api_key: str | None = None
+    reranker_model: str = "rerank-2.5"
+    reranker_timeout_seconds: float = Field(default=5.0, gt=0)
+
     azure_document_intelligence_endpoint: str
     azure_document_intelligence_key: str
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @model_validator(mode="after")
+    def validate_reranker_configuration(self) -> "Settings":
+        if self.reranker_enabled and (
+            not self.voyage_api_key or not self.voyage_api_key.strip()
+        ):
+            raise ValueError("VOYAGE_API_KEY is required when RERANKER_ENABLED is true")
+        return self
 
 
 @lru_cache
