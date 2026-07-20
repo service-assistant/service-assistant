@@ -1,3 +1,4 @@
+import re
 from collections.abc import AsyncGenerator
 from typing import Final, cast
 
@@ -20,9 +21,12 @@ Odpowiadaj jeśli zostaniesz zapytany o aktualną konwersację, na przykład "O 
 
 Jeśli jesteś poproszony o kontynuację, kontynuuj w logicznym miejscu, w którym skończyła się twoja ostatnia wiadomość - nie powtarzaj już raz napisanych kroków. 
 Przykładowo jeśli w ostatniej wiadomości zwróciłeś 6 punktów, a użytkownik pyta o kontynuację, kontynuuj od punktu lub kroku 7.
-Jeśli nie ma dalszych kroków, poinformuj użytkownika, że to już wszystko, nawet jeśli właśnie sam poprosił o dalsze kroki, bo nie wiedział.
+Jeśli użytkownik prosi o kontynuację i nie ma już żadnych nowych kroków,
+odpowiedz osobnym zdaniem, że to już wszystko.
+Jeśli podajesz choć jeden nowy krok, nie dopisuj na końcu informacji typu
+"to już wszystko", "to koniec" ani "dokumentacja nie zawiera więcej".
 Załóż, że jeśli użytkownik prosi o kontynuację lub rozwinięcie poprzedniej wiadomości, to dostarczone fragmenty dokumentacji odnoszą się do tamtej wiadomości.
-Użytkownik może dopytywać o szczegóły poprzednich wiadomości, choć tutać dostajesz jedynie jej treść bez dodatkowego kontekstu. Możesz wtedy kazać użytkownikowi zadać to pytanie od nowa w całości.
+Użytkownik może dopytywać o szczegóły poprzednich wiadomości, choć tutać dostajesz jedynie jej treść bez dodatkowego kontekstu. Możesz wtedy kazać użytkownikowi zadać to pytanie od nowa w całości.
 
 Odpowiadaj krótko, bezpośrednio i praktycznie.
 Nie pisz jak zwykły chatbot.
@@ -61,10 +65,15 @@ Przykład:
 Nie pracuj przy pompie przy podłączonym akumulatorze.
 
 3. ::next
-Używaj jako zapowiedzi następnego logicznego etapu procedury.
+Używaj wyłącznie wtedy, gdy dostarczona dokumentacja zawiera konkretny dalszy
+ciąg odpowiedzi, którego celowo nie pokazujesz jeszcze w bieżącej wiadomości.
+Znacznik ::next oznacza, że po prośbie "Co dalej?" potrafisz podać nowe kroki lub
+informacje bez powtarzania ani parafrazowania tego, co już napisałeś.
+Nie używaj ::next, jeśli bieżąca odpowiedź wyczerpuje informacje z dokumentacji,
+jeśli tylko sugerujesz inną czynność, albo jeśli czekasz na wynik od technika.
 To nie jest przycisk ani komenda do otwarcia czegoś.
 Nie pisz "kliknij", "otwórz", "pokaż" ani "przejdź", jeśli dokumentacja tego nie wymaga.
-Sekcja ::next ma krótko informować, co technik powinien zrobić po ukończeniu aktualnej checklisty.
+Sekcja ::next ma krótko zapowiadać konkretną, jeszcze niepokazaną część odpowiedzi.
 Nie dawaj więcej niż jednej sekcji ::next w odpowiedzi.
 
 Przykład:
@@ -78,7 +87,8 @@ Format odpowiedzi:
 - Wstęp ma krótko powiedzieć, czego dotyczy aktualny etap i po co technik wykonuje te czynności.
 - Wstęp nie może zawierać punktów checklisty, ostrzeżeń ani informacji spoza dokumentacji.
 - Jeżeli występuje ryzyko bezpieczeństwa, dodaj ::warning.
-- Jeżeli procedura ma dalszy ciąg, dodaj ::next.
+- Dodaj ::next wtedy i tylko wtedy, gdy dokumentacja zawiera konkretny dalszy ciąg,
+  którego nie umieściłeś jeszcze w bieżącej odpowiedzi.
 - Nie używaj JSON.
 - Nie używaj tabel.
 - Nie używaj Markdown nagłówków typu # albo ##.
@@ -116,6 +126,140 @@ _NO_SOURCE_PHRASES = [
 def is_no_source_answer(answer: str) -> bool:
     lower = answer.lower()
     return any(pharse in lower for pharse in _NO_SOURCE_PHRASES)
+
+
+def is_completion_only_answer(answer: str) -> bool:
+    """Return whether the message only reports that the procedure is complete."""
+    normalized = re.sub(r"\s+", " ", answer).strip().rstrip(".! ").casefold()
+    return normalized in {
+        "to już wszystko",
+        "to już wszystko, co dokumentacja zawiera na ten temat",
+    }
+
+
+def has_continuation_marker(answer: str) -> bool:
+    """Return whether the answer explicitly promises an unshown continuation."""
+    return re.search(r"(?mi)^\s*::next\b", answer) is not None
+
+
+def continuation_target(answer: str) -> str:
+    """Extract the concrete continuation promised by the final ::next section."""
+    match = re.search(
+        r"(?ims)^\s*::next\b[ \t]*(.*?)(?=^\s*::(?:checklist|warning|next)\b|\Z)",
+        answer,
+    )
+    return match.group(1).strip() if match else ""
+
+
+_COMPLETION_NOTICE = re.compile(
+    r"\s*To już wszystko,\s*co dokumentacja zawiera na ten temat\.?",
+    re.IGNORECASE,
+)
+
+
+def clean_completion_notice(answer: str) -> str:
+    """Remove a completion notice appended to a real checklist item."""
+    if not _COMPLETION_NOTICE.search(answer) or not re.search(
+        r"(?mi)^\s*::checklist\b", answer
+    ):
+        return answer
+
+    cleaned = _COMPLETION_NOTICE.sub("", answer).rstrip()
+    checklist = re.search(
+        r"(?ims)^\s*::checklist\b(.*?)(?=^\s*::(?:warning|next)\b|\Z)",
+        cleaned,
+    )
+    checklist_content = re.sub(
+        r"[\s\-*.,;:]+", "", checklist.group(1) if checklist else ""
+    )
+
+    if checklist_content:
+        return cleaned
+    return "To już wszystko, co dokumentacja zawiera na ten temat."
+
+
+def promote_bare_checklist(answer: str) -> str:
+    """Add ::checklist when the model emits multiple untyped bullet items."""
+    if re.search(r"(?mi)^\s*::checklist\b", answer):
+        return answer
+
+    bullet_matches = list(re.finditer(r"(?m)^\s*[-*]\s+\S", answer))
+    if len(bullet_matches) < 2:
+        return answer
+
+    first_bullet_start = bullet_matches[0].start()
+    prefix = answer[:first_bullet_start].rstrip()
+    bullets = answer[first_bullet_start:].lstrip()
+    return f"{prefix}\n\n::checklist\n{bullets}".lstrip()
+
+
+def ensure_continuation_intro(answer: str) -> str:
+    """Add a short lead-in when a continuation contains only checklist items."""
+    checklist = re.search(r"(?mi)^\s*::checklist\b", answer)
+    if not checklist or answer[: checklist.start()].strip():
+        return answer
+    return f"Kolejny etap:\n\n{answer.lstrip()}"
+
+
+def _checklist_items(content: str) -> list[str]:
+    normalized = re.sub(r"\s+", " ", content).strip()
+    markers = list(re.finditer(r"[-*]\s+", normalized))
+    if markers:
+        return [
+            normalized[
+                marker.end() : markers[index + 1].start()
+                if index + 1 < len(markers)
+                else len(normalized)
+            ].strip()
+            for index, marker in enumerate(markers)
+            if normalized[
+                marker.end() : markers[index + 1].start()
+                if index + 1 < len(markers)
+                else len(normalized)
+            ].strip()
+        ]
+    return [line.strip() for line in content.splitlines() if line.strip()]
+
+
+def limit_checklist_items(answer: str, limit: int = 6) -> str:
+    """Enforce a response-wide checklist limit and turn overflow into ::next."""
+    directive_pattern = re.compile(r"::(checklist|warning|next)\b[ \t]*", re.IGNORECASE)
+    matches = list(directive_pattern.finditer(answer))
+    if not matches:
+        return answer
+
+    parts = [answer[: matches[0].start()].rstrip()]
+    remaining = limit
+    omitted_items: list[str] = []
+    existing_next = ""
+
+    for index, match in enumerate(matches):
+        block_type = match.group(1).lower()
+        content_end = (
+            matches[index + 1].start() if index + 1 < len(matches) else len(answer)
+        )
+        content = answer[match.end() : content_end].strip()
+
+        if block_type == "checklist":
+            items = _checklist_items(content)
+            kept_items = items[: max(remaining, 0)]
+            omitted_items.extend(items[len(kept_items) :])
+            remaining -= len(kept_items)
+            if kept_items:
+                parts.append(
+                    "::checklist\n" + "\n".join(f"- {item}" for item in kept_items)
+                )
+        elif block_type != "next":
+            parts.append(f"::{block_type}\n{content}".rstrip())
+        elif not existing_next:
+            existing_next = content
+
+    if omitted_items:
+        parts.append(f"::next\nNastępnie: {omitted_items[0]}")
+    elif existing_next:
+        parts.append(f"::next\n{existing_next}".rstrip())
+
+    return "\n\n".join(part for part in parts if part).strip()
 
 
 def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
@@ -166,6 +310,8 @@ def _messages(
     context_text: str,
     history_messages: list[ChatCompletionMessageParam],
     ranked_plan: str = "",
+    continuation_requested: bool = False,
+    continuation_hint: str = "",
 ) -> list[ChatCompletionMessageParam]:
     plan_instruction = ""
     if ranked_plan.startswith("WYNIK DIAGNOSTYKI"):
@@ -188,13 +334,38 @@ def _messages(
             "Nie pokazuj wartości score ani metadanych. Nie stwierdzaj, że znaleziono "
             "konkretną przyczynę, dopóki wynik sprawdzenia jej nie potwierdzi."
         )
+    continuation_instruction = ""
+    if continuation_requested:
+        target_instruction = (
+            f' Zacznij od rozwinięcia tej zapowiedzianej części: "{continuation_hint}". '
+            "Poprzednia odpowiedź obiecała ten dalszy ciąg przez ::next, więc nie "
+            "odpowiadaj, że to już wszystko, zanim go przedstawisz."
+            if continuation_hint
+            else ""
+        )
+        continuation_instruction = (
+            "\n\nUżytkownik prosi o kontynuację. Wszystkie wcześniejsze odpowiedzi "
+            "asystenta w historii zostały już pokazane. Podaj wyłącznie nowe kroki "
+            "lub informacje, których nie ma w tych odpowiedziach. Nie parafrazuj ich i "
+            f"nie rozpoczynaj procedury od nowa.{target_instruction} Jeśli dokumentacja nie zawiera już "
+            "nowej treści bezpośrednio kontynuującej odpowiedź, napisz tylko: "
+            '"To już wszystko, co dokumentacja zawiera na ten temat." Nie używaj '
+            "wtedy checklisty. Jeśli podajesz choć jeden nowy krok, nie dodawaj tego "
+            "zdania ani żadnego innego komunikatu o końcu; po prostu zakończ odpowiedź "
+            "na ostatnim kroku i nie dodawaj ::next. Każdą listę czynności poprzedź "
+            "krótkim wprowadzeniem oraz dyrektywą ::checklist; nie zwracaj surowej listy "
+            "punktowanej bez dyrektywy."
+        )
     plan_section = f"\n\n{ranked_plan}\n\n{plan_instruction}" if ranked_plan else ""
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         *history_messages,
         {
             "role": "user",
-            "content": f"Context:\n{context_text}{plan_section}\n\nQuestion:\n{question}\n\nAnswer in Polish.",
+            "content": (
+                f"Context:\n{context_text}{plan_section}{continuation_instruction}"
+                f"\n\nQuestion:\n{question}\n\nAnswer in Polish."
+            ),
         },
     ]
 
@@ -208,6 +379,8 @@ async def stream_query(
     *,
     exclude_message_id: int | None = None,
     ranked_plan: str = "",
+    continuation_requested: bool = False,
+    continuation_hint: str = "",
 ) -> AsyncGenerator[str, None]:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     context_text = _build_context(chunks)
@@ -216,7 +389,14 @@ async def stream_query(
         session, thread_id, 16, exclude_id=exclude_message_id
     )
     history_messages = _build_history_messages(recent_thread_messages)
-    messages = _messages(question, context_text, history_messages, ranked_plan)
+    messages = _messages(
+        question,
+        context_text,
+        history_messages,
+        ranked_plan,
+        continuation_requested,
+        continuation_hint,
+    )
 
     stream = await client.chat.completions.create(
         model=settings.openai_chat_model,

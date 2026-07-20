@@ -68,7 +68,8 @@ type DeviceAttachmentPayload = {
 type ThreadMessagePayload = {
 	id: number;
 	content: string;
-	sender: 'user' | 'system';
+	sender: 'user' | 'assistant';
+	has_continuation: boolean;
 };
 
 const FILE_ICON_OPTIONS = [
@@ -481,6 +482,7 @@ export default function ChatScreen() {
 						id: message.id,
 						sender: message.sender === 'user' ? 'user' : 'ai',
 						text: message.content,
+						hasContinuation: message.has_continuation,
 					})),
 				);
 			} catch (error: any) {
@@ -549,6 +551,18 @@ export default function ChatScreen() {
 		void askAPI(question).finally(() => {
 			retryInProgressRef.current = false;
 		});
+	};
+
+	const handleContinueMessage = () => {
+		if (isLoading || isGenerating) return;
+
+		const question = 'Co dalej?';
+		handleStop();
+		setMessages((currentMessages) => [
+			...currentMessages,
+			{ id: Date.now(), sender: 'user', text: question, isSpeaking: false },
+		]);
+		void askAPI(question);
 	};
 
 	const handleMicPressWithFeedback = () => {
@@ -641,6 +655,7 @@ export default function ChatScreen() {
 		onOpenSchema: openSchemaFullscreen,
 		onOpenSource: openMessageSource,
 		onRetryMessage: handleRetryMessage,
+		onContinueMessage: handleContinueMessage,
 		isRetryDisabled: isLoading || isGenerating,
 		onUserMessageLayout: handleUserMessageLayout,
 		onMicPress: handleMicPressWithFeedback,

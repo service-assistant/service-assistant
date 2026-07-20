@@ -129,6 +129,7 @@ describe('ChatMessages', () => {
 		onOpenSchema: jest.fn(),
 		onOpenSource: jest.fn(),
 		onRetryMessage: jest.fn(),
+		onContinueMessage: jest.fn(),
 		onUserMessageLayout: jest.fn(),
 	};
 
@@ -225,6 +226,34 @@ describe('ChatMessages', () => {
 		expect(feedbackIcons).toHaveLength(0);
 		expect(findByText(tree, 'Czy ta odpowiedź była pomocna?')).toBeFalsy();
 		expect(feedbackButtons).toHaveLength(0);
+	});
+
+	test('renders continuation action only for the latest flagged answer', () => {
+		const onContinueMessage = jest.fn();
+		const latestMessage: ChatMessageItem = {
+			id: 2,
+			sender: 'ai',
+			text: 'Drugi etap jest dostępny.',
+			hasContinuation: true,
+		};
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[
+					{ id: 1, sender: 'ai', text: 'Stara odpowiedź', hasContinuation: true },
+					latestMessage,
+				]}
+				onContinueMessage={onContinueMessage}
+			/>
+		);
+		const continueButtons = findByType(tree, 'TouchableOpacity').filter(
+			(button) => button.props.accessibilityLabel === 'Wyślij wiadomość Co dalej?',
+		);
+
+		expect(continueButtons).toHaveLength(1);
+		expect(findByText(tree, 'Co dalej?')).toBeTruthy();
+		continueButtons[0].props.onPress();
+		expect(onContinueMessage).toHaveBeenCalledWith(latestMessage);
 	});
 
 	test('renders structured assistant directives', () => {

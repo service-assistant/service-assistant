@@ -43,6 +43,7 @@ export type ChatMessageItem = {
 	sourceAttachmentPage?: number;
 	sourceReferences?: ChatMessageSourceReference[];
 	retryQuestion?: string;
+	hasContinuation?: boolean;
 };
 
 type ChatMessagesProps<TMessage extends ChatMessageItem> = {
@@ -53,6 +54,7 @@ type ChatMessagesProps<TMessage extends ChatMessageItem> = {
 	onOpenSchema: (imageSource: SchemaImageSource) => void;
 	onOpenSource: (source: TMessage | ChatMessageSourceReference) => void;
 	onRetryMessage: (message: TMessage) => void;
+	onContinueMessage: (message: TMessage) => void;
 	isRetryDisabled?: boolean;
 	onUserMessageLayout: (message: TMessage, y: number) => void;
 	lightMode?: boolean;
@@ -651,13 +653,14 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 	onOpenSchema,
 	onOpenSource,
 	onRetryMessage,
+	onContinueMessage,
 	isRetryDisabled = false,
 	onUserMessageLayout,
 	lightMode = false,
 }: ChatMessagesProps<TMessage>) {
 	return (
 		<>
-			{messages.map((message) =>
+			{messages.map((message, messageIndex) =>
 				message.sender === 'user' ? (
 					<View
 						key={message.id}
@@ -853,6 +856,41 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 								/>
 								<Text className='ml-2 text-[13px] font-bold tracking-wide text-[#FF7A00]'>
 									WYŚLIJ PONOWNIE
+								</Text>
+							</TouchableOpacity>
+						) : null}
+						{message.hasContinuation && messageIndex === messages.length - 1 ? (
+							<TouchableOpacity
+								onPress={() => onContinueMessage(message)}
+								disabled={isRetryDisabled}
+								accessibilityRole='button'
+								accessibilityLabel='Wyślij wiadomość Co dalej?'
+								className='mt-5 self-start flex-row items-center justify-center'
+								style={{
+									height: compact ? 42 : 46,
+									paddingHorizontal: compact ? 16 : 22,
+									borderRadius: compact ? 10 : 12,
+									borderWidth: 1.5,
+									borderColor: PRIMARY_ORANGE,
+									backgroundColor: lightMode
+										? '#FFF7ED'
+										: 'rgba(255, 122, 0, 0.12)',
+									opacity: isRetryDisabled ? 0.5 : 1,
+								}}>
+								<Feather
+									name='arrow-right'
+									size={compact ? 17 : 19}
+									color={PRIMARY_ORANGE}
+								/>
+								<Text
+									style={{
+										marginLeft: 8,
+										color: lightMode ? '#C2410C' : PRIMARY_ORANGE,
+										fontSize: compact ? 14 : 16,
+										lineHeight: compact ? 18 : 21,
+										fontWeight: '700',
+									}}>
+									Co dalej?
 								</Text>
 							</TouchableOpacity>
 						) : null}

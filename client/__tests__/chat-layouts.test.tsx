@@ -138,6 +138,7 @@ const createLayoutProps = () => ({
 	onOpenSchema: jest.fn(),
 	onOpenSource: jest.fn(),
 	onRetryMessage: jest.fn(),
+	onContinueMessage: jest.fn(),
 	onUserMessageLayout: jest.fn(),
 	onMicPress: jest.fn(),
 	onWritingPress: jest.fn(),

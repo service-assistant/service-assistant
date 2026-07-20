@@ -218,6 +218,7 @@ async def test_should_send_message_and_return_assistant_reply(
     assert message_data is not None
     assert message_data["sender"] == "assistant"
     assert message_data["content"] == "Test response"
+    assert message_data["has_continuation"] is False
     assert isinstance(message_data["id"], int)
 
 
@@ -325,6 +326,78 @@ async def test_should_list_messages_in_thread_chronologically(client, session):
     assert messages[0]["content"] == "User question"
     assert messages[1]["sender"] == "assistant"
     assert messages[1]["content"] == "Assistant answer"
+    assert messages[1]["has_continuation"] is False
+
+
+async def test_should_return_continuation_flag_for_assistant_reply(
+    client, session, mock_azure_embeddings, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+
+    async def stream_with_next_marker():
+        event = mocker.MagicMock()
+        event.choices[
+            0
+        ].delta.content = "Pierwszy etap.\n\n::next\nDokumentacja zawiera dalsze kroki."
+        yield event
+
+    mock_openai_llm.chat.completions.create = mocker.AsyncMock(
+        return_value=stream_with_next_marker()
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "How do I complete the procedure?"},
+    )
+
+    lines = response.text.splitlines()
+    message_data = next(
+        json.loads(lines[index + 1].removeprefix("data: "))
+        for index, line in enumerate(lines)
+        if line == "event: message"
+    )
+    assert message_data["has_continuation"] is True
+
+    history_response = await client.get(f"/api/threads/{thread.id}/messages")
+    assert history_response.json()[-1]["has_continuation"] is True
+
+
+async def test_should_continue_from_previous_next_section(
+    client, session, mock_azure_embeddings, mock_openai_llm
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    await create_message(
+        session,
+        thread.id,
+        content="Pierwszy etap.\n\n::next\nDokręć zacisk węża.",
+        sender=MessageSender.assistant,
+    )
+    mock_openai_llm.responses.create.return_value.output_text = "1"
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "Co dalej?"},
+    )
+
+    lines = response.text.splitlines()
+    message_data = next(
+        json.loads(lines[index + 1].removeprefix("data: "))
+        for index, line in enumerate(lines)
+        if line == "event: message"
+    )
+    assert message_data["content"] == "Test response"
+    assert message_data["has_continuation"] is False
+    mock_openai_llm.responses.create.assert_not_awaited()
+    llm_prompt = mock_openai_llm.chat.completions.create.call_args.kwargs["messages"][
+        -1
+    ]["content"]
+    assert "Dokręć zacisk węża" in llm_prompt
 
 
 async def test_should_return_empty_list_when_thread_has_no_messages(client, session):
