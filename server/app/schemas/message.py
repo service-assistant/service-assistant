@@ -1,20 +1,23 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.models.message import MessageSender
 
 
 class MessageCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     content: str = Field(
         description="Text of the user message.",
         examples=["What does fault code E-23 mean and how do I clear it?"],
     )
-    diagnostic_mode_2002: bool = Field(
-        default=True,
-        description=(
-            "Whether the experimental Next Best Step flow should handle error 2:002."
+    diagnostic_mode_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "diagnostic_mode_enabled", "diagnostic_mode_2002"
         ),
+        description="Whether the Next Best Step diagnostic flow is enabled.",
     )
 
 

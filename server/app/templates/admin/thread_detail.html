@@ -142,7 +142,7 @@
     function parseAssistantBlocks(text) {
         const blocks = [];
         const normalized = text.replace(/\r\n/g, '\n');
-        const directiveRe = /::(checklist|warning|next)\b[ \t]*/gi;
+        const directiveRe = /::(checklist|warning|next)(?![a-ząćęłńóśźż0-9_])[ \t]*/g;
         const matches = [...normalized.matchAll(directiveRe)];
 
         function pushBlock(type, content) {
@@ -180,16 +180,12 @@
     }
 
     const WARN_SVG = `<svg class="shrink-0 w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>`;
-    const NEXT_SVG = `<svg class="shrink-0 w-4 h-4 text-gray-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>`;
 
     function renderAssistantBlocks(blocks) {
         return blocks.map((block, i) => {
             if (block.type === 'checklist') {
                 const items = block.items.map(item =>
-                    `<div class="flex items-start gap-2.5 mb-2.5">
-                        <div class="shrink-0 w-4 h-4 mt-0.5 border border-orange-500 rounded" style="min-width:16px;min-height:16px"></div>
-                        <span>${esc(item)}</span>
-                    </div>`
+                    `<div class="mb-2.5"><span>${esc(item)}</span></div>`
                 ).join('');
                 return `<div class="mt-2">${items}</div>`;
             }
@@ -199,9 +195,7 @@
                 </div>`;
             }
             if (block.type === 'next') {
-                return `<div class="flex items-start gap-2.5 mt-3">
-                    ${NEXT_SVG}<span>${esc(block.content)}</span>
-                </div>`;
+                return `<div class="mt-3"><span>${esc(block.content)}</span></div>`;
             }
             return `<p class="whitespace-pre-wrap break-words${i > 0 ? ' mt-2' : ''}">${esc(block.content)}</p>`;
         }).join('');

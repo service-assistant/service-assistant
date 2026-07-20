@@ -6,7 +6,7 @@ export type AppSettings = {
 	lightThemeEnabled: boolean;
 	wakeWordEnabled: boolean;
 	ttsEnabled: boolean;
-	diagnosticMode2002Enabled: boolean;
+	diagnosticModeEnabled: boolean;
 };
 
 const STORAGE_KEY = 'service-assistant:app-settings';
@@ -18,13 +18,19 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
 	lightThemeEnabled: false,
 	wakeWordEnabled: false,
 	ttsEnabled: false,
-	diagnosticMode2002Enabled: true,
+	diagnosticModeEnabled: false,
 };
 
 const parseStoredAppSettings = (storedValue: string | null): Partial<AppSettings> => {
 	if (!storedValue) return {};
 
-	const parsedValue = JSON.parse(storedValue) as Partial<AppSettings>;
+	const parsedValue = JSON.parse(storedValue) as Partial<AppSettings> & {
+		diagnosticMode2002Enabled?: boolean;
+	};
+	const diagnosticModeEnabled =
+		typeof parsedValue.diagnosticModeEnabled === 'boolean'
+			? parsedValue.diagnosticModeEnabled
+			: parsedValue.diagnosticMode2002Enabled;
 
 	return {
 		...(typeof parsedValue.lightThemeEnabled === 'boolean'
@@ -36,8 +42,8 @@ const parseStoredAppSettings = (storedValue: string | null): Partial<AppSettings
 		...(typeof parsedValue.ttsEnabled === 'boolean'
 			? { ttsEnabled: parsedValue.ttsEnabled }
 			: {}),
-		...(typeof parsedValue.diagnosticMode2002Enabled === 'boolean'
-			? { diagnosticMode2002Enabled: parsedValue.diagnosticMode2002Enabled }
+		...(typeof diagnosticModeEnabled === 'boolean'
+			? { diagnosticModeEnabled }
 			: {}),
 	};
 };
@@ -146,7 +152,7 @@ export const useAppSettings = () => {
 		setLightThemeEnabled: (value: boolean) => setAppSetting('lightThemeEnabled', value),
 		setWakeWordEnabled: (value: boolean) => setAppSetting('wakeWordEnabled', value),
 		setTtsEnabled: (value: boolean) => setAppSetting('ttsEnabled', value),
-		setDiagnosticMode2002Enabled: (value: boolean) =>
-			setAppSetting('diagnosticMode2002Enabled', value),
+		setDiagnosticModeEnabled: (value: boolean) =>
+			setAppSetting('diagnosticModeEnabled', value),
 	};
 };

@@ -83,7 +83,7 @@ describe('use-app-settings store', () => {
 				lightThemeEnabled: true,
 				wakeWordEnabled: true,
 				ttsEnabled: true,
-				diagnosticMode2002Enabled: false,
+				diagnosticModeEnabled: false,
 			});
 		});
 	});
@@ -98,7 +98,7 @@ describe('use-app-settings store', () => {
 			setAppSetting('lightThemeEnabled', true);
 			setAppSetting('wakeWordEnabled', true);
 			setAppSetting('ttsEnabled', true);
-			setAppSetting('diagnosticMode2002Enabled', false);
+			setAppSetting('diagnosticModeEnabled', false);
 
 			expect(localStorage.setItem).toHaveBeenLastCalledWith(
 				STORAGE_KEY,
@@ -106,7 +106,7 @@ describe('use-app-settings store', () => {
 					lightThemeEnabled: true,
 					wakeWordEnabled: true,
 					ttsEnabled: true,
-					diagnosticMode2002Enabled: false,
+					diagnosticModeEnabled: false,
 				}),
 			);
 		});
@@ -131,7 +131,7 @@ describe('use-app-settings store', () => {
 				lightThemeEnabled: false,
 				wakeWordEnabled: false,
 				ttsEnabled: false,
-				diagnosticMode2002Enabled: true,
+				diagnosticModeEnabled: false,
 			});
 
 			await loadAppSettings();
@@ -142,7 +142,7 @@ describe('use-app-settings store', () => {
 				lightThemeEnabled: true,
 				wakeWordEnabled: true,
 				ttsEnabled: true,
-				diagnosticMode2002Enabled: false,
+				diagnosticModeEnabled: false,
 			});
 		});
 	});
@@ -156,7 +156,7 @@ describe('use-app-settings store', () => {
 			setAppSetting('lightThemeEnabled', true);
 			setAppSetting('wakeWordEnabled', true);
 			setAppSetting('ttsEnabled', true);
-			setAppSetting('diagnosticMode2002Enabled', false);
+			setAppSetting('diagnosticModeEnabled', false);
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			expect(mockWriteAsStringAsync).toHaveBeenLastCalledWith(
@@ -165,7 +165,7 @@ describe('use-app-settings store', () => {
 					lightThemeEnabled: true,
 					wakeWordEnabled: true,
 					ttsEnabled: true,
-					diagnosticMode2002Enabled: false,
+					diagnosticModeEnabled: false,
 				}),
 			);
 		});

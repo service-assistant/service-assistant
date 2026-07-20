@@ -2,6 +2,7 @@ export interface Message {
 	id: number;
 	sender: 'ai' | 'user';
 	text: string;
+	routerDecision?: string;
 	isSpeaking?: boolean;
 	hasContinuation?: boolean;
 }

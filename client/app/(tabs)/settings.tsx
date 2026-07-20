@@ -22,11 +22,11 @@ export default function SettingsScreen() {
 		lightThemeEnabled,
 		wakeWordEnabled,
 		ttsEnabled,
-		diagnosticMode2002Enabled,
+		diagnosticModeEnabled,
 		setLightThemeEnabled,
 		setWakeWordEnabled,
 		setTtsEnabled,
-		setDiagnosticMode2002Enabled,
+		setDiagnosticModeEnabled,
 	} = useAppSettings();
 	const { width, height } = useWindowDimensions();
 	const shortestScreenSide = Math.min(width, height);
@@ -162,10 +162,10 @@ export default function SettingsScreen() {
 					</TouchableOpacity>
 
 					<TouchableOpacity
-						onPress={() => setDiagnosticMode2002Enabled(!diagnosticMode2002Enabled)}
+						onPress={() => setDiagnosticModeEnabled(!diagnosticModeEnabled)}
 						accessibilityRole='switch'
-						accessibilityState={{ checked: diagnosticMode2002Enabled }}
-						accessibilityLabel='Tryb diagnostyczny dla błędu 2:002'
+						accessibilityState={{ checked: diagnosticModeEnabled }}
+						accessibilityLabel='Tryb diagnostyczny Next Best Step'
 						activeOpacity={0.75}
 						className={`flex-row items-center justify-between px-4 border-b ${rowBorderClassName}`}
 						style={{ paddingVertical: rowPaddingVertical }}>
@@ -176,8 +176,8 @@ export default function SettingsScreen() {
 							</View>
 							<View className='flex-1'>
 								<Text className={`${rowTitleClassName} text-base font-semibold`}>
-									Tryb diagnostyczny 2:002
-								</Text>
+	Tryb diagnostyczny
+</Text>
 								<Text
 									className={`${lightThemeEnabled ? 'text-[#52525B]' : 'text-zinc-400'} text-sm mt-1`}>
 									Prowadzi technika krok po kroku i pokazuje jedną akcję naraz.
@@ -185,14 +185,12 @@ export default function SettingsScreen() {
 							</View>
 						</View>
 						<Switch
-							value={diagnosticMode2002Enabled}
-							onValueChange={setDiagnosticMode2002Enabled}
-							trackColor={switchTrackColor}
-							thumbColor={
-								diagnosticMode2002Enabled ? PRIMARY_ORANGE : inactiveThumbColor
-							}
-							ios_backgroundColor={switchBackgroundColor}
-						/>
+	value={diagnosticModeEnabled}
+	onValueChange={setDiagnosticModeEnabled}
+	trackColor={switchTrackColor}
+	thumbColor={diagnosticModeEnabled ? PRIMARY_ORANGE : inactiveThumbColor}
+	ios_backgroundColor={switchBackgroundColor}
+/>
 					</TouchableOpacity>
 
 					<TouchableOpacity

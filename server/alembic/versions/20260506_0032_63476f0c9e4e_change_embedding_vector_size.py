@@ -5,14 +5,15 @@ Revises: 5b668b89ccdc
 Create Date: 2026-05-06 00:32:32.092296
 
 """
+
 from typing import Sequence, Union
 
 import pgvector.sqlalchemy
 from alembic import op
 
 
-revision: str = '63476f0c9e4e'
-down_revision: Union[str, None] = '5b668b89ccdc'
+revision: str = "63476f0c9e4e"
+down_revision: Union[str, None] = "5b668b89ccdc"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

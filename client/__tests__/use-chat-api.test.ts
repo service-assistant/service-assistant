@@ -66,7 +66,7 @@ const createDeferred = <T>() => {
 const createHarness = (
 	params: {
 		currentThreadId?: number | null;
-		diagnosticMode2002Enabled?: boolean;
+		diagnosticModeEnabled?: boolean;
 		ttsEnabled?: boolean;
 	} = {},
 ) => {
@@ -114,7 +114,7 @@ const createHarness = (
 		setIsLoading,
 		setIsGenerating,
 		setCurrentImage,
-		diagnosticMode2002Enabled: params.diagnosticMode2002Enabled,
+		diagnosticModeEnabled: params.diagnosticModeEnabled,
 		playAssistantAudio,
 		ttsEnabled: params.ttsEnabled,
 		onServiceError,
@@ -187,8 +187,12 @@ describe('useChatApi', () => {
 			},
 			body: JSON.stringify({
 				content: 'How do I start this device?',
-				diagnostic_mode_2002: true,
+				diagnostic_mode_enabled: false,
 			}),
+		});
+
+		MockEventSource.instances[0].emit('route', {
+			data: 'standard_query',
 		});
 
 		MockEventSource.instances[0].emit('chunk', {
@@ -200,6 +204,7 @@ describe('useChatApi', () => {
 				id: 1000.5,
 				sender: 'ai',
 				text: 'Steps:\n1. Turn key\n2. Press start',
+				routerDecision: 'standard_query',
 			},
 		]);
 		expect(harness.state.isLoading).toBe(false);
@@ -230,10 +235,10 @@ describe('useChatApi', () => {
 		expect(harness.state.isLoading).toBe(false);
 	});
 
-	test('sends the disabled 2:002 diagnostic mode to the server', async () => {
+	test('sends the disabled diagnostic mode to the server', async () => {
 		const harness = createHarness({
 			currentThreadId: 321,
-			diagnosticMode2002Enabled: false,
+			diagnosticModeEnabled: false,
 		});
 
 		const request = harness.api.askAPI('Mam błąd 2:002');
@@ -242,7 +247,7 @@ describe('useChatApi', () => {
 		expect(MockEventSource.instances[0].options).toMatchObject({
 			body: JSON.stringify({
 				content: 'Mam błąd 2:002',
-				diagnostic_mode_2002: false,
+				diagnostic_mode_enabled: false,
 			}),
 		});
 

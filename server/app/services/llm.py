@@ -9,6 +9,7 @@ from sqlalchemy import select
 
 from ..config import Settings
 from ..models import Message
+from .next_best_step import DiagnosticPlan, DiagnosticPlanStatus
 
 SYSTEM_PROMPT: Final[str] = """
 Jesteś pomocnym asystentem serwisowym dla technika pracującego przy urządzeniu.
@@ -86,6 +87,8 @@ Format odpowiedzi:
 - Jeżeli odpowiedź zawiera czynności do wykonania, zacznij od 1–2 krótkich zdań zwykłego tekstu, a potem użyj ::checklist.
 - Wstęp ma krótko powiedzieć, czego dotyczy aktualny etap i po co technik wykonuje te czynności.
 - Wstęp nie może zawierać punktów checklisty, ostrzeżeń ani informacji spoza dokumentacji.
+- Wyjątek: gdy otrzymasz "Diagnostic plan JSON" ze statusem "actions", nie dodawaj
+  żadnego wstępu ani nagłówka i zacznij odpowiedź bezpośrednio od ::checklist.
 - Jeżeli występuje ryzyko bezpieczeństwa, dodaj ::warning.
 - Dodaj ::next wtedy i tylko wtedy, gdy dokumentacja zawiera konkretny dalszy ciąg,
   którego nie umieściłeś jeszcze w bieżącej odpowiedzi.
@@ -309,32 +312,40 @@ def _messages(
     question: str,
     context_text: str,
     history_messages: list[ChatCompletionMessageParam],
-    ranked_plan: str = "",
+    diagnostic_plan: DiagnosticPlan | None = None,
     continuation_requested: bool = False,
     continuation_hint: str = "",
 ) -> list[ChatCompletionMessageParam]:
     plan_instruction = ""
-    if ranked_plan.startswith("WYNIK DIAGNOSTYKI"):
+    if diagnostic_plan and diagnostic_plan.status == DiagnosticPlanStatus.complete:
         plan_instruction = (
             "Krótko potwierdź wynik technika i zakończenie diagnostyki. "
             "Nie dodawaj checklisty ani kolejnej akcji."
         )
-    elif ranked_plan.startswith("BRAK NASTĘPNEJ AKCJI"):
+    elif (
+        diagnostic_plan
+        and diagnostic_plan.status == DiagnosticPlanStatus.no_next_action
+    ):
         plan_instruction = (
             "Krótko potwierdź wynik technika i powiedz, że dokumentacja nie pozwala "
             "wskazać następnego kroku. Nie dodawaj checklisty ani własnych działań."
         )
-    elif ranked_plan:
+    elif diagnostic_plan and diagnostic_plan.status == DiagnosticPlanStatus.actions:
         plan_instruction = (
-            "Dla kodu 2:002 pokaż technikowi WYŁĄCZNIE pierwszą akcję z planu. "
-            "Nie wspominaj o żadnej kolejnej akcji, możliwej wymianie części ani pełnej "
-            "kolejności diagnostyki. Odpowiedź ma zawierać: jedno krótkie zdanie, po co "
-            "wykonać ten krok; sekcję ::checklist z dokładnie jednym konkretnym zadaniem; "
-            "oraz krótką prośbę o podanie wyniku sprawdzenia. Nie używaj sekcji ::next. "
+            "Dane planu są przekazane jako JSON. Dla diagnozowanego problemu pokaż "
+            "technikowi WYŁĄCZNIE pierwszą akcję z tablicy 'actions'. "
+            "Nie pokazuj pełnej kolejności diagnostyki ani możliwej wymiany części. "
+            "Nie dodawaj wstępu, nagłówka ani zdania opisującego cel diagnostyki. "
+            "Zacznij odpowiedź bezpośrednio od sekcji ::checklist z dokładnie jednym "
+            "konkretnym zadaniem. Nie proś o opis obserwacji, wartość, jednostkę ani "
+            "potwierdzenie wykonania. Nie dodawaj sekcji ::next ani zapowiedzi kolejnego "
+            "kroku. Nie nazywaj ani nie opisuj żadnej przyszłej akcji. "
+            "Punkt checklisty musi zajmować jedną linię. Zakresy zapisuj słowami, np. "
+            "'od 54 do 66 omów', nigdy jako osobny punkt po myślniku. "
             "Nie pokazuj wartości score ani metadanych. Nie stwierdzaj, że znaleziono "
             "konkretną przyczynę, dopóki wynik sprawdzenia jej nie potwierdzi."
         )
-    continuation_instruction = ""
+        continuation_instruction = ""
     if continuation_requested:
         target_instruction = (
             f' Zacznij od rozwinięcia tej zapowiedzianej części: "{continuation_hint}". '
@@ -356,7 +367,14 @@ def _messages(
             "krótkim wprowadzeniem oraz dyrektywą ::checklist; nie zwracaj surowej listy "
             "punktowanej bez dyrektywy."
         )
-    plan_section = f"\n\n{ranked_plan}\n\n{plan_instruction}" if ranked_plan else ""
+
+    plan_section = ""
+    if diagnostic_plan:
+        plan_json = diagnostic_plan.model_dump_json(exclude_none=True, indent=2)
+        plan_section = (
+            f"\n\nDiagnostic plan JSON:\n{plan_json}\n\n{plan_instruction}"
+        )
+
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         *history_messages,
@@ -378,7 +396,7 @@ async def stream_query(
     settings: Settings,
     *,
     exclude_message_id: int | None = None,
-    ranked_plan: str = "",
+    diagnostic_plan: DiagnosticPlan | None = None,
     continuation_requested: bool = False,
     continuation_hint: str = "",
 ) -> AsyncGenerator[str, None]:
@@ -390,13 +408,13 @@ async def stream_query(
     )
     history_messages = _build_history_messages(recent_thread_messages)
     messages = _messages(
-        question,
-        context_text,
-        history_messages,
-        ranked_plan,
-        continuation_requested,
-        continuation_hint,
-    )
+    question,
+    context_text,
+    history_messages,
+    diagnostic_plan,
+    continuation_requested,
+    continuation_hint,
+)
 
     stream = await client.chat.completions.create(
         model=settings.openai_chat_model,

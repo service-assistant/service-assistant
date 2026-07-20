@@ -4,6 +4,7 @@ import type { ChatMessageItem } from '@/components/ChatMessages';
 import ChatMessages, {
 	clampSchemaTranslation,
 	getFocalSchemaTranslation,
+	parseAssistantResponseBlocks,
 	stripResponseDirectivesForSpeech,
 } from '../components/ChatMessages';
 import { findByText, findByType, getTextContent } from '../test-utils/react-tree';
@@ -141,6 +142,33 @@ describe('ChatMessages', () => {
 		).toBe('Intro\ncheck oil\ncheck battery\nstop');
 	});
 
+	test('does not split a numeric range into separate checklist items', () => {
+		expect(
+			parseAssistantResponseBlocks(
+				'::checklist\n- Zmierz rezystancję; oczekiwany zakres to 54 - 66 omów.',
+			),
+		).toEqual([
+			{
+				type: 'checklist',
+				items: ['Zmierz rezystancję; oczekiwany zakres to 54 - 66 omów.'],
+			},
+		]);
+	});
+
+	test('parses next directive glued to Polish text', () => {
+		expect(
+			parseAssistantResponseBlocks(
+				'e poprawnie: tak/nie?::nextJeśli problem pozostanie po aktualnym sprawdzeniu',
+			),
+		).toEqual([
+			{ type: 'text', content: 'e poprawnie: tak/nie?' },
+			{
+				type: 'next',
+				content: 'Jeśli problem pozostanie po aktualnym sprawdzeniu',
+			},
+		]);
+	});
+
 	test('renders user and assistant text messages', () => {
 		const messages: ChatMessageItem[] = [
 			{ id: 1, sender: 'user', text: 'Jak sprawdzić olej?' },
@@ -204,7 +232,52 @@ describe('ChatMessages', () => {
 		expect(onRetryMessage).toHaveBeenCalledWith(interruptedMessage);
 	});
 
-	test('does not render feedback controls for completed assistant messages', () => {
+	test('renders the router decision before the assistant message', () => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[
+					{
+						id: 1,
+						sender: 'ai',
+						text: 'Odpowiedź',
+						routerDecision: 'standard_query',
+					},
+				]}
+			/>
+		);
+
+		expect(getTextContent(tree)).toContain('Router: standard_query');
+		expect(getTextContent(tree).indexOf('Router: standard_query')).toBeLessThan(
+			getTextContent(tree).indexOf('Odpowiedź'),
+		);
+	});
+
+  test('does not render feedback controls for completed assistant messages', () => {
+	const tree = (
+		<ChatMessages
+			{...baseProps}
+			messages={[
+				{ id: 1, sender: 'user', text: 'Pytanie' },
+				{ id: 2, sender: 'ai', text: 'Odpowiedź' },
+			]}
+		/>
+	);
+	const feedbackIcons = findByType(tree, 'Icon').filter((icon) =>
+		['thumbs-up', 'thumbs-down'].includes(icon.props.name),
+	);
+	const feedbackButtons = findByType(tree, 'TouchableOpacity').filter((button) =>
+		['Lubię tę odpowiedź', 'Nie lubię tej odpowiedzi'].includes(
+			button.props.accessibilityLabel,
+		),
+	);
+
+	expect(feedbackIcons).toHaveLength(0);
+	expect(findByText(tree, 'Czy ta odpowiedź była pomocna?')).toBeFalsy();
+	expect(feedbackButtons).toHaveLength(0);
+});
+  
+	test('renders local feedback controls only for completed assistant messages', () => {
 		const tree = (
 			<ChatMessages
 				{...baseProps}
@@ -279,7 +352,7 @@ describe('ChatMessages', () => {
 			true,
 		);
 		expect(findByType(tree, 'Icon').some((icon) => icon.props.name === 'arrow-right')).toBe(
-			true,
+			false,
 		);
 	});
 

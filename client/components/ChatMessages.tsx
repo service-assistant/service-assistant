@@ -35,6 +35,7 @@ export type ChatMessageItem = {
 	id: number;
 	sender: 'user' | 'ai';
 	text: string;
+	routerDecision?: string;
 	isSpeaking?: boolean;
 	schemaImage?: SchemaImageSource;
 	schemaImages?: SchemaImageSource[];
@@ -68,7 +69,7 @@ type AssistantResponseBlock =
 
 export const stripResponseDirectivesForSpeech = (text: string) =>
 	text
-		.replace(/::(checklist|warning|next)\b[ \t]*/gi, '')
+		.replace(/::(checklist|warning|next)(?![a-ząćęłńóśźż0-9_])[ \t]*/g, '')
 		.replace(/^\s*[-*]\s+/gm, '')
 		.trim();
 
@@ -434,10 +435,10 @@ const TypingDotsIndicator = ({ color = '#FFFFFF' }: { color?: string }) => {
 	);
 };
 
-const parseAssistantResponseBlocks = (text: string): AssistantResponseBlock[] => {
+export const parseAssistantResponseBlocks = (text: string): AssistantResponseBlock[] => {
 	const blocks: AssistantResponseBlock[] = [];
 	const normalizedText = text.replace(/\r\n/g, '\n');
-	const directivePattern = /::(checklist|warning|next)\b[ \t]*/gi;
+	const directivePattern = /::(checklist|warning|next)(?![a-ząćęłńóśźż0-9_])[ \t]*/g;
 	const matches = Array.from(normalizedText.matchAll(directivePattern));
 
 	const pushTypedBlock = (type: AssistantResponseBlock['type'], content: string) => {
@@ -445,30 +446,17 @@ const parseAssistantResponseBlocks = (text: string): AssistantResponseBlock[] =>
 		if (!trimmedContent) return;
 
 		if (type === 'checklist') {
-			const checklistContent = content.replace(/\s+/g, ' ').trim();
-			const itemMarkers = Array.from(checklistContent.matchAll(/[-*]\s+/g));
-			const items =
-				itemMarkers.length > 0
-					? itemMarkers
-							.map((match, index) => {
-								const itemStart = (match.index ?? 0) + match[0].length;
-								const itemEnd =
-									index + 1 < itemMarkers.length
-										? (itemMarkers[index + 1].index ?? checklistContent.length)
-										: checklistContent.length;
-
-								return checklistContent.slice(itemStart, itemEnd).trim();
-							})
-							.filter(Boolean)
-					: content
-							.split('\n')
-							.map((line) =>
-								line
-									.trim()
-									.replace(/^[-*]\s+/, '')
-									.trim(),
-							)
-							.filter(Boolean);
+			const lines = content.split('\n');
+			const bulletLines = lines.filter((line) => /^\s*[-*]\s+/.test(line));
+			const items = (bulletLines.length > 0 ? bulletLines : [content])
+				.map((line) =>
+					line
+						.trim()
+						.replace(/^[-*]\s+/, '')
+						.replace(/\s+/g, ' ')
+						.trim(),
+				)
+				.filter(Boolean);
 
 			if (items.length > 0) {
 				blocks.push({ type: 'checklist', items });
@@ -532,31 +520,14 @@ const StructuredAssistantResponse = ({
 							key={`${block.type}-${index}`}
 							style={{ width: '100%', marginTop: 12 }}>
 							{block.items.map((item, itemIndex) => (
-								<View
+								<Text
 									key={`${item}-${itemIndex}`}
 									style={{
-										width: '100%',
-										flexDirection: 'row',
-										alignItems: 'flex-start',
+										...checklistTextStyle,
 										marginBottom: 12,
 									}}>
-									<View
-										style={{
-											width: checklistBoxSize,
-											height: checklistBoxSize,
-											flexShrink: 0,
-											marginRight: 12,
-											marginTop: 2,
-											borderWidth: 1,
-											borderColor: PRIMARY_ORANGE,
-											borderRadius: 6,
-											backgroundColor: 'transparent',
-										}}
-									/>
-									<View style={{ flex: 1, minWidth: 0 }}>
-										<Text style={checklistTextStyle}>{item}</Text>
-									</View>
-								</View>
+									{item}
+								</Text>
 							))}
 						</View>
 					);
@@ -601,37 +572,37 @@ const StructuredAssistantResponse = ({
 				}
 
 				if (block.type === 'next') {
-					return (
-						<View
-							key={`${block.type}-${index}`}
-							style={{
-								width: '100%',
-								flexDirection: 'row',
-								alignItems: 'flex-start',
-								marginTop: 16,
-							}}>
-							<View style={{ flexShrink: 0, marginTop: compact ? 1 : 2 }}>
-								<Feather
-									name='arrow-right'
-									size={compact ? 22 : 27}
-									color={lightMode ? '#3F3F46' : '#F4F4F5'}
-								/>
-							</View>
-							<Text
-								style={{
-									flex: 1,
-									minWidth: 0,
-									marginLeft: 12,
-									paddingTop: compact ? 3 : 4,
-									color: lightMode ? '#27272A' : '#F4F4F5',
-									fontSize: compact ? 16 : 18,
-									lineHeight: compact ? 23 : 25,
-								}}>
-								{block.content}
-							</Text>
-						</View>
-					);
-				}
+	return (
+		<View
+			key={`${block.type}-${index}`}
+			style={{
+				width: '100%',
+				flexDirection: 'row',
+				alignItems: 'flex-start',
+				marginTop: 16,
+			}}>
+			<View style={{ flexShrink: 0, marginTop: compact ? 1 : 2 }}>
+				<Feather
+					name='arrow-right'
+					size={compact ? 22 : 27}
+					color={lightMode ? '#3F3F46' : '#F4F4F5'}
+				/>
+			</View>
+			<Text
+				style={{
+					flex: 1,
+					minWidth: 0,
+					marginLeft: 12,
+					paddingTop: compact ? 3 : 4,
+					color: lightMode ? '#27272A' : '#F4F4F5',
+					fontSize: compact ? 16 : 18,
+					lineHeight: compact ? 23 : 25,
+				}}>
+				{block.content}
+			</Text>
+		</View>
+	);
+}
 
 				return (
 					<Text
@@ -692,25 +663,34 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 					</View>
 				) : (
 					<View
-						key={message.id}
-						className={compact ? 'self-start mb-5' : 'self-start mb-7'}
-						style={
-							message.schemaImage ||
-							message.schemaImages?.length ||
-							message.sourceAttachmentId ||
-							message.sourceReferences?.length
-								? { width: compact ? '96%' : '78%' }
-								: { maxWidth: compact ? '96%' : '78%' }
-						}>
-						{message.text ? (
-							<StructuredAssistantResponse
-								text={message.text}
-								compact={compact}
-								lightMode={lightMode}
-							/>
-						) : (
-							<TypingDotsIndicator color={PRIMARY_ORANGE} />
-						)}
+	key={message.id}
+	className={compact ? 'self-start mb-5' : 'self-start mb-7'}
+	style={
+		message.schemaImage ||
+		message.schemaImages?.length ||
+		message.sourceAttachmentId ||
+		message.sourceReferences?.length
+			? { width: compact ? '96%' : '78%' }
+			: { maxWidth: compact ? '96%' : '78%' }
+	}>
+	{message.routerDecision ? (
+		<Text
+			className={`${
+				lightMode ? 'text-[#52525B]' : 'text-[#AEB3BA]'
+			} text-[12px] tracking-wide mb-2`}>
+			Router: {message.routerDecision}
+		</Text>
+	) : null}
+
+	{message.text ? (
+		<StructuredAssistantResponse
+			text={message.text}
+			compact={compact}
+			lightMode={lightMode}
+		/>
+	) : (
+		<TypingDotsIndicator color={PRIMARY_ORANGE} />
+	)}
 						{(() => {
 							const schemaImages = (
 								message.schemaImages?.length
