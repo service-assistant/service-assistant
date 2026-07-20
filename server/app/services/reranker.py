@@ -105,7 +105,7 @@ async def rerank_chunks(
                     raise RerankerError(
                         "Voyage returned an invalid JSON response"
                     ) from exc
-                break
+                return [chunks[index] for index in indexes]
             except (httpx.TransportError, RetryableRerankerError) as exc:
                 if attempt >= MAX_RETRIES:
                     raise RerankerError(
@@ -123,4 +123,4 @@ async def rerank_chunks(
                 )
                 await asyncio.sleep(delay)
 
-    return [chunks[index] for index in indexes]
+    raise RerankerError("Voyage reranking completed without a ranking")
