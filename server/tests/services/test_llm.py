@@ -162,7 +162,7 @@ def test_should_instruct_continuation_not_to_repeat_previous_answers():
         continuation_hint="Dokręć zacisk węża.",
     )
 
-    prompt = messages[-1]["content"]
+    prompt = messages[-1].get("content")
     assert isinstance(prompt, str)
     assert "Podaj wyłącznie nowe kroki" in prompt
     assert "nie rozpoczynaj procedury od nowa" in prompt
