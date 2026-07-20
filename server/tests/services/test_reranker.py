@@ -53,7 +53,7 @@ async def test_reranker_sends_translated_query_and_content_only_documents(
 
     assert [chunk["id"] for chunk in result] == [3, 1, 2]
     assert captured == {
-        "timeout": 1.5,
+        "timeout": settings.reranker_timeout_seconds,
         "url": "https://api.voyageai.com/v1/rerank",
         "headers": {
             "Authorization": "Bearer voyage-test-key",
@@ -107,6 +107,9 @@ async def test_reranker_rejects_invalid_or_incomplete_responses(
             return payload
 
     class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            pass
+
         async def __aenter__(self):
             return self
 
@@ -128,6 +131,9 @@ async def test_reranker_converts_http_and_connection_failures_to_reranker_errors
     settings = settings.model_copy(update={"voyage_api_key": "voyage-test-key"})
 
     class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            pass
+
         async def __aenter__(self):
             return self
 
@@ -138,9 +144,12 @@ async def test_reranker_converts_http_and_connection_failures_to_reranker_errors
             raise httpx.ReadTimeout("provider timeout")
 
     mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
+    sleep = mocker.patch("app.services.reranker.asyncio.sleep")
 
     with pytest.raises(RerankerError):
         await rerank_chunks("query", [_chunk(1, "first")], settings)
+
+    assert sleep.await_count == 2
 
 
 async def test_reranker_rejects_non_success_http_status(settings, mocker):
@@ -150,6 +159,9 @@ async def test_reranker_rejects_non_success_http_status(settings, mocker):
         status_code = 503
 
     class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            pass
+
         async def __aenter__(self):
             return self
 
@@ -160,6 +172,42 @@ async def test_reranker_rejects_non_success_http_status(settings, mocker):
             return FakeResponse()
 
     mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
+    sleep = mocker.patch("app.services.reranker.asyncio.sleep")
 
     with pytest.raises(RerankerError):
         await rerank_chunks("query", [_chunk(1, "first")], settings)
+
+    assert sleep.await_count == 2
+
+
+async def test_reranker_retries_rate_limit_and_then_succeeds(settings, mocker):
+    settings = settings.model_copy(update={"voyage_api_key": "voyage-test-key"})
+    responses = [429, 200]
+
+    class FakeResponse:
+        def __init__(self, status_code):
+            self.status_code = status_code
+
+        def json(self):
+            return {"data": [{"index": 0, "relevance_score": 0.9}]}
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            return False
+
+        async def post(self, *args, **kwargs):
+            return FakeResponse(responses.pop(0))
+
+    mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
+    sleep = mocker.patch("app.services.reranker.asyncio.sleep")
+
+    result = await rerank_chunks("query", [_chunk(1, "first")], settings)
+
+    assert [chunk["id"] for chunk in result] == [1]
+    sleep.assert_awaited_once_with(0.25)

@@ -708,7 +708,7 @@ async def test_should_persist_wider_sources_matching_llm_context_on_rerank_fallb
     )
 
     assert response.status_code == 200
-    assert captured["posts"] == 1
+    assert captured["posts"] == 3
     actual_chunks = spy.spy_return
     # Fallback slices the already-fetched pool to at most 3 exact + 7 semantic
     # + 3 BM25 (deduplicated), never the full 3/15/15 expanded pool.

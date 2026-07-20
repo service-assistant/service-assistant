@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     reranker_enabled: bool = False
     voyage_api_key: str | None = None
     reranker_model: str = "rerank-2.5"
-    reranker_timeout_seconds: float = Field(default=1.5, gt=0)
+    reranker_timeout_seconds: float = Field(default=5.0, gt=0)
 
     azure_document_intelligence_endpoint: str
     azure_document_intelligence_key: str

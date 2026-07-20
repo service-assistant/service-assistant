@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import math
 from typing import Final
 
@@ -7,10 +9,18 @@ from ..config import Settings
 from .embedding import RetrievedChunk
 
 VOYAGE_RERANK_URL: Final[str] = "https://api.voyageai.com/v1/rerank"
+MAX_RETRIES: Final[int] = 2
+RETRY_BASE_DELAY_SECONDS: Final[float] = 0.25
+
+logger = logging.getLogger(__name__)
 
 
 class RerankerError(Exception):
     """Raised when the reranker cannot return a valid complete ranking."""
+
+
+class RetryableRerankerError(RerankerError):
+    """Raised for temporary provider failures that are safe to retry."""
 
 
 def _parse_ranking_indexes(payload: object, candidate_count: int) -> list[int]:
@@ -73,21 +83,44 @@ async def rerank_chunks(
         "Content-Type": "application/json",
     }
 
-    try:
-        async with httpx.AsyncClient(
-            timeout=settings.reranker_timeout_seconds
-        ) as client:
-            response = await client.post(
-                VOYAGE_RERANK_URL,
-                headers=headers,
-                json=payload,
-            )
-        if not 200 <= response.status_code < 300:
-            raise RerankerError(f"Voyage returned HTTP {response.status_code}")
-        indexes = _parse_ranking_indexes(response.json(), len(chunks))
-    except RerankerError:
-        raise
-    except Exception as exc:
-        raise RerankerError("Voyage reranking request failed") from exc
+    async with httpx.AsyncClient(timeout=settings.reranker_timeout_seconds) as client:
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                response = await client.post(
+                    VOYAGE_RERANK_URL,
+                    headers=headers,
+                    json=payload,
+                )
+                if response.status_code == 429 or response.status_code >= 500:
+                    raise RetryableRerankerError(
+                        f"Voyage returned HTTP {response.status_code}"
+                    )
+                if not 200 <= response.status_code < 300:
+                    raise RerankerError(f"Voyage returned HTTP {response.status_code}")
+                try:
+                    indexes = _parse_ranking_indexes(response.json(), len(chunks))
+                except RerankerError:
+                    raise
+                except Exception as exc:
+                    raise RerankerError(
+                        "Voyage returned an invalid JSON response"
+                    ) from exc
+                break
+            except (httpx.TransportError, RetryableRerankerError) as exc:
+                if attempt >= MAX_RETRIES:
+                    raise RerankerError(
+                        f"Voyage reranking failed after {attempt + 1} attempts"
+                    ) from exc
+
+                delay = RETRY_BASE_DELAY_SECONDS * (2**attempt)
+                logger.warning(
+                    "Temporary Voyage reranking failure; retrying in %.2fs "
+                    "(attempt %d/%d): %s",
+                    delay,
+                    attempt + 1,
+                    MAX_RETRIES + 1,
+                    exc,
+                )
+                await asyncio.sleep(delay)
 
     return [chunks[index] for index in indexes]

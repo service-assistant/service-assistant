@@ -77,7 +77,7 @@ export default function SourcePanel({
 			<View className={`flex-1 overflow-hidden ${lightMode ? 'bg-white' : 'bg-black'}`}>
 				<PdfViewer
 					source={sourcePanelPdf.source}
-					page={sourcePanelPdf.page || 1}
+					page={sourcePanelPdf.page ?? 1}
 					preserveTop
 					onError={onPdfError}
 					lightMode={lightMode}

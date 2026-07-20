@@ -141,6 +141,22 @@ describe('useSourcePanelFiles', () => {
 		});
 	});
 
+	test('converts the zero-based first source page to PDF page one', () => {
+		const harness = createHarness();
+
+		harness.api.openMessageSource({
+			sourceAttachmentId: 77,
+			sourceAttachmentName: 'manual.pdf',
+			sourceAttachmentPage: 0,
+		});
+
+		expect(harness.state.sourcePanelPdf).toEqual(
+			expect.objectContaining({
+				page: 1,
+			}),
+		);
+	});
+
 	test('reports auth configuration errors when opening a message source without a token', () => {
 		const harness = createHarness({ authTokenOverride: null });
 

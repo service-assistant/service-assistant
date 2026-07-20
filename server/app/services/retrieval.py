@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import re
 from functools import partial
 
@@ -21,6 +22,8 @@ BM25_LIMIT = 3
 EXACT_LIMIT = 3
 RERANKED_SEMANTIC_LIMIT = 15
 RERANKED_BM25_LIMIT = 15
+
+logger = logging.getLogger(__name__)
 
 
 def tokenize(text: str) -> list[str]:
@@ -280,6 +283,10 @@ async def retrieve_context_chunks(
         if len(ranked) != len(candidates) or ranked_ids != candidate_ids:
             raise ValueError("Reranker returned an incomplete or duplicate ranking")
     except Exception:
+        logger.exception(
+            "Voyage reranking failed for %d candidates; using hybrid fallback",
+            len(candidates),
+        )
         return merge_hybrid_chunks(
             exact,
             semantic[:SEMANTIC_LIMIT],

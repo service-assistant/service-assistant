@@ -547,22 +547,22 @@ def _mock_voyage_http(mocker, respond):
 
 
 @pytest.mark.parametrize(
-    "respond",
+    ("respond", "expected_posts"),
     [
-        pytest.param(_respond_timeout, id="request_timeout"),
-        pytest.param(_respond_connection_failure, id="connection_failure"),
-        pytest.param(_respond_server_error, id="non_success_http_status"),
-        pytest.param(_respond_malformed_json, id="malformed_json"),
-        pytest.param(_respond_missing_data_field, id="missing_data_field"),
-        pytest.param(_respond_missing_score_field, id="missing_score_field"),
-        pytest.param(_respond_missing_index_field, id="missing_index_field"),
-        pytest.param(_respond_duplicate_index, id="duplicate_index"),
-        pytest.param(_respond_out_of_range_index, id="out_of_range_index"),
-        pytest.param(_respond_incomplete_ranking, id="incomplete_ranking"),
+        pytest.param(_respond_timeout, 3, id="request_timeout"),
+        pytest.param(_respond_connection_failure, 3, id="connection_failure"),
+        pytest.param(_respond_server_error, 3, id="non_success_http_status"),
+        pytest.param(_respond_malformed_json, 1, id="malformed_json"),
+        pytest.param(_respond_missing_data_field, 1, id="missing_data_field"),
+        pytest.param(_respond_missing_score_field, 1, id="missing_score_field"),
+        pytest.param(_respond_missing_index_field, 1, id="missing_index_field"),
+        pytest.param(_respond_duplicate_index, 1, id="duplicate_index"),
+        pytest.param(_respond_out_of_range_index, 1, id="out_of_range_index"),
+        pytest.param(_respond_incomplete_ranking, 1, id="incomplete_ranking"),
     ],
 )
 async def test_should_fall_back_to_hybrid_limits_when_voyage_fails(
-    session, settings, mocker, respond
+    session, settings, mocker, respond, expected_posts
 ):
     device, attachment = await _create_retrieval_context(session)
     exact_rows = await _add_chunks(
@@ -594,6 +594,7 @@ async def test_should_fall_back_to_hybrid_limits_when_voyage_fails(
         "app.services.retrieval.translate_query", return_value="translated query"
     )
     captured = _mock_voyage_http(mocker, respond)
+    mocker.patch("app.services.reranker.asyncio.sleep")
     scalars_spy = mocker.spy(session, "scalars")
 
     result = await retrieve_context_chunks(session, "E-23", device.id, enabled_settings)
@@ -604,7 +605,7 @@ async def test_should_fall_back_to_hybrid_limits_when_voyage_fails(
         *(row.id for row in bm25_rows[:3]),
     ]
     assert len(result) == 13
-    assert captured["posts"] == 1
+    assert captured["posts"] == expected_posts
     assert captured["timeouts"] == [enabled_settings.reranker_timeout_seconds]
     assert scalars_spy.call_count == 2
 
