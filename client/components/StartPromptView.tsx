@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import React from 'react';
-import { Animated, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 const PRIMARY_ORANGE = '#FF7A00';
 
@@ -193,14 +193,19 @@ export default function StartPromptView({
 				width: '100%',
 				maxWidth: keyboardFrame ? promptMaxWidth : undefined,
 				alignSelf: keyboardFrame ? 'center' : undefined,
-				height: compact ? 56 : 68,
-				borderRadius: compact ? 28 : 34,
+				height: compact ? 62 : 74,
+				borderRadius: compact ? 31 : 37,
 				backgroundColor: lightMode ? '#FFFFFF' : '#242424',
-				borderWidth: lightMode ? 1 : 0,
-				borderColor: lightMode ? '#D4D4D8' : 'transparent',
+				borderWidth: 1,
+				borderColor: lightMode ? 'rgba(20, 20, 20, 0.09)' : 'rgba(255, 255, 255, 0.08)',
 				paddingLeft: compact ? 18 : 32,
-				paddingRight: compact ? 7 : 10,
+				paddingRight: compact ? 8 : 10,
 				marginBottom: keyboardFrame ? undefined : compact ? 20 : 22,
+				shadowColor: '#141414',
+				shadowOffset: { width: 0, height: 8 },
+				shadowOpacity: lightMode ? 0.04 : 0.14,
+				shadowRadius: 24,
+				elevation: lightMode ? 3 : 5,
 			}}>
 			<TextInput
 				ref={inputRef}
@@ -257,14 +262,17 @@ export default function StartPromptView({
 				onPress={onSend}
 				className='items-center justify-center'
 				style={{
-					width: compact ? 44 : 54,
-					height: compact ? 44 : 54,
-					borderRadius: compact ? 22 : 27,
-					backgroundColor: lightMode ? '#FFF7ED' : '#1E2028',
-					borderWidth: 1,
-					borderColor: 'rgba(255, 122, 0, 0.5)',
+					width: compact ? 46 : 56,
+					height: compact ? 46 : 56,
+					borderRadius: compact ? 23 : 28,
+					backgroundColor: PRIMARY_ORANGE,
+					shadowColor: PRIMARY_ORANGE,
+					shadowOffset: { width: 0, height: 4 },
+					shadowOpacity: 0.2,
+					shadowRadius: 8,
+					elevation: 3,
 				}}>
-				<Feather name='arrow-up-right' size={compact ? 24 : 30} color={PRIMARY_ORANGE} />
+				<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
 			</TouchableOpacity>
 		</View>
 	);
@@ -332,12 +340,22 @@ export default function StartPromptView({
 							className='items-center justify-center'
 							style={{
 								width: chipWidth,
-								height: compact ? 34 : 36,
+								minHeight: compact ? 38 : 42,
 								paddingHorizontal: compact ? 12 : 18,
-								borderRadius: compact ? 17 : 18,
-								borderWidth: 1,
-								borderColor: lightMode ? '#D4D4D8' : 'rgba(255, 255, 255, 0.09)',
-								backgroundColor: lightMode ? '#FFFFFF' : 'rgba(5, 5, 5, 0.72)',
+								paddingVertical: compact ? 8 : 9,
+								borderRadius: compact ? 19 : 21,
+								borderWidth: StyleSheet.hairlineWidth,
+								borderColor: lightMode
+									? 'rgba(30, 30, 30, 0.075)'
+									: 'rgba(255, 255, 255, 0.055)',
+								backgroundColor: lightMode
+									? 'rgba(255, 255, 255, 0.94)'
+									: 'rgba(255, 255, 255, 0.07)',
+								shadowColor: '#000000',
+								shadowOffset: { width: 0, height: 1 },
+								shadowOpacity: lightMode ? 0.02 : 0.04,
+								shadowRadius: 5,
+								elevation: 0,
 							}}>
 							<Text
 								className='text-center'

@@ -84,6 +84,7 @@ jest.mock('react-native', () => {
 		},
 		Image: Object.assign(createHost('Image'), { getSize: mockImageGetSize }),
 		Keyboard: { addListener: mockKeyboardAddListener },
+		FlatList: createHost('FlatList'),
 		Platform: {
 			OS: 'ios',
 			select: (options: Record<string, unknown>) => options.ios ?? options.default,
@@ -624,7 +625,6 @@ describe('tab screens', () => {
 		);
 		expect(getTextContent(tree)).toContain('Wybierz Pojazd');
 		expect(getTextContent(tree)).toContain('Ładowanie maszyn...');
-		expect(mockAnimatedValueSetValue).toHaveBeenCalledWith(0);
 		expect(mockUseCameraPermissions).not.toHaveBeenCalled();
 		expect(mockRouterPush).toHaveBeenCalledWith('/history');
 	});
@@ -656,7 +656,7 @@ describe('tab screens', () => {
 			false,
 		];
 		const loadedTree = renderScreen(HomeScreen);
-		const vehicleList = findByType(loadedTree, 'Animated.FlatList')[0];
+		const vehicleList = findByType(loadedTree, 'FlatList')[0];
 		const vehicleCard = vehicleList.props.renderItem({ item: vehicleList.props.data[0] });
 		const vehicleButton = findByType(vehicleCard, 'TouchableOpacity')[0];
 		const vehicleIcons = findByType(vehicleCard, 'Icon');
@@ -703,11 +703,15 @@ describe('tab screens', () => {
 		await flushPromises();
 		await flushPromises();
 		const loadedTree = renderScreen(HomeScreen);
-		const stillFilterButton = collectTouchableWithText(loadedTree, 'STILL')[0];
+		const loadedVehicleList = findByType(loadedTree, 'FlatList')[0];
+		const stillFilterButton = collectTouchableWithText(
+			loadedVehicleList.props.ListHeaderComponent,
+			'STILL',
+		)[0];
 
 		stillFilterButton.props.onPress();
 		const filteredTree = renderScreen(HomeScreen);
-		const vehicleList = findByType(filteredTree, 'Animated.FlatList')[0];
+		const vehicleList = findByType(filteredTree, 'FlatList')[0];
 
 		expect(vehicleList.props.data).toHaveLength(0);
 		expect(getTextContent(vehicleList.props.ListEmptyComponent)).toContain(

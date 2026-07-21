@@ -81,15 +81,15 @@ export default function ControlPanel({
 	const centerIconSize = 50;
 	const centerColumnWidth = isHorizontal ? 170 : 124;
 	const horizontalControlsWidth = 384;
-	const panelWidth = isHorizontal ? (useEdgeToEdge ? '100%' : 384) : 132;
-	const panelHeight = isHorizontal ? (useEdgeToEdge ? 162 : 130) : 404;
-	const panelRadius = isHorizontal ? (useEdgeToEdge ? 0 : 54) : 68;
+	const panelWidth = isHorizontal ? (useEdgeToEdge ? '100%' : 384) : 124;
+	const panelHeight = isHorizontal ? (useEdgeToEdge ? 162 : 130) : 388;
+	const panelRadius = isHorizontal ? (useEdgeToEdge ? 0 : 54) : 38;
 	const horizontalSideOffset = 28;
 	const horizontalPanelTopPadding = useEdgeToEdge ? 16 : 0;
 	const horizontalCenterTop = horizontalPanelTopPadding + 8;
 	const horizontalSideTop = horizontalCenterTop + centerButtonSize - sideButtonSize;
 	const horizontalCenterLeft = (horizontalControlsWidth - centerColumnWidth) / 2;
-	const verticalEdgeGap = 36;
+	const verticalEdgeGap = 30;
 	const verticalMicSlotHeight = centerButtonSize + 22;
 	const micState = isMicProcessing
 		? 'processing'
@@ -101,34 +101,38 @@ export default function ControlPanel({
 	const micStyle =
 		micState === 'processing'
 			? {
-					backgroundColor: 'rgba(46, 16, 101, 0.92)',
-					borderColor: 'rgba(139, 92, 246, 0.9)',
+					backgroundColor: lightMode ? '#F3E8FF' : 'rgba(46, 16, 101, 0.92)',
+					borderColor: lightMode ? 'rgba(124, 58, 237, 0.38)' : 'rgba(139, 92, 246, 0.9)',
 					shadowColor: PROCESSING_VIOLET,
-					shadowOpacity: 0.42,
-					shadowRadius: 24,
-					iconColor: '#FFFFFF',
+					shadowOpacity: lightMode ? 0.16 : 0.42,
+					shadowRadius: lightMode ? 14 : 24,
+					iconColor: lightMode ? '#7C3AED' : '#FFFFFF',
 					label: 'PRZETWARZAM...',
-					labelColor: lightMode ? '#5B21B6' : '#FFFFFF',
+					labelColor: lightMode ? '#6D28D9' : '#FFFFFF',
 				}
 			: micState === 'listening'
 				? {
-						backgroundColor: 'rgba(8, 47, 73, 0.92)',
-						borderColor: 'rgba(6, 182, 212, 0.9)',
+						backgroundColor: lightMode ? '#ECFEFF' : 'rgba(8, 47, 73, 0.92)',
+						borderColor: lightMode
+							? 'rgba(8, 145, 178, 0.38)'
+							: 'rgba(6, 182, 212, 0.9)',
 						shadowColor: LISTENING_CYAN,
-						shadowOpacity: 0.45,
-						shadowRadius: 26,
-						iconColor: '#FFFFFF',
+						shadowOpacity: lightMode ? 0.17 : 0.45,
+						shadowRadius: lightMode ? 14 : 26,
+						iconColor: lightMode ? '#0891B2' : '#FFFFFF',
 						label: 'SŁUCHAM...',
 						labelColor: lightMode ? '#0E7490' : '#FFFFFF',
 					}
 				: micState === 'unavailable'
 					? {
-							backgroundColor: 'rgba(69, 10, 10, 0.88)',
-							borderColor: 'rgba(239, 68, 68, 0.8)',
+							backgroundColor: lightMode ? '#FEF2F2' : 'rgba(69, 10, 10, 0.88)',
+							borderColor: lightMode
+								? 'rgba(220, 38, 38, 0.36)'
+								: 'rgba(239, 68, 68, 0.8)',
 							shadowColor: '#EF4444',
-							shadowOpacity: 0.18,
-							shadowRadius: 14,
-							iconColor: '#FCA5A5',
+							shadowOpacity: lightMode ? 0.1 : 0.18,
+							shadowRadius: lightMode ? 10 : 14,
+							iconColor: lightMode ? '#DC2626' : '#FCA5A5',
 							label: 'MOWA NIEDOSTĘPNA',
 							labelColor: lightMode ? '#B91C1C' : '#FCA5A5',
 						}
@@ -170,20 +174,30 @@ export default function ControlPanel({
 	const panelBackdropStyle = {
 		borderRadius: panelRadius,
 		borderWidth: 1,
-		borderColor: lightMode ? '#D4D4D8' : '#242833',
+		borderColor: isHorizontal
+			? lightMode
+				? '#D4D4D8'
+				: '#242833'
+			: lightMode
+				? 'rgba(30, 30, 30, 0.08)'
+				: 'rgba(255, 255, 255, 0.06)',
 		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 10 },
-		shadowOpacity: 0.22,
-		shadowRadius: 22,
-		elevation: 6,
+		shadowOffset: { width: 0, height: isHorizontal ? 10 : 4 },
+		shadowOpacity: isHorizontal ? 0.22 : lightMode ? 0.08 : 0.13,
+		shadowRadius: isHorizontal ? 22 : 10,
+		elevation: isHorizontal ? 6 : 2,
 		zIndex: 0,
 		backgroundColor: lightMode
 			? useEdgeToEdge
 				? 'rgba(255, 255, 255, 0.94)'
-				: 'rgba(250, 250, 250, 0.96)'
+				: isHorizontal
+					? 'rgba(250, 250, 250, 0.96)'
+					: 'rgba(255, 255, 255, 0.9)'
 			: useEdgeToEdge
 				? 'rgba(12, 14, 20, 0.84)'
-				: 'rgba(20, 22, 30, 0.92)',
+				: isHorizontal
+					? 'rgba(20, 22, 30, 0.92)'
+					: 'rgba(20, 22, 30, 0.86)',
 		bottom: useEdgeToEdge ? -4 : 0,
 		...(useEdgeToEdge
 			? {
@@ -293,7 +307,7 @@ export default function ControlPanel({
 					shadowOffset: { width: 0, height: 0 },
 					shadowOpacity: micStyle.shadowOpacity,
 					shadowRadius: micStyle.shadowRadius,
-					elevation: micState === 'idle' ? 5 : 10,
+					elevation: micState === 'idle' ? (isHorizontal ? 5 : 2) : lightMode ? 5 : 10,
 				}}>
 				{isListening && !isMicProcessing ? <ListeningPulse /> : null}
 				{isMicProcessing ? (
@@ -315,35 +329,39 @@ export default function ControlPanel({
 						/>
 						{isSpeechInputUnavailable ? (
 							<View
-								className='absolute items-center justify-center bg-[#3A1010] border border-[#EF4444]'
+								className='absolute items-center justify-center border'
 								style={{
 									left: 12,
 									bottom: 12,
 									width: 28,
 									height: 28,
 									borderRadius: 14,
+									backgroundColor: lightMode ? '#FFFFFF' : '#3A1010',
+									borderColor: lightMode ? '#FCA5A5' : '#EF4444',
 								}}>
 								<MaterialCommunityIcons
 									name='microphone-off'
 									size={18}
-									color='#EF4444'
+									color={lightMode ? '#DC2626' : '#EF4444'}
 								/>
 							</View>
 						) : null}
 						{isVoiceOutputUnavailable ? (
 							<View
-								className='absolute items-center justify-center bg-[#3A1010] border border-[#EF4444]'
+								className='absolute items-center justify-center border'
 								style={{
 									right: 12,
 									bottom: 12,
 									width: 28,
 									height: 28,
 									borderRadius: 14,
+									backgroundColor: lightMode ? '#FFFFFF' : '#3A1010',
+									borderColor: lightMode ? '#FCA5A5' : '#EF4444',
 								}}>
 								<MaterialCommunityIcons
 									name='volume-off'
 									size={18}
-									color='#EF4444'
+									color={lightMode ? '#DC2626' : '#EF4444'}
 								/>
 							</View>
 						) : null}
@@ -357,14 +375,21 @@ export default function ControlPanel({
 					<View className='w-1.5 h-1.5 rounded-full mr-2 bg-[#06B6D4]' />
 				) : null}
 				<Text
-					className='text-center text-[11px] font-bold'
+					className='text-center'
 					style={{
-						height: 14,
-						color: micStyle.labelColor,
-						fontSize: 11,
-						lineHeight: 14,
-						letterSpacing: 0.8,
-						textShadowColor: lightMode ? 'transparent' : 'rgba(0, 0, 0, 0.8)',
+						height: isHorizontal ? 14 : 13,
+						color:
+							micState === 'idle' && !isHorizontal
+								? lightMode
+									? '#71717A'
+									: 'rgba(229, 231, 235, 0.5)'
+								: micStyle.labelColor,
+						fontSize: isHorizontal ? 11 : 10,
+						lineHeight: isHorizontal ? 14 : 13,
+						fontWeight: micState === 'idle' ? '500' : '700',
+						letterSpacing: isHorizontal ? 0.8 : 0.2,
+						textShadowColor:
+							lightMode || !isHorizontal ? 'transparent' : 'rgba(0, 0, 0, 0.8)',
 						textShadowOffset: { width: 0, height: 1 },
 						textShadowRadius: 3,
 					}}

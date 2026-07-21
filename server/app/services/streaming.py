@@ -54,16 +54,31 @@ class ChecklistStreamLimiter:
 
         if self.passthrough_line:
             if "\n" not in chunk:
-                if chunk:
-                    output.append(chunk)
-                    self._remember_output(chunk)
-                return output
+                inline_bullet = re.match(r"[ \t]*[-*](?:[ \t]+|$)", chunk)
+                next_character = (
+                    chunk[inline_bullet.end() :].lstrip()[:1] if inline_bullet else ""
+                )
+                previous_character = self.output_suffix.rstrip()[-1:]
+                numeric_range = (
+                    previous_character.isdigit() and next_character.isdigit()
+                )
 
-            line_end, chunk = chunk.split("\n", 1)
-            visible_text = f"{line_end}\n"
-            output.append(visible_text)
-            self._remember_output(visible_text)
-            self.passthrough_line = False
+                if not inline_bullet or numeric_range:
+                    if chunk:
+                        output.append(chunk)
+                        self._remember_output(chunk)
+                    return output
+
+                output.append("\n")
+                self._remember_output("\n")
+                self.passthrough_line = False
+                chunk = chunk.lstrip()
+            else:
+                line_end, chunk = chunk.split("\n", 1)
+                visible_text = f"{line_end}\n"
+                output.append(visible_text)
+                self._remember_output(visible_text)
+                self.passthrough_line = False
 
         self.pending += chunk
 
@@ -73,6 +88,21 @@ class ChecklistStreamLimiter:
             if processed:
                 output.append(processed)
                 self._remember_output(processed)
+
+        if self.pending and not self.in_checklist and not self.suppress_section:
+            inline_directive = re.match(
+                r"\s*::(checklist|warning|next)\b[ \t]*",
+                self.pending,
+                re.IGNORECASE,
+            )
+            if inline_directive:
+                block_type = inline_directive.group(1).lower()
+                normalized_directive = f"::{block_type}\n"
+                processed = self._process_line(normalized_directive)
+                self.pending = self.pending[inline_directive.end() :]
+                if processed:
+                    output.append(processed)
+                    self._remember_output(processed)
 
         if self.pending and self.in_checklist and not self.suppress_section:
             if re.match(r"\s*[-*]\s+", self.pending):

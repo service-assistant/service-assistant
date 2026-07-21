@@ -26,6 +26,28 @@ import ThemeAwareLogo from '@/components/ThemeAwareLogo';
 
 const PRIMARY_ORANGE = '#FF7A00';
 
+function ChatBackgroundTexture({ lightMode }: { lightMode: boolean }) {
+	if (!lightMode) return null;
+
+	return (
+		<Image
+			testID='chat-background-texture'
+			source={require('../assets/images/chat-premium-grain.png')}
+			resizeMode='cover'
+			style={{
+				position: 'absolute',
+				top: 0,
+				left: 0,
+				right: 0,
+				bottom: 0,
+				width: '100%',
+				height: '100%',
+				opacity: 0.32,
+			}}
+		/>
+	);
+}
+
 function HeaderLogo({
 	uri,
 	height,
@@ -240,13 +262,18 @@ function FloatingChatInput({
 			className='flex-row items-center'
 			style={{
 				width: '100%',
-				height: compact ? 56 : 68,
-				borderRadius: compact ? 28 : 34,
+				height: compact ? 62 : 74,
+				borderRadius: compact ? 31 : 37,
 				backgroundColor: lightMode ? '#FFFFFF' : '#242424',
-				borderWidth: lightMode ? 1 : 0,
-				borderColor: lightMode ? '#D4D4D8' : 'transparent',
+				borderWidth: 1,
+				borderColor: lightMode ? 'rgba(20, 20, 20, 0.09)' : 'rgba(255, 255, 255, 0.08)',
 				paddingLeft: compact ? 18 : 32,
-				paddingRight: compact ? 7 : 10,
+				paddingRight: compact ? 8 : 10,
+				shadowColor: '#141414',
+				shadowOffset: { width: 0, height: 8 },
+				shadowOpacity: lightMode ? 0.04 : 0.14,
+				shadowRadius: 24,
+				elevation: lightMode ? 3 : 5,
 			}}>
 			<TextInput
 				className={`flex-1 ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
@@ -265,14 +292,17 @@ function FloatingChatInput({
 				onPress={onSend}
 				className='items-center justify-center'
 				style={{
-					width: compact ? 44 : 54,
-					height: compact ? 44 : 54,
-					borderRadius: compact ? 22 : 27,
-					backgroundColor: lightMode ? '#FFF7ED' : '#1E2028',
-					borderWidth: 1,
-					borderColor: 'rgba(255, 122, 0, 0.5)',
+					width: compact ? 46 : 56,
+					height: compact ? 46 : 56,
+					borderRadius: compact ? 23 : 28,
+					backgroundColor: PRIMARY_ORANGE,
+					shadowColor: PRIMARY_ORANGE,
+					shadowOffset: { width: 0, height: 4 },
+					shadowOpacity: 0.2,
+					shadowRadius: 8,
+					elevation: 3,
 				}}>
-				<Feather name='arrow-up-right' size={compact ? 24 : 30} color={PRIMARY_ORANGE} />
+				<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
 			</TouchableOpacity>
 		</View>
 	);
@@ -307,7 +337,6 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	sourcePanelProps: SourcePanelProps;
 	sourcePanelFullScreen: boolean;
 	onBack: () => void;
-	onOpenMachineInfo: () => void;
 	onOpenFilesPanel: () => void;
 	onSendText: () => void;
 	onChangeText: (text: string) => void;
@@ -468,14 +497,19 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	);
 
 	return (
-		<View className={`flex-1 ${lightMode ? 'bg-[#F7F7F8]' : 'bg-[#080808]'}`}>
+		<View className={`flex-1 ${lightMode ? 'bg-[#F7F5F1]' : 'bg-[#080808]'}`}>
+			<ChatBackgroundTexture lightMode={lightMode} />
 			<View
-				className={`px-4 flex-row items-center border-b shadow-2xl z-10 ${
-					lightMode ? 'border-[#E4E4E7] bg-white' : 'border-[#1F1F1F] bg-[#0D0D0D]'
-				}`}
+				className={`px-4 flex-row items-center border-b z-10 ${lightMode ? 'bg-white' : 'bg-[#0D0D0D]'}`}
 				style={{
 					height: headerHeight,
 					paddingTop: headerSafeTop,
+					borderBottomColor: lightMode ? 'rgba(20, 20, 20, 0.06)' : '#1F1F1F',
+					shadowColor: '#141414',
+					shadowOffset: { width: 0, height: 2 },
+					shadowOpacity: lightMode ? 0.025 : 0,
+					shadowRadius: 8,
+					elevation: lightMode ? 1 : 0,
 				}}>
 				<TouchableOpacity
 					onPress={onBack}
@@ -513,24 +547,6 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 				<View
 					className={`flex-row items-center ${isPhonePortrait ? 'gap-1.5' : 'gap-2'}`}
 					style={{ flexShrink: 0 }}>
-					<TouchableOpacity
-						disabled
-						className={`items-center justify-center border rounded-[10px] opacity-50 ${
-							lightMode
-								? 'border-[#D4D4D8] bg-[#F4F4F5]'
-								: 'border-[#242424] bg-[#0C0C0C]'
-						}`}
-						style={{ width: headerButtonSize, height: headerButtonSize }}>
-						<Image
-							source={require('../assets/images/info.png')}
-							style={{
-								width: isPhonePortrait ? 19 : 21,
-								height: isPhonePortrait ? 19 : 21,
-								tintColor: '#6B7280',
-							}}
-							resizeMode='contain'
-						/>
-					</TouchableOpacity>
 					<TouchableOpacity
 						onPress={onOpenFilesPanel}
 						className={`items-center justify-center border rounded-[10px] ${
@@ -678,11 +694,18 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	const keyboardOverlap = keyboardFrame ? Math.max(0, height - keyboardFrame.screenY) : 0;
 
 	return (
-		<View className={`flex-1 ${lightMode ? 'bg-[#F7F7F8]' : 'bg-[#080808]'}`}>
+		<View className={`flex-1 ${lightMode ? 'bg-[#F7F5F1]' : 'bg-[#080808]'}`}>
+			<ChatBackgroundTexture lightMode={lightMode} />
 			<View
-				className={`h-[76px] px-6 flex-row items-center border-b shadow-2xl z-10 ${
-					lightMode ? 'border-[#E4E4E7] bg-white' : 'border-[#1F1F1F] bg-[#0D0D0D]'
-				}`}>
+				className={`h-[76px] px-6 flex-row items-center border-b z-10 ${lightMode ? 'bg-white' : 'bg-[#0D0D0D]'}`}
+				style={{
+					borderBottomColor: lightMode ? 'rgba(20, 20, 20, 0.06)' : '#1F1F1F',
+					shadowColor: '#141414',
+					shadowOffset: { width: 0, height: 2 },
+					shadowOpacity: lightMode ? 0.025 : 0,
+					shadowRadius: 8,
+					elevation: lightMode ? 1 : 0,
+				}}>
 				<TouchableOpacity
 					onPress={onBack}
 					className={`h-12 px-[18px] flex-row items-center justify-center mr-8 border rounded-[10px] ${
@@ -703,23 +726,6 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 				</Text>
 
 				<View className='flex-1' />
-
-				<TouchableOpacity
-					disabled
-					className={`h-12 px-[18px] flex-row items-center justify-center mr-7 border rounded-[10px] opacity-50 ${
-						lightMode
-							? 'border-[#D4D4D8] bg-[#F4F4F5]'
-							: 'border-[#242424] bg-[#0C0C0C]'
-					}`}>
-					<Image
-						source={require('../assets/images/info.png')}
-						style={{ width: 21, height: 21, tintColor: '#6B7280' }}
-						resizeMode='contain'
-					/>
-					<Text className='text-[#9CA3AF] ml-4 text-[13px] font-semibold tracking-wider'>
-						O MASZYNIE
-					</Text>
-				</TouchableOpacity>
 
 				<TouchableOpacity
 					onPress={onOpenFilesPanel}

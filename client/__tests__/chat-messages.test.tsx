@@ -357,6 +357,44 @@ describe('ChatMessages', () => {
 		expect(checkboxes[1].props.accessibilityState).toEqual({ checked: false });
 	});
 
+	test('renders inline streamed checklist markers as separate compact rows', () => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				compact
+				messages={[
+					{
+						id: 1,
+						sender: 'ai',
+						text: '::checklist\n- Sprawdź olej - Sprawdź przewody - ',
+					},
+				]}
+			/>
+		);
+
+		const checkboxes = findByType(tree, 'View').filter(
+			(view) => view.props.accessibilityRole === 'checkbox',
+		);
+
+		expect(checkboxes).toHaveLength(3);
+	});
+
+	test('renders a compact checkbox as soon as a streamed bullet marker arrives', () => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				compact
+				messages={[{ id: 1, sender: 'ai', text: '::checklist\n- ' }]}
+			/>
+		);
+
+		const checkboxes = findByType(tree, 'View').filter(
+			(view) => view.props.accessibilityRole === 'checkbox',
+		);
+
+		expect(checkboxes).toHaveLength(1);
+	});
+
 	test('opens schema previews and answer sources', () => {
 		const onOpenSchema = jest.fn();
 		const onOpenSource = jest.fn();

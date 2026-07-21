@@ -494,7 +494,14 @@ async def create_message(
             "message", MessageRead.model_validate(assistant_message).model_dump_json()
         )
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post(

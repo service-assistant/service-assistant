@@ -445,17 +445,30 @@ export const parseAssistantResponseBlocks = (text: string): AssistantResponseBlo
 		if (!trimmedContent) return;
 
 		if (type === 'checklist') {
-			const lines = content.split('\n');
-			const bulletLines = lines.filter((line) => /^\s*[-*]\s+/.test(line));
-			const items = (bulletLines.length > 0 ? bulletLines : [content])
-				.map((line) =>
-					line
-						.trim()
-						.replace(/^[-*]\s+/, '')
-						.replace(/\s+/g, ' ')
-						.trim(),
-				)
-				.filter(Boolean);
+			const markers = Array.from(content.matchAll(/(^|\n|[ \t])[-*](?:[ \t]+|$)/g)).filter(
+				(marker) => {
+					const markerStart = marker.index ?? 0;
+					const previousCharacter = content.slice(0, markerStart).trimEnd().at(-1) ?? '';
+					const nextCharacter =
+						content.slice(markerStart + marker[0].length).trimStart()[0] ?? '';
+
+					// A numeric range such as "54 - 66" is part of an item, not a new item.
+					return !(/\d/.test(previousCharacter) && /\d/.test(nextCharacter));
+				},
+			);
+			const items = markers.map((marker, markerIndex) => {
+				const itemStart = (marker.index ?? 0) + marker[0].length;
+				const itemEnd =
+					markerIndex + 1 < markers.length
+						? (markers[markerIndex + 1].index ?? content.length)
+						: content.length;
+
+				return content.slice(itemStart, itemEnd).replace(/\s+/g, ' ').trim();
+			});
+
+			if (markers.length === 0) {
+				items.push(trimmedContent.replace(/^[-*]\s*/, ''));
+			}
 
 			if (items.length > 0) {
 				blocks.push({ type: 'checklist', items });
@@ -520,7 +533,7 @@ const StructuredAssistantResponse = ({
 							style={{ width: '100%', marginTop: 12 }}>
 							{block.items.map((item, itemIndex) => (
 								<View
-									key={`${item}-${itemIndex}`}
+									key={`${block.type}-${index}-item-${itemIndex}`}
 									style={{
 										width: '100%',
 										flexDirection: 'row',
@@ -686,12 +699,14 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 						key={message.id}
 						className={compact ? 'self-start mb-5' : 'self-start mb-7'}
 						style={
-							message.schemaImage ||
-							message.schemaImages?.length ||
-							message.sourceAttachmentId ||
-							message.sourceReferences?.length
-								? { width: compact ? '96%' : '78%' }
-								: { maxWidth: compact ? '96%' : '78%' }
+							compact
+								? { width: '96%' }
+								: message.schemaImage ||
+									  message.schemaImages?.length ||
+									  message.sourceAttachmentId ||
+									  message.sourceReferences?.length
+									? { width: '78%' }
+									: { maxWidth: '78%' }
 						}>
 						{message.text ? (
 							<StructuredAssistantResponse
@@ -700,7 +715,9 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 								lightMode={lightMode}
 							/>
 						) : (
-							<TypingDotsIndicator color={PRIMARY_ORANGE} />
+							<View style={{ alignSelf: 'flex-start' }}>
+								<TypingDotsIndicator color={PRIMARY_ORANGE} />
+							</View>
 						)}
 						{(() => {
 							const schemaImages = (
