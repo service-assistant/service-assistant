@@ -1,0 +1,17 @@
+@import "tailwindcss";
+
+@theme {
+	--font-sans: "Inter", Arial, sans-serif;
+	--color-ink: #0b1118;
+	--color-panel: #161d26;
+	--color-panel-soft: #202832;
+	--color-line: #2d3745;
+	--color-cream: #ffe1bf;
+	--color-ember: #ff8a00;
+}
+
+body {
+	font-family: var(--font-sans);
+	background-color: var(--color-ink);
+	color: var(--color-cream);
+}

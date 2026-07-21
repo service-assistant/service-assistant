@@ -16,7 +16,8 @@
 		"postinstall": "node ./scripts/patch-react-native-pdf.js && node ./scripts/patch-react-native-css-interop.js && node ./scripts/patch-react-native-sse.js",
 		"format": "prettier --write .",
 		"lint": "expo lint",
-		"test": "jest"
+		"test": "jest",
+		"build:web": "expo export --platform web"
 	},
 	"dependencies": {
 		"@expo/vector-icons": "^15.0.3",

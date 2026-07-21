@@ -10,7 +10,7 @@ import {
 	TouchableOpacity,
 	View,
 } from 'react-native';
-import { Invert } from 'react-native-color-matrix-image-filters';
+import { Invert } from './InvertFilter';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 

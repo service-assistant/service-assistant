@@ -61,7 +61,10 @@ async def bearer_auth_middleware(request: Request, call_next):
     auth_header = request.headers.get("Authorization")
     expected = f"Bearer {settings.auth_token}"
 
-    if auth_header != expected:
+    if (
+        auth_header != expected
+        and request.cookies.get("admin_token") != settings.auth_token
+    ):
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={"detail": "Unauthorized"},
@@ -71,13 +74,13 @@ async def bearer_auth_middleware(request: Request, call_next):
 
 
 # Keep CORS outside the authentication middleware so browser preflight requests
-# are answered before bearer-token validation. The API uses bearer authentication
-# rather than cookies, so clients from any origin can safely reach every instance.
-# TODO: fix it because it's insecure
+# are answered before bearer-token validation. Credentials are enabled (and
+# origins restricted to a known list) because the admin SPA authenticates via
+# the `admin_token` cookie rather than a bundled bearer token.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
