@@ -6,7 +6,7 @@ GREEN  := \033[32m
 YELLOW := \033[33m
 GRAY   := \033[90m
 
-.PHONY: help dev staging production docs test test-db-up test-db-down reset-test-db lint format format-check typecheck check migrations reset-db
+.PHONY: help dev dev-db staging production docs test test-db-up test-db-down reset-test-db lint format format-check typecheck check migrations reset-db
 
 help:
 	@echo ""
@@ -14,7 +14,8 @@ help:
 	@echo ""
 	@echo "  $(BOLD)Available commands:$(RESET)"
 	@echo "  $(GREEN)install$(RESET)           $(GRAY)-$(RESET) Install needed dependencies"
-	@echo "  $(GREEN)dev$(RESET)               $(GRAY)-$(RESET) Run development environment with hot reloading $(GRAY)(port 8000)$(RESET)"
+	@echo "  $(GREEN)dev$(RESET)               $(GRAY)-$(RESET) Run dev database + apps (app, client, admin) with hot reloading $(GRAY)(port 8000)$(RESET)"
+	@echo "  $(GREEN)dev-db$(RESET)            $(GRAY)-$(RESET) Run only the dev database $(GRAY)(port 5432)$(RESET)"
 	@echo "  $(GREEN)staging$(RESET)           $(GRAY)-$(RESET) Run staging environment $(GRAY)(port 8001)$(RESET)"
 	@echo "  $(GREEN)production$(RESET)        $(GRAY)-$(RESET) Run production environment $(GRAY)(port 8000)$(RESET)"
 	@echo "  $(GREEN)test-db-up$(RESET)        $(GRAY)-$(RESET) Runs database for tests"
@@ -35,8 +36,10 @@ help:
 
 install:
 	poetry install
-dev:
-	docker compose -f docker-compose.dev.yml up
+dev-db:
+	docker compose -f docker-compose.db.yml up -d --wait
+dev: dev-db
+	docker compose -f docker-compose.dev.yml up --build
 production:
 	docker compose -f docker-compose.production.yml up --build
 docs:
@@ -66,4 +69,5 @@ migrations:
 	poetry run alembic history --verbose
 reset-db:
 	docker compose -f docker-compose.dev.yml down
+	docker compose -f docker-compose.db.yml down
 	docker volume rm service-assistant-dev_pgdata_dev

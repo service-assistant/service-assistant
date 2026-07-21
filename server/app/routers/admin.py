@@ -56,14 +56,34 @@ async def post_login(
             {"error": "Invalid token."}, status_code=status.HTTP_401_UNAUTHORIZED
         )
     response = JSONResponse({"redirect": "/admin/documents"})
-    response.set_cookie("admin_token", token, httponly=True, samesite="lax")
+    response.set_cookie(
+        "admin_token",
+        token,
+        httponly=True,
+        samesite="lax",
+        domain=settings.cookie_domain,
+    )
+    return response
+
+
+@router.get("/session")
+async def get_session_status(
+    request: Request, settings: Settings = Depends(get_settings)
+):
+    return {"authenticated": request.cookies.get("admin_token") == settings.auth_token}
+
+
+@router.post("/logout")
+async def post_logout(settings: Settings = Depends(get_settings)):
+    response = JSONResponse({"ok": True})
+    response.delete_cookie("admin_token", domain=settings.cookie_domain)
     return response
 
 
 @router.get("/logout")
-async def logout():
+async def logout(settings: Settings = Depends(get_settings)):
     response = RedirectResponse(url="/admin/login", status_code=303)
-    response.delete_cookie("admin_token")
+    response.delete_cookie("admin_token", domain=settings.cookie_domain)
     return response
 
 

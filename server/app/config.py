@@ -1,8 +1,15 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Annotated
 
-from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BeforeValidator, Field, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+def _split_comma_separated(value: object) -> object:
+    if isinstance(value, str):
+        return [origin.strip() for origin in value.split(",") if origin.strip()]
+    return value
 
 
 class Settings(BaseSettings):
@@ -30,6 +37,13 @@ class Settings(BaseSettings):
 
     azure_document_intelligence_endpoint: str
     azure_document_intelligence_key: str
+
+    cors_origins: Annotated[
+        list[str], NoDecode, BeforeValidator(_split_comma_separated)
+    ] = Field(
+        default_factory=lambda: ["http://localhost:5173", "http://localhost:8081"]
+    )
+    cookie_domain: str | None = None
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

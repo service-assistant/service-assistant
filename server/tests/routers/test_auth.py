@@ -24,7 +24,9 @@ async def test_should_allow_cors_preflight_from_expo_web(unauthenticated_client)
     )
 
     assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == "*"
+    # Credentialed CORS (needed for the admin app's cookie auth) means Starlette echoes
+    # the exact origin instead of "*", even for non-cookie requests like this one.
+    assert response.headers["access-control-allow-origin"] == "http://localhost:8081"
     assert "authorization" in response.headers["access-control-allow-headers"].lower()
 
 
