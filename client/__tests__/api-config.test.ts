@@ -53,8 +53,6 @@ describe('api config', () => {
 		const config = await loadApiConfig();
 
 		expect(config.AUTH_URL).toBe('https://staging.asystent-serwisanta.pl');
-		expect(config.AUTH_URL_CONFIG_ERROR?.message).toBe(
-			'Invalid AUTH_URL: not a url',
-		);
+		expect(config.AUTH_URL_CONFIG_ERROR?.message).toBe('Invalid AUTH_URL: not a url');
 	});
 });
