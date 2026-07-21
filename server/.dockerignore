@@ -1,4 +1,3 @@
-# flyctl launch added from .gitignore
 # Environment Variables
 **/.env
 **/.env.local
@@ -75,6 +74,17 @@
 # flyctl launch added from .venv/.gitignore
 # created by virtualenv automatically
 .venv/**/*
-fly.toml
 
 .ruff_cache
+
+.claude
+.env.example
+.env.test
+.gitignore
+README.md
+CLAUDE.md
+docker-compose.dev.yml
+docker-compose.test.yml
+docker-compose.production.yml
+tests
+Makefile
