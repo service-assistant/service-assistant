@@ -25,7 +25,7 @@ from app.schemas import (
     ThreadCreate,
     TranscriptResponse,
 )
-from app.services import llm, message_router, next_best_step, retrieval, stt
+from app.services import llm, message_router, next_best_step, retrieval, streaming, stt
 from fastapi import WebSocket, WebSocketDisconnect
 from contextlib import suppress
 
@@ -99,7 +99,9 @@ def _sse(event: str, payload: object) -> str:
         data = payload
     else:
         data = json.dumps(payload, ensure_ascii=False)
-    return f"event: {event}\ndata: {data}\n\n"
+    normalized_data = data.replace("\r\n", "\n").replace("\r", "\n")
+    data_lines = "\n".join(f"data: {line}" for line in normalized_data.split("\n"))
+    return f"event: {event}\n{data_lines}\n\n"
 
 
 _CONTINUATION_HINTS = {"kontynuuj", "dalej", "rozwiń", "więcej", "ciągnij"}
@@ -417,6 +419,7 @@ async def create_message(
             answer_parts.append(standard_completion_answer)
             yield _sse("chunk", standard_completion_answer)
         else:
+            stream_limiter = streaming.ChecklistStreamLimiter()
             async for chunk in llm.stream_query(
                 session,
                 thread_id,
@@ -428,15 +431,19 @@ async def create_message(
                 continuation_requested=is_continuation,
                 continuation_hint=continuation_hint,
             ):
-                answer_parts.append(chunk)
-                yield _sse("chunk", chunk)
+                for visible_chunk in stream_limiter.feed(chunk):
+                    answer_parts.append(visible_chunk)
+                    yield _sse("chunk", visible_chunk)
+
+            for visible_chunk in stream_limiter.finish():
+                answer_parts.append(visible_chunk)
+                yield _sse("chunk", visible_chunk)
 
         answer = "".join(answer_parts)
         answer = llm.promote_bare_checklist(answer)
         if is_continuation:
             answer = llm.ensure_continuation_intro(answer)
         answer = llm.clean_completion_notice(answer)
-        answer = llm.limit_checklist_items(answer)
         has_continuation = llm.has_continuation_marker(answer) or bool(
             body.diagnostic_mode_enabled
             and diagnostic_plan

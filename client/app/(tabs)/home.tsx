@@ -1,10 +1,10 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
 	ActivityIndicator,
-	Animated,
+	FlatList,
 	Platform,
 	Text,
 	TouchableOpacity,
@@ -90,27 +90,7 @@ export default function HomeScreen() {
 		});
 	};
 
-	const [headerHeight, setHeaderHeight] = useState(0);
-	const scrollY = useRef(new Animated.Value(0)).current;
 	const { lightThemeEnabled } = useAppSettings();
-
-	useEffect(() => {
-		if (isWeb || isTablet) {
-			scrollY.setValue(0);
-		}
-	}, [CURRENT_SCREEN_WIDTH, isTablet, isWeb, scrollY]);
-
-	const headerTranslateY = scrollY.interpolate({
-		inputRange: [0, headerHeight || 1],
-		outputRange: [0, -(headerHeight || 1)],
-		extrapolate: 'clamp',
-	});
-
-	const headerOpacity = scrollY.interpolate({
-		inputRange: [0, headerHeight || 1],
-		outputRange: [1, 0],
-		extrapolate: 'clamp',
-	});
 
 	const filteredVehicles = mappedVehicles.filter((v) => {
 		const mBrand =
@@ -177,6 +157,110 @@ export default function HomeScreen() {
 		: useTabletHomeRefresh
 			? 16
 			: 18;
+	const homeHeader = (
+		<View
+			style={{
+				paddingHorizontal: headerPaddingHorizontal,
+				paddingTop: headerPaddingVertical,
+				paddingBottom: headerPaddingVertical,
+				backgroundColor: lightThemeEnabled ? '#FFFFFF' : '#09090B',
+				borderBottomWidth: 1,
+				borderBottomColor: lightThemeEnabled ? '#E4E4E7' : '#09090B',
+			}}>
+			<View
+				className={`flex-row justify-between items-center ${
+					usePhonePortraitHeader ? 'gap-2' : 'gap-3'
+				}`}
+				style={{
+					minHeight: headerTopRowHeight,
+					marginBottom: useTabletHomeRefresh ? 12 : usePhonePortraitHeader ? 12 : 16,
+				}}>
+				<View
+					className='flex-row items-center flex-1 min-w-0'
+					style={{ transform: [{ translateY: titleGroupOffsetY }] }}>
+					<View className={usePhonePortraitHeader ? 'mr-2' : 'mr-3'}>
+						<ThemeAwareLogo
+							source={require('../../assets/images/fixo3.png')}
+							width={headerLogoWidth}
+							height={headerLogoHeight}
+							lightMode={lightThemeEnabled}
+							resizeMode='contain'
+						/>
+					</View>
+					<Text
+						className={`${headerTitleClassName} ${lightThemeEnabled ? 'text-[#18181B]' : 'text-white'} font-bold flex-1`}
+						numberOfLines={1}
+						adjustsFontSizeToFit>
+						Wybierz Pojazd
+					</Text>
+				</View>
+				<View
+					className={`flex-row items-center ${usePhonePortraitHeader ? 'gap-2' : 'gap-3'}`}>
+					<TouchableOpacity
+						onPress={() => router.push('/settings')}
+						accessibilityRole='button'
+						accessibilityLabel='Ustawienia'
+						className={`flex-row items-center justify-center border rounded-[10px] ${
+							lightThemeEnabled
+								? 'border-[#E4E4E7] bg-[#FAFAFA]'
+								: 'border-[#2A2A2A] bg-[#111111]'
+						}`}
+						style={{
+							height: headerButtonHeight,
+							width: useIconOnlyHeaderButtons ? headerButtonHeight : undefined,
+							paddingHorizontal: headerButtonPaddingHorizontal,
+							transform: [{ translateY: headerButtonOffsetY }],
+						}}>
+						<MaterialCommunityIcons name='cog-outline' size={21} color='#FF7A00' />
+						{useIconOnlyHeaderButtons ? null : (
+							<Text
+								className={`${lightThemeEnabled ? 'text-[#3F3F46]' : 'text-[#E6E6E6]'} ml-4 text-[13px] font-semibold tracking-wider`}>
+								USTAWIENIA
+							</Text>
+						)}
+					</TouchableOpacity>
+					<TouchableOpacity
+						onPress={() => router.push('/history')}
+						accessibilityRole='button'
+						accessibilityLabel='Historia czatów'
+						className={`flex-row items-center justify-center border rounded-[10px] ${
+							lightThemeEnabled
+								? 'border-[#E4E4E7] bg-[#FAFAFA]'
+								: 'border-[#2A2A2A] bg-[#111111]'
+						}`}
+						style={{
+							height: headerButtonHeight,
+							width: useIconOnlyHeaderButtons ? headerButtonHeight : undefined,
+							paddingHorizontal: headerButtonPaddingHorizontal,
+							transform: [{ translateY: headerButtonOffsetY }],
+						}}>
+						<MaterialCommunityIcons name='history' size={21} color='#FF7A00' />
+						{useIconOnlyHeaderButtons ? null : (
+							<Text
+								className={`${lightThemeEnabled ? 'text-[#3F3F46]' : 'text-[#E6E6E6]'} ml-4 text-[13px] font-semibold tracking-wider`}>
+								HISTORIA CZATÓW
+							</Text>
+						)}
+					</TouchableOpacity>
+				</View>
+			</View>
+
+			<VehicleFilters
+				brands={brands}
+				deviceTypes={deviceTypes}
+				activeBrandFilter={activeBrandFilter}
+				activeTypeFilter={activeTypeFilter}
+				onBrandFilterChange={setActiveBrandFilter}
+				onTypeFilterChange={setActiveTypeFilter}
+				useTabletRefresh={useTabletFilterStyle}
+				isLoadingBrands={isLoadingBrands}
+				isLoadingTypes={isLoadingTypes}
+				primaryColor={PRIMARY_ORANGE}
+				lightMode={lightThemeEnabled}
+			/>
+		</View>
+	);
+
 	return (
 		<SafeAreaView
 			className={`flex-1 ${lightThemeEnabled ? 'bg-[#F7F7F8]' : 'bg-[#09090B]'}`}
@@ -186,140 +270,19 @@ export default function HomeScreen() {
 				backgroundColor={lightThemeEnabled ? '#FFFFFF' : '#09090B'}
 			/>
 			<View className='flex-1'>
-				<Animated.View
-					onLayout={(e) => setHeaderHeight(e.nativeEvent.layout.height)}
-					style={{
-						opacity: headerOpacity,
-						transform: [{ translateY: headerTranslateY }],
-						position: 'absolute',
-						top: 0,
-						left: 0,
-						right: 0,
-						paddingHorizontal: headerPaddingHorizontal,
-						paddingTop: headerPaddingVertical,
-						paddingBottom: headerPaddingVertical,
-						zIndex: 10,
-						backgroundColor: lightThemeEnabled ? '#FFFFFF' : '#09090B',
-						borderBottomWidth: 1,
-						borderBottomColor: lightThemeEnabled ? '#E4E4E7' : '#09090B',
-					}}>
-					<View
-						className={`flex-row justify-between items-center ${
-							usePhonePortraitHeader ? 'gap-2' : 'gap-3'
-						}`}
-						style={{
-							minHeight: headerTopRowHeight,
-							marginBottom: useTabletHomeRefresh
-								? 12
-								: usePhonePortraitHeader
-									? 12
-									: 16,
-						}}>
-						<View
-							className='flex-row items-center flex-1 min-w-0'
-							style={{ transform: [{ translateY: titleGroupOffsetY }] }}>
-							<View className={usePhonePortraitHeader ? 'mr-2' : 'mr-3'}>
-								<ThemeAwareLogo
-									source={require('../../assets/images/fixo3.png')}
-									width={headerLogoWidth}
-									height={headerLogoHeight}
-									lightMode={lightThemeEnabled}
-									resizeMode='contain'
-								/>
-							</View>
+				{isLoadingDevices ? (
+					<View className='flex-1'>
+						{homeHeader}
+						<View className='flex-1 justify-center items-center'>
+							<ActivityIndicator size='large' color={PRIMARY_ORANGE} />
 							<Text
-								className={`${headerTitleClassName} ${lightThemeEnabled ? 'text-[#18181B]' : 'text-white'} font-bold flex-1`}
-								numberOfLines={1}
-								adjustsFontSizeToFit>
-								Wybierz Pojazd
+								className={`${lightThemeEnabled ? 'text-[#52525B]' : 'text-gray-400'} mt-4`}>
+								Ładowanie maszyn...
 							</Text>
 						</View>
-						<View
-							className={`flex-row items-center ${usePhonePortraitHeader ? 'gap-2' : 'gap-3'}`}>
-							<TouchableOpacity
-								onPress={() => router.push('/settings')}
-								accessibilityRole='button'
-								accessibilityLabel='Ustawienia'
-								className={`flex-row items-center justify-center border rounded-[10px] ${
-									lightThemeEnabled
-										? 'border-[#E4E4E7] bg-[#FAFAFA]'
-										: 'border-[#2A2A2A] bg-[#111111]'
-								}`}
-								style={{
-									height: headerButtonHeight,
-									width: useIconOnlyHeaderButtons
-										? headerButtonHeight
-										: undefined,
-									paddingHorizontal: headerButtonPaddingHorizontal,
-									transform: [{ translateY: headerButtonOffsetY }],
-								}}>
-								<MaterialCommunityIcons
-									name='cog-outline'
-									size={21}
-									color='#FF7A00'
-								/>
-								{useIconOnlyHeaderButtons ? null : (
-									<Text
-										className={`${lightThemeEnabled ? 'text-[#3F3F46]' : 'text-[#E6E6E6]'} ml-4 text-[13px] font-semibold tracking-wider`}>
-										USTAWIENIA
-									</Text>
-								)}
-							</TouchableOpacity>
-							<TouchableOpacity
-								onPress={() => router.push('/history')}
-								accessibilityRole='button'
-								accessibilityLabel='Historia czatów'
-								className={`flex-row items-center justify-center border rounded-[10px] ${
-									lightThemeEnabled
-										? 'border-[#E4E4E7] bg-[#FAFAFA]'
-										: 'border-[#2A2A2A] bg-[#111111]'
-								}`}
-								style={{
-									height: headerButtonHeight,
-									width: useIconOnlyHeaderButtons
-										? headerButtonHeight
-										: undefined,
-									paddingHorizontal: headerButtonPaddingHorizontal,
-									transform: [{ translateY: headerButtonOffsetY }],
-								}}>
-								<MaterialCommunityIcons name='history' size={21} color='#FF7A00' />
-								{useIconOnlyHeaderButtons ? null : (
-									<Text
-										className={`${lightThemeEnabled ? 'text-[#3F3F46]' : 'text-[#E6E6E6]'} ml-4 text-[13px] font-semibold tracking-wider`}>
-										HISTORIA CZATÓW
-									</Text>
-								)}
-							</TouchableOpacity>
-						</View>
-					</View>
-
-					<VehicleFilters
-						brands={brands}
-						deviceTypes={deviceTypes}
-						activeBrandFilter={activeBrandFilter}
-						activeTypeFilter={activeTypeFilter}
-						onBrandFilterChange={setActiveBrandFilter}
-						onTypeFilterChange={setActiveTypeFilter}
-						useTabletRefresh={useTabletFilterStyle}
-						isLoadingBrands={isLoadingBrands}
-						isLoadingTypes={isLoadingTypes}
-						primaryColor={PRIMARY_ORANGE}
-						lightMode={lightThemeEnabled}
-					/>
-				</Animated.View>
-
-				{isLoadingDevices ? (
-					<View
-						className='flex-1 justify-center items-center'
-						style={{ paddingTop: headerHeight + 50 }}>
-						<ActivityIndicator size='large' color={PRIMARY_ORANGE} />
-						<Text
-							className={`${lightThemeEnabled ? 'text-[#52525B]' : 'text-gray-400'} mt-4`}>
-							Ładowanie maszyn...
-						</Text>
 					</View>
 				) : (
-					<Animated.FlatList
+					<FlatList
 						key={`grid-${columns}-${lightThemeEnabled ? 'light' : 'dark'}`}
 						data={filteredVehicles}
 						extraData={lightThemeEnabled}
@@ -348,21 +311,18 @@ export default function HomeScreen() {
 								</Text>
 							</View>
 						}
+						ListHeaderComponent={homeHeader}
+						ListHeaderComponentStyle={{
+							alignSelf: 'stretch',
+							marginHorizontal: -paddingHorizontal,
+						}}
 						numColumns={columns}
 						showsVerticalScrollIndicator={false}
 						contentContainerStyle={{
-							paddingTop: headerHeight,
 							paddingBottom: bottomListPadding,
 							paddingHorizontal: paddingHorizontal,
 							alignItems: 'center',
 						}}
-						onScroll={Animated.event(
-							[{ nativeEvent: { contentOffset: { y: scrollY } } }],
-							{
-								useNativeDriver: !isWeb,
-							},
-						)}
-						scrollEventThrottle={16}
 					/>
 				)}
 			</View>
