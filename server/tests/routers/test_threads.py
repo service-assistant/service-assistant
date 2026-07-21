@@ -253,6 +253,7 @@ async def test_should_skip_diagnostic_mode_when_client_disables_it(
     )
 
     assert response.status_code == 200
+    assert _parse_message_event(response)["router_decision"] == "standard_query"
     build_diagnostic_plan.assert_not_awaited()
 
 
@@ -318,6 +319,7 @@ async def test_should_start_diagnostic_for_any_error_when_mode_is_enabled(
         "app.routers.threads.next_best_step.build_diagnostic_plan",
         new=mocker.AsyncMock(return_value=_diagnostic_plan("2:004")),
     )
+    mocker.patch.object(DiagnosticPlan, "has_next_action", return_value=True)
     mocker.patch(
         "app.routers.threads.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
@@ -329,6 +331,9 @@ async def test_should_start_diagnostic_for_any_error_when_mode_is_enabled(
 
     assert response.status_code == 200
     assert "event: route\ndata: start_diagnostic" in response.text
+    message_data = _parse_message_event(response)
+    assert message_data["router_decision"] == "start_diagnostic"
+    assert message_data["has_continuation"] is True
     build_diagnostic_plan.assert_awaited_once_with([], "2:004", mocker.ANY)
 
 

@@ -232,27 +232,6 @@ describe('ChatMessages', () => {
 		expect(onRetryMessage).toHaveBeenCalledWith(interruptedMessage);
 	});
 
-	test('renders the router decision before the assistant message', () => {
-		const tree = (
-			<ChatMessages
-				{...baseProps}
-				messages={[
-					{
-						id: 1,
-						sender: 'ai',
-						text: 'Odpowiedź',
-						routerDecision: 'standard_query',
-					},
-				]}
-			/>
-		);
-
-		expect(getTextContent(tree)).toContain('Router: standard_query');
-		expect(getTextContent(tree).indexOf('Router: standard_query')).toBeLessThan(
-			getTextContent(tree).indexOf('Odpowiedź'),
-		);
-	});
-
 	test('does not render feedback controls for completed assistant messages', () => {
 		const tree = (
 			<ChatMessages

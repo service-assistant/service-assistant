@@ -20,7 +20,7 @@ import { fetchWithRetry, HttpError, isTransientNetworkError } from '@/utils/netw
 
 const MAX_SCHEMA_IMAGES = 5;
 
-type StreamEvent = 'chunk' | 'route';
+type StreamEvent = 'chunk';
 
 type AssistantMessagePayload = {
 	id?: number;
@@ -219,19 +219,6 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 						);
 					};
 
-					const handleRoute = (event: EventSourceEvent<'route'>) => {
-						const routerDecision = event.data?.trim();
-						if (!routerDecision || abortController.signal.aborted) return;
-
-						setMessages((prev) =>
-							prev.map((message) =>
-								message.id === aiMessageId
-									? ({ ...message, routerDecision } as TMessage)
-									: message,
-							),
-						);
-					};
-
 					const handleMessage = (event: EventSourceEvent<'message'>) => {
 						const message = parseStreamData<AssistantMessagePayload>(event.data);
 
@@ -283,7 +270,6 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 					};
 
 					abortController.signal.addEventListener('abort', handleAbort);
-					eventSource.addEventListener('route', handleRoute);
 					eventSource.addEventListener('chunk', handleChunk);
 					eventSource.addEventListener('message', handleMessage);
 					eventSource.addEventListener('error', handleError);

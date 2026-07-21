@@ -56,6 +56,11 @@ def _plan(problem: str, actions: list[DiagnosticAction]) -> DiagnosticPlan:
     )
 
 
+def test_should_report_continuation_only_when_another_diagnostic_action_remains():
+    assert _plan("E-23", [_action("first"), _action("second")]).has_next_action()
+    assert not _plan("E-23", [_action("only")]).has_next_action()
+
+
 def test_should_rank_informative_check_before_expensive_replacement():
     check = _action("check_parameters")
     replacement = _action(

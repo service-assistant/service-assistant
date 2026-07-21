@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from app.services.message_router import (
     MessageRoute,
+    RoutingHistoryMessage,
     classify_message,
     route_message,
 )
@@ -75,7 +76,7 @@ async def test_should_reconstruct_followup_from_message_history(mocker, settings
         )
     )
     mocker.patch("app.services.message_router.AsyncOpenAI", return_value=mock_client)
-    history = [
+    history: list[RoutingHistoryMessage] = [
         {
             "id": 42,
             "sender": "assistant",
