@@ -489,7 +489,7 @@ describe('useChatApi', () => {
 		expect(harness.onServiceError).toHaveBeenCalledWith(
 			'autoryzacja aplikacji',
 			expect.objectContaining({
-				message: 'Invalid EXPO_PUBLIC_AUTH_TOKEN: 403',
+				message: 'Invalid AUTH_TOKEN: 403',
 				serviceFeature: 'autoryzacja aplikacji',
 			}),
 		);

@@ -1,4 +1,4 @@
-const originalAuthUrl = process.env.EXPO_PUBLIC_AUTH_URL;
+const originalAuthUrl = process.env.AUTH_URL;
 
 const loadApiConfig = async () => {
 	jest.resetModules();
@@ -7,16 +7,16 @@ const loadApiConfig = async () => {
 
 afterEach(() => {
 	if (originalAuthUrl === undefined) {
-		delete process.env.EXPO_PUBLIC_AUTH_URL;
+		delete process.env.AUTH_URL;
 	} else {
-		process.env.EXPO_PUBLIC_AUTH_URL = originalAuthUrl;
+		process.env.AUTH_URL = originalAuthUrl;
 	}
 	jest.resetModules();
 });
 
 describe('api config', () => {
 	test('uses the staging URL by default', async () => {
-		delete process.env.EXPO_PUBLIC_AUTH_URL;
+		delete process.env.AUTH_URL;
 
 		const config = await loadApiConfig();
 
@@ -25,7 +25,7 @@ describe('api config', () => {
 	});
 
 	test('trims whitespace and trailing slashes from configured URL', async () => {
-		process.env.EXPO_PUBLIC_AUTH_URL = ' https://api.example.test/// ';
+		process.env.AUTH_URL = ' https://api.example.test/// ';
 
 		const config = await loadApiConfig();
 
@@ -34,13 +34,13 @@ describe('api config', () => {
 	});
 
 	test('flags unsupported URL protocols', async () => {
-		process.env.EXPO_PUBLIC_AUTH_URL = 'ftp://api.example.test';
+		process.env.AUTH_URL = 'ftp://api.example.test';
 
 		const config = await loadApiConfig();
 
 		expect(config.AUTH_URL).toBe('ftp://api.example.test');
 		expect(config.AUTH_URL_CONFIG_ERROR?.message).toBe(
-			'Invalid EXPO_PUBLIC_AUTH_URL: ftp://api.example.test',
+			'Invalid AUTH_URL: ftp://api.example.test',
 		);
 		expect(
 			(config.AUTH_URL_CONFIG_ERROR as Error & { serviceFeature?: string })?.serviceFeature,
@@ -48,13 +48,13 @@ describe('api config', () => {
 	});
 
 	test('falls back to default URL when configured URL cannot be parsed', async () => {
-		process.env.EXPO_PUBLIC_AUTH_URL = 'not a url';
+		process.env.AUTH_URL = 'not a url';
 
 		const config = await loadApiConfig();
 
 		expect(config.AUTH_URL).toBe('https://staging.asystent-serwisanta.pl');
 		expect(config.AUTH_URL_CONFIG_ERROR?.message).toBe(
-			'Invalid EXPO_PUBLIC_AUTH_URL: not a url',
+			'Invalid AUTH_URL: not a url',
 		);
 	});
 });

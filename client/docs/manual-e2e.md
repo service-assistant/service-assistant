@@ -17,8 +17,8 @@ This test confirms that the built APK:
 ## Prerequisites
 
 - EAS `preview` environment contains:
-    - `EXPO_PUBLIC_AUTH_URL`
-    - `EXPO_PUBLIC_AUTH_TOKEN`
+    - `AUTH_URL`
+    - `AUTH_TOKEN`
 - `client/eas.json` preview profile uses:
     - `environment: "preview"`
     - `android.buildType: "apk"`
@@ -61,7 +61,7 @@ Date:
 - [ ] App installs successfully.
 - [ ] App opens without a crash.
 - [ ] Home screen appears.
-- [ ] No `Missing EXPO_PUBLIC_AUTH_TOKEN` or config error modal appears.
+- [ ] No `Missing AUTH_TOKEN` or config error modal appears.
 
 Expected: Home screen shows the vehicle selection experience.
 
@@ -123,7 +123,7 @@ Expected: Native microphone path does not crash.
 
 Only run this on a separate build or staging configuration if you intentionally test bad auth.
 
-- [ ] Build with invalid `EXPO_PUBLIC_AUTH_TOKEN`.
+- [ ] Build with invalid `AUTH_TOKEN`.
 - [ ] App shows an auth/service modal instead of silently failing.
 - [ ] Modal text identifies the failing feature.
 
