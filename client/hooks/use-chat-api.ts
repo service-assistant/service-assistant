@@ -15,7 +15,12 @@ import {
 	getServiceErrorFeature,
 	throwIfAuthResponseError,
 } from '@/utils/auth-errors';
-import { buildChunkImageUrl, formatStreamingText, parseStreamData } from '@/utils/chat-stream';
+import {
+	appendStreamingChunk,
+	buildChunkImageUrl,
+	formatStreamingText,
+	parseStreamData,
+} from '@/utils/chat-stream';
 import { fetchWithRetry, HttpError, isTransientNetworkError } from '@/utils/network';
 
 const MAX_SCHEMA_IMAGES = 5;
@@ -207,7 +212,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 
 						if (abortController.signal.aborted) return;
 
-						fullText += chunkText;
+						fullText = appendStreamingChunk(fullText, chunkText);
 						const displayText = formatStreamingText(fullText);
 						setIsLoading(false);
 						setMessages((prev) =>

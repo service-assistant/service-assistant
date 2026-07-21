@@ -7,6 +7,7 @@ from sqlalchemy import select
 from app.config import get_settings
 from app.main import app
 from app.models import ChatThread, ChunkMessage, Message, MessageSender
+from app.routers.threads import _sse
 from app.services import retrieval as retrieval_module
 from app.services.message_router import MessageRoute, RouteDecision
 from app.services.next_best_step import (
@@ -56,6 +57,12 @@ def _parse_message_event(response) -> dict:
         if line == "event: message":
             return json.loads(lines[i + 1].removeprefix("data: "))
     raise AssertionError("No 'message' SSE event found in response")
+
+
+def test_sse_preserves_every_line_of_streamed_checklist_chunk():
+    assert _sse("chunk", "::checklist\n- First step\n- Second step") == (
+        "event: chunk\ndata: ::checklist\ndata: - First step\ndata: - Second step\n\n"
+    )
 
 
 async def _persisted_source_chunk_ids(session, message_id: int) -> set[int]:

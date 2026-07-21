@@ -63,6 +63,7 @@ jest.mock('react-native', () => {
 		Modal: createHost('Modal'),
 		Pressable: createHost('Pressable'),
 		ScrollView: createHost('ScrollView'),
+		StyleSheet: { hairlineWidth: 0.5 },
 		Text: createHost('Text'),
 		TextInput: createHost('TextInput'),
 		TouchableOpacity: createHost('TouchableOpacity'),

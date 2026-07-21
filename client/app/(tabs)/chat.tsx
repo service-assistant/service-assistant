@@ -646,7 +646,6 @@ export default function ChatScreen() {
 		sourcePanelProps,
 		sourcePanelFullScreen,
 		onBack: handleBack,
-		onOpenMachineInfo: sourcePanelProps.onClose,
 		onOpenFilesPanel: openFilesPanel,
 		onSendText: handleSendText,
 		onChangeText: setInputText,

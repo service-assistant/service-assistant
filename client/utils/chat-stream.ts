@@ -11,6 +11,31 @@ export const parseStreamData = <T>(data: string | null): T | string => {
 export const buildChunkImageUrl = (serverUrl: string, imagePath: string) =>
 	`${serverUrl}/api/images/${encodeURIComponent(imagePath)}`;
 
+export const appendStreamingChunk = (currentText: string, chunkText: string) => {
+	const checklistMarker = chunkText.match(/^[ \t]*[-*](?:[ \t]+|$)/);
+	const startsChecklistItem = checklistMarker !== null;
+	const markerEnd = checklistMarker?.[0].length ?? 0;
+	const nextCharacter = chunkText.slice(markerEnd).trimStart()[0] ?? '';
+	const continuesNumericRange = /\d\s*$/.test(currentText) && /^\d/.test(nextCharacter);
+	if (
+		!startsChecklistItem ||
+		continuesNumericRange ||
+		!currentText ||
+		currentText.endsWith('\n')
+	) {
+		return currentText + chunkText;
+	}
+
+	const directives = Array.from(
+		currentText.matchAll(/::(checklist|warning|next)(?![a-ząćęłńóśźż0-9_])/gi),
+	);
+	const activeDirective = directives.at(-1)?.[1].toLowerCase();
+
+	return activeDirective === 'checklist'
+		? `${currentText}\n${chunkText.trimStart()}`
+		: currentText + chunkText;
+};
+
 export const formatStreamingText = (text: string) => {
 	let result = '';
 	let cursor = 0;
