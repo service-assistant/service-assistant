@@ -114,7 +114,7 @@ describe('useSourcePanelFiles', () => {
 
 	afterEach(() => {
 		jest.restoreAllMocks();
-		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
+		delete process.env.AUTH_TOKEN;
 	});
 
 	test('opens a message source with an authorized remote PDF source', () => {
@@ -165,7 +165,7 @@ describe('useSourcePanelFiles', () => {
 		expect(harness.onServiceError).toHaveBeenCalledWith(
 			'autoryzacja aplikacji',
 			expect.objectContaining({
-				message: 'Missing EXPO_PUBLIC_AUTH_TOKEN',
+				message: 'Missing AUTH_TOKEN',
 				serviceFeature: 'autoryzacja aplikacji',
 			}),
 		);
@@ -275,7 +275,7 @@ describe('useSourcePanelFiles', () => {
 		expect(rerenderedHarness.onServiceError).toHaveBeenCalledWith(
 			'autoryzacja aplikacji',
 			expect.objectContaining({
-				message: 'Invalid EXPO_PUBLIC_AUTH_TOKEN: 401',
+				message: 'Invalid AUTH_TOKEN: 401',
 				serviceFeature: 'autoryzacja aplikacji',
 			}),
 		);

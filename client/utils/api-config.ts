@@ -1,13 +1,16 @@
+import Constants from 'expo-constants';
+
 const DEFAULT_AUTH_URL = 'https://staging.asystent-serwisanta.pl';
 
 export const CONFIG_SERVICE_FEATURE = 'konfiguracja aplikacji';
 
 const createAuthUrlConfigError = (value: string) =>
-	Object.assign(new Error(`Invalid EXPO_PUBLIC_AUTH_URL: ${value}`), {
+	Object.assign(new Error(`Invalid AUTH_URL: ${value}`), {
 		serviceFeature: CONFIG_SERVICE_FEATURE,
 	});
 
-const rawAuthUrl = process.env.EXPO_PUBLIC_AUTH_URL?.trim() || DEFAULT_AUTH_URL;
+const rawAuthUrl =
+	(process.env.AUTH_URL ?? Constants.expoConfig?.extra?.authUrl)?.trim() || DEFAULT_AUTH_URL;
 
 let normalizedAuthUrl = rawAuthUrl.replace(/\/+$/, '');
 let authUrlConfigError: Error | null = null;

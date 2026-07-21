@@ -57,7 +57,7 @@ import { AUTH_SERVICE_FEATURE } from '@/utils/auth-errors';
 import { Platform } from 'react-native';
 import { useAssistantAudio } from '../hooks/use-assistant-audio';
 
-const originalAuthToken = process.env.EXPO_PUBLIC_AUTH_TOKEN;
+const originalAuthToken = process.env.AUTH_TOKEN;
 
 const createHarness = () => {
 	mockReactStateValues = [];
@@ -94,16 +94,16 @@ describe('useAssistantAudio', () => {
 		mockAudioPlayer.replace.mockReset();
 		mockUseAudioPlayer.mockClear();
 		mockWriteAsStringAsync.mockReset();
-		process.env.EXPO_PUBLIC_AUTH_TOKEN = 'test-token';
+		process.env.AUTH_TOKEN = 'test-token';
 		global.fetch = jest.fn();
 		jest.spyOn(console, 'log').mockImplementation(() => {});
 	});
 
 	afterEach(() => {
 		if (originalAuthToken === undefined) {
-			delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
+			delete process.env.AUTH_TOKEN;
 		} else {
-			process.env.EXPO_PUBLIC_AUTH_TOKEN = originalAuthToken;
+			process.env.AUTH_TOKEN = originalAuthToken;
 		}
 		jest.restoreAllMocks();
 	});
@@ -227,7 +227,7 @@ describe('useAssistantAudio', () => {
 	});
 
 	test('reports missing auth token through the service error callback', async () => {
-		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
+		delete process.env.AUTH_TOKEN;
 		const harness = createHarness();
 
 		await harness.api.playAssistantAudio('No token');
@@ -236,7 +236,7 @@ describe('useAssistantAudio', () => {
 		expect(harness.onServiceError).toHaveBeenCalledWith(
 			AUTH_SERVICE_FEATURE,
 			expect.objectContaining({
-				message: 'Missing EXPO_PUBLIC_AUTH_TOKEN',
+				message: 'Missing AUTH_TOKEN',
 			}),
 		);
 		expect(harness.setIsLoading).toHaveBeenLastCalledWith(false);
@@ -253,7 +253,7 @@ describe('useAssistantAudio', () => {
 		expect(harness.onServiceError).toHaveBeenCalledWith(
 			AUTH_SERVICE_FEATURE,
 			expect.objectContaining({
-				message: 'Invalid EXPO_PUBLIC_AUTH_TOKEN: 401',
+				message: 'Invalid AUTH_TOKEN: 401',
 			}),
 		);
 		expect(mockAudioPlayer.play).not.toHaveBeenCalled();
