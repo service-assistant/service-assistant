@@ -191,10 +191,6 @@ describe('useChatApi', () => {
 			}),
 		});
 
-		MockEventSource.instances[0].emit('route', {
-			data: 'standard_query',
-		});
-
 		MockEventSource.instances[0].emit('chunk', {
 			data: 'Steps: 1. Turn key 2. Press start',
 		});
@@ -204,7 +200,6 @@ describe('useChatApi', () => {
 				id: 1000.5,
 				sender: 'ai',
 				text: 'Steps:\n1. Turn key\n2. Press start',
-				routerDecision: 'standard_query',
 			},
 		]);
 		expect(harness.state.isLoading).toBe(false);

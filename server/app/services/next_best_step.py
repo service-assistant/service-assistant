@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 _DIAGNOSTIC_PLAN_CACHE_LIMIT: Final[int] = 1000
 _diagnostic_plan_cache: OrderedDict[str, "DiagnosticPlan"] = OrderedDict()
 
-POLISH_ASCII_TRANSLATION: Final[dict[int, str]] = str.maketrans(
+POLISH_ASCII_TRANSLATION: Final[dict[int, int]] = str.maketrans(
     "ąćęłńóśźż", "acelnoszz"
 )
 
@@ -93,6 +93,9 @@ class DiagnosticPlan(StrictModel):
 
     def current_action_only(self) -> "DiagnosticPlan":
         return self.model_copy(update={"actions": self.actions[:1]})
+
+    def has_next_action(self) -> bool:
+        return self.status == DiagnosticPlanStatus.actions and len(self.actions) > 1
 
 
 class FollowupDecision(StrictModel):
@@ -415,9 +418,9 @@ async def build_followup_plan(
     settings: Settings,
 ) -> tuple[bool, DiagnosticPlan | None]:
     """Return whether the message is an observation and the next ranked plan."""
+    problem = current_plan.problem
     try:
         actions = current_plan.actions
-        problem = current_plan.problem
         if current_plan.status != DiagnosticPlanStatus.actions or not actions:
             return False, None
 

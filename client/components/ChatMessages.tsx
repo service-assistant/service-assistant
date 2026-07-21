@@ -35,7 +35,6 @@ export type ChatMessageItem = {
 	id: number;
 	sender: 'user' | 'ai';
 	text: string;
-	routerDecision?: string;
 	isSpeaking?: boolean;
 	schemaImage?: SchemaImageSource;
 	schemaImages?: SchemaImageSource[];
@@ -694,15 +693,6 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 								? { width: compact ? '96%' : '78%' }
 								: { maxWidth: compact ? '96%' : '78%' }
 						}>
-						{message.routerDecision ? (
-							<Text
-								className={`${
-									lightMode ? 'text-[#52525B]' : 'text-[#AEB3BA]'
-								} text-[12px] tracking-wide mb-2`}>
-								Router: {message.routerDecision}
-							</Text>
-						) : null}
-
 						{message.text ? (
 							<StructuredAssistantResponse
 								text={message.text}

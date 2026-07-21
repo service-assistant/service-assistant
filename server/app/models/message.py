@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum as SAEnum
+from sqlalchemy import Boolean, DateTime, Enum as SAEnum, String
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -30,6 +30,7 @@ class Message(Base):
         SAEnum(MessageSender, native_enum=False)
     )
     has_continuation: Mapped[bool] = mapped_column(Boolean, default=False)
+    router_decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )

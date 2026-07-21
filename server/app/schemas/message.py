@@ -45,6 +45,10 @@ class MessageRead(BaseModel):
             "assistant response."
         )
     )
+    router_decision: str | None = Field(
+        default=None,
+        description="Message route selected before generating this assistant response.",
+    )
     thread_id: int = Field(
         description="ID of the thread this message belongs to.", examples=[1]
     )

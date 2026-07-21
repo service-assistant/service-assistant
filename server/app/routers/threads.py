@@ -437,13 +437,18 @@ async def create_message(
             answer = llm.ensure_continuation_intro(answer)
         answer = llm.clean_completion_notice(answer)
         answer = llm.limit_checklist_items(answer)
-        has_continuation = llm.has_continuation_marker(answer)
+        has_continuation = llm.has_continuation_marker(answer) or bool(
+            body.diagnostic_mode_enabled
+            and diagnostic_plan
+            and diagnostic_plan.has_next_action()
+        )
 
         assistant_message = Message(
             content=answer,
             thread_id=thread_id,
             sender=MessageSender.assistant,
             has_continuation=has_continuation,
+            router_decision=diagnostic_route.value,
         )
         session.add(assistant_message)
         await session.flush()
