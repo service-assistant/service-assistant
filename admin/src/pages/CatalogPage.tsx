@@ -1,9 +1,12 @@
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { Search } from 'lucide-react'
+import { Layers, Plus, Search, ShieldAlert, Wrench } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { PageHeader } from '@/components/PageHeader'
+import { StatTile } from '@/components/StatTile'
 import { useBrands } from '@/hooks/useBrands'
 import { useDeviceTypes } from '@/hooks/useDeviceTypes'
-import { useDevices } from '@/hooks/useDevices'
+import { useDeviceAttachments, useDevices } from '@/hooks/useDevices'
+import type { Device } from '@/lib/types'
 
 type Tab = 'models' | 'brands' | 'types'
 
@@ -15,6 +18,52 @@ function TabButton({ label, active, onClick }: { label: string; active: boolean;
 		>
 			{label}
 		</button>
+	)
+}
+
+function ModelRow({
+	device,
+	brandName,
+	typeName,
+}: {
+	device: Device
+	brandName: string
+	typeName: string
+}) {
+	const { data: attachments } = useDeviceAttachments(device.id)
+	const assigned = (attachments?.length ?? 0) > 0
+
+	return (
+		<Link
+			to="/machines/$deviceId"
+			params={{ deviceId: String(device.id) }}
+			className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 last:border-b-0 hover:bg-panel-soft"
+		>
+			<span className="flex items-center gap-3 text-cream">
+				{device.image_url ? (
+					<img src={device.image_url} alt="" className="size-9 shrink-0 rounded-md object-cover" />
+				) : (
+					<span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-panel-soft text-cream/30">
+						<Wrench size={16} />
+					</span>
+				)}
+				<span>
+					<div>{device.name}</div>
+					{device.model_serial_code && <div className="text-xs text-cream/40">{device.model_serial_code}</div>}
+				</span>
+			</span>
+			<span>{brandName}</span>
+			<span>{typeName}</span>
+			<span className="text-xs text-cream/60">
+				{attachments === undefined ? '…' : attachments.length === 0 ? '0 dokumentów' : `${attachments.length} dokumentów`}
+			</span>
+			<span className="flex items-center gap-1.5 text-xs">
+				<span className={`inline-block size-1.5 rounded-full ${assigned ? 'bg-emerald-400' : 'bg-rose-400'}`} />
+				<span className={assigned ? 'text-emerald-300' : 'text-rose-300'}>
+					{assigned ? 'Przypisana' : 'Nieprzypisana'}
+				</span>
+			</span>
+		</Link>
 	)
 }
 
@@ -39,30 +88,26 @@ function ModelsTab() {
 				<input
 					value={search}
 					onChange={(e) => setSearch(e.target.value)}
-					placeholder="Szukaj modelu…"
+					placeholder="Szukaj po nazwie modelu…"
 					className="w-full bg-transparent text-sm text-cream outline-none placeholder:text-cream/40"
 				/>
 			</div>
 			<div className="rounded-lg border border-line bg-panel">
-				<div className="grid grid-cols-[2fr_1fr_1fr_1fr] gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40">
+				<div className="grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40">
 					<span>Model</span>
 					<span>Marka</span>
 					<span>Typ</span>
-					<span>Kod</span>
+					<span>Dokumenty</span>
+					<span>Status</span>
 				</div>
 				{isLoading && <div className="px-4 py-6 text-sm text-cream/50">Ładowanie…</div>}
 				{filtered.map((device) => (
-					<Link
+					<ModelRow
 						key={device.id}
-						to="/machines/$deviceId"
-						params={{ deviceId: String(device.id) }}
-						className="grid grid-cols-[2fr_1fr_1fr_1fr] items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 hover:bg-panel-soft"
-					>
-						<span className="text-cream">{device.name}</span>
-						<span>{brandMap.get(device.brand_id) ?? '?'}</span>
-						<span>{typeMap.get(device.device_type_id) ?? '?'}</span>
-						<span className="text-xs text-cream/50">{device.model_serial_code ?? '—'}</span>
-					</Link>
+						device={device}
+						brandName={brandMap.get(device.brand_id) ?? '?'}
+						typeName={typeMap.get(device.device_type_id) ?? '?'}
+					/>
 				))}
 			</div>
 		</div>
@@ -162,6 +207,9 @@ export function CatalogPage() {
 	const { tab } = useSearch({ strict: false }) as { tab?: 'models' | 'brands' | 'types' }
 	const navigate = useNavigate()
 	const activeTab: Tab = tab ?? 'models'
+	const { data: devices } = useDevices()
+	const { data: brands } = useBrands()
+	const { data: deviceTypes } = useDeviceTypes()
 
 	function setTab(t: Tab) {
 		void navigate({ to: '/catalog', search: { tab: t } })
@@ -169,24 +217,58 @@ export function CatalogPage() {
 
 	return (
 		<div>
+			<PageHeader
+				title="Katalog maszyn"
+				subtitle="Zarządzaj markami, typami i modelami maszyn używanymi w dokumentach oraz asystencie."
+				meta={
+					<>
+						{brands?.length ?? 0} marek · {deviceTypes?.length ?? 0} typów · {devices?.length ?? 0} modeli
+					</>
+				}
+			/>
+
+			<div className="mb-6 grid grid-cols-4 gap-4">
+				<StatTile label="Marki" value={brands?.length ?? 0} sublabel="aktywnych" icon={Layers} color="blue" />
+				<StatTile
+					label="Typy maszyn"
+					value={deviceTypes?.length ?? 0}
+					sublabel="kategorie"
+					icon={Layers}
+					color="blue"
+				/>
+				<StatTile label="Modele" value={devices?.length ?? 0} sublabel="w katalogu" icon={Wrench} color="green" />
+				<StatTile label="Nieprzypisane" value={0} sublabel="wymagają uwagi" icon={ShieldAlert} color="red" />
+			</div>
+
 			<div className="mb-6 flex items-center justify-between">
-				<h1 className="text-2xl font-semibold text-cream">Katalog maszyn</h1>
+				<h2 className="text-xl font-bold text-cream">
+					{activeTab === 'models' ? 'Modele maszyn' : activeTab === 'brands' ? 'Marki' : 'Typy maszyn'}
+				</h2>
 				<div className="flex gap-2">
 					{activeTab === 'models' && (
-						<Link to="/add-machine" className="rounded-md bg-ember px-4 py-2 text-sm font-medium text-ink">
+						<Link
+							to="/add-machine"
+							className="flex items-center gap-2 rounded-md bg-ember px-4 py-2 text-sm font-semibold text-ink"
+						>
+							<Plus size={16} />
 							Dodaj maszynę
 						</Link>
 					)}
 					{activeTab === 'brands' && (
-						<Link to="/brands/new" className="rounded-md bg-ember px-4 py-2 text-sm font-medium text-ink">
+						<Link
+							to="/brands/new"
+							className="flex items-center gap-2 rounded-md bg-ember px-4 py-2 text-sm font-semibold text-ink"
+						>
+							<Plus size={16} />
 							Dodaj markę
 						</Link>
 					)}
 					{activeTab === 'types' && (
 						<Link
 							to="/machine-types/new"
-							className="rounded-md bg-ember px-4 py-2 text-sm font-medium text-ink"
+							className="flex items-center gap-2 rounded-md bg-ember px-4 py-2 text-sm font-semibold text-ink"
 						>
+							<Plus size={16} />
 							Dodaj typ
 						</Link>
 					)}
@@ -194,7 +276,7 @@ export function CatalogPage() {
 			</div>
 
 			<div className="mb-4 flex gap-2 rounded-md border border-line bg-panel p-1">
-				<TabButton label="Modele" active={activeTab === 'models'} onClick={() => setTab('models')} />
+				<TabButton label="Modele maszyn" active={activeTab === 'models'} onClick={() => setTab('models')} />
 				<TabButton label="Marki" active={activeTab === 'brands'} onClick={() => setTab('brands')} />
 				<TabButton label="Typy maszyn" active={activeTab === 'types'} onClick={() => setTab('types')} />
 			</div>

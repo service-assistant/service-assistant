@@ -3,8 +3,8 @@
 @theme {
 	--font-sans: "Inter", Arial, sans-serif;
 	--color-ink: #0b1118;
-	--color-panel: #161d26;
-	--color-panel-soft: #202832;
+	--color-panel: rgba(22, 29, 38, 0.94);
+	--color-panel-soft: rgba(32, 40, 50, 0.9);
 	--color-line: #2d3745;
 	--color-cream: #ffe1bf;
 	--color-ember: #ff8a00;
@@ -14,4 +14,14 @@ body {
 	font-family: var(--font-sans);
 	background-color: var(--color-ink);
 	color: var(--color-cream);
+	min-height: 100vh;
+	background-image:
+		radial-gradient(circle at 15% 0%, rgba(255, 138, 0, 0.16), transparent 45%),
+		linear-gradient(rgba(255, 225, 191, 0.055) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(255, 225, 191, 0.055) 1px, transparent 1px);
+	background-size:
+		100% 100%,
+		40px 40px,
+		40px 40px;
+	background-attachment: fixed;
 }
