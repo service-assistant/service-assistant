@@ -43,7 +43,7 @@ jest.mock('@/components/ChatMessages', () => ({
 			.trim(),
 }));
 
-import type { ChatMessageItem } from '@/components/ChatMessages';
+import type { ChatMessageItem, SchemaImageSource } from '@/components/ChatMessages';
 import { useChatApi } from '../hooks/use-chat-api';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -52,12 +52,6 @@ const createJsonResponse = (body: unknown, status = 200) =>
 	new Response(JSON.stringify(body), {
 		status,
 		headers: { 'content-type': 'application/json' },
-	});
-
-const createImageResponse = (body = 'image-data', status = 200) =>
-	new Response(body, {
-		status,
-		headers: { 'content-type': 'image/png' },
 	});
 
 const createDeferred = <T>() => {
@@ -72,7 +66,7 @@ const createDeferred = <T>() => {
 const createHarness = (
 	params: {
 		currentThreadId?: number | null;
-		diagnosticMode2002Enabled?: boolean;
+		diagnosticModeEnabled?: boolean;
 		ttsEnabled?: boolean;
 	} = {},
 ) => {
@@ -80,7 +74,7 @@ const createHarness = (
 	let messages: ChatMessageItem[] = [];
 	let isLoading = false;
 	let isGenerating = false;
-	let currentImage: string | null = null;
+	let currentImage: SchemaImageSource | null = null;
 
 	const setCurrentThreadId = jest.fn(
 		(value: number | null | ((prev: number | null) => number | null)) => {
@@ -99,7 +93,12 @@ const createHarness = (
 		isGenerating = typeof value === 'function' ? value(isGenerating) : value;
 	});
 	const setCurrentImage = jest.fn(
-		(value: string | null | ((prev: string | null) => string | null)) => {
+		(
+			value:
+				| SchemaImageSource
+				| null
+				| ((prev: SchemaImageSource | null) => SchemaImageSource | null),
+		) => {
 			currentImage = typeof value === 'function' ? value(currentImage) : value;
 		},
 	);
@@ -115,7 +114,7 @@ const createHarness = (
 		setIsLoading,
 		setIsGenerating,
 		setCurrentImage,
-		diagnosticMode2002Enabled: params.diagnosticMode2002Enabled,
+		diagnosticModeEnabled: params.diagnosticModeEnabled,
 		playAssistantAudio,
 		ttsEnabled: params.ttsEnabled,
 		onServiceError,
@@ -188,7 +187,7 @@ describe('useChatApi', () => {
 			},
 			body: JSON.stringify({
 				content: 'How do I start this device?',
-				diagnostic_mode_2002: true,
+				diagnostic_mode_enabled: false,
 			}),
 		});
 
@@ -210,6 +209,7 @@ describe('useChatApi', () => {
 				id: 555,
 				content: 'Final answer ::warning check battery',
 				image_url: null,
+				has_continuation: true,
 			}),
 		});
 		await request;
@@ -225,14 +225,15 @@ describe('useChatApi', () => {
 			}),
 		);
 		expect(harness.state.messages[0].text).toBe('Final answer ::warning check battery');
+		expect(harness.state.messages[0].hasContinuation).toBe(true);
 		expect(harness.playAssistantAudio).toHaveBeenCalledWith('Final answer check battery');
 		expect(harness.state.isLoading).toBe(false);
 	});
 
-	test('sends the disabled 2:002 diagnostic mode to the server', async () => {
+	test('sends the disabled diagnostic mode to the server', async () => {
 		const harness = createHarness({
 			currentThreadId: 321,
-			diagnosticMode2002Enabled: false,
+			diagnosticModeEnabled: false,
 		});
 
 		const request = harness.api.askAPI('Mam błąd 2:002');
@@ -241,7 +242,7 @@ describe('useChatApi', () => {
 		expect(MockEventSource.instances[0].options).toMatchObject({
 			body: JSON.stringify({
 				content: 'Mam błąd 2:002',
-				diagnostic_mode_2002: false,
+				diagnostic_mode_enabled: false,
 			}),
 		});
 
@@ -317,7 +318,6 @@ describe('useChatApi', () => {
 					},
 				]),
 			)
-			.mockResolvedValueOnce(createImageResponse())
 			.mockResolvedValueOnce(createJsonResponse({ original_filename: 'manual.pdf' }));
 		const harness = createHarness({ currentThreadId: 321 });
 
@@ -343,13 +343,6 @@ describe('useChatApi', () => {
 
 		expect(fetchMock).toHaveBeenNthCalledWith(
 			2,
-			'https://api.example.test/api/images/manual%2Fpage%202.png',
-			expect.objectContaining({
-				headers: { Authorization: 'Bearer test-token' },
-			}),
-		);
-		expect(fetchMock).toHaveBeenNthCalledWith(
-			3,
 			'https://api.example.test/api/attachments/77',
 			expect.objectContaining({
 				headers: {
@@ -358,13 +351,25 @@ describe('useChatApi', () => {
 				},
 			}),
 		);
-		expect(harness.state.currentImage).toBe('data:image/png;base64,aW1hZ2UtZGF0YQ==');
+		const authorizedImageSource = {
+			uri: 'https://api.example.test/api/images/manual%2Fpage%202.png',
+			headers: { Authorization: 'Bearer test-token' },
+		};
+		expect(harness.state.currentImage).toEqual(authorizedImageSource);
 		expect(harness.state.messages[0]).toMatchObject({
 			text: 'Use the diagram.',
 			sourceAttachmentId: 77,
 			sourceAttachmentName: 'manual.pdf',
 			sourceAttachmentPage: 4,
-			schemaImage: 'data:image/png;base64,aW1hZ2UtZGF0YQ==',
+			schemaImage: authorizedImageSource,
+			sourceReferences: [
+				{
+					sourceAttachmentId: 77,
+					sourceAttachmentName: 'manual.pdf',
+					sourceAttachmentPage: 4,
+					previewImage: authorizedImageSource,
+				},
+			],
 		});
 	});
 
@@ -383,7 +388,6 @@ describe('useChatApi', () => {
 					},
 				]),
 			)
-			.mockResolvedValueOnce(createImageResponse())
 			.mockReturnValueOnce(attachmentResponse.promise);
 		const harness = createHarness({ currentThreadId: 321 });
 
@@ -400,9 +404,13 @@ describe('useChatApi', () => {
 		await flushPromises();
 		await flushPromises();
 
-		expect(harness.state.currentImage).toBe('data:image/png;base64,aW1hZ2UtZGF0YQ==');
+		const authorizedImageSource = {
+			uri: 'https://api.example.test/api/images/manual%2Fpage%202.png',
+			headers: { Authorization: 'Bearer test-token' },
+		};
+		expect(harness.state.currentImage).toEqual(authorizedImageSource);
 		expect(harness.state.messages[0]).toMatchObject({
-			schemaImage: 'data:image/png;base64,aW1hZ2UtZGF0YQ==',
+			schemaImage: authorizedImageSource,
 		});
 		expect(harness.playAssistantAudio).toHaveBeenCalledWith('Use the diagram.');
 
@@ -414,7 +422,7 @@ describe('useChatApi', () => {
 		});
 	});
 
-	test('loads only the first chunk image for the schema preview', async () => {
+	test('loads at most five chunk images for schema previews', async () => {
 		const fetchMock = jest.mocked(global.fetch);
 		fetchMock
 			.mockResolvedValueOnce(
@@ -422,13 +430,19 @@ describe('useChatApi', () => {
 					{
 						attachment_id: 77,
 						metadata: {
-							images: ['manual/page 2.png', 'manual/page 3.png'],
+							images: [
+								'manual/page 2.png',
+								'manual/page 3.png',
+								'manual/page 4.png',
+								'manual/page 5.png',
+								'manual/page 6.png',
+								'manual/page 7.png',
+							],
 							page: 4,
 						},
 					},
 				]),
 			)
-			.mockResolvedValueOnce(createImageResponse('first-image'))
 			.mockResolvedValueOnce(createJsonResponse({ original_filename: 'manual.pdf' }));
 		const harness = createHarness({ currentThreadId: 321 });
 
@@ -444,16 +458,22 @@ describe('useChatApi', () => {
 		});
 		await request;
 
-		expect(fetchMock).toHaveBeenCalledWith(
-			'https://api.example.test/api/images/manual%2Fpage%202.png',
-			expect.anything(),
-		);
+		expect(fetchMock).toHaveBeenCalledTimes(2);
 		expect(fetchMock).not.toHaveBeenCalledWith(
-			'https://api.example.test/api/images/manual%2Fpage%203.png',
+			'https://api.example.test/api/images/manual%2Fpage%207.png',
 			expect.anything(),
 		);
 		expect(harness.state.messages[0]).toMatchObject({
-			schemaImage: 'data:image/png;base64,Zmlyc3QtaW1hZ2U=',
+			schemaImage: {
+				uri: 'https://api.example.test/api/images/manual%2Fpage%202.png',
+				headers: { Authorization: 'Bearer test-token' },
+			},
+			schemaImages: [
+				...['2', '3', '4', '5', '6'].map((page) => ({
+					uri: `https://api.example.test/api/images/manual%2Fpage%20${page}.png`,
+					headers: { Authorization: 'Bearer test-token' },
+				})),
+			],
 		});
 	});
 
@@ -469,7 +489,7 @@ describe('useChatApi', () => {
 		expect(harness.onServiceError).toHaveBeenCalledWith(
 			'autoryzacja aplikacji',
 			expect.objectContaining({
-				message: 'Invalid EXPO_PUBLIC_AUTH_TOKEN: 403',
+				message: 'Invalid AUTH_TOKEN: 403',
 				serviceFeature: 'autoryzacja aplikacji',
 			}),
 		);

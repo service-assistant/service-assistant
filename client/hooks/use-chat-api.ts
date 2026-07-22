@@ -1,8 +1,11 @@
-import { Buffer } from 'buffer';
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import EventSource, { EventSourceEvent } from 'react-native-sse';
 
-import type { ChatMessageItem } from '@/components/ChatMessages';
+import type {
+	ChatMessageItem,
+	ChatMessageSourceReference,
+	SchemaImageSource,
+} from '@/components/ChatMessages';
 import { stripResponseDirectivesForSpeech } from '@/components/ChatMessages';
 import { AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
@@ -12,8 +15,15 @@ import {
 	getServiceErrorFeature,
 	throwIfAuthResponseError,
 } from '@/utils/auth-errors';
-import { buildChunkImageUrl, formatStreamingText, parseStreamData } from '@/utils/chat-stream';
+import {
+	appendStreamingChunk,
+	buildChunkImageUrl,
+	formatStreamingText,
+	parseStreamData,
+} from '@/utils/chat-stream';
 import { fetchWithRetry, HttpError, isTransientNetworkError } from '@/utils/network';
+
+const MAX_SCHEMA_IMAGES = 5;
 
 type StreamEvent = 'chunk';
 
@@ -21,6 +31,7 @@ type AssistantMessagePayload = {
 	id?: number;
 	content?: string;
 	image_url?: string | null;
+	has_continuation?: boolean;
 };
 
 type SourceChunkPayload = {
@@ -46,35 +57,21 @@ type UseChatApiParams<TMessage extends ChatMessageItem> = {
 	setMessages: Dispatch<SetStateAction<TMessage[]>>;
 	setIsLoading: Dispatch<SetStateAction<boolean>>;
 	setIsGenerating: Dispatch<SetStateAction<boolean>>;
-	setCurrentImage: Dispatch<SetStateAction<string | null>>;
-	diagnosticMode2002Enabled?: boolean;
+	setCurrentImage: Dispatch<SetStateAction<SchemaImageSource | null>>;
+	diagnosticModeEnabled?: boolean;
 	playAssistantAudio: (text: string) => void | Promise<void>;
 	ttsEnabled?: boolean;
 	onServiceError?: (featureName: string, error: unknown) => void;
 	authTokenOverride?: string | null;
 };
 
-const fetchAuthorizedImageDataUrl = async (
-	imageUrl: string,
-	authToken: string,
-	signal: AbortSignal,
-) => {
-	const response = await fetchWithRetry(imageUrl, {
-		headers: { Authorization: `Bearer ${authToken}` },
-		signal,
-	});
+const createAuthorizedImageSource = (imageUrl: string, authToken: string): SchemaImageSource => ({
+	uri: imageUrl,
+	headers: { Authorization: `Bearer ${authToken}` },
+});
 
-	if (!response.ok) {
-		throwIfAuthResponseError(response);
-		throw new HttpError(response.status, `Failed to load source image: ${response.status}`);
-	}
-
-	const contentType = response.headers.get('content-type') || 'image/png';
-	const arrayBuffer = await response.arrayBuffer();
-	const base64 = Buffer.from(arrayBuffer).toString('base64');
-
-	return `data:${contentType};base64,${base64}`;
-};
+const getSchemaImageKey = (source: SchemaImageSource) =>
+	typeof source === 'string' ? source : source.uri;
 
 export const useChatApi = <TMessage extends ChatMessageItem>({
 	serverUrl,
@@ -85,7 +82,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 	setIsLoading,
 	setIsGenerating,
 	setCurrentImage,
-	diagnosticMode2002Enabled = true,
+	diagnosticModeEnabled = false,
 	playAssistantAudio,
 	ttsEnabled = true,
 	onServiceError,
@@ -164,6 +161,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 			setIsGenerating(true);
 			const aiMessageId = Date.now() + Math.random();
 			let fullText = '';
+			let hasContinuation = false;
 
 			setMessages((prev) => [
 				...prev,
@@ -192,7 +190,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 							},
 							body: JSON.stringify({
 								content: question,
-								diagnostic_mode_2002: diagnosticMode2002Enabled,
+								diagnostic_mode_enabled: diagnosticModeEnabled,
 							}),
 							pollingInterval: 0,
 							timeoutBeforeConnection: 0,
@@ -214,7 +212,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 
 						if (abortController.signal.aborted) return;
 
-						fullText += chunkText;
+						fullText = appendStreamingChunk(fullText, chunkText);
 						const displayText = formatStreamingText(fullText);
 						setIsLoading(false);
 						setMessages((prev) =>
@@ -233,12 +231,13 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 							fullText = message.content || fullText;
 							imageUrl = message.image_url || null;
 							systemMessageId = message.id || null;
+							hasContinuation = message.has_continuation === true;
 						}
 
 						setMessages((prev) =>
 							prev.map((msg) =>
 								msg.id === aiMessageId
-									? ({ ...msg, text: fullText } as TMessage)
+									? ({ ...msg, text: fullText, hasContinuation } as TMessage)
 									: msg,
 							),
 						);
@@ -291,8 +290,9 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 
 				let sourceAttachmentId: number | null = null;
 				let sourceAttachmentName = '';
-				let sourceAttachmentPage = 1;
-				let hasAppliedSchemaImage = false;
+				let sourceAttachmentPage = 0;
+				let sourceReferences: ChatMessageSourceReference[] = [];
+				let schemaImages: SchemaImageSource[] = [];
 				let hasStartedAssistantAudio = false;
 
 				const startAssistantAudio = () => {
@@ -309,13 +309,27 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 					playAssistantAudio(stripResponseDirectivesForSpeech(fullText));
 				};
 
-				const applySchemaImage = (nextImageUrl: string) => {
-					hasAppliedSchemaImage = true;
-					setCurrentImage(nextImageUrl);
+				const applySchemaImages = (nextImageUrls: SchemaImageSource[]) => {
+					schemaImages = nextImageUrls
+						.filter(
+							(source, index, sources) =>
+								sources.findIndex(
+									(candidate) =>
+										getSchemaImageKey(candidate) === getSchemaImageKey(source),
+								) === index,
+						)
+						.slice(0, MAX_SCHEMA_IMAGES);
+					if (schemaImages.length === 0) return;
+
+					setCurrentImage(schemaImages[0]);
 					setMessages((prev) =>
 						prev.map((message) =>
 							message.id === aiMessageId
-								? ({ ...message, schemaImage: nextImageUrl } as TMessage)
+								? ({
+										...message,
+										schemaImage: schemaImages[0],
+										schemaImages,
+									} as TMessage)
 								: message,
 						),
 					);
@@ -323,7 +337,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 				};
 
 				if (imageUrl) {
-					applySchemaImage(imageUrl);
+					applySchemaImages([imageUrl]);
 				}
 
 				if (systemMessageId) {
@@ -342,8 +356,8 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 
 					if (chunksResponse.ok) {
 						const chunks = (await chunksResponse.json()) as SourceChunkPayload[];
-						const chunkImagePaths = chunks.flatMap(
-							(chunk) => chunk.metadata?.images || [],
+						const chunkImageEntries = chunks.flatMap((chunk) =>
+							(chunk.metadata?.images || []).map((path) => ({ chunk, path })),
 						);
 						const imageSourceChunk = chunks.find(
 							(chunk) => (chunk.metadata?.images?.length || 0) > 0,
@@ -352,7 +366,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 
 						if (sourceChunk?.attachment_id) {
 							sourceAttachmentId = sourceChunk.attachment_id;
-							sourceAttachmentPage = sourceChunk.metadata?.page || 1;
+							sourceAttachmentPage = sourceChunk.metadata?.page ?? 0;
 
 							imageUrl =
 								imageUrl ||
@@ -360,48 +374,100 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 								sourceChunk.metadata?.schema_url ||
 								null;
 
-							if (imageUrl && !hasAppliedSchemaImage) {
-								applySchemaImage(imageUrl);
+							if (imageUrl && schemaImages.length === 0) {
+								applySchemaImages([imageUrl]);
 							}
 
-							if (!imageUrl && chunkImagePaths.length > 0) {
-								imageUrl = await fetchAuthorizedImageDataUrl(
-									buildChunkImageUrl(serverUrl, chunkImagePaths[0]),
-									AUTH_TOKEN,
-									abortController.signal,
-								).catch((error) => {
-									if (abortController.signal.aborted) throw error;
-									console.log('Handled source image load error:', error);
-									return null;
-								});
+							const uniqueImageEntries = chunkImageEntries
+								.filter(
+									(entry, index, entries) =>
+										entries.findIndex(
+											(candidate) => candidate.path === entry.path,
+										) === index,
+								)
+								.slice(0, MAX_SCHEMA_IMAGES - schemaImages.length);
+							let loadedImageEntries: {
+								chunk: SourceChunkPayload;
+								url: SchemaImageSource;
+							}[] = [];
 
-								if (imageUrl && !hasAppliedSchemaImage) {
-									applySchemaImage(imageUrl);
-								}
+							if (uniqueImageEntries.length > 0) {
+								// Pass authenticated URLs directly to the native image loader. This
+								// avoids downloading every file into JS, duplicating it as base64 and
+								// blocking the answer until all conversions have completed.
+								loadedImageEntries = uniqueImageEntries.map(({ chunk, path }) => ({
+									chunk,
+									url: createAuthorizedImageSource(
+										buildChunkImageUrl(serverUrl, path),
+										AUTH_TOKEN,
+									),
+								}));
+								applySchemaImages([
+									...schemaImages,
+									...loadedImageEntries.map((entry) => entry.url),
+								]);
 							}
 
-							const attachmentResponse = await fetchWithRetry(
-								`${serverUrl}/api/attachments/${sourceAttachmentId}`,
-								{
-									headers: {
-										Accept: 'application/json',
-										Authorization: `Bearer ${AUTH_TOKEN}`,
-									},
-									signal: abortController.signal,
-								},
+							const sourceChunks = chunks
+								.filter(
+									(chunk, index, allChunks) =>
+										allChunks.findIndex(
+											(candidate) =>
+												candidate.attachment_id === chunk.attachment_id &&
+												(candidate.metadata?.page ?? 0) ===
+													(chunk.metadata?.page ?? 0),
+										) === index,
+								)
+								.slice(0, MAX_SCHEMA_IMAGES);
+							const attachmentIds = Array.from(
+								new Set(sourceChunks.map((chunk) => chunk.attachment_id)),
 							);
+							const attachmentEntries = await Promise.all(
+								attachmentIds.map(async (attachmentId) => {
+									const attachmentResponse = await fetchWithRetry(
+										`${serverUrl}/api/attachments/${attachmentId}`,
+										{
+											headers: {
+												Accept: 'application/json',
+												Authorization: `Bearer ${AUTH_TOKEN}`,
+											},
+											signal: abortController.signal,
+										},
+									);
 
-							throwIfAuthResponseError(attachmentResponse);
+									throwIfAuthResponseError(attachmentResponse);
+									if (!attachmentResponse.ok) {
+										return [
+											attachmentId,
+											`Dokument_${attachmentId}.pdf`,
+										] as const;
+									}
 
-							if (attachmentResponse.ok) {
-								const attachment =
-									(await attachmentResponse.json()) as AttachmentPayload;
-								sourceAttachmentName =
-									attachment.original_filename ||
-									`Dokument_${sourceAttachmentId}.pdf`;
-							} else {
-								sourceAttachmentName = `Dokument_${sourceAttachmentId}.pdf`;
-							}
+									const attachment =
+										(await attachmentResponse.json()) as AttachmentPayload;
+									return [
+										attachmentId,
+										attachment.original_filename ||
+											`Dokument_${attachmentId}.pdf`,
+									] as const;
+								}),
+							);
+							const attachmentNames = new Map(attachmentEntries);
+							sourceReferences = sourceChunks.map((chunk) => ({
+								sourceAttachmentId: chunk.attachment_id,
+								sourceAttachmentName: attachmentNames.get(chunk.attachment_id),
+								sourceAttachmentPage: chunk.metadata?.page ?? 0,
+								previewImage:
+									loadedImageEntries.find(
+										(entry) =>
+											entry.chunk.attachment_id === chunk.attachment_id &&
+											(entry.chunk.metadata?.page ?? 0) ===
+												(chunk.metadata?.page ?? 0),
+									)?.url || (chunk === sourceChunk ? schemaImages[0] : undefined),
+							}));
+							sourceAttachmentName =
+								attachmentNames.get(sourceAttachmentId) ||
+								`Dokument_${sourceAttachmentId}.pdf`;
 						}
 					}
 				}
@@ -417,13 +483,14 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 											sourceAttachmentName ||
 											`Dokument_${sourceAttachmentId}.pdf`,
 										sourceAttachmentPage,
+										sourceReferences,
 									} as TMessage)
 								: message,
 						),
 					);
 				}
 
-				if (!imageUrl && sourceAttachmentId) {
+				if (schemaImages.length === 0 && sourceAttachmentId) {
 					setCurrentImage(null);
 				}
 
@@ -483,7 +550,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 		},
 		[
 			authTokenOverride,
-			diagnosticMode2002Enabled,
+			diagnosticModeEnabled,
 			ensureThread,
 			playAssistantAudio,
 			ttsEnabled,

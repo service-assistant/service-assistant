@@ -1,9 +1,10 @@
 import NetworkStatusBanner from '@/components/NetworkStatusBanner';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useAppSettings } from '@/hooks/use-app-settings';
 import { NetworkStatusProvider } from '@/hooks/use-network-status';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '../global.css';
@@ -17,24 +18,25 @@ export const unstable_settings = {
 // Root layout wrapper for the entire application.
 // It handles global providers like safe area insets, navigation theming, and the base navigation stack.
 export default function RootLayout() {
-	// Detect the current system color scheme (light or dark mode) to apply the correct theme
-	const colorScheme = useColorScheme();
+	const { lightThemeEnabled } = useAppSettings();
 
 	return (
-		<SafeAreaProvider>
-			<NetworkStatusProvider>
-				<ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-					<Stack>
-						<Stack.Screen name='(tabs)' options={{ headerShown: false }} />
-						<Stack.Screen
-							name='modal'
-							options={{ presentation: 'modal', title: 'Modal' }}
-						/>
-					</Stack>
-					<NetworkStatusBanner />
-					<StatusBar hidden={true} />
-				</ThemeProvider>
-			</NetworkStatusProvider>
-		</SafeAreaProvider>
+		<GestureHandlerRootView style={{ flex: 1 }}>
+			<SafeAreaProvider>
+				<NetworkStatusProvider>
+					<ThemeProvider value={lightThemeEnabled ? DefaultTheme : DarkTheme}>
+						<Stack>
+							<Stack.Screen name='(tabs)' options={{ headerShown: false }} />
+							<Stack.Screen
+								name='modal'
+								options={{ presentation: 'modal', title: 'Modal' }}
+							/>
+						</Stack>
+						<NetworkStatusBanner />
+						<StatusBar hidden={true} />
+					</ThemeProvider>
+				</NetworkStatusProvider>
+			</SafeAreaProvider>
+		</GestureHandlerRootView>
 	);
 }

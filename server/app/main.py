@@ -1,4 +1,5 @@
 from fastapi import Depends, FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -60,13 +61,29 @@ async def bearer_auth_middleware(request: Request, call_next):
     auth_header = request.headers.get("Authorization")
     expected = f"Bearer {settings.auth_token}"
 
-    if auth_header != expected:
+    if (
+        auth_header != expected
+        and request.cookies.get("admin_token") != settings.auth_token
+    ):
         return JSONResponse(
             status_code=status.HTTP_401_UNAUTHORIZED,
             content={"detail": "Unauthorized"},
         )
 
     return await call_next(request)
+
+
+# Keep CORS outside the authentication middleware so browser preflight requests
+# are answered before bearer-token validation. Credentials are enabled (and
+# origins restricted to a known list) because the admin SPA authenticates via
+# the `admin_token` cookie rather than a bundled bearer token.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 app.include_router(brands.router, prefix="/api/brands", tags=["Brands"])

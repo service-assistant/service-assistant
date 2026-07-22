@@ -68,6 +68,7 @@ describe('use-app-settings store', () => {
 		setMockLocalStorage(
 			createMockLocalStorage({
 				[STORAGE_KEY]: JSON.stringify({
+					lightThemeEnabled: true,
 					wakeWordEnabled: true,
 					ttsEnabled: true,
 					diagnosticMode2002Enabled: false,
@@ -79,9 +80,10 @@ describe('use-app-settings store', () => {
 			const { getAppSettings } = require('../hooks/use-app-settings');
 
 			expect(getAppSettings()).toMatchObject({
+				lightThemeEnabled: true,
 				wakeWordEnabled: true,
 				ttsEnabled: true,
-				diagnosticMode2002Enabled: false,
+				diagnosticModeEnabled: false,
 			});
 		});
 	});
@@ -93,16 +95,18 @@ describe('use-app-settings store', () => {
 		jest.isolateModules(() => {
 			const { setAppSetting } = require('../hooks/use-app-settings');
 
+			setAppSetting('lightThemeEnabled', true);
 			setAppSetting('wakeWordEnabled', true);
 			setAppSetting('ttsEnabled', true);
-			setAppSetting('diagnosticMode2002Enabled', false);
+			setAppSetting('diagnosticModeEnabled', false);
 
 			expect(localStorage.setItem).toHaveBeenLastCalledWith(
 				STORAGE_KEY,
 				JSON.stringify({
+					lightThemeEnabled: true,
 					wakeWordEnabled: true,
 					ttsEnabled: true,
-					diagnosticMode2002Enabled: false,
+					diagnosticModeEnabled: false,
 				}),
 			);
 		});
@@ -113,6 +117,7 @@ describe('use-app-settings store', () => {
 		mockGetInfoAsync.mockResolvedValue({ exists: true });
 		mockReadAsStringAsync.mockResolvedValue(
 			JSON.stringify({
+				lightThemeEnabled: true,
 				wakeWordEnabled: true,
 				ttsEnabled: true,
 				diagnosticMode2002Enabled: false,
@@ -123,9 +128,10 @@ describe('use-app-settings store', () => {
 			const { getAppSettings, loadAppSettings } = require('../hooks/use-app-settings');
 
 			expect(getAppSettings()).toMatchObject({
+				lightThemeEnabled: false,
 				wakeWordEnabled: false,
 				ttsEnabled: false,
-				diagnosticMode2002Enabled: true,
+				diagnosticModeEnabled: false,
 			});
 
 			await loadAppSettings();
@@ -133,9 +139,10 @@ describe('use-app-settings store', () => {
 			expect(mockGetInfoAsync).toHaveBeenCalledWith(STORAGE_FILE_URI);
 			expect(mockReadAsStringAsync).toHaveBeenCalledWith(STORAGE_FILE_URI);
 			expect(getAppSettings()).toMatchObject({
+				lightThemeEnabled: true,
 				wakeWordEnabled: true,
 				ttsEnabled: true,
-				diagnosticMode2002Enabled: false,
+				diagnosticModeEnabled: false,
 			});
 		});
 	});
@@ -146,17 +153,19 @@ describe('use-app-settings store', () => {
 		await jest.isolateModulesAsync(async () => {
 			const { setAppSetting } = require('../hooks/use-app-settings');
 
+			setAppSetting('lightThemeEnabled', true);
 			setAppSetting('wakeWordEnabled', true);
 			setAppSetting('ttsEnabled', true);
-			setAppSetting('diagnosticMode2002Enabled', false);
+			setAppSetting('diagnosticModeEnabled', false);
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			expect(mockWriteAsStringAsync).toHaveBeenLastCalledWith(
 				STORAGE_FILE_URI,
 				JSON.stringify({
+					lightThemeEnabled: true,
 					wakeWordEnabled: true,
 					ttsEnabled: true,
-					diagnosticMode2002Enabled: false,
+					diagnosticModeEnabled: false,
 				}),
 			);
 		});

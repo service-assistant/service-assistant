@@ -18,4 +18,6 @@ def settings(tmp_path):
         openai_api_key="test-openai-key",
         attachments_dir=tmp_path,
         auth_token="token",
+        reranker_enabled=False,
+        voyage_api_key=None,
     )

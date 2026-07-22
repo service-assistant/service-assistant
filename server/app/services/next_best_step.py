@@ -1,6 +1,9 @@
 import json
 import logging
 import re
+import unicodedata
+from collections import OrderedDict
+from enum import Enum
 from typing import Any, Final, cast
 
 from openai import AsyncOpenAI
@@ -10,8 +13,36 @@ from ..config import Settings
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_ERROR_CODE: Final[str] = "2:002"
-ERROR_CODE_RE = re.compile(r"(?<!\d)2[:.]002(?!\d)")
+_DIAGNOSTIC_PLAN_CACHE_LIMIT: Final[int] = 1000
+_diagnostic_plan_cache: OrderedDict[str, "DiagnosticPlan"] = OrderedDict()
+
+POLISH_ASCII_TRANSLATION: Final[dict[int, int]] = str.maketrans(
+    "ąćęłńóśźż", "acelnoszz"
+)
+
+RESOLUTION_CONFIRMATION_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b(?:problem (?:jest )?rozwiazany|blad zniknal|usterka (?:zostala )?usunieta|"
+    r"dziala prawidlowo|naprawione)\b",
+    re.IGNORECASE,
+)
+PROBLEM_STATUS_ONLY_RE: Final[re.Pattern[str]] = re.compile(
+    r"^\s*(?:"
+    r"(?:blad|problem)?\s*(?:nadal|dalej|wciaz)\s*(?:wystepuje|nie dziala)?|"
+    r"wystepuje\s*(?:nadal|dalej|wciaz)|"
+    r"bez zmian|"
+    r"(?:blad|problem)\s*(?:nie zniknal|nie ustapil)"
+    r")\s*[.!]?\s*$",
+    re.IGNORECASE,
+)
+NEGATIVE_RESULT_RE: Final[re.Pattern[str]] = re.compile(
+    r"\b(?:wynik\s+(?:jest\s+)?nieprawidlowy|nieprawidlowy\s+wynik|poza\s+zakresem|"
+    r"wartosc\s+(?:jest\s+)?(?:zla|nieprawidlowa)|wynik\s+(?:jest\s+)?zly)\b",
+    re.IGNORECASE,
+)
+NEXT_ACTION_REQUEST_RE: Final[re.Pattern[str]] = re.compile(
+    r"^\s*(?:co\s+dalej|dalej|nast[eę]pny\s+krok|poka[zż]\s+nast[eę]pny\s+krok)\s*[?!.]*\s*$",
+    re.IGNORECASE,
+)
 
 
 class StrictModel(BaseModel):
@@ -36,7 +67,6 @@ class DiagnosticAction(StrictModel):
     id: str = Field(pattern=r"^[a-z0-9_]+$")
     title: str
     instruction: str
-    expected_information: str
     source_fragment_numbers: list[int]
     metadata: ActionMetadata
     # The extractor returns null; the deterministic ranker always overwrites it.
@@ -44,25 +74,77 @@ class DiagnosticAction(StrictModel):
 
 
 class DiagnosticActions(StrictModel):
-    error_code: str
     actions: list[DiagnosticAction]
+
+
+class DiagnosticPlanStatus(str, Enum):
+    actions = "actions"
+    complete = "complete"
+    no_next_action = "no_next_action"
+
+
+class DiagnosticPlan(StrictModel):
+    status: DiagnosticPlanStatus
+    problem: str
+    actions: list[DiagnosticAction] = Field(default_factory=list)
+    observation_summary: str = ""
+    technician_response: str = ""
+    completed_action_id: str | None = None
+
+    def current_action_only(self) -> "DiagnosticPlan":
+        return self.model_copy(update={"actions": self.actions[:1]})
+
+    def has_next_action(self) -> bool:
+        return self.status == DiagnosticPlanStatus.actions and len(self.actions) > 1
 
 
 class FollowupDecision(StrictModel):
     is_action_result: bool
     observation_summary: str
-    completed_action_id: str | None
-    applicable_action_ids: list[str]
     diagnostic_complete: bool
+
+
+def cache_diagnostic_plan(key: str, plan: DiagnosticPlan) -> None:
+    _diagnostic_plan_cache[key] = plan
+    _diagnostic_plan_cache.move_to_end(key)
+    while len(_diagnostic_plan_cache) > _DIAGNOSTIC_PLAN_CACHE_LIMIT:
+        _diagnostic_plan_cache.popitem(last=False)
+
+
+def get_cached_diagnostic_plan(key: str) -> DiagnosticPlan | None:
+    plan = _diagnostic_plan_cache.get(key)
+    if plan is not None:
+        _diagnostic_plan_cache.move_to_end(key)
+    return plan
 
 
 EXTRACTION_PROMPT: Final[str] = """
 Jesteś analitykiem procedur serwisowych. Na podstawie wyłącznie podanych fragmentów
-dokumentacji wyodrębnij możliwe działania technika dotyczące kodu błędu 2:002.
+dokumentacji wyodrębnij możliwe działania technika dotyczące problemu wskazanego przez
+użytkownika. Problem może być kodem błędu, usterką albo opisem objawu.
 
-Nie dopisuj działań z wiedzy własnej. Rozdziel sprawdzenie, korektę ustawień i wymianę
-części na osobne działania, jeśli dokumentacja je wymienia. Scal tekst jednego wiersza
-tabeli, nawet jeśli został rozdzielony pomiędzy fragmenty.
+Nie dopisuj działań z wiedzy własnej. Pomiń działania niezwiązane z problemem.
+Rozdziel sprawdzenie, korektę ustawień i wymianę części na osobne działania, jeżeli
+dokumentacja je wymienia. Scal tekst jednego wiersza tabeli, nawet jeśli został
+rozdzielony pomiędzy fragmenty.
+
+Jedna akcja ma opisywać jedno logiczne sprawdzenie diagnostyczne dające jeden wynik
+technika. Może zawierać kilka ściśle powiązanych czynności dotyczących tego samego
+elementu, jeżeli razem potwierdzają jeden stan. Nie rozbijaj osobno przygotowania,
+oględzin i pomiaru należących do tej samej kontroli. Nie twórz jednak zbiorczej akcji
+typu "sprawdź magistralę CAN", jeżeli dokumentacja wymienia pod nią niezależne kontrole.
+Dla przykładu rozdziel:
+- pomiar rezystancji między X41:3 i X41:4 wraz z zakresem 54–66 omów jako jedną akcję,
+- kontrolę przecięcia wiązki oraz powiązany pomiar między podwoziem a stykiem CAN
+  z granicą 24 kiloomów jako drugą, wspólną akcję,
+- odłączanie i ponowne podłączanie modułów opcjonalnych jako kolejną akcję.
+Nie pomijaj wcześniejszego pomiaru tylko dlatego, że późniejszy fragment zawiera kolejną
+kontrolę. Jeżeli następna akcja powinna nastąpić po poprzedniej, wpisz id poprzedniej
+akcji w prerequisites.
+
+Nie twórz kilku równoważnych działań sprawdzających ten sam element w ten sam sposób.
+Wszystkie wartości, zakresy i jednostki potrzebne do wykonania czynności umieść bezpośrednio
+w polu instruction. Nie twórz osobnego pola opisującego oczekiwaną odpowiedź technika.
 
 Oceń każdą metrykę w skali 0-10:
 - effort_cost: wysiłek i trudność wykonania,
@@ -71,7 +153,7 @@ Oceń każdą metrykę w skali 0-10:
 - safety_risk: ryzyko dla technika lub urządzenia,
 - parts_cost: koszt części i materiałów,
 - information_gain: jak mocno wynik zawęża możliwe przyczyny,
-- resolution_probability: szansa, że działanie bezpośrednio rozwiąże błąd,
+- resolution_probability: szansa, że działanie bezpośrednio rozwiąże problem,
 - evidence_confidence: pewność, że działanie rzeczywiście wynika z fragmentów.
 
 estimated_minutes, required_tools i prerequisites również oszacuj na podstawie tekstu.
@@ -83,28 +165,23 @@ Pole score ustaw na null; wynik jest obliczany później przez backend.
 """
 
 FOLLOWUP_PROMPT: Final[str] = """
-Jesteś kontrolerem stanu diagnostyki kodu 2:002. Oceń, czy nowa wiadomość technika
-jest wynikiem ostatnio zleconej czynności. Może być napisana swobodnym językiem,
-np. "są dobre", "jeden jest zły" albo "nie mogę ich odczytać".
+Jesteś kontrolerem stanu diagnostyki wskazanego problemu. Oceń, czy nowa wiadomość
+technika dotyczy ostatnio zleconej czynności albo informuje o stanie problemu. Może być
+napisana swobodnym językiem, np. "zrobione", "jest dobrze", "jeden jest zły", "bez zmian"
+albo "nie mogę tego sprawdzić".
 
-Jeżeli to nie jest wynik czynności, ustaw is_action_result=false i nie interpretuj
-wiadomości jako obserwacji. Jeżeli to wynik:
-- wskaż id zakończonej akcji,
-- krótko podsumuj obserwację,
-- wybierz identyfikatory działań, które nadal mają zastosowanie po tym wyniku,
-- nie uwzględniaj ponownie zakończonej akcji,
-- nie dodawaj nowych działań i nie zmieniaj ich metadanych,
-- ustaw diagnostic_complete=true tylko wtedy, gdy odpowiedź technika potwierdza,
-  że problem został rozwiązany i nie potrzeba następnej czynności.
+Nie wymagaj konkretnej wartości, jednostki, formatu ani szczegółowego opisu obserwacji.
+Nie zadawaj pytań uzupełniających. Jeśli wiadomość odnosi się do wykonania, wyniku,
+niemożności wykonania lub dalszego występowania problemu, ustaw is_action_result=true,
+krótko podsumuj przekazaną informację i pozwól przejść do kolejnej akcji.
 
-Wybieraj wyłącznie spośród przekazanych akcji i opieraj się na dokumentacji zawartej
-w ich instrukcjach. Nie zakładaj uszkodzenia ani konieczności wymiany części bez
-wyniku, który to uzasadnia.
+Jeżeli wiadomość nie dotyczy bieżącej czynności ani stanu diagnozowanego problemu, ustaw
+is_action_result=false i nie interpretuj jej jako obserwacji.
+
+Ustaw diagnostic_complete=true tylko wtedy, gdy technik wprost potwierdza, że błąd zniknął,
+problem został rozwiązany albo urządzenie działa prawidłowo. Prawidłowy wynik pojedynczego
+testu nie oznacza zakończenia diagnostyki.
 """
-
-
-def is_supported_question(question: str) -> bool:
-    return ERROR_CODE_RE.search(question) is not None
 
 
 def calculate_score(metadata: ActionMetadata) -> float:
@@ -140,11 +217,94 @@ def rank_actions(actions: list[DiagnosticAction]) -> list[DiagnosticAction]:
     )
 
 
+def explicitly_confirms_resolution(message: str) -> bool:
+    return RESOLUTION_CONFIRMATION_RE.search(_fold_text(message)) is not None
+
+
+def _fold_text(message: str) -> str:
+    normalized = unicodedata.normalize(
+        "NFKD", message.casefold().translate(POLISH_ASCII_TRANSLATION)
+    )
+    return "".join(
+        character for character in normalized if not unicodedata.combining(character)
+    )
+
+
+def reports_only_problem_status(message: str) -> bool:
+    return PROBLEM_STATUS_ONLY_RE.search(_fold_text(message)) is not None
+
+
+def reports_negative_result(message: str) -> bool:
+    return NEGATIVE_RESULT_RE.search(_fold_text(message)) is not None
+
+
+def requests_next_action(message: str) -> bool:
+    return NEXT_ACTION_REQUEST_RE.search(message) is not None
+
+
+def _current_action_from_response(
+    actions: list[DiagnosticAction], previous_assistant_response: str
+) -> DiagnosticAction:
+    response_tokens = {
+        token
+        for token in re.findall(r"[\w:()-]+", previous_assistant_response.casefold())
+        if len(token) >= 4
+    }
+
+    def overlap(action: DiagnosticAction) -> int:
+        action_text = " ".join([action.title, action.instruction]).casefold()
+        action_tokens = {
+            token for token in re.findall(r"[\w:()-]+", action_text) if len(token) >= 4
+        }
+        return len(response_tokens & action_tokens)
+
+    return max(actions, key=overlap)
+
+
+def _actions_after_current(
+    actions: list[DiagnosticAction], current_action: DiagnosticAction
+) -> list[DiagnosticAction]:
+    current_index = next(
+        index for index, action in enumerate(actions) if action.id == current_action.id
+    )
+    return actions[current_index + 1 :]
+
+
+def _advance_to_next_action_plan(
+    actions: list[DiagnosticAction],
+    problem: str,
+    current_action: DiagnosticAction,
+    technician_response: str,
+    observation_summary: str | None = None,
+) -> DiagnosticPlan:
+    remaining = _actions_after_current(actions, current_action)
+    observation = observation_summary or (
+        f"Bieżące sprawdzenie nie usunęło problemu: {technician_response.strip()}"
+    )
+    if not remaining:
+        return DiagnosticPlan(
+            status=DiagnosticPlanStatus.no_next_action,
+            problem=problem,
+            observation_summary=observation,
+            completed_action_id=current_action.id,
+        )
+    return DiagnosticPlan(
+        status=DiagnosticPlanStatus.actions,
+        problem=problem,
+        actions=remaining,
+        observation_summary=observation,
+        completed_action_id=current_action.id,
+    )
+
+
 def _numbered_context(chunks: list[str], max_chars: int = 12000) -> str:
     parts: list[str] = []
     total = 0
     for index, chunk in enumerate(chunks, start=1):
-        item = f"[Fragment {index}]\n{chunk.strip()}\n"
+        text = chunk.strip()
+        if not text:
+            continue
+        item = f"[Fragment {index}]\n{text}\n"
         if total + len(item) > max_chars:
             break
         parts.append(item)
@@ -153,9 +313,9 @@ def _numbered_context(chunks: list[str], max_chars: int = 12000) -> str:
 
 
 async def extract_and_rank_actions(
-    chunks: list[str], settings: Settings
+    chunks: list[str], problem: str, settings: Settings
 ) -> list[DiagnosticAction]:
-    if not chunks:
+    if not chunks or not problem.strip():
         return []
 
     client = AsyncOpenAI(api_key=settings.openai_api_key)
@@ -175,6 +335,7 @@ async def extract_and_rank_actions(
             {
                 "role": "user",
                 "content": (
+                    f"Diagnozowany problem:\n{problem}\n\n"
                     "Fragmenty dokumentacji dla urządzenia:\n\n"
                     + _numbered_context(chunks)
                 ),
@@ -186,13 +347,12 @@ async def extract_and_rank_actions(
     if not content:
         return []
     extracted = DiagnosticActions.model_validate(json.loads(content))
-    if extracted.error_code.replace(".", ":") != SUPPORTED_ERROR_CODE:
-        return []
     return rank_actions(extracted.actions)
 
 
 async def classify_followup(
-    actions: list[DiagnosticAction],
+    current_action: DiagnosticAction,
+    problem: str,
     previous_assistant_response: str,
     technician_response: str,
     settings: Settings,
@@ -206,9 +366,7 @@ async def classify_followup(
             "schema": FollowupDecision.model_json_schema(),
         },
     }
-    action_data = [
-        action.model_dump(exclude={"score"}, mode="json") for action in actions
-    ]
+    action_data = current_action.model_dump(exclude={"score"}, mode="json")
     response = await client.chat.completions.create(
         model=settings.openai_chat_model,
         temperature=0,
@@ -217,9 +375,10 @@ async def classify_followup(
             {
                 "role": "user",
                 "content": (
+                    f"Diagnozowany problem:\n{problem}\n\n"
                     f"Ostatnia odpowiedź asystenta:\n{previous_assistant_response}\n\n"
                     f"Nowa wiadomość technika:\n{technician_response}\n\n"
-                    f"Dostępne akcje:\n{json.dumps(action_data, ensure_ascii=False)}"
+                    f"Bieżąca akcja:\n{json.dumps(action_data, ensure_ascii=False)}"
                 ),
             },
         ],
@@ -230,95 +389,103 @@ async def classify_followup(
         return FollowupDecision(
             is_action_result=False,
             observation_summary="",
-            completed_action_id=None,
-            applicable_action_ids=[],
             diagnostic_complete=False,
         )
     return FollowupDecision.model_validate(json.loads(content))
 
 
-def format_ranked_actions(
-    actions: list[DiagnosticAction], observation_summary: str = ""
-) -> str:
-    if not actions:
-        return ""
-
-    lines = [
-        "PLAN DIAGNOSTYCZNY NEXT BEST STEP DLA 2:002",
-        "Akcje zostały posortowane deterministycznie według wartości diagnostycznej, kosztu i ryzyka.",
-        "Technikowi pokaż teraz tylko akcję numer 1. Pozostałe są ukrytymi kandydatami na później.",
-    ]
-    if observation_summary:
-        lines.append(f"Potwierdzona obserwacja technika: {observation_summary}")
-    for index, action in enumerate(actions, start=1):
-        m = action.metadata
-        lines.extend(
-            [
-                f"{index}. {action.title} (score={action.score})",
-                f"   Instrukcja: {action.instruction}",
-                f"   Uzyskana informacja: {action.expected_information}",
-                f"   Metadane 0-10: informacja={m.information_gain}, rozwiązanie={m.resolution_probability}, "
-                f"pewność={m.evidence_confidence}, wysiłek={m.effort_cost}, czas={m.time_cost}, "
-                f"inwazyjność={m.invasiveness}, ryzyko={m.safety_risk}, części={m.parts_cost}",
-                f"   Szacowany czas: {m.estimated_minutes} min",
-                f"   Wymagania wstępne: {', '.join(m.prerequisites) or 'brak'}",
-                f"   Źródła: {', '.join(map(str, action.source_fragment_numbers))}",
-            ]
-        )
-    return "\n".join(lines)
-
-
-async def build_ranked_plan(chunks: list[str], settings: Settings) -> str:
+async def build_diagnostic_plan(
+    chunks: list[str], problem: str, settings: Settings
+) -> DiagnosticPlan | None:
     try:
-        actions = await extract_and_rank_actions(chunks, settings)
-        return format_ranked_actions(actions)
+        actions = await extract_and_rank_actions(chunks, problem, settings)
+        if not actions:
+            return None
+        return DiagnosticPlan(
+            status=DiagnosticPlanStatus.actions,
+            problem=problem,
+            actions=actions,
+        )
     except Exception:
-        logger.exception("Could not build next-best-step plan for error 2:002")
-        return ""
+        logger.exception("Could not build next-best-step plan for %s", problem)
+        return None
 
 
 async def build_followup_plan(
-    chunks: list[str],
+    current_plan: DiagnosticPlan,
     previous_assistant_response: str,
     technician_response: str,
     settings: Settings,
-) -> tuple[bool, str]:
+) -> tuple[bool, DiagnosticPlan | None]:
     """Return whether the message is an observation and the next ranked plan."""
+    problem = current_plan.problem
     try:
-        actions = await extract_and_rank_actions(chunks, settings)
-        if not actions:
-            return False, ""
+        actions = current_plan.actions
+        if current_plan.status != DiagnosticPlanStatus.actions or not actions:
+            return False, None
+
+        current_action = next(
+            (
+                action
+                for action in actions
+                if action.id == current_plan.completed_action_id
+            ),
+            _current_action_from_response(actions, previous_assistant_response),
+        )
+
+        if requests_next_action(technician_response):
+            return True, _advance_to_next_action_plan(
+                actions,
+                problem,
+                current_action,
+                technician_response,
+                "Technik poprosił o kolejny krok bez podania wyniku bieżącej akcji.",
+            )
+
+        if reports_only_problem_status(technician_response) or reports_negative_result(
+            technician_response
+        ):
+            return True, _advance_to_next_action_plan(
+                actions,
+                problem,
+                current_action,
+                technician_response,
+            )
 
         decision = await classify_followup(
-            actions,
+            current_action,
+            problem,
             previous_assistant_response,
             technician_response,
             settings,
         )
         if not decision.is_action_result:
-            return False, ""
-        if decision.diagnostic_complete:
-            return True, (
-                "WYNIK DIAGNOSTYKI 2:002\n"
-                f"Potwierdzona obserwacja technika: {decision.observation_summary}\n"
-                "Diagnostyka została zakończona; nie proponuj następnej akcji."
+            return False, None
+        resolution_confirmed = explicitly_confirms_resolution(technician_response)
+        if decision.diagnostic_complete and resolution_confirmed:
+            return True, DiagnosticPlan(
+                status=DiagnosticPlanStatus.complete,
+                problem=problem,
+                observation_summary=decision.observation_summary,
+                completed_action_id=current_action.id,
             )
 
-        applicable_ids = set(decision.applicable_action_ids)
-        remaining = [
-            action
-            for action in actions
-            if action.id in applicable_ids and action.id != decision.completed_action_id
-        ]
+        actions_after_completed = _actions_after_current(actions, current_action)
+        remaining = actions_after_completed
         if not remaining:
-            return True, (
-                "BRAK NASTĘPNEJ AKCJI DLA 2:002\n"
-                f"Potwierdzona obserwacja technika: {decision.observation_summary}\n"
-                "Dokumentacja nie uzasadnia żadnej następnej akcji."
+            return True, DiagnosticPlan(
+                status=DiagnosticPlanStatus.no_next_action,
+                problem=problem,
+                observation_summary=decision.observation_summary,
+                completed_action_id=current_action.id,
             )
-        return True, format_ranked_actions(
-            rank_actions(remaining), decision.observation_summary
+        return True, DiagnosticPlan(
+            status=DiagnosticPlanStatus.actions,
+            problem=problem,
+            actions=rank_actions(remaining),
+            observation_summary=decision.observation_summary,
+            completed_action_id=current_action.id,
         )
     except Exception:
-        logger.exception("Could not process next-best-step follow-up for error 2:002")
-        return False, ""
+        logger.exception("Could not process next-best-step follow-up for %s", problem)
+        return False, None

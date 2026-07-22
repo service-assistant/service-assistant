@@ -1,20 +1,23 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.models.message import MessageSender
 
 
 class MessageCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     content: str = Field(
         description="Text of the user message.",
         examples=["What does fault code E-23 mean and how do I clear it?"],
     )
-    diagnostic_mode_2002: bool = Field(
-        default=True,
-        description=(
-            "Whether the experimental Next Best Step flow should handle error 2:002."
+    diagnostic_mode_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "diagnostic_mode_enabled", "diagnostic_mode_2002"
         ),
+        description="Whether the Next Best Step diagnostic flow is enabled.",
     )
 
 
@@ -35,6 +38,16 @@ class MessageRead(BaseModel):
     )
     sender: MessageSender = Field(
         description="Who sent the message: `user` or `system` (assistant)."
+    )
+    has_continuation: bool = Field(
+        description=(
+            "Whether the documentation contains a coherent continuation of this "
+            "assistant response."
+        )
+    )
+    router_decision: str | None = Field(
+        default=None,
+        description="Message route selected before generating this assistant response.",
     )
     thread_id: int = Field(
         description="ID of the thread this message belongs to.", examples=[1]

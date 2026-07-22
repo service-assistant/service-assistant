@@ -68,6 +68,7 @@ jest.mock('react-native', () => {
 
 	return {
 		ActivityIndicator: createHost('ActivityIndicator'),
+		BackHandler: { addEventListener: jest.fn(() => ({ remove: jest.fn() })) },
 		Animated: {
 			View: AnimatedView,
 			FlatList: AnimatedFlatList,
@@ -83,11 +84,13 @@ jest.mock('react-native', () => {
 		},
 		Image: Object.assign(createHost('Image'), { getSize: mockImageGetSize }),
 		Keyboard: { addListener: mockKeyboardAddListener },
+		FlatList: createHost('FlatList'),
 		Platform: {
 			OS: 'ios',
 			select: (options: Record<string, unknown>) => options.ios ?? options.default,
 		},
 		ScrollView: createHost('ScrollView'),
+		StyleSheet: { absoluteFill: { position: 'absolute' } },
 		Switch: createHost('Switch'),
 		Text: createHost('Text'),
 		TextInput: createHost('TextInput'),
@@ -105,6 +108,14 @@ jest.mock('react-native-safe-area-context', () => {
 	return {
 		SafeAreaView,
 		useSafeAreaInsets: () => mockSafeAreaInsets,
+	};
+});
+
+jest.mock('react-native-gesture-handler', () => {
+	const React = require('react');
+	return {
+		GestureHandlerRootView: ({ children, ...props }: Record<string, unknown>) =>
+			React.createElement('GestureHandlerRootView', props, children),
 	};
 });
 
@@ -342,6 +353,7 @@ describe('tab screens', () => {
 		mockUseSourcePanelFiles.mockReset();
 		mockUseWakeWord.mockClear();
 		mockKeyboardAddListener.mockClear();
+		mockAnimatedValueSetValue.mockClear();
 		mockImpactAsync.mockClear();
 		mockSelectionAsync.mockClear();
 		mockOrientationLockAsync.mockClear();
@@ -353,14 +365,14 @@ describe('tab screens', () => {
 		);
 		mockSearchParams = {};
 		mockWindowDimensions = { width: 900, height: 700 };
-		process.env.EXPO_PUBLIC_AUTH_TOKEN = 'test-token';
+		process.env.AUTH_TOKEN = 'test-token';
 		global.fetch = jest.fn();
 		jest.spyOn(console, 'log').mockImplementation(() => {});
 	});
 
 	afterEach(() => {
 		jest.restoreAllMocks();
-		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
+		delete process.env.AUTH_TOKEN;
 	});
 
 	test('tab layout hides the tab bar and status bar', () => {
@@ -461,6 +473,19 @@ describe('tab screens', () => {
 		expect(hooks.abortVoiceInput).toHaveBeenCalledTimes(1);
 		expect(layout.props.insets).toBe(mockSafeAreaInsets);
 		expect(mockRouterPush).toHaveBeenCalledWith('/home');
+	});
+
+	test('keeps fullscreen schemas in the chat view instead of a native modal', () => {
+		setupChatHooks();
+		mockWindowDimensions = { width: 500, height: 900 };
+		mockSearchParams = { deviceName: 'Still RX', chatSession: 'schema-modal' };
+		jest.mocked(global.fetch).mockResolvedValue(createJsonResponse([]));
+		const ChatScreen = require('../app/(tabs)/chat').default;
+
+		const tree = renderScreen(ChatScreen);
+
+		expect(findByType(tree, 'PortraitChatLayout')).toHaveLength(1);
+		expect(findByType(tree, 'Modal')).toHaveLength(0);
 	});
 
 	test('history screen requests threads with auth headers', async () => {
@@ -599,6 +624,7 @@ describe('tab screens', () => {
 			}),
 		);
 		expect(getTextContent(tree)).toContain('Wybierz Pojazd');
+		expect(getTextContent(tree)).toContain('Ładowanie maszyn...');
 		expect(mockUseCameraPermissions).not.toHaveBeenCalled();
 		expect(mockRouterPush).toHaveBeenCalledWith('/history');
 	});
@@ -630,12 +656,16 @@ describe('tab screens', () => {
 			false,
 		];
 		const loadedTree = renderScreen(HomeScreen);
-		const vehicleList = findByType(loadedTree, 'Animated.FlatList')[0];
+		const vehicleList = findByType(loadedTree, 'FlatList')[0];
 		const vehicleCard = vehicleList.props.renderItem({ item: vehicleList.props.data[0] });
 		const vehicleButton = findByType(vehicleCard, 'TouchableOpacity')[0];
+		const vehicleIcons = findByType(vehicleCard, 'Icon');
 
 		vehicleButton.props.onPress();
 
+		expect(getTextContent(vehicleCard)).toContain('Brak zdjęcia');
+		expect(vehicleIcons.some((icon) => icon.props.name === 'forklift')).toBe(true);
+		expect(vehicleList.props.extraData).toBe(false);
 		expect(mockRouterPush).toHaveBeenCalledWith({
 			pathname: '/chat',
 			params: expect.objectContaining({
@@ -673,11 +703,15 @@ describe('tab screens', () => {
 		await flushPromises();
 		await flushPromises();
 		const loadedTree = renderScreen(HomeScreen);
-		const stillFilterButton = collectTouchableWithText(loadedTree, 'STILL')[0];
+		const loadedVehicleList = findByType(loadedTree, 'FlatList')[0];
+		const stillFilterButton = collectTouchableWithText(
+			loadedVehicleList.props.ListHeaderComponent,
+			'STILL',
+		)[0];
 
 		stillFilterButton.props.onPress();
 		const filteredTree = renderScreen(HomeScreen);
-		const vehicleList = findByType(filteredTree, 'Animated.FlatList')[0];
+		const vehicleList = findByType(filteredTree, 'FlatList')[0];
 
 		expect(vehicleList.props.data).toHaveLength(0);
 		expect(getTextContent(vehicleList.props.ListEmptyComponent)).toContain(

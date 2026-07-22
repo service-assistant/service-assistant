@@ -9,7 +9,7 @@ services:
     volumes:
       - attachments:/attachments
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -17,6 +17,27 @@ services:
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:${DOCKER_GATEWAY}"
+
+  client:
+    build:
+      context: ../client
+      args:
+        # TODO: VERY IMPORTANT: FIX THIS BECAUSE NOW EVERYONE CAN HAVE ACCESS TO THESE SECRETS BY JUST READING CLIENT SIDE CODE
+        EXPO_PUBLIC_AUTH_URL: ${BACKEND_URL}
+        EXPO_PUBLIC_AUTH_TOKEN: ${AUTH_TOKEN}
+        EXPO_PUBLIC_DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY}
+    ports:
+      - "127.0.0.1:${CLIENT_APP_PORT}:80"
+    restart: unless-stopped
+
+  admin:
+    build:
+      context: ../admin
+      args:
+        VITE_BACKEND_URL: ${BACKEND_URL}
+    ports:
+      - "127.0.0.1:${ADMIN_APP_PORT}:80"
+    restart: unless-stopped
 
 volumes:
   attachments:

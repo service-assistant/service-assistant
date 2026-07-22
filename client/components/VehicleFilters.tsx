@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import {
 	ActivityIndicator,
-	Image,
 	Platform,
 	ScrollView,
 	Text,
 	TouchableOpacity,
 	View,
 } from 'react-native';
+
+import ThemeAwareLogo from '@/components/ThemeAwareLogo';
 
 export const FILTER_LOGO_SIZES: Record<string, { width: number; height: number }> = {
 	TOYOTA: { width: 96, height: 26 },
@@ -39,6 +40,7 @@ type VehicleFiltersProps = {
 	isLoadingBrands?: boolean;
 	isLoadingTypes?: boolean;
 	primaryColor?: string;
+	lightMode?: boolean;
 };
 
 const ALL_FILTER_LABEL = 'WSZYSTKIE';
@@ -46,17 +48,26 @@ const ALL_FILTER_LABEL = 'WSZYSTKIE';
 const androidTextStyle =
 	Platform.OS === 'android' ? { includeFontPadding: false, textAlignVertical: 'center' } : {};
 
-const BrandLogoOrText: React.FC<{ brandName: string; logoUrl: string | null; active: boolean }> = ({
-	brandName,
-	logoUrl,
-	active,
-}) => {
+const BrandLogoOrText: React.FC<{
+	brandName: string;
+	logoUrl: string | null;
+	active: boolean;
+	lightMode: boolean;
+}> = ({ brandName, logoUrl, active, lightMode }) => {
 	const [imageError, setImageError] = useState(false);
 
 	if (brandName === ALL_FILTER_LABEL) {
 		return (
 			<Text
-				className={`text-sm font-bold ${active ? 'text-white' : 'text-gray-300'}`}
+				className={`text-sm font-bold ${
+					lightMode
+						? active
+							? 'text-[#C65300]'
+							: 'text-[#3F3F46]'
+						: active
+							? 'text-white'
+							: 'text-gray-300'
+				}`}
 				style={androidTextStyle as any}>
 				{brandName}
 			</Text>
@@ -66,9 +77,11 @@ const BrandLogoOrText: React.FC<{ brandName: string; logoUrl: string | null; act
 	if (logoUrl && !imageError) {
 		const dims = FILTER_LOGO_SIZES[brandName.toUpperCase()] || FILTER_LOGO_SIZES.DEFAULT;
 		return (
-			<Image
+			<ThemeAwareLogo
 				source={{ uri: logoUrl }}
-				style={{ width: dims.width, height: dims.height }}
+				width={dims.width}
+				height={dims.height}
+				lightMode={lightMode}
 				resizeMode='contain'
 				onError={() => setImageError(true)}
 			/>
@@ -77,7 +90,15 @@ const BrandLogoOrText: React.FC<{ brandName: string; logoUrl: string | null; act
 
 	return (
 		<Text
-			className={`text-sm font-bold ${active ? 'text-white' : 'text-gray-300'}`}
+			className={`text-sm font-bold ${
+				lightMode
+					? active
+						? 'text-[#C65300]'
+						: 'text-[#3F3F46]'
+					: active
+						? 'text-white'
+						: 'text-gray-300'
+			}`}
 			style={androidTextStyle as any}>
 			{brandName.toUpperCase()}
 		</Text>
@@ -95,10 +116,11 @@ export default function VehicleFilters({
 	isLoadingBrands = false,
 	isLoadingTypes = false,
 	primaryColor = '#FF6B00',
+	lightMode = false,
 }: VehicleFiltersProps) {
 	const brandFilterOptions = [{ name: ALL_FILTER_LABEL, logo_url: null }, ...brands];
 	const typeFilterOptions = [{ name: ALL_FILTER_LABEL }, ...deviceTypes];
-	const filterLabelClassName = `text-gray-400 font-bold uppercase tracking-widest ml-2 ${
+	const filterLabelClassName = `${lightMode ? 'text-[#52525B]' : 'text-gray-400'} font-bold uppercase tracking-widest ml-2 ${
 		useTabletRefresh ? 'text-[12px] mb-1' : 'text-sm mb-2'
 	}`;
 	const getFilterChipStyle = (active: boolean) =>
@@ -108,12 +130,31 @@ export default function VehicleFilters({
 					paddingHorizontal: 20,
 					paddingVertical: 0,
 					marginRight: 12,
-					backgroundColor: active ? 'rgba(255, 107, 0, 0.16)' : '#242428',
+					backgroundColor: active
+						? lightMode
+							? 'rgba(255, 107, 0, 0.12)'
+							: 'rgba(255, 107, 0, 0.16)'
+						: lightMode
+							? '#FFFFFF'
+							: '#242428',
 					borderWidth: 1,
-					borderColor: active ? primaryColor : 'rgba(255, 255, 255, 0.07)',
+					borderColor: active
+						? primaryColor
+						: lightMode
+							? '#D4D4D8'
+							: 'rgba(255, 255, 255, 0.07)',
 				}
 			: {
-					backgroundColor: active ? primaryColor : '#27272a',
+					backgroundColor: active
+						? lightMode
+							? 'rgba(255, 107, 0, 0.12)'
+							: primaryColor
+						: lightMode
+							? '#FFFFFF'
+							: '#27272a',
+					...(lightMode
+						? { borderWidth: 1, borderColor: active ? primaryColor : '#D4D4D8' }
+						: {}),
 				};
 	const loadingStyle = {
 		alignSelf: 'flex-start' as const,
@@ -142,6 +183,7 @@ export default function VehicleFilters({
 									brandName={brand.name}
 									logoUrl={brand.logo_url}
 									active={activeBrandFilter === brand.name}
+									lightMode={lightMode}
 								/>
 							</TouchableOpacity>
 						))}
@@ -163,9 +205,13 @@ export default function VehicleFilters({
 								className={chipClassName}>
 								<Text
 									className={`text-sm font-bold uppercase ${
-										activeTypeFilter === type.name
-											? 'text-white'
-											: 'text-gray-300'
+										lightMode
+											? activeTypeFilter === type.name
+												? 'text-[#C65300]'
+												: 'text-[#3F3F46]'
+											: activeTypeFilter === type.name
+												? 'text-white'
+												: 'text-gray-300'
 									}`}
 									style={androidTextStyle as any}>
 									{type.name}

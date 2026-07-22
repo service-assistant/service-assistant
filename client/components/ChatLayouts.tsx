@@ -16,23 +16,50 @@ import { getPortraitChatHeaderMetrics } from '@/components/chat-header-metrics';
 import ChatMessages, {
 	InvertedSchemaPreview,
 	type ChatMessageItem,
+	type ChatMessageSourceReference,
+	type SchemaImageSource,
 } from '@/components/ChatMessages';
 import ControlPanel from '@/components/ControlPanel';
 import SourcePanel from '@/components/SourcePanel';
 import StartPromptView, { type KeyboardFrame } from '@/components/StartPromptView';
+import ThemeAwareLogo from '@/components/ThemeAwareLogo';
 
 const PRIMARY_ORANGE = '#FF7A00';
+
+function ChatBackgroundTexture({ lightMode }: { lightMode: boolean }) {
+	if (!lightMode) return null;
+
+	return (
+		<Image
+			testID='chat-background-texture'
+			source={require('../assets/images/chat-premium-grain.png')}
+			resizeMode='cover'
+			style={{
+				position: 'absolute',
+				top: 0,
+				left: 0,
+				right: 0,
+				bottom: 0,
+				width: '100%',
+				height: '100%',
+				opacity: 0.32,
+			}}
+		/>
+	);
+}
 
 function HeaderLogo({
 	uri,
 	height,
 	maxWidth,
 	marginRight = 0,
+	lightMode = false,
 }: {
 	uri: string;
 	height: number;
 	maxWidth: number;
 	marginRight?: number;
+	lightMode?: boolean;
 }) {
 	const [aspectRatio, setAspectRatio] = React.useState(3);
 
@@ -57,13 +84,12 @@ function HeaderLogo({
 	}, [uri]);
 
 	return (
-		<Image
+		<ThemeAwareLogo
 			source={{ uri }}
-			style={{
-				width: Math.min(maxWidth, height * aspectRatio),
-				height,
-				marginRight,
-			}}
+			width={Math.min(maxWidth, height * aspectRatio)}
+			height={height}
+			lightMode={lightMode}
+			containerStyle={{ marginRight }}
 			resizeMode='contain'
 		/>
 	);
@@ -77,6 +103,7 @@ function SlidingHeaderIdentity({
 	text,
 	fontSize,
 	lineHeight,
+	lightMode,
 }: {
 	logoUrl?: string;
 	logoHeight: number;
@@ -85,6 +112,7 @@ function SlidingHeaderIdentity({
 	text: string;
 	fontSize: number;
 	lineHeight: number;
+	lightMode: boolean;
 }) {
 	const slideAnim = React.useRef(new Animated.Value(0)).current;
 	const [containerWidth, setContainerWidth] = React.useState(0);
@@ -127,7 +155,7 @@ function SlidingHeaderIdentity({
 	}, [canSlide, isSliding, overflow, slideAnim]);
 
 	const textStyle = {
-		color: '#FFFFFF',
+		color: lightMode ? '#18181B' : '#FFFFFF',
 		fontWeight: '700' as const,
 		letterSpacing: 0,
 		fontSize,
@@ -161,6 +189,7 @@ function SlidingHeaderIdentity({
 					height={logoHeight}
 					maxWidth={logoMaxWidth}
 					marginRight={logoMarginRight}
+					lightMode={lightMode}
 				/>
 			) : null}
 			<Text
@@ -219,28 +248,37 @@ function FloatingChatInput({
 	onChangeText,
 	onSend,
 	autoFocus = false,
+	lightMode = false,
 }: {
 	compact?: boolean;
 	inputText: string;
 	onChangeText: (text: string) => void;
 	onSend: () => void;
 	autoFocus?: boolean;
+	lightMode?: boolean;
 }) {
 	return (
 		<View
 			className='flex-row items-center'
 			style={{
 				width: '100%',
-				height: compact ? 56 : 68,
-				borderRadius: compact ? 28 : 34,
-				backgroundColor: '#242424',
+				height: compact ? 62 : 74,
+				borderRadius: compact ? 31 : 37,
+				backgroundColor: lightMode ? '#FFFFFF' : '#242424',
+				borderWidth: 1,
+				borderColor: lightMode ? 'rgba(20, 20, 20, 0.09)' : 'rgba(255, 255, 255, 0.08)',
 				paddingLeft: compact ? 18 : 32,
-				paddingRight: compact ? 7 : 10,
+				paddingRight: compact ? 8 : 10,
+				shadowColor: '#141414',
+				shadowOffset: { width: 0, height: 8 },
+				shadowOpacity: lightMode ? 0.04 : 0.14,
+				shadowRadius: 24,
+				elevation: lightMode ? 3 : 5,
 			}}>
 			<TextInput
-				className='flex-1 text-white'
+				className={`flex-1 ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
 				placeholder='Np. nie działa podnoszenie wideł'
-				placeholderTextColor='#A1A1AA'
+				placeholderTextColor={lightMode ? '#71717A' : '#A1A1AA'}
 				value={inputText}
 				onChangeText={onChangeText}
 				onSubmitEditing={onSend}
@@ -254,14 +292,17 @@ function FloatingChatInput({
 				onPress={onSend}
 				className='items-center justify-center'
 				style={{
-					width: compact ? 44 : 54,
-					height: compact ? 44 : 54,
-					borderRadius: compact ? 22 : 27,
-					backgroundColor: '#1E2028',
-					borderWidth: 1,
-					borderColor: 'rgba(255, 122, 0, 0.5)',
+					width: compact ? 46 : 56,
+					height: compact ? 46 : 56,
+					borderRadius: compact ? 23 : 28,
+					backgroundColor: PRIMARY_ORANGE,
+					shadowColor: PRIMARY_ORANGE,
+					shadowOffset: { width: 0, height: 4 },
+					shadowOpacity: 0.2,
+					shadowRadius: 8,
+					elevation: 3,
 				}}>
-				<Feather name='arrow-up-right' size={compact ? 24 : 30} color={PRIMARY_ORANGE} />
+				<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
 			</TouchableOpacity>
 		</View>
 	);
@@ -272,6 +313,7 @@ type ScrollViewRef = React.RefObject<ScrollView | null>;
 type SourcePanelProps = React.ComponentProps<typeof SourcePanel>;
 
 type SharedLayoutProps<TMessage extends ChatMessageItem> = {
+	lightMode?: boolean;
 	currentSource: string;
 	logoUrl?: string;
 	isTablet: boolean;
@@ -281,6 +323,7 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	showTextInput: boolean;
 	inputText: string;
 	messages: TMessage[];
+	reserveMessageScrollSpace: boolean;
 	shouldFocusStartPromptInput: boolean;
 	isListening: boolean;
 	isMicProcessing: boolean;
@@ -294,15 +337,15 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	sourcePanelProps: SourcePanelProps;
 	sourcePanelFullScreen: boolean;
 	onBack: () => void;
-	onOpenMachineInfo: () => void;
 	onOpenFilesPanel: () => void;
 	onSendText: () => void;
 	onChangeText: (text: string) => void;
 	onShowTextInputChange: (visible: boolean) => void;
 	onShouldFocusStartPromptInputChange: (shouldFocus: boolean) => void;
-	onOpenSchema: (imageUrl: string) => void;
-	onOpenSource: (message: TMessage) => void;
+	onOpenSchema: (imageSource: SchemaImageSource) => void;
+	onOpenSource: (source: TMessage | ChatMessageSourceReference) => void;
 	onRetryMessage: (message: TMessage) => void;
+	onContinueMessage: (message: TMessage) => void;
 	isRetryDisabled?: boolean;
 	onUserMessageLayout: (message: TMessage, y: number) => void;
 	onMicPress: () => void;
@@ -310,7 +353,8 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 };
 
 type FullscreenSchemaViewProps = {
-	imageUrl: string;
+	lightMode?: boolean;
+	imageUrl: SchemaImageSource;
 	aspectRatio: number;
 	insets: EdgeInsets;
 	isTablet?: boolean;
@@ -318,6 +362,7 @@ type FullscreenSchemaViewProps = {
 };
 
 export function FullscreenSchemaView({
+	lightMode = false,
 	imageUrl,
 	aspectRatio,
 	insets,
@@ -330,9 +375,11 @@ export function FullscreenSchemaView({
 	});
 
 	return (
-		<View className='flex-1 bg-black'>
+		<View className={`flex-1 ${lightMode ? 'bg-[#F7F7F8]' : 'bg-black'}`}>
 			<View
-				className='flex-row items-center bg-[#0D0D0D] px-4 border-b border-[#1F1F1F]'
+				className={`flex-row items-center px-4 border-b ${
+					lightMode ? 'bg-white border-[#E4E4E7]' : 'bg-[#0D0D0D] border-[#1F1F1F]'
+				}`}
 				style={{
 					height: headerMetrics.height,
 					paddingTop: headerMetrics.paddingTop,
@@ -341,7 +388,9 @@ export function FullscreenSchemaView({
 					onPress={onBack}
 					accessibilityRole='button'
 					accessibilityLabel='Wstecz'
-					className='flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D]'
+					className={`flex-row items-center justify-center border rounded-[10px] ${
+						lightMode ? 'border-[#E4E4E7] bg-white' : 'border-[#2A2A2A] bg-[#0D0D0D]'
+					}`}
 					style={{
 						height: headerMetrics.buttonSize,
 						width: headerMetrics.buttonSize,
@@ -353,7 +402,7 @@ export function FullscreenSchemaView({
 					/>
 				</TouchableOpacity>
 				<Text
-					className='flex-1 text-center text-white font-bold'
+					className={`flex-1 text-center font-bold ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
 					style={{
 						fontSize: headerMetrics.titleFontSize,
 						lineHeight: headerMetrics.titleFontSize + 5,
@@ -366,15 +415,21 @@ export function FullscreenSchemaView({
 				/>
 			</View>
 			<View
-				className='flex-1 mt-4 bg-black px-4'
+				className={`flex-1 mt-4 px-4 ${lightMode ? 'bg-white' : 'bg-black'}`}
 				style={{ marginBottom: Math.max(insets.bottom, 20) }}>
-				<InvertedSchemaPreview imageUrl={imageUrl} aspectRatio={aspectRatio} zoomable />
+				<InvertedSchemaPreview
+					imageUrl={imageUrl}
+					aspectRatio={aspectRatio}
+					zoomable
+					lightMode={lightMode}
+				/>
 			</View>
 		</View>
 	);
 }
 
 export function PortraitChatLayout<TMessage extends ChatMessageItem>({
+	lightMode = false,
 	currentSource,
 	logoUrl,
 	isTablet,
@@ -384,6 +439,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	showTextInput,
 	inputText,
 	messages,
+	reserveMessageScrollSpace,
 	shouldFocusStartPromptInput,
 	isListening,
 	isMicProcessing,
@@ -405,6 +461,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	onOpenSchema,
 	onOpenSource,
 	onRetryMessage,
+	onContinueMessage,
 	isRetryDisabled,
 	onUserMessageLayout,
 	onMicPress,
@@ -440,16 +497,25 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	);
 
 	return (
-		<View className='flex-1 bg-[#080808]'>
+		<View className={`flex-1 ${lightMode ? 'bg-[#F7F5F1]' : 'bg-[#080808]'}`}>
+			<ChatBackgroundTexture lightMode={lightMode} />
 			<View
-				className='px-4 flex-row items-center border-b border-[#1F1F1F] bg-[#0D0D0D] shadow-2xl z-10'
+				className={`px-4 flex-row items-center border-b z-10 ${lightMode ? 'bg-white' : 'bg-[#0D0D0D]'}`}
 				style={{
 					height: headerHeight,
 					paddingTop: headerSafeTop,
+					borderBottomColor: lightMode ? 'rgba(20, 20, 20, 0.06)' : '#1F1F1F',
+					shadowColor: '#141414',
+					shadowOffset: { width: 0, height: 2 },
+					shadowOpacity: lightMode ? 0.025 : 0,
+					shadowRadius: 8,
+					elevation: lightMode ? 1 : 0,
 				}}>
 				<TouchableOpacity
 					onPress={onBack}
-					className='items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D]'
+					className={`items-center justify-center border rounded-[10px] ${
+						lightMode ? 'border-[#E4E4E7] bg-white' : 'border-[#2A2A2A] bg-[#0D0D0D]'
+					}`}
 					style={{ width: headerButtonSize, height: headerButtonSize, flexShrink: 0 }}>
 					<Feather name='arrow-left' size={headerIconSize} color={PRIMARY_ORANGE} />
 				</TouchableOpacity>
@@ -473,6 +539,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 							text={currentSource}
 							fontSize={headerTitleFontSize}
 							lineHeight={headerTitleFontSize + 5}
+							lightMode={lightMode}
 						/>
 					</View>
 				</View>
@@ -481,22 +548,12 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 					className={`flex-row items-center ${isPhonePortrait ? 'gap-1.5' : 'gap-2'}`}
 					style={{ flexShrink: 0 }}>
 					<TouchableOpacity
-						disabled
-						className='items-center justify-center border border-[#242424] rounded-[10px] bg-[#0C0C0C] opacity-50'
-						style={{ width: headerButtonSize, height: headerButtonSize }}>
-						<Image
-							source={require('../assets/images/info.png')}
-							style={{
-								width: isPhonePortrait ? 19 : 21,
-								height: isPhonePortrait ? 19 : 21,
-								tintColor: '#6B7280',
-							}}
-							resizeMode='contain'
-						/>
-					</TouchableOpacity>
-					<TouchableOpacity
 						onPress={onOpenFilesPanel}
-						className='items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#111111]'
+						className={`items-center justify-center border rounded-[10px] ${
+							lightMode
+								? 'border-[#E4E4E7] bg-[#FAFAFA]'
+								: 'border-[#2A2A2A] bg-[#111111]'
+						}`}
 						style={{ width: headerButtonSize, height: headerButtonSize }}>
 						<Feather
 							name='link'
@@ -510,22 +567,26 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 			{hasStartedChat ? (
 				<ScrollView
 					ref={messagesScrollViewRef}
-					className='flex-1 mt-5 px-4'
+					className='flex-1 px-4'
 					showsVerticalScrollIndicator={false}
 					contentContainerStyle={{
-						paddingBottom: Math.max(portraitMessagesBottomPadding, height),
+						paddingTop: 16,
+						paddingBottom: reserveMessageScrollSpace
+							? Math.max(portraitMessagesBottomPadding, height)
+							: portraitMessagesBottomPadding,
 					}}>
 					<ChatMessages
 						messages={messages}
 						compact
 						isListening={isListening}
 						soundLevelAnim={soundLevelAnim}
-						schemaAspectRatio={currentImageAspectRatio}
 						onOpenSchema={onOpenSchema}
 						onOpenSource={onOpenSource}
 						onRetryMessage={onRetryMessage}
+						onContinueMessage={onContinueMessage}
 						isRetryDisabled={isRetryDisabled}
 						onUserMessageLayout={onUserMessageLayout}
+						lightMode={lightMode}
 					/>
 				</ScrollView>
 			) : (
@@ -541,6 +602,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 					onSend={onSendText}
 					onShowTextInputChange={onShowTextInputChange}
 					onShouldFocusStartPromptInputChange={onShouldFocusStartPromptInputChange}
+					lightMode={lightMode}
 				/>
 			)}
 
@@ -552,6 +614,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 						onChangeText={onChangeText}
 						onSend={onSendText}
 						autoFocus
+						lightMode={lightMode}
 					/>
 				</View>
 			) : null}
@@ -570,6 +633,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 					isWritingActive={showTextInput}
 					onMicPress={onMicPress}
 					onWritingPress={onWritingPress}
+					lightMode={lightMode}
 				/>
 			</View>
 			<SourcePanel
@@ -583,12 +647,14 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 				headerTitleLineHeight={headerTitleFontSize + 5}
 				backButtonSize={headerButtonSize}
 				backIconSize={headerIconSize}
+				lightMode={lightMode}
 			/>
 		</View>
 	);
 }
 
 export function DesktopChatLayout<TMessage extends ChatMessageItem>({
+	lightMode = false,
 	currentSource,
 	logoUrl,
 	height,
@@ -597,6 +663,7 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	showTextInput,
 	inputText,
 	messages,
+	reserveMessageScrollSpace,
 	shouldFocusStartPromptInput,
 	isListening,
 	isMicProcessing,
@@ -618,6 +685,7 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	onOpenSchema,
 	onOpenSource,
 	onRetryMessage,
+	onContinueMessage,
 	isRetryDisabled,
 	onUserMessageLayout,
 	onMicPress,
@@ -626,63 +694,74 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	const keyboardOverlap = keyboardFrame ? Math.max(0, height - keyboardFrame.screenY) : 0;
 
 	return (
-		<View className='flex-1 bg-[#080808]'>
-			<View className='h-[76px] px-6 flex-row items-center border-b border-[#1F1F1F] bg-[#0D0D0D] shadow-2xl z-10'>
+		<View className={`flex-1 ${lightMode ? 'bg-[#F7F5F1]' : 'bg-[#080808]'}`}>
+			<ChatBackgroundTexture lightMode={lightMode} />
+			<View
+				className={`h-[76px] px-6 flex-row items-center border-b z-10 ${lightMode ? 'bg-white' : 'bg-[#0D0D0D]'}`}
+				style={{
+					borderBottomColor: lightMode ? 'rgba(20, 20, 20, 0.06)' : '#1F1F1F',
+					shadowColor: '#141414',
+					shadowOffset: { width: 0, height: 2 },
+					shadowOpacity: lightMode ? 0.025 : 0,
+					shadowRadius: 8,
+					elevation: lightMode ? 1 : 0,
+				}}>
 				<TouchableOpacity
 					onPress={onBack}
-					className='h-12 px-[18px] flex-row items-center justify-center mr-8 border border-[#2A2A2A] rounded-[10px] bg-[#0D0D0D]'>
+					className={`h-12 px-[18px] flex-row items-center justify-center mr-8 border rounded-[10px] ${
+						lightMode ? 'border-[#E4E4E7] bg-white' : 'border-[#2A2A2A] bg-[#0D0D0D]'
+					}`}>
 					<Feather name='arrow-left' size={22} color='#FF7A00' />
 					<Text className='text-[#FF7A00] ml-4 text-[13px] font-semibold tracking-wider'>
 						WSTECZ
 					</Text>
 				</TouchableOpacity>
 
-				{logoUrl ? <HeaderLogo uri={logoUrl} height={20} maxWidth={136} /> : null}
-				<Text className='text-white text-[20px] font-bold ml-5 tracking-wider'>
+				{logoUrl ? (
+					<HeaderLogo uri={logoUrl} height={20} maxWidth={136} lightMode={lightMode} />
+				) : null}
+				<Text
+					className={`${lightMode ? 'text-[#18181B]' : 'text-white'} text-[20px] font-bold ml-5 tracking-wider`}>
 					{currentSource}
 				</Text>
 
 				<View className='flex-1' />
 
 				<TouchableOpacity
-					disabled
-					className='h-12 px-[18px] flex-row items-center justify-center mr-7 border border-[#242424] rounded-[10px] bg-[#0C0C0C] opacity-50'>
-					<Image
-						source={require('../assets/images/info.png')}
-						style={{ width: 21, height: 21, tintColor: '#6B7280' }}
-						resizeMode='contain'
-					/>
-					<Text className='text-[#9CA3AF] ml-4 text-[13px] font-semibold tracking-wider'>
-						O MASZYNIE
-					</Text>
-				</TouchableOpacity>
-
-				<TouchableOpacity
 					onPress={onOpenFilesPanel}
-					className='h-12 px-[18px] flex-row items-center justify-center border border-[#2A2A2A] rounded-[10px] bg-[#111111]'>
+					className={`h-12 px-[18px] flex-row items-center justify-center border rounded-[10px] ${
+						lightMode
+							? 'border-[#E4E4E7] bg-[#FAFAFA]'
+							: 'border-[#2A2A2A] bg-[#111111]'
+					}`}>
 					<Feather name='link' size={21} color='#FF7A00' />
-					<Text className='text-[#E6E6E6] ml-4 text-[13px] font-semibold tracking-wider'>
+					<Text
+						className={`${lightMode ? 'text-[#3F3F46]' : 'text-[#E6E6E6]'} ml-4 text-[13px] font-semibold tracking-wider`}>
 						WSZYSTKIE PLIKI
 					</Text>
 				</TouchableOpacity>
 			</View>
 
-			<View className='flex-1 flex-row px-6 py-5'>
+			<View className='flex-1 flex-row px-6 pb-5'>
 				{hasStartedChat ? (
 					<ScrollView
 						ref={messagesScrollViewRef}
 						className='flex-1 pr-8'
-						contentContainerStyle={{ paddingBottom: Math.max(30, height) }}>
+						contentContainerStyle={{
+							paddingTop: 20,
+							paddingBottom: reserveMessageScrollSpace ? Math.max(30, height) : 30,
+						}}>
 						<ChatMessages
 							messages={messages}
 							isListening={isListening}
 							soundLevelAnim={soundLevelAnim}
-							schemaAspectRatio={currentImageAspectRatio}
 							onOpenSchema={onOpenSchema}
 							onOpenSource={onOpenSource}
 							onRetryMessage={onRetryMessage}
+							onContinueMessage={onContinueMessage}
 							isRetryDisabled={isRetryDisabled}
 							onUserMessageLayout={onUserMessageLayout}
+							lightMode={lightMode}
 						/>
 					</ScrollView>
 				) : (
@@ -697,6 +776,7 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 						onSend={onSendText}
 						onShowTextInputChange={onShowTextInputChange}
 						onShouldFocusStartPromptInputChange={onShouldFocusStartPromptInputChange}
+						lightMode={lightMode}
 					/>
 				)}
 
@@ -711,6 +791,7 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 						isWritingActive={showTextInput}
 						onMicPress={onMicPress}
 						onWritingPress={onWritingPress}
+						lightMode={lightMode}
 					/>
 				</View>
 			</View>
@@ -724,10 +805,15 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 						onChangeText={onChangeText}
 						onSend={onSendText}
 						autoFocus
+						lightMode={lightMode}
 					/>
 				</View>
 			) : null}
-			<SourcePanel {...sourcePanelProps} fullScreen={sourcePanelFullScreen} />
+			<SourcePanel
+				{...sourcePanelProps}
+				fullScreen={sourcePanelFullScreen}
+				lightMode={lightMode}
+			/>
 		</View>
 	);
 }

@@ -1,7 +1,12 @@
 import React from 'react';
 
 import type { ChatMessageItem } from '@/components/ChatMessages';
-import ChatMessages, { stripResponseDirectivesForSpeech } from '../components/ChatMessages';
+import ChatMessages, {
+	clampSchemaTranslation,
+	getFocalSchemaTranslation,
+	parseAssistantResponseBlocks,
+	stripResponseDirectivesForSpeech,
+} from '../components/ChatMessages';
 import { findByText, findByType, getTextContent } from '../test-utils/react-tree';
 
 jest.mock('react', () => {
@@ -34,6 +39,7 @@ jest.mock('react-native', () => {
 			loop: jest.fn(() => ({ start: jest.fn(), stop: jest.fn() })),
 			timing: jest.fn(() => ({ start: jest.fn() })),
 		},
+		Image: createHost('Image'),
 		Platform: { OS: 'ios' },
 		Text: createHost('Text'),
 		TouchableOpacity: createHost('TouchableOpacity'),
@@ -49,6 +55,50 @@ jest.mock('react-native-webview', () => {
 	};
 });
 
+jest.mock('react-native-gesture-handler', () => {
+	const React = require('react');
+	const createGesture = () => {
+		const gesture: Record<string, jest.Mock> = {};
+		gesture.maxPointers = jest.fn(() => gesture);
+		gesture.numberOfTaps = jest.fn(() => gesture);
+		gesture.onEnd = jest.fn(() => gesture);
+		gesture.onStart = jest.fn(() => gesture);
+		gesture.onTouchesCancelled = jest.fn(() => gesture);
+		gesture.onTouchesDown = jest.fn(() => gesture);
+		gesture.onTouchesMove = jest.fn(() => gesture);
+		gesture.onTouchesUp = jest.fn(() => gesture);
+		gesture.onUpdate = jest.fn(() => gesture);
+		return gesture;
+	};
+
+	return {
+		Gesture: {
+			Exclusive: jest.fn((...gestures) => gestures),
+			Manual: createGesture,
+			Pan: createGesture,
+			Pinch: createGesture,
+			Race: jest.fn((...gestures) => gestures),
+			Simultaneous: jest.fn((...gestures) => gestures),
+			Tap: createGesture,
+		},
+		GestureDetector: ({ children, ...props }: Record<string, unknown>) =>
+			React.createElement('GestureDetector', props, children),
+	};
+});
+
+jest.mock('react-native-reanimated', () => {
+	const React = require('react');
+	return {
+		__esModule: true,
+		default: {
+			View: ({ children, ...props }: Record<string, unknown>) =>
+				React.createElement('Reanimated.View', props, children),
+		},
+		useAnimatedStyle: (factory: () => unknown) => factory(),
+		useSharedValue: (value: unknown) => ({ value }),
+	};
+});
+
 jest.mock('@expo/vector-icons', () => {
 	const React = require('react');
 	const Icon = ({ children, ...props }: Record<string, unknown>) =>
@@ -56,18 +106,31 @@ jest.mock('@expo/vector-icons', () => {
 
 	return {
 		Feather: Icon,
+		MaterialCommunityIcons: Icon,
 	};
 });
 
 describe('ChatMessages', () => {
+	test('keeps a zoomed schema within the viewport bounds', () => {
+		expect(clampSchemaTranslation(1000, 800, 2)).toBe(400);
+		expect(clampSchemaTranslation(-1000, 800, 2)).toBe(-400);
+		expect(clampSchemaTranslation(50, 800, 2)).toBe(50);
+		expect(clampSchemaTranslation(100, 800, 1)).toBe(0);
+	});
+
+	test('keeps the point between the fingers anchored while zooming', () => {
+		expect(getFocalSchemaTranslation(0, 150, 150, 2)).toBe(-150);
+		expect(getFocalSchemaTranslation(-100, 150, 200, 1.5)).toBe(-175);
+	});
+
 	const baseProps = {
 		compact: false,
 		isListening: false,
 		soundLevelAnim: new (jest.requireMock('react-native').Animated.Value)(0.2),
-		schemaAspectRatio: 1.4,
 		onOpenSchema: jest.fn(),
 		onOpenSource: jest.fn(),
 		onRetryMessage: jest.fn(),
+		onContinueMessage: jest.fn(),
 		onUserMessageLayout: jest.fn(),
 	};
 
@@ -77,6 +140,33 @@ describe('ChatMessages', () => {
 				'Intro\n::checklist - check oil\n- check battery\n::warning stop',
 			),
 		).toBe('Intro\ncheck oil\ncheck battery\nstop');
+	});
+
+	test('does not split a numeric range into separate checklist items', () => {
+		expect(
+			parseAssistantResponseBlocks(
+				'::checklist\n- Zmierz rezystancję; oczekiwany zakres to 54 - 66 omów.',
+			),
+		).toEqual([
+			{
+				type: 'checklist',
+				items: ['Zmierz rezystancję; oczekiwany zakres to 54 - 66 omów.'],
+			},
+		]);
+	});
+
+	test('parses next directive glued to Polish text', () => {
+		expect(
+			parseAssistantResponseBlocks(
+				'e poprawnie: tak/nie?::nextJeśli problem pozostanie po aktualnym sprawdzeniu',
+			),
+		).toEqual([
+			{ type: 'text', content: 'e poprawnie: tak/nie?' },
+			{
+				type: 'next',
+				content: 'Jeśli problem pozostanie po aktualnym sprawdzeniu',
+			},
+		]);
 	});
 
 	test('renders user and assistant text messages', () => {
@@ -142,6 +232,30 @@ describe('ChatMessages', () => {
 		expect(onRetryMessage).toHaveBeenCalledWith(interruptedMessage);
 	});
 
+	test('does not render feedback controls for completed assistant messages', () => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[
+					{ id: 1, sender: 'user', text: 'Pytanie' },
+					{ id: 2, sender: 'ai', text: 'Odpowiedź' },
+				]}
+			/>
+		);
+		const feedbackIcons = findByType(tree, 'Icon').filter((icon) =>
+			['thumbs-up', 'thumbs-down'].includes(icon.props.name),
+		);
+		const feedbackButtons = findByType(tree, 'TouchableOpacity').filter((button) =>
+			['Lubię tę odpowiedź', 'Nie lubię tej odpowiedzi'].includes(
+				button.props.accessibilityLabel,
+			),
+		);
+
+		expect(feedbackIcons).toHaveLength(0);
+		expect(findByText(tree, 'Czy ta odpowiedź była pomocna?')).toBeFalsy();
+		expect(feedbackButtons).toHaveLength(0);
+	});
+
 	test('renders local feedback controls only for completed assistant messages', () => {
 		const tree = (
 			<ChatMessages
@@ -161,14 +275,37 @@ describe('ChatMessages', () => {
 			),
 		);
 
-		expect(feedbackIcons.map((icon) => icon.props.name)).toEqual(['thumbs-up', 'thumbs-down']);
-		expect(findByText(tree, 'Czy ta odpowiedź była pomocna?')).toBeTruthy();
-		expect(feedbackIcons.map((icon) => icon.props.color)).toEqual(['#8F959E', '#8F959E']);
-		expect(feedbackButtons).toHaveLength(2);
-		expect(feedbackButtons.every((button) => button.props.accessibilityRole === 'button')).toBe(
-			true,
+		expect(feedbackIcons).toHaveLength(0);
+		expect(findByText(tree, 'Czy ta odpowiedź była pomocna?')).toBeFalsy();
+		expect(feedbackButtons).toHaveLength(0);
+	});
+
+	test('renders continuation action only for the latest flagged answer', () => {
+		const onContinueMessage = jest.fn();
+		const latestMessage: ChatMessageItem = {
+			id: 2,
+			sender: 'ai',
+			text: 'Drugi etap jest dostępny.',
+			hasContinuation: true,
+		};
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[
+					{ id: 1, sender: 'ai', text: 'Stara odpowiedź', hasContinuation: true },
+					latestMessage,
+				]}
+				onContinueMessage={onContinueMessage}
+			/>
 		);
-		feedbackButtons.forEach((button) => button.props.onPress());
+		const continueButtons = findByType(tree, 'TouchableOpacity').filter(
+			(button) => button.props.accessibilityLabel === 'Wyślij wiadomość Co dalej?',
+		);
+
+		expect(continueButtons).toHaveLength(1);
+		expect(findByText(tree, 'Co dalej?')).toBeTruthy();
+		continueButtons[0].props.onPress();
+		expect(onContinueMessage).toHaveBeenCalledWith(latestMessage);
 	});
 
 	test('renders structured assistant directives', () => {
@@ -198,17 +335,92 @@ describe('ChatMessages', () => {
 		);
 	});
 
+	test('renders a checkbox for every checklist item', () => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[
+					{
+						id: 1,
+						sender: 'ai',
+						text: '::checklist\n- Sprawdź olej\n- Sprawdź przewody',
+					},
+				]}
+			/>
+		);
+
+		const checkboxes = findByType(tree, 'View').filter(
+			(view) => view.props.accessibilityRole === 'checkbox',
+		);
+		expect(checkboxes).toHaveLength(2);
+		expect(checkboxes[0].props.accessibilityState).toEqual({ checked: false });
+		expect(checkboxes[1].props.accessibilityState).toEqual({ checked: false });
+	});
+
+	test('renders inline streamed checklist markers as separate compact rows', () => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				compact
+				messages={[
+					{
+						id: 1,
+						sender: 'ai',
+						text: '::checklist\n- Sprawdź olej - Sprawdź przewody - ',
+					},
+				]}
+			/>
+		);
+
+		const checkboxes = findByType(tree, 'View').filter(
+			(view) => view.props.accessibilityRole === 'checkbox',
+		);
+
+		expect(checkboxes).toHaveLength(3);
+	});
+
+	test('renders a compact checkbox as soon as a streamed bullet marker arrives', () => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				compact
+				messages={[{ id: 1, sender: 'ai', text: '::checklist\n- ' }]}
+			/>
+		);
+
+		const checkboxes = findByType(tree, 'View').filter(
+			(view) => view.props.accessibilityRole === 'checkbox',
+		);
+
+		expect(checkboxes).toHaveLength(1);
+	});
+
 	test('opens schema previews and answer sources', () => {
 		const onOpenSchema = jest.fn();
 		const onOpenSource = jest.fn();
+		const sourceReferences = Array.from({ length: 6 }, (_, index) => ({
+			sourceAttachmentId: 88,
+			sourceAttachmentName: 'manual.pdf',
+			sourceAttachmentPage: index + 1,
+			previewImage: `data:image/png;base64,source-${index}`,
+		}));
 		const sourceMessage: ChatMessageItem = {
 			id: 1,
 			sender: 'ai',
 			text: 'Zobacz źródło.',
 			schemaImage: 'data:image/png;base64,abc',
+			schemaImages: [
+				'data:image/png;base64,abc',
+				'data:image/png;base64,def',
+				'data:image/png;base64,ghi',
+				'data:image/png;base64,jkl',
+				'data:image/png;base64,mno',
+				'data:image/png;base64,ignored',
+			],
 			sourceAttachmentId: 88,
 			sourceAttachmentName: 'manual.pdf',
 			sourceAttachmentPage: 3,
+			sourceReferences,
 		};
 		const tree = (
 			<ChatMessages
@@ -219,13 +431,29 @@ describe('ChatMessages', () => {
 			/>
 		);
 		const buttons = findByType(tree, 'TouchableOpacity');
+		const schemaButtons = buttons.filter((button) =>
+			button.props.accessibilityLabel?.startsWith('Powiększ schemat'),
+		);
+		const sourceButtons = buttons.filter((button) =>
+			button.props.accessibilityLabel?.startsWith('Otwórz źródło'),
+		);
 
-		buttons[0].props.onPress();
-		buttons[1].props.onPress();
+		schemaButtons[0].props.onPress();
+		sourceButtons.forEach((button) => button.props.onPress());
 
-		expect(findByText(tree, 'Schemat pomocniczy')).toBeTruthy();
-		expect(findByText(tree, 'POKAŻ ŹRÓDŁO ODPOWIEDZI')).toBeTruthy();
+		expect(findByText(tree, 'Schematy z dokumentacji')).toBeTruthy();
+		expect(
+			findByText(tree, 'Kliknij schemat, aby otworzyć go w pełnym rozmiarze.'),
+		).toBeTruthy();
+		expect(findByText(tree, 'manual.pdf')).toBeTruthy();
+		expect(schemaButtons).toHaveLength(5);
+		expect(sourceButtons).toHaveLength(5);
+		expect(findByType(tree, 'WebView')).toHaveLength(0);
+		expect(findByType(tree, 'Image')).toHaveLength(5);
 		expect(onOpenSchema).toHaveBeenCalledWith('data:image/png;base64,abc');
-		expect(onOpenSource).toHaveBeenCalledWith(sourceMessage);
+		expect(onOpenSource).toHaveBeenCalledTimes(5);
+		expect(onOpenSource.mock.calls.map(([source]) => source)).toEqual(
+			sourceReferences.slice(0, 5),
+		);
 	});
 });

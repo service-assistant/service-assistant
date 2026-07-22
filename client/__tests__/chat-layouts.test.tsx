@@ -40,6 +40,9 @@ jest.mock('react-native', () => {
 			getSize: jest.fn((_uri, onSuccess) => onSuccess(300, 100)),
 		}),
 		ScrollView: createHost('ScrollView'),
+		StyleSheet: {
+			absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
+		},
 		Text: createHost('Text'),
 		TextInput: createHost('TextInput'),
 		TouchableOpacity: createHost('TouchableOpacity'),
@@ -115,6 +118,7 @@ const createLayoutProps = () => ({
 	showTextInput: false,
 	inputText: 'pytanie',
 	messages,
+	reserveMessageScrollSpace: false,
 	shouldFocusStartPromptInput: false,
 	isListening: false,
 	isMicProcessing: false,
@@ -128,7 +132,6 @@ const createLayoutProps = () => ({
 	sourcePanelProps,
 	sourcePanelFullScreen: false,
 	onBack: jest.fn(),
-	onOpenMachineInfo: jest.fn(),
 	onOpenFilesPanel: jest.fn(),
 	onSendText: jest.fn(),
 	onChangeText: jest.fn(),
@@ -137,30 +140,45 @@ const createLayoutProps = () => ({
 	onOpenSchema: jest.fn(),
 	onOpenSource: jest.fn(),
 	onRetryMessage: jest.fn(),
+	onContinueMessage: jest.fn(),
 	onUserMessageLayout: jest.fn(),
 	onMicPress: jest.fn(),
 	onWritingPress: jest.fn(),
 });
 
 describe('ChatLayouts', () => {
+	test('renders the background texture only in light mode', () => {
+		const lightTree = <DesktopChatLayout {...createLayoutProps()} lightMode />;
+		const darkTree = <DesktopChatLayout {...createLayoutProps()} lightMode={false} />;
+		const lightTextures = findByType(lightTree, 'Image').filter(
+			(image) => image.props.testID === 'chat-background-texture',
+		);
+		const darkTextures = findByType(darkTree, 'Image').filter(
+			(image) => image.props.testID === 'chat-background-texture',
+		);
+
+		expect(lightTextures).toHaveLength(1);
+		expect(lightTextures[0].props.style.opacity).toBe(0.32);
+		expect(darkTextures).toHaveLength(0);
+	});
+
 	test('DesktopChatLayout renders chat messages, controls, source panel and header actions', () => {
 		const props = createLayoutProps();
 		const tree = <DesktopChatLayout {...props} />;
 		const buttons = findByType(tree, 'TouchableOpacity');
 
 		buttons[0].props.onPress();
-		buttons[2].props.onPress();
+		buttons[1].props.onPress();
 
 		expect(getTextContent(tree)).toContain('Toyota 8FG');
 		expect(findByType(tree, 'ChatMessages')[0].props.messages).toBe(messages);
 		expect(findByType(tree, 'ControlPanel')[0].props.orientation).toBe('vertical');
 		expect(findByType(tree, 'SourcePanel')[0].props).toMatchObject(sourcePanelProps);
 		expect(props.onBack).toHaveBeenCalled();
-		expect(buttons[1].props.disabled).toBe(true);
-		expect(props.onOpenMachineInfo).not.toHaveBeenCalled();
+		expect(getTextContent(tree)).not.toContain('O MASZYNIE');
 		expect(props.onOpenFilesPanel).toHaveBeenCalled();
 		expect(findByType(tree, 'ScrollView')[0].props.contentContainerStyle.paddingBottom).toBe(
-			800,
+			30,
 		);
 		findByType(tree, 'ChatMessages')[0].props.onUserMessageLayout(messages[0], 120);
 		expect(props.onUserMessageLayout).toHaveBeenCalledWith(messages[0], 120);
@@ -206,10 +224,29 @@ describe('ChatLayouts', () => {
 		expect(findByType(tree, 'SourcePanel')[0].props.backButtonSize).toBe(42);
 		expect(findByType(tree, 'SourcePanel')[0].props.backIconSize).toBe(21);
 		expect(findByType(tree, 'ScrollView')[0].props.contentContainerStyle.paddingBottom).toBe(
-			800,
+			216,
 		);
 		findByType(tree, 'ChatMessages')[0].props.onUserMessageLayout(messages[0], 120);
 		expect(props.onUserMessageLayout).toHaveBeenCalledWith(messages[0], 120);
+	});
+
+	test('reserves viewport space only while a new message is active', () => {
+		const props = createLayoutProps();
+		const desktopTree = <DesktopChatLayout {...props} reserveMessageScrollSpace />;
+		const portraitTree = (
+			<PortraitChatLayout
+				{...props}
+				reserveMessageScrollSpace
+				insets={{ top: 10, right: 0, bottom: 20, left: 0 }}
+			/>
+		);
+
+		expect(
+			findByType(desktopTree, 'ScrollView')[0].props.contentContainerStyle.paddingBottom,
+		).toBe(800);
+		expect(
+			findByType(portraitTree, 'ScrollView')[0].props.contentContainerStyle.paddingBottom,
+		).toBe(800);
 	});
 
 	test('PortraitChatLayout keeps three file columns on tablets', () => {
