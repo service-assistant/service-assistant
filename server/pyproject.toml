@@ -58,3 +58,5 @@ entrypoint = "app.main:app"
 
 [tool.pyright]
 typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
