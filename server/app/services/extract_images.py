@@ -1,7 +1,22 @@
-from pathlib import Path
 import uuid
+from pathlib import Path
+
 import fitz
 from pymupdf import Pixmap, csRGB
+
+
+PNG_COLORSPACES = {"DeviceGray", "DeviceRGB"}
+
+
+def normalize_for_png(pix: Pixmap) -> Pixmap | None:
+    """Return a PNG-compatible pixmap, or None for a standalone image mask."""
+    if pix.colorspace is None:
+        return None
+
+    if pix.colorspace.name not in PNG_COLORSPACES:
+        return Pixmap(csRGB, pix)
+
+    return pix
 
 
 def extract_page_images(
@@ -15,9 +30,9 @@ def extract_page_images(
         filename = f"{uuid.uuid4()}.png"
         image_path = output_dir / filename
 
-        pix = Pixmap(doc, xref)
-        if pix.n - pix.alpha > 3:
-            pix = Pixmap(csRGB, pix)
+        pix = normalize_for_png(Pixmap(doc, xref))
+        if pix is None:
+            continue
 
         output_dir.mkdir(parents=True, exist_ok=True)
         pix.save(str(image_path))

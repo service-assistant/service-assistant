@@ -1,19 +1,25 @@
-from openai import AsyncAzureOpenAI
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import delete as sql_delete
-
-from azure.ai.documentintelligence import DocumentIntelligenceClient
-from azure.ai.documentintelligence.models import DocumentContentFormat
-from azure.core.credentials import AzureKeyCredential
+import math
 
 import fitz  # pymupdf
 import pymupdf4llm
+from azure.ai.documentintelligence import DocumentIntelligenceClient
+from azure.ai.documentintelligence.models import DocumentContentFormat
+from azure.core.credentials import AzureKeyCredential
+from openai import AsyncAzureOpenAI
+from sqlalchemy import delete as sql_delete
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
 from ..models import Chunk
-from .process_ocr_text import process_ocr_text
-from .extract_images import extract_page_images
 from .chunking import chunk_page
+from .extract_images import extract_page_images
+from .process_ocr_text import process_ocr_text
+
+
+OCR_MAX_IMAGE_BYTES = 3_500_000
+OCR_MAX_IMAGE_DIMENSION = 4_000
+OCR_JPEG_QUALITY = 85
+OCR_MAX_RESIZE_ATTEMPTS = 6
 
 
 async def delete_attachment_chunks(session: AsyncSession, attachment_id: int) -> None:
@@ -24,6 +30,29 @@ async def delete_attachment_chunks(session: AsyncSession, attachment_id: int) ->
 def batch_list(items, batch_size):
     for i in range(0, len(items), batch_size):
         yield items[i : i + batch_size]
+
+
+def render_page_for_ocr(
+    page: fitz.Page,
+    max_bytes: int = OCR_MAX_IMAGE_BYTES,
+    max_dimension: int = OCR_MAX_IMAGE_DIMENSION,
+) -> bytes:
+    longest_side = max(page.rect.width, page.rect.height)
+    scale = min(1.0, max_dimension / longest_side) if longest_side else 1.0
+
+    for _ in range(OCR_MAX_RESIZE_ATTEMPTS):
+        pix = page.get_pixmap(
+            matrix=fitz.Matrix(scale, scale),
+            colorspace=fitz.csRGB,
+            alpha=False,
+        )
+        image = pix.tobytes("jpeg", jpg_quality=OCR_JPEG_QUALITY)
+        if len(image) <= max_bytes:
+            return image
+
+        scale *= min(0.9, math.sqrt(max_bytes / len(image)) * 0.9)
+
+    raise ValueError("Could not render the page within Azure OCR input limits")
 
 
 async def ingest_pdf_to_attachment(
@@ -66,7 +95,7 @@ async def ingest_pdf_to_attachment(
             # perform OCR
             poller = ocr_client.begin_analyze_document(
                 "prebuilt-layout",
-                body=page.get_pixmap().tobytes("png"),
+                body=render_page_for_ocr(page),
                 output_content_format=DocumentContentFormat.MARKDOWN,
             )
 

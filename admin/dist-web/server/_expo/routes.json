@@ -1,0 +1,189 @@
+{
+  "apiRoutes": [
+    {
+      "file": "_expo/functions/api/brands+api.js",
+      "page": "/api/brands",
+      "namedRegex": "^/api/brands(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "_expo/functions/api/devices+api.js",
+      "page": "/api/devices",
+      "namedRegex": "^/api/devices(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "_expo/functions/api/attachments+api.js",
+      "page": "/api/attachments",
+      "namedRegex": "^/api/attachments(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "_expo/functions/api/device_types+api.js",
+      "page": "/api/device_types",
+      "namedRegex": "^/api/device_types(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "_expo/functions/api/attachments/[id]/devices/[deviceId]+api.js",
+      "page": "/api/attachments/[id]/devices/[deviceId]",
+      "namedRegex": "^/api/attachments/(?<id>[^/]+?)/devices/(?<deviceId>[^/]+?)(?:/)?$",
+      "routeKeys": {
+        "id": "id",
+        "deviceId": "deviceId"
+      }
+    },
+    {
+      "file": "_expo/functions/api/attachments/[id]/file+api.js",
+      "page": "/api/attachments/[id]/file",
+      "namedRegex": "^/api/attachments/(?<id>[^/]+?)/file(?:/)?$",
+      "routeKeys": {
+        "id": "id"
+      }
+    },
+    {
+      "file": "_expo/functions/api/attachments/[id]+api.js",
+      "page": "/api/attachments/[id]",
+      "namedRegex": "^/api/attachments/(?<id>[^/]+?)(?:/)?$",
+      "routeKeys": {
+        "id": "id"
+      }
+    },
+    {
+      "file": "_expo/functions/api/brands/[id]+api.js",
+      "page": "/api/brands/[id]",
+      "namedRegex": "^/api/brands/(?<id>[^/]+?)(?:/)?$",
+      "routeKeys": {
+        "id": "id"
+      }
+    },
+    {
+      "file": "_expo/functions/api/devices/[device_id]+api.js",
+      "page": "/api/devices/[device_id]",
+      "namedRegex": "^/api/devices/(?<device_id>[^/]+?)(?:/)?$",
+      "routeKeys": {
+        "device_id": "device_id"
+      }
+    },
+    {
+      "file": "_expo/functions/api/device_types/[id]+api.js",
+      "page": "/api/device_types/[id]",
+      "namedRegex": "^/api/device_types/(?<id>[^/]+?)(?:/)?$",
+      "routeKeys": {
+        "id": "id"
+      }
+    }
+  ],
+  "htmlRoutes": [
+    {
+      "file": "./index.tsx",
+      "page": "/index",
+      "namedRegex": "^/(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./users.tsx",
+      "page": "/users",
+      "namedRegex": "^/users(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./catalog.tsx",
+      "page": "/catalog",
+      "namedRegex": "^/catalog(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "expo-router/build/views/Sitemap.js",
+      "page": "/_sitemap",
+      "namedRegex": "^/_sitemap(?:/)?$",
+      "routeKeys": {},
+      "generated": true
+    },
+    {
+      "file": "./brands/new.tsx",
+      "page": "/brands/new",
+      "namedRegex": "^/brands/new(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./add-machine.tsx",
+      "page": "/add-machine",
+      "namedRegex": "^/add\\-machine(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./add-document.tsx",
+      "page": "/add-document",
+      "namedRegex": "^/add\\-document(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./machine-types/new.tsx",
+      "page": "/machine-types/new",
+      "namedRegex": "^/machine\\-types/new(?:/)?$",
+      "routeKeys": {}
+    },
+    {
+      "file": "./machines/[id]/documents.tsx",
+      "page": "/machines/[id]/documents",
+      "namedRegex": "^/machines/(?<id>[^/]+?)/documents(?:/)?$",
+      "routeKeys": {
+        "id": "id"
+      }
+    },
+    {
+      "file": "./machines/[id].tsx",
+      "page": "/machines/[id]",
+      "namedRegex": "^/machines/(?<id>[^/]+?)(?:/)?$",
+      "routeKeys": {
+        "id": "id"
+      }
+    },
+    {
+      "file": "./machine-types/[id].tsx",
+      "page": "/machine-types/[id]",
+      "namedRegex": "^/machine\\-types/(?<id>[^/]+?)(?:/)?$",
+      "routeKeys": {
+        "id": "id"
+      }
+    },
+    {
+      "file": "./documents/[id]/machines.tsx",
+      "page": "/documents/[id]/machines",
+      "namedRegex": "^/documents/(?<id>[^/]+?)/machines(?:/)?$",
+      "routeKeys": {
+        "id": "id"
+      }
+    },
+    {
+      "file": "./documents/[id].tsx",
+      "page": "/documents/[id]",
+      "namedRegex": "^/documents/(?<id>[^/]+?)(?:/)?$",
+      "routeKeys": {
+        "id": "id"
+      }
+    },
+    {
+      "file": "./brands/[id].tsx",
+      "page": "/brands/[id]",
+      "namedRegex": "^/brands/(?<id>[^/]+?)(?:/)?$",
+      "routeKeys": {
+        "id": "id"
+      }
+    }
+  ],
+  "notFoundRoutes": [
+    {
+      "file": "expo-router/build/views/Unmatched.js",
+      "page": "/+not-found",
+      "namedRegex": "^(?:/(?<notfound>.+?))?(?:/)?$",
+      "routeKeys": {
+        "notfound": "not-found"
+      },
+      "generated": true
+    }
+  ],
+  "redirects": [],
+  "rewrites": []
+}

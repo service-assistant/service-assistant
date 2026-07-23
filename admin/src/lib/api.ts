@@ -24,13 +24,27 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 		throw new ApiError(401, 'Unauthorized')
 	}
 
-	if (!res.ok) {
-		const detail = await res.json().catch(() => null)
-		throw new ApiError(res.status, detail?.detail ?? res.statusText)
+	const responseText = await res.text()
+	let responseBody: unknown
+	try {
+		responseBody = responseText ? JSON.parse(responseText) : undefined
+	} catch {
+		responseBody = undefined
 	}
 
-	if (res.status === 204) return undefined as T
-	return res.json() as Promise<T>
+	if (!res.ok) {
+		const detail =
+			typeof responseBody === 'object' && responseBody !== null && 'detail' in responseBody
+				? String(responseBody.detail)
+				: responseText || res.statusText
+		throw new ApiError(res.status, detail)
+	}
+
+	if (res.status === 204 || !responseText) return undefined as T
+	if (responseBody === undefined) {
+		throw new ApiError(res.status, 'Server returned an invalid response')
+	}
+	return responseBody as T
 }
 
 export const api = {

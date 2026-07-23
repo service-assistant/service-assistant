@@ -57,6 +57,19 @@ To stop the test database afterwards:
 make test-db-down
 ```
 
+### Windows
+
+Windows uses a separate test database URL with an explicit IPv4 loopback address
+and a selector event loop compatible with async psycopg. Run the complete test
+workflow from PowerShell:
+
+```powershell
+.\scripts\test-windows.ps1
+```
+
+The script starts the existing test database container if needed, loads
+`.env.test.windows`, and runs pytest. It does not stop or remove any containers.
+
 ## Cautions
 
 Database migrations run automatically on startup via `alembic upgrade head`. Once a migration is pushed to `staging` or `main`, never revert it — the database has already been migrated and a downgrade would cause data loss or schema conflicts. Remember that you can do it freely on your local machine or in a feature branch as long as it's not merged into one of the branches above.
