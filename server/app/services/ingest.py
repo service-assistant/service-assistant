@@ -1,4 +1,5 @@
 import math
+from io import BytesIO
 
 import fitz  # pymupdf
 import pymupdf4llm
@@ -95,7 +96,7 @@ async def ingest_pdf_to_attachment(
             # perform OCR
             poller = ocr_client.begin_analyze_document(
                 "prebuilt-layout",
-                body=render_page_for_ocr(page),
+                body=BytesIO(render_page_for_ocr(page)),
                 output_content_format=DocumentContentFormat.MARKDOWN,
             )
 
