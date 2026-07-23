@@ -10,9 +10,9 @@ import {
 	TouchableOpacity,
 	View,
 } from 'react-native';
-import { Invert } from './InvertFilter';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Reanimated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import { Invert } from './InvertFilter';
 
 const PRIMARY_ORANGE = '#FF7A00';
 
