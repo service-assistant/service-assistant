@@ -1,15 +1,30 @@
+import logging
 import mimetypes
-from dataclasses import dataclass
+import shutil
+import traceback
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Request,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
-from app.database import get_session
+from app.database import get_engine, get_session
 from app.models import (
     Attachment,
     AttachmentDevice,
@@ -21,13 +36,35 @@ from app.models import (
     DeviceType,
     Message,
 )
-from app.routers.attachments import list_attachments
+from app.routers.attachments import list_attachments, save_and_ingest_attachment
 from app.routers.brands import list_brands
 from app.routers.device_types import list_device_types
 from app.routers.devices import list_devices
 from app.routers.threads import list_threads
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+UPLOAD_BATCH_TERMINAL_STATES = {"succeeded", "failed"}
+
+
+@dataclass
+class UploadBatchItem:
+    filename: str
+    state: str = "queued"
+    attachment_id: int | None = None
+    error: str | None = None
+
+
+@dataclass
+class UploadBatch:
+    id: str
+    items: list[UploadBatchItem]
+    created_at: str
+    finished_at: str | None = None
+
+
+_upload_batches: dict[str, UploadBatch] = {}
 
 _templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
@@ -42,7 +79,11 @@ async def _require_auth(
 
 @router.get("/login", response_class=HTMLResponse)
 async def get_login(request: Request):
-    return templates.TemplateResponse("admin/login.html", {"request": request})
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/login.html",
+        context={"request": request},
+    )
 
 
 @router.post("/login")
@@ -118,8 +159,9 @@ async def get_next_best_step_visualization(
 ):
     devices = await list_devices(session=session)
     return templates.TemplateResponse(
-        "admin/next_best_step.html",
-        {
+        request=request,
+        name="admin/next_best_step.html",
+        context={
             "request": request,
             "active": "next_best_step",
             "devices": devices,
@@ -158,14 +200,175 @@ async def get_documents(
         rows.append(AttachmentRow(attachment=att, device_names=names))
 
     return templates.TemplateResponse(
-        "admin/documents.html",
-        {
+        request=request,
+        name="admin/documents.html",
+        context={
             "request": request,
             "active": "documents",
             "attachments": rows,
             "devices": all_devices,
         },
     )
+
+
+@router.post(
+    "/documents/upload",
+    dependencies=[Depends(_require_auth)],
+)
+async def upload_document(
+    settings: Settings = Depends(get_settings),
+    session: AsyncSession = Depends(get_session),
+    file: UploadFile = File(...),
+    device_ids: list[int] = Form(default=[]),
+):
+    try:
+        attachment = await save_and_ingest_attachment(
+            settings=settings,
+            session=session,
+            file=file,
+            device_ids=device_ids,
+        )
+        return {
+            "id": attachment.id,
+            "original_filename": attachment.original_filename,
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        error = traceback.format_exc()
+        logger.exception("Admin upload failed for %s", file.filename)
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={"detail": error},
+        )
+
+
+def _serialize_upload_batch(batch: UploadBatch) -> dict:
+    succeeded = sum(item.state == "succeeded" for item in batch.items)
+    failed = sum(item.state == "failed" for item in batch.items)
+    completed = succeeded + failed
+
+    return {
+        "id": batch.id,
+        "state": "completed" if completed == len(batch.items) else "processing",
+        "total": len(batch.items),
+        "completed": completed,
+        "succeeded": succeeded,
+        "failed": failed,
+        "created_at": batch.created_at,
+        "finished_at": batch.finished_at,
+        "items": [asdict(item) for item in batch.items],
+    }
+
+
+async def _process_upload_batch(
+    batch_id: str,
+    staged_files: list[Path | None],
+    device_ids: list[int],
+    settings: Settings,
+) -> None:
+    batch = _upload_batches[batch_id]
+    staging_dir = settings.attachments_dir / ".upload_batches" / batch_id
+
+    try:
+        for item, staged_path in zip(batch.items, staged_files, strict=True):
+            if staged_path is None:
+                continue
+
+            item.state = "processing"
+            try:
+                with staged_path.open("rb") as source:
+                    upload = UploadFile(file=source, filename=item.filename)
+                    async with AsyncSession(
+                        get_engine(settings.database_url),
+                        expire_on_commit=False,
+                    ) as session:
+                        attachment = await save_and_ingest_attachment(
+                            settings=settings,
+                            session=session,
+                            file=upload,
+                            device_ids=device_ids,
+                        )
+                item.attachment_id = attachment.id
+                item.state = "succeeded"
+            except Exception:
+                item.state = "failed"
+                item.error = traceback.format_exc()
+                logger.exception("Admin batch upload failed for %s", item.filename)
+            finally:
+                staged_path.unlink(missing_ok=True)
+    finally:
+        for item in batch.items:
+            if item.state not in UPLOAD_BATCH_TERMINAL_STATES:
+                item.state = "failed"
+                item.error = (
+                    item.error or "Batch worker stopped before processing finished."
+                )
+        batch.finished_at = datetime.now(timezone.utc).isoformat()
+        shutil.rmtree(staging_dir, ignore_errors=True)
+
+
+@router.post(
+    "/documents/upload-batches",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(_require_auth)],
+)
+async def create_upload_batch(
+    background_tasks: BackgroundTasks,
+    settings: Settings = Depends(get_settings),
+    files: list[UploadFile] = File(...),
+    device_ids: list[int] = Form(default=[]),
+):
+    batch_id = str(uuid4())
+    staging_dir = settings.attachments_dir / ".upload_batches" / batch_id
+    staging_dir.mkdir(parents=True, exist_ok=False)
+
+    items: list[UploadBatchItem] = []
+    staged_files: list[Path | None] = []
+
+    for index, file in enumerate(files):
+        filename = Path(str(file.filename)).name
+        item = UploadBatchItem(filename=filename)
+        staged_path = staging_dir / f"{index:04d}.upload"
+        try:
+            with staged_path.open("wb") as destination:
+                shutil.copyfileobj(file.file, destination)
+            staged_files.append(staged_path)
+        except Exception:
+            item.state = "failed"
+            item.error = traceback.format_exc()
+            staged_files.append(None)
+            staged_path.unlink(missing_ok=True)
+            logger.exception("Could not stage admin upload %s", filename)
+        finally:
+            file.file.close()
+        items.append(item)
+
+    batch = UploadBatch(
+        id=batch_id,
+        items=items,
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    _upload_batches[batch_id] = batch
+    background_tasks.add_task(
+        _process_upload_batch,
+        batch_id,
+        staged_files,
+        list(device_ids),
+        settings,
+    )
+    return _serialize_upload_batch(batch)
+
+
+@router.get(
+    "/documents/upload-batches/{batch_id}",
+    dependencies=[Depends(_require_auth)],
+)
+async def get_upload_batch(batch_id: str):
+    batch = _upload_batches.get(batch_id)
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Upload batch not found")
+    return _serialize_upload_batch(batch)
 
 
 @router.get(
@@ -199,8 +402,9 @@ async def get_document_detail(
     chunk_count = chunk_count_result.scalar_one()
 
     return templates.TemplateResponse(
-        "admin/document_detail.html",
-        {
+        request=request,
+        name="admin/document_detail.html",
+        context={
             "request": request,
             "active": "documents",
             "attachment": attachment,
@@ -244,8 +448,9 @@ async def get_devices(
     ]
 
     return templates.TemplateResponse(
-        "admin/devices.html",
-        {
+        request=request,
+        name="admin/devices.html",
+        context={
             "request": request,
             "active": "devices",
             "devices": rows,
@@ -270,8 +475,9 @@ async def get_edit_device(
         return JSONResponse({"error": "Device not found."}, status_code=404)
 
     return templates.TemplateResponse(
-        "admin/device_edit.html",
-        {
+        request=request,
+        name="admin/device_edit.html",
+        context={
             "request": request,
             "active": "devices",
             "device": device,
@@ -291,8 +497,9 @@ async def get_brands(
     session: AsyncSession = Depends(get_session),
 ):
     return templates.TemplateResponse(
-        "admin/brands.html",
-        {
+        request=request,
+        name="admin/brands.html",
+        context={
             "request": request,
             "active": "brands",
             "brands": await list_brands(session=session),
@@ -314,8 +521,9 @@ async def get_edit_brand(
     if not brand:
         return JSONResponse({"error": "Brand not found."}, status_code=404)
     return templates.TemplateResponse(
-        "admin/brand_edit.html",
-        {"request": request, "active": "brands", "brand": brand},
+        request=request,
+        name="admin/brand_edit.html",
+        context={"request": request, "active": "brands", "brand": brand},
     )
 
 
@@ -329,8 +537,9 @@ async def get_device_types(
     session: AsyncSession = Depends(get_session),
 ):
     return templates.TemplateResponse(
-        "admin/device_types.html",
-        {
+        request=request,
+        name="admin/device_types.html",
+        context={
             "request": request,
             "active": "device_types",
             "device_types": await list_device_types(session=session),
@@ -352,8 +561,9 @@ async def get_edit_device_type(
     if not dt:
         return JSONResponse({"error": "Device type not found."}, status_code=404)
     return templates.TemplateResponse(
-        "admin/device_type_edit.html",
-        {"request": request, "active": "device_types", "device_type": dt},
+        request=request,
+        name="admin/device_type_edit.html",
+        context={"request": request, "active": "device_types", "device_type": dt},
     )
 
 
@@ -392,8 +602,9 @@ async def get_threads(
         )
 
     return templates.TemplateResponse(
-        "admin/threads.html",
-        {
+        request=request,
+        name="admin/threads.html",
+        context={
             "request": request,
             "active": "threads",
             "threads": rows,
@@ -469,8 +680,9 @@ async def get_thread_detail(
         message_rows.append(MessageRow(message=msg, chunks=chunk_infos))
 
     return templates.TemplateResponse(
-        "admin/thread_detail.html",
-        {
+        request=request,
+        name="admin/thread_detail.html",
+        context={
             "request": request,
             "active": "threads",
             "thread": thread,
@@ -530,8 +742,9 @@ async def get_chunks(
     ]
 
     return templates.TemplateResponse(
-        "admin/chunks.html",
-        {
+        request=request,
+        name="admin/chunks.html",
+        context={
             "request": request,
             "active": "chunks",
             "rows": rows,

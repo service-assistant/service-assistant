@@ -1,3 +1,4 @@
+import logging
 import mimetypes
 import shutil
 from pathlib import Path
@@ -16,6 +17,7 @@ from app.schemas import AttachmentRead, DeviceRead
 from app.services.ingest import delete_attachment_chunks, ingest_pdf_to_attachment
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def get_unique_filepath(base_path: Path) -> Path:
@@ -43,6 +45,74 @@ async def list_attachments(session: AsyncSession = Depends(get_session)):
     return result.all()
 
 
+async def save_and_ingest_attachment(
+    settings: Settings,
+    session: AsyncSession,
+    file: UploadFile,
+    device_ids: list[int],
+) -> Attachment:
+    for device_id in device_ids:
+        if not await session.get(Device, device_id):
+            raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
+
+    original_name = Path(str(file.filename)).name
+    saved_path = get_unique_filepath(settings.attachments_dir / original_name)
+    attachment: Attachment | None = None
+
+    try:
+        with open(saved_path, "wb") as destination:
+            shutil.copyfileobj(file.file, destination)
+
+        attachment = Attachment(
+            file_global_path=str(saved_path), original_filename=original_name
+        )
+        session.add(attachment)
+        await session.commit()
+        await session.refresh(attachment)
+
+        for device_id in device_ids:
+            session.add(
+                AttachmentDevice(device_id=device_id, attachment_id=attachment.id)
+            )
+        await session.commit()
+
+        await ingest_pdf_to_attachment(
+            session=session,
+            pdf_path=str(saved_path),
+            attachment_id=attachment.id,
+            settings=settings,
+        )
+    except Exception:
+        await session.rollback()
+        if attachment is not None and attachment.id is not None:
+            try:
+                stored_attachment = await session.get(Attachment, attachment.id)
+                if stored_attachment is not None:
+                    await session.delete(stored_attachment)
+                    await session.commit()
+            except Exception:
+                await session.rollback()
+                logger.exception(
+                    "Could not remove attachment %s after its ingestion failed",
+                    attachment.id,
+                )
+
+        try:
+            saved_path.unlink(missing_ok=True)
+        except OSError:
+            logger.exception(
+                "Could not remove uploaded file %s after its ingestion failed",
+                saved_path,
+            )
+        raise
+    finally:
+        file.file.close()
+
+    await session.refresh(attachment)
+
+    return attachment
+
+
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
@@ -63,38 +133,12 @@ async def create_attachment(
         default=[], description="List of device IDs this attachment belongs to."
     ),
 ):
-    for device_id in device_ids:
-        if not await session.get(Device, device_id):
-            raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
-
-    original_name = Path(str(file.filename)).name
-    saved_path = get_unique_filepath(settings.attachments_dir / original_name)
-    with open(saved_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
-    file.file.close()
-
-    attachment = Attachment(
-        file_global_path=str(saved_path), original_filename=original_name
-    )
-    session.add(attachment)
-    await session.commit()
-    await session.refresh(attachment)
-
-    attachment_id = attachment.id
-    for device_id in device_ids:
-        session.add(AttachmentDevice(device_id=device_id, attachment_id=attachment_id))
-    await session.commit()
-
-    await ingest_pdf_to_attachment(
-        session=session,
-        pdf_path=str(saved_path),
-        attachment_id=attachment_id,
+    return await save_and_ingest_attachment(
         settings=settings,
+        session=session,
+        file=file,
+        device_ids=device_ids,
     )
-
-    await session.refresh(attachment)
-
-    return attachment
 
 
 @router.get(

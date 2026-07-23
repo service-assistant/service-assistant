@@ -175,6 +175,7 @@
 
     document.addEventListener('submit', function (e) {
         const form = e.target;
+        if (form.dataset.submitHandler === 'custom') return;
         const method = (form.dataset.method || form.method || 'get').toLowerCase();
         if (method === 'get') return;
         e.preventDefault();

@@ -77,6 +77,51 @@ async def test_should_handle_filename_collision_on_upload(
     assert (tmp_path / "manual__1.pdf").exists()
 
 
+async def test_should_delete_file_and_record_when_ingestion_fails(
+    client, tmp_path, session, mocker
+):
+    mocker.patch(
+        "app.routers.attachments.ingest_pdf_to_attachment",
+        side_effect=RuntimeError("embedding service exploded"),
+    )
+
+    try:
+        await client.post(
+            "/api/attachments",
+            files={"file": ("broken.pdf", b"%PDF-1.4 broken", "application/pdf")},
+        )
+    except RuntimeError:
+        pass
+
+    assert not (tmp_path / "broken.pdf").exists()
+    attachments = (await session.scalars(select(Attachment))).all()
+    assert attachments == []
+
+
+async def test_admin_upload_returns_full_traceback_after_cleanup(
+    client, tmp_path, session, mocker
+):
+    mocker.patch(
+        "app.routers.attachments.ingest_pdf_to_attachment",
+        side_effect=RuntimeError("complete ingestion failure detail"),
+    )
+    from app.config import get_settings
+
+    client.cookies.set("admin_token", get_settings().auth_token)
+    response = await client.post(
+        "/admin/documents/upload",
+        files={"file": ("broken.pdf", b"%PDF-1.4 broken", "application/pdf")},
+    )
+
+    assert response.status_code == 500
+    detail = response.json()["detail"]
+    assert "Traceback (most recent call last)" in detail
+    assert "RuntimeError: complete ingestion failure detail" in detail
+    assert not (tmp_path / "broken.pdf").exists()
+    attachments = (await session.scalars(select(Attachment))).all()
+    assert attachments == []
+
+
 async def test_should_return_404_when_uploading_with_nonexistent_device(client):
     response = await client.post(
         "/api/attachments",
