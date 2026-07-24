@@ -2,7 +2,11 @@ from pathlib import Path
 
 import fitz
 
-from app.services.extract_images import extract_page_images, save_drawing_region
+from app.services.extract_images import (
+    extract_page_images,
+    normalize_for_png,
+    save_drawing_region,
+)
 
 
 def test_extract_page_images(mocker, tmp_path: Path):
@@ -22,6 +26,7 @@ def test_extract_page_images(mocker, tmp_path: Path):
     mock_pix_instance = mocker.Mock()
     mock_pix_instance.n = 3
     mock_pix_instance.alpha = 0
+    mock_pix_instance.colorspace.name = "DeviceRGB"
 
     mock_pixmap.return_value = mock_pix_instance
 
@@ -36,6 +41,34 @@ def test_extract_page_images(mocker, tmp_path: Path):
     assert len(result) == 3
     assert "vector.png" in result
     assert mock_pix_instance.save.call_count == 2
+
+
+def test_normalize_for_png_converts_unsupported_colorspace(mocker):
+    pix = mocker.Mock()
+    pix.colorspace.name = "DeviceN"
+    converted = mocker.Mock()
+    mock_pixmap = mocker.patch(
+        "app.services.extract_images.Pixmap", return_value=converted
+    )
+
+    result = normalize_for_png(pix)
+
+    assert result is converted
+    mock_pixmap.assert_called_once_with(fitz.csRGB, pix)
+
+
+def test_normalize_for_png_keeps_rgb_pixmap(mocker):
+    pix = mocker.Mock()
+    pix.colorspace.name = "DeviceRGB"
+
+    assert normalize_for_png(pix) is pix
+
+
+def test_normalize_for_png_skips_standalone_mask(mocker):
+    pix = mocker.Mock()
+    pix.colorspace = None
+
+    assert normalize_for_png(pix) is None
 
 
 def test_save_drawing_region_saves_png(mocker, tmp_path: Path):

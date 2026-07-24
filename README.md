@@ -28,6 +28,27 @@ Both client and server apps have `Makefile` files. They should make it easier fo
 
 More about development in `./server/README.md` and `./client/README.md`.
 
+### Run all formatting and tests on Windows
+
+From the repository root, run:
+
+```powershell
+.\scripts\check-all-windows.ps1
+```
+
+In Windows Command Prompt (`cmd.exe`), you can run the same checks from the
+repository root, `client`, or `server` directory with:
+
+```bat
+test
+```
+
+The script formats the server and client, runs lint and type checks for all
+applications, builds the admin panel, and runs all server and client tests.
+Server tests are delegated to `server/scripts/test-windows.ps1`, which
+configures the Windows-compatible asyncio event loop and starts the Docker test
+database.
+
 ## Rules & Advices
 
 We work in 2-week long sprints, usually starting on Wednesday. We aim to finish each sprint at least 2-3 days before starting another one, that is around Sunday. With that approach we're able to choose upcoming priorities and do better planing before starting next sprint.

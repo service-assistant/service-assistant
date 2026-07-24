@@ -95,7 +95,10 @@ def html_one_table_to_markdown(table: Tag) -> str:
 
         rows.append(row)
 
-    # equalize the number of comlumns
+    if not rows:
+        return "\n".join(result)
+
+    # equalize the number of columns
     max_cols = max(len(r) for r in rows)
     for r in rows:
         r.extend([""] * (max_cols - len(r)))
@@ -105,6 +108,9 @@ def html_one_table_to_markdown(table: Tag) -> str:
     rows = [[row[i] for i in keep_cols] for row in rows]
 
     rows = [row for row in rows if any(cell.strip() for cell in row)]
+
+    if not rows:
+        return "\n".join(result)
 
     # change to markdown
     header = rows[0]

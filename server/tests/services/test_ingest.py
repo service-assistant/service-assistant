@@ -1,4 +1,41 @@
-from app.services.ingest import ingest_pdf_to_attachment
+import fitz
+import pytest
+
+from app.services.ingest import ingest_pdf_to_attachment, render_page_for_ocr
+
+
+def test_render_page_for_ocr_limits_dimensions(mocker):
+    page = mocker.Mock()
+    page.rect.width = 20_000
+    page.rect.height = 10_000
+    pix = mocker.Mock()
+    pix.tobytes.return_value = b"small"
+    page.get_pixmap.return_value = pix
+
+    assert render_page_for_ocr(page) == b"small"
+
+    matrix = page.get_pixmap.call_args.kwargs["matrix"]
+    assert matrix.a == pytest.approx(0.2)
+    assert matrix.d == pytest.approx(0.2)
+    assert page.get_pixmap.call_args.kwargs["colorspace"] is fitz.csRGB
+    assert page.get_pixmap.call_args.kwargs["alpha"] is False
+    pix.tobytes.assert_called_once_with("jpeg", jpg_quality=85)
+
+
+def test_render_page_for_ocr_downscales_large_image(mocker):
+    page = mocker.Mock()
+    page.rect.width = 1_000
+    page.rect.height = 1_000
+    oversized = b"x" * 101
+    pix = mocker.Mock()
+    pix.tobytes.side_effect = [oversized, b"small"]
+    page.get_pixmap.return_value = pix
+
+    assert render_page_for_ocr(page, max_bytes=100) == b"small"
+    assert page.get_pixmap.call_count == 2
+    first_matrix = page.get_pixmap.call_args_list[0].kwargs["matrix"]
+    second_matrix = page.get_pixmap.call_args_list[1].kwargs["matrix"]
+    assert second_matrix.a < first_matrix.a
 
 
 async def test_ingest_pdf_to_attachment(mocker, settings):
