@@ -40,6 +40,7 @@ import { useNetworkStatus } from '@/hooks/use-network-status';
 import { useSourcePanelFiles } from '@/hooks/use-source-panel-files';
 import { useWakeWord } from '@/hooks/use-wake-word';
 import type { AvailableFile, Message } from '@/types/chat';
+import type { ChatThreadWithNameplate, NameplateData } from '@/types/nameplate';
 import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
 	getAuthTokenOrThrow,
@@ -200,9 +201,11 @@ export default function ChatScreen() {
 	const [isSpeechInputUnavailable, setIsSpeechInputUnavailable] = useState<boolean>(false);
 	const [isVoiceOutputUnavailable, setIsVoiceOutputUnavailable] = useState<boolean>(false);
 	const [isChatFocused, setIsChatFocused] = useState<boolean>(false);
+	const [nameplateData, setNameplateData] = useState<NameplateData | null>(null);
+	const [isMachineInfoVisible, setIsMachineInfoVisible] = useState(false);
 	const { reconnectCount } = useNetworkStatus();
 
-	const hasStartedChat = messages.length > 0 || Boolean(threadId);
+	const hasStartedChat = messages.length > 0;
 	const messagesScrollViewRef = useRef<ScrollView>(null);
 	const startPromptInputRef = useRef<TextInput>(null);
 	const retryInProgressRef = useRef(false);
@@ -276,6 +279,14 @@ export default function ChatScreen() {
 			onServiceError: showServiceError,
 			authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
 		});
+	const openMachineInfoPanel = useCallback(() => {
+		sourcePanelProps.onClose();
+		setIsMachineInfoVisible(true);
+	}, [sourcePanelProps]);
+	const openFilesPanelWithoutMachineInfo = useCallback(() => {
+		setIsMachineInfoVisible(false);
+		openFilesPanel();
+	}, [openFilesPanel]);
 
 	const { askAPI, ensureThread, stopChatApi } = useChatApi<ChatMessage>({
 		serverUrl: AUTH_URL,
@@ -439,6 +450,8 @@ export default function ChatScreen() {
 		setInputText('');
 		setShowTextInput(false);
 		setCurrentImage(null);
+		setNameplateData(null);
+		setIsMachineInfoVisible(false);
 		setIsGenerating(false);
 		setIsLoading(Boolean(threadId));
 
@@ -455,28 +468,41 @@ export default function ChatScreen() {
 				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 				const authToken = CHAT_AUTH_TOKEN_OVERRIDE ?? getAuthTokenOrThrow();
 
-				const response = await fetchWithRetry(
-					`${AUTH_URL}/api/threads/${parsedThreadId}/messages`,
-					{
-						headers: {
-							Accept: 'application/json',
-							Authorization: `Bearer ${authToken}`,
-						},
-						signal: abortController.signal,
+				const requestOptions = {
+					headers: {
+						Accept: 'application/json',
+						Authorization: `Bearer ${authToken}`,
 					},
-				);
+					signal: abortController.signal,
+				};
+				const [threadResponse, messagesResponse] = await Promise.all([
+					fetchWithRetry(`${AUTH_URL}/api/threads/${parsedThreadId}`, requestOptions),
+					fetchWithRetry(
+						`${AUTH_URL}/api/threads/${parsedThreadId}/messages`,
+						requestOptions,
+					),
+				]);
 
-				if (!response.ok) {
-					throwIfAuthResponseError(response);
+				if (!threadResponse.ok) {
+					throwIfAuthResponseError(threadResponse);
 					throw new HttpError(
-						response.status,
-						`Failed to load thread messages: ${response.status}`,
+						threadResponse.status,
+						`Failed to load thread: ${threadResponse.status}`,
+					);
+				}
+				if (!messagesResponse.ok) {
+					throwIfAuthResponseError(messagesResponse);
+					throw new HttpError(
+						messagesResponse.status,
+						`Failed to load thread messages: ${messagesResponse.status}`,
 					);
 				}
 
-				const threadMessages = (await response.json()) as ThreadMessagePayload[];
+				const thread = (await threadResponse.json()) as ChatThreadWithNameplate;
+				const threadMessages = (await messagesResponse.json()) as ThreadMessagePayload[];
 
 				setCurrentThreadId(parsedThreadId);
+				setNameplateData(thread.nameplate_data ?? null);
 				setMessages(
 					threadMessages.map((message) => ({
 						id: message.id,
@@ -644,9 +670,16 @@ export default function ChatScreen() {
 		startPromptInputRef,
 		messagesScrollViewRef,
 		sourcePanelProps,
+		machineInfoPanelProps: {
+			showMachineInfoPanel: isMachineInfoVisible,
+			deviceName: currentSource,
+			nameplateData,
+			onClose: () => setIsMachineInfoVisible(false),
+		},
 		sourcePanelFullScreen,
 		onBack: handleBack,
-		onOpenFilesPanel: openFilesPanel,
+		onOpenMachineInfo: openMachineInfoPanel,
+		onOpenFilesPanel: openFilesPanelWithoutMachineInfo,
 		onSendText: handleSendText,
 		onChangeText: setInputText,
 		onShowTextInputChange: setShowTextInput,
