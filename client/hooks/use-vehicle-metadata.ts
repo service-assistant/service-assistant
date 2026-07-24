@@ -28,7 +28,7 @@ export type DeviceRaw = {
 	brand_id: number;
 	device_type_id: number;
 	name: string;
-	model_serial_code: string;
+	model_serial_code: string | null;
 	image_url: string;
 	created_at: string;
 	updated_at: string;

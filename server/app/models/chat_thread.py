@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base, utcnow
@@ -18,6 +19,9 @@ class ChatThread(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     title: Mapped[str]
+    nameplate_data: Mapped[dict[str, object] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow
     )

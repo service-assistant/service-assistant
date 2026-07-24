@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .nameplate import NameplateData
+
 
 class ThreadCreate(BaseModel):
     device_id: int = Field(
@@ -11,6 +13,10 @@ class ThreadCreate(BaseModel):
     title: str = Field(
         description="Short descriptive title for the thread.",
         examples=["Mast won't lift under load"],
+    )
+    nameplate_data: NameplateData | None = Field(
+        default=None,
+        description="OCR data read from the nameplate for this specific conversation.",
     )
 
 
@@ -24,6 +30,10 @@ class ChatThreadRead(BaseModel):
     )
     device_id: int = Field(
         description="ID of the device this thread is about.", examples=[1]
+    )
+    nameplate_data: NameplateData | None = Field(
+        default=None,
+        description="OCR data read from the nameplate for this specific conversation.",
     )
     created_at: datetime = Field(description="Timestamp when the thread was created.")
     updated_at: datetime = Field(description="Timestamp of the last update.")

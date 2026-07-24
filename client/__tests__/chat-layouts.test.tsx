@@ -86,6 +86,13 @@ jest.mock('../components/SourcePanel', () => {
 	};
 });
 
+jest.mock('../components/MachineInfoPanel', () => {
+	const React = require('react');
+	return function MockMachineInfoPanel({ children, ...props }: Record<string, unknown>) {
+		return React.createElement('MachineInfoPanel', props, children);
+	};
+});
+
 jest.mock('../components/StartPromptView', () => {
 	const React = require('react');
 	return function MockStartPromptView({ children, ...props }: Record<string, unknown>) {
@@ -103,6 +110,13 @@ const sourcePanelProps = {
 	downloadedFileIds: new Set<number>(),
 	onOpenFile: jest.fn(),
 	onDeleteDownloadedFile: jest.fn(),
+	onClose: jest.fn(),
+};
+
+const machineInfoPanelProps = {
+	showMachineInfoPanel: false,
+	deviceName: 'Toyota 8FG',
+	nameplateData: null,
 	onClose: jest.fn(),
 };
 
@@ -130,8 +144,10 @@ const createLayoutProps = () => ({
 	startPromptInputRef: { current: null },
 	messagesScrollViewRef: { current: { scrollToEnd: jest.fn() } } as any,
 	sourcePanelProps,
+	machineInfoPanelProps,
 	sourcePanelFullScreen: false,
 	onBack: jest.fn(),
+	onOpenMachineInfo: jest.fn(),
 	onOpenFilesPanel: jest.fn(),
 	onSendText: jest.fn(),
 	onChangeText: jest.fn(),
@@ -168,14 +184,18 @@ describe('ChatLayouts', () => {
 		const buttons = findByType(tree, 'TouchableOpacity');
 
 		buttons[0].props.onPress();
-		buttons[1].props.onPress();
+		buttons.find((button) => button.props.accessibilityLabel === 'O maszynie')?.props.onPress();
+		buttons
+			.find((button) => getTextContent(button).includes('WSZYSTKIE PLIKI'))
+			?.props.onPress();
 
 		expect(getTextContent(tree)).toContain('Toyota 8FG');
 		expect(findByType(tree, 'ChatMessages')[0].props.messages).toBe(messages);
+		expect(getTextContent(tree)).toContain('O MASZYNIE');
 		expect(findByType(tree, 'ControlPanel')[0].props.orientation).toBe('vertical');
 		expect(findByType(tree, 'SourcePanel')[0].props).toMatchObject(sourcePanelProps);
 		expect(props.onBack).toHaveBeenCalled();
-		expect(getTextContent(tree)).not.toContain('O MASZYNIE');
+		expect(props.onOpenMachineInfo).toHaveBeenCalled();
 		expect(props.onOpenFilesPanel).toHaveBeenCalled();
 		expect(findByType(tree, 'ScrollView')[0].props.contentContainerStyle.paddingBottom).toBe(
 			30,
@@ -215,9 +235,14 @@ describe('ChatLayouts', () => {
 		const tree = (
 			<PortraitChatLayout {...props} insets={{ top: 10, right: 0, bottom: 20, left: 0 }} />
 		);
+		const machineInfoButton = findByType(tree, 'TouchableOpacity').find(
+			(button) => button.props.accessibilityLabel === 'O maszynie',
+		)!;
 
 		expect(findByType(tree, 'ChatMessages')[0].props.compact).toBe(true);
 		expect(findByType(tree, 'ControlPanel')[0].props.orientation).toBe('horizontal');
+		expect(getTextContent(machineInfoButton)).toBe('');
+		expect(findByType(machineInfoButton, 'Icon')[0].props.name).toBe('info');
 		expect(findByType(tree, 'SourcePanel')[0].props).toMatchObject(sourcePanelProps);
 		expect(findByType(tree, 'SourcePanel')[0].props.fileGridColumns).toBe(2);
 		expect(findByType(tree, 'SourcePanel')[0].props.headerHeight).toBe(74);

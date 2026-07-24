@@ -14,6 +14,7 @@ from app.routers import (
     devices,
     images,
     messages,
+    nameplates,
     threads,
     tts,
 )
@@ -94,6 +95,7 @@ app.include_router(devices.router, prefix="/api/devices", tags=["Devices"])
 app.include_router(attachments.router, prefix="/api/attachments", tags=["Attachments"])
 app.include_router(threads.router, prefix="/api/threads", tags=["Chat Threads"])
 app.include_router(messages.router, prefix="/api/messages", tags=["Messages"])
+app.include_router(nameplates.router, prefix="/api/nameplates", tags=["Nameplates"])
 app.include_router(chunks.router, prefix="/api/chunks", tags=["Chunks"])
 app.include_router(images.router, prefix="/api/images", tags=["Images"])
 app.include_router(tts.router, prefix="/api/tts", tags=["Text-to-Speech"])

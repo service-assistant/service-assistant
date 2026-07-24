@@ -85,6 +85,7 @@ jest.mock('react-native', () => {
 		Image: Object.assign(createHost('Image'), { getSize: mockImageGetSize }),
 		Keyboard: { addListener: mockKeyboardAddListener },
 		FlatList: createHost('FlatList'),
+		Modal: createHost('Modal'),
 		Platform: {
 			OS: 'ios',
 			select: (options: Record<string, unknown>) => options.ios ?? options.default,
@@ -624,6 +625,12 @@ describe('tab screens', () => {
 			}),
 		);
 		expect(getTextContent(tree)).toContain('Wybierz Pojazd');
+		expect(
+			findByType(tree, 'TouchableOpacity').find(
+				(element) =>
+					element.props.accessibilityLabel === 'Zrób zdjęcie tabliczki znamionowej',
+			),
+		).toBeDefined();
 		expect(getTextContent(tree)).toContain('Ładowanie maszyn...');
 		expect(mockUseCameraPermissions).not.toHaveBeenCalled();
 		expect(mockRouterPush).toHaveBeenCalledWith('/history');

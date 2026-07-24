@@ -20,6 +20,7 @@ import ChatMessages, {
 	type SchemaImageSource,
 } from '@/components/ChatMessages';
 import ControlPanel from '@/components/ControlPanel';
+import MachineInfoPanel from '@/components/MachineInfoPanel';
 import SourcePanel from '@/components/SourcePanel';
 import StartPromptView, { type KeyboardFrame } from '@/components/StartPromptView';
 import ThemeAwareLogo from '@/components/ThemeAwareLogo';
@@ -104,6 +105,7 @@ function SlidingHeaderIdentity({
 	fontSize,
 	lineHeight,
 	lightMode,
+	onPress,
 }: {
 	logoUrl?: string;
 	logoHeight: number;
@@ -113,6 +115,7 @@ function SlidingHeaderIdentity({
 	fontSize: number;
 	lineHeight: number;
 	lightMode: boolean;
+	onPress: () => void;
 }) {
 	const slideAnim = React.useRef(new Animated.Value(0)).current;
 	const [containerWidth, setContainerWidth] = React.useState(0);
@@ -209,6 +212,9 @@ function SlidingHeaderIdentity({
 
 	return (
 		<TouchableOpacity
+			onPress={onPress}
+			accessibilityRole='button'
+			accessibilityLabel='Informacje o maszynie'
 			activeOpacity={1}
 			delayLongPress={250}
 			onLongPress={startSliding}
@@ -311,6 +317,7 @@ function FloatingChatInput({
 type TextInputRef = React.RefObject<TextInput | null>;
 type ScrollViewRef = React.RefObject<ScrollView | null>;
 type SourcePanelProps = React.ComponentProps<typeof SourcePanel>;
+type MachineInfoPanelProps = React.ComponentProps<typeof MachineInfoPanel>;
 
 type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	lightMode?: boolean;
@@ -335,8 +342,10 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	startPromptInputRef: TextInputRef;
 	messagesScrollViewRef: ScrollViewRef;
 	sourcePanelProps: SourcePanelProps;
+	machineInfoPanelProps: MachineInfoPanelProps;
 	sourcePanelFullScreen: boolean;
 	onBack: () => void;
+	onOpenMachineInfo: () => void;
 	onOpenFilesPanel: () => void;
 	onSendText: () => void;
 	onChangeText: (text: string) => void;
@@ -451,8 +460,10 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	startPromptInputRef,
 	messagesScrollViewRef,
 	sourcePanelProps,
+	machineInfoPanelProps,
 	sourcePanelFullScreen,
 	onBack,
+	onOpenMachineInfo,
 	onOpenFilesPanel,
 	onSendText,
 	onChangeText,
@@ -540,6 +551,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 							fontSize={headerTitleFontSize}
 							lineHeight={headerTitleFontSize + 5}
 							lightMode={lightMode}
+							onPress={onOpenMachineInfo}
 						/>
 					</View>
 				</View>
@@ -547,6 +559,25 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 				<View
 					className={`flex-row items-center ${isPhonePortrait ? 'gap-1.5' : 'gap-2'}`}
 					style={{ flexShrink: 0 }}>
+					<TouchableOpacity
+						onPress={onOpenMachineInfo}
+						accessibilityRole='button'
+						accessibilityLabel='O maszynie'
+						className={`items-center justify-center border rounded-[10px] ${
+							lightMode
+								? 'border-[#E4E4E7] bg-[#FAFAFA]'
+								: 'border-[#2A2A2A] bg-[#111111]'
+						}`}
+						style={{
+							width: headerButtonSize,
+							height: headerButtonSize,
+						}}>
+						<Feather
+							name='info'
+							size={isPhonePortrait ? 18 : 20}
+							color={PRIMARY_ORANGE}
+						/>
+					</TouchableOpacity>
 					<TouchableOpacity
 						onPress={onOpenFilesPanel}
 						className={`items-center justify-center border rounded-[10px] ${
@@ -649,6 +680,18 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 				backIconSize={headerIconSize}
 				lightMode={lightMode}
 			/>
+			<MachineInfoPanel
+				{...machineInfoPanelProps}
+				fullScreen={sourcePanelFullScreen}
+				topInset={sourcePanelFullScreen ? insets.top : 0}
+				headerHeight={headerHeight}
+				headerPaddingTop={headerSafeTop}
+				headerTitleFontSize={headerTitleFontSize}
+				headerTitleLineHeight={headerTitleFontSize + 5}
+				backButtonSize={headerButtonSize}
+				backIconSize={headerIconSize}
+				lightMode={lightMode}
+			/>
 		</View>
 	);
 }
@@ -675,8 +718,10 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	startPromptInputRef,
 	messagesScrollViewRef,
 	sourcePanelProps,
+	machineInfoPanelProps,
 	sourcePanelFullScreen,
 	onBack,
+	onOpenMachineInfo,
 	onOpenFilesPanel,
 	onSendText,
 	onChangeText,
@@ -717,16 +762,38 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 					</Text>
 				</TouchableOpacity>
 
-				{logoUrl ? (
-					<HeaderLogo uri={logoUrl} height={20} maxWidth={136} lightMode={lightMode} />
-				) : null}
-				<Text
-					className={`${lightMode ? 'text-[#18181B]' : 'text-white'} text-[20px] font-bold ml-5 tracking-wider`}>
-					{currentSource}
-				</Text>
+				<View className='flex-row items-center'>
+					{logoUrl ? (
+						<HeaderLogo
+							uri={logoUrl}
+							height={20}
+							maxWidth={136}
+							lightMode={lightMode}
+						/>
+					) : null}
+					<Text
+						className={`${lightMode ? 'text-[#18181B]' : 'text-white'} text-[20px] font-bold ml-5 tracking-wider`}>
+						{currentSource}
+					</Text>
+				</View>
 
 				<View className='flex-1' />
 
+				<TouchableOpacity
+					onPress={onOpenMachineInfo}
+					accessibilityRole='button'
+					accessibilityLabel='O maszynie'
+					className={`h-12 px-[18px] mr-3 flex-row items-center justify-center border rounded-[10px] ${
+						lightMode
+							? 'border-[#E4E4E7] bg-[#FAFAFA]'
+							: 'border-[#2A2A2A] bg-[#111111]'
+					}`}>
+					<Feather name='info' size={21} color='#FF7A00' />
+					<Text
+						className={`${lightMode ? 'text-[#3F3F46]' : 'text-[#E6E6E6]'} ml-4 text-[13px] font-semibold tracking-wider`}>
+						O MASZYNIE
+					</Text>
+				</TouchableOpacity>
 				<TouchableOpacity
 					onPress={onOpenFilesPanel}
 					className={`h-12 px-[18px] flex-row items-center justify-center border rounded-[10px] ${
@@ -811,6 +878,11 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 			) : null}
 			<SourcePanel
 				{...sourcePanelProps}
+				fullScreen={sourcePanelFullScreen}
+				lightMode={lightMode}
+			/>
+			<MachineInfoPanel
+				{...machineInfoPanelProps}
 				fullScreen={sourcePanelFullScreen}
 				lightMode={lightMode}
 			/>
