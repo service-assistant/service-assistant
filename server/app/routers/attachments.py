@@ -1,8 +1,9 @@
+import asyncio
 import logging
 import mimetypes
 import shutil
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, BinaryIO
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -14,10 +15,20 @@ from app.config import Settings, get_settings
 from app.database import get_session
 from app.models import Attachment, AttachmentDevice, Device
 from app.schemas import AttachmentRead, DeviceRead
-from app.services.ingest import delete_attachment_chunks, ingest_pdf_to_attachment
+from app.services.async_utils import run_blocking
+from app.services.ingest import (
+    ProgressCallback,
+    delete_attachment_chunks,
+    ingest_pdf_to_attachment,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _copy_upload_to_path(source: BinaryIO, destination_path: Path) -> None:
+    with destination_path.open("wb") as destination:
+        shutil.copyfileobj(source, destination)
 
 
 def get_unique_filepath(base_path: Path) -> Path:
@@ -50,6 +61,7 @@ async def save_and_ingest_attachment(
     session: AsyncSession,
     file: UploadFile,
     device_ids: list[int],
+    progress_callback: ProgressCallback | None = None,
 ) -> Attachment:
     for device_id in device_ids:
         if not await session.get(Device, device_id):
@@ -60,8 +72,7 @@ async def save_and_ingest_attachment(
     attachment: Attachment | None = None
 
     try:
-        with open(saved_path, "wb") as destination:
-            shutil.copyfileobj(file.file, destination)
+        await run_blocking(_copy_upload_to_path, file.file, saved_path)
 
         attachment = Attachment(
             file_global_path=str(saved_path), original_filename=original_name
@@ -81,8 +92,9 @@ async def save_and_ingest_attachment(
             pdf_path=str(saved_path),
             attachment_id=attachment.id,
             settings=settings,
+            progress_callback=progress_callback,
         )
-    except Exception:
+    except (Exception, asyncio.CancelledError):
         await session.rollback()
         if attachment is not None and attachment.id is not None:
             try:

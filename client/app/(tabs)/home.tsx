@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import NameplateScannerModal from '@/components/NameplateScannerModal';
 import ServiceErrorModal from '@/components/ServiceErrorModal';
 import ThemeAwareLogo from '@/components/ThemeAwareLogo';
 import VehicleCard, { type Vehicle } from '@/components/VehicleCard';
@@ -20,8 +21,10 @@ import VehicleFilters from '@/components/VehicleFilters';
 import { useAppSettings } from '@/hooks/use-app-settings';
 import { useNetworkStatus } from '@/hooks/use-network-status';
 import { useVehicleMetadata } from '@/hooks/use-vehicle-metadata';
+import type { NameplateDeviceCandidate, NameplateRecognition } from '@/types/nameplate';
 import { CONFIG_SERVICE_FEATURE } from '@/utils/api-config';
 import { AUTH_SERVICE_FEATURE } from '@/utils/auth-errors';
+import { createNameplateThread } from '@/utils/nameplate-api';
 import { isTransientNetworkError } from '@/utils/network';
 
 // --- CONFIGURATION & DATA TYPES ---
@@ -54,6 +57,7 @@ export default function HomeScreen() {
 
 	const { brands, deviceTypes, rawDevices, isLoadingBrands, isLoadingTypes, isLoadingDevices } =
 		useVehicleMetadata({ onServiceError: showServiceError, refreshKey: reconnectCount });
+	const [isNameplateScannerOpen, setIsNameplateScannerOpen] = useState(false);
 
 	// --- MAP DEVICES TO UI FORMAT ---
 	const mappedVehicles: Vehicle[] = rawDevices.map((device) => {
@@ -90,6 +94,31 @@ export default function HomeScreen() {
 		});
 	};
 
+	const openRecognizedVehicle = async (
+		recognition: NameplateRecognition,
+		device: NameplateDeviceCandidate,
+	) => {
+		const vehicle = mappedVehicles.find((candidate) => candidate.id === String(device.id));
+		if (!vehicle) {
+			throw new Error('Rozpoznany pojazd nie jest dostępny na liście.');
+		}
+		const thread = await createNameplateThread({
+			device,
+			nameplateData: recognition.nameplate_data,
+		});
+		const logoUrl = getRemoteBrandLogo(vehicle.brand);
+		router.push({
+			pathname: '/chat',
+			params: {
+				deviceId: vehicle.id,
+				deviceName: vehicle.name,
+				threadId: String(thread.id),
+				chatSession: `nameplate-${thread.id}`,
+				...(logoUrl ? { logoUrl } : {}),
+			},
+		});
+	};
+
 	const { lightThemeEnabled } = useAppSettings();
 
 	const filteredVehicles = mappedVehicles.filter((v) => {
@@ -119,7 +148,9 @@ export default function HomeScreen() {
 	const imageHeight = useTabletHomeRefresh ? (isWeb ? 220 : 210) : isWeb ? 240 : cardWidth;
 	const vehicleImageZoom = 1.02;
 
-	const bottomListPadding = (insets.bottom || 0) + 32;
+	const scanButtonSize = isTablet ? 112 : 96;
+	const scanButtonBottom = (insets.bottom || 0) + 16;
+	const bottomListPadding = scanButtonBottom + scanButtonSize + 50;
 
 	const usePhonePortraitHeader = !isTablet && isPortrait;
 	const useTabletFilterStyle = useTabletHomeRefresh || usePhonePortraitHeader;
@@ -327,6 +358,39 @@ export default function HomeScreen() {
 				)}
 			</View>
 
+			<View
+				pointerEvents='box-none'
+				className='absolute left-0 right-0 items-center px-4'
+				style={{ bottom: scanButtonBottom, zIndex: 30, elevation: 30 }}>
+				<TouchableOpacity
+					onPress={() => setIsNameplateScannerOpen(true)}
+					accessibilityRole='button'
+					accessibilityLabel='Zrób zdjęcie tabliczki znamionowej'
+					activeOpacity={0.86}
+					className='items-center'>
+					<View
+						className={`items-center justify-center border rounded-[22px] ${
+							lightThemeEnabled
+								? 'border-[#D4D4D8] bg-white'
+								: 'border-[#3F3F46] bg-[#18181B]'
+						}`}
+						style={{
+							width: scanButtonSize,
+							height: scanButtonSize,
+							shadowColor: '#000000',
+							shadowOffset: { width: 0, height: 4 },
+							shadowOpacity: lightThemeEnabled ? 0.18 : 0.45,
+							shadowRadius: 8,
+						}}>
+						<MaterialCommunityIcons
+							name='camera-outline'
+							size={isTablet ? 50 : 44}
+							color='#FF6B00'
+						/>
+					</View>
+				</TouchableOpacity>
+			</View>
+
 			<ServiceErrorModal
 				visible={Boolean(serviceErrorFeature)}
 				featureName={serviceErrorFeature || 'wybrana funkcja'}
@@ -337,6 +401,15 @@ export default function HomeScreen() {
 					serviceErrorFeature !== CONFIG_SERVICE_FEATURE
 				}
 			/>
+			{isNameplateScannerOpen ? (
+				<NameplateScannerModal
+					visible
+					lightMode={lightThemeEnabled}
+					onClose={() => setIsNameplateScannerOpen(false)}
+					onComplete={openRecognizedVehicle}
+					onServiceError={showServiceError}
+				/>
+			) : null}
 		</SafeAreaView>
 	);
 }

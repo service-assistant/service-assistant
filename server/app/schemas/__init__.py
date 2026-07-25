@@ -9,6 +9,12 @@ from .chunk import ChunkRead
 from .device import DeviceCreate, DeviceRead, DeviceUpdate
 from .device_type import DeviceTypeCreate, DeviceTypeRead, DeviceTypeUpdate
 from .message import MessageCreate, MessageRead, TranscriptResponse
+from .nameplate import (
+    NameplateAttribute,
+    NameplateData,
+    NameplateDeviceCandidate,
+    NameplateRecognitionResponse,
+)
 from .tts import TtsRequest
 
 __all__ = [
@@ -26,6 +32,10 @@ __all__ = [
     "DeviceTypeUpdate",
     "MessageCreate",
     "MessageRead",
+    "NameplateAttribute",
+    "NameplateData",
+    "NameplateDeviceCandidate",
+    "NameplateRecognitionResponse",
     "ThreadCreate",
     "TranscriptResponse",
     "TtsRequest",

@@ -142,6 +142,38 @@ async def test_should_create_thread_when_valid_data_provided(client, session):
     assert data["device_id"] == device.id
 
 
+async def test_should_store_nameplate_data_on_thread(client, session):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    nameplate_data = {
+        "model": "XXX1D1XXX",
+        "attributes": [
+            {
+                "label": "Numer seryjny",
+                "value": "558123",
+                "unit": None,
+                "confidence": 0.96,
+            }
+        ],
+        "raw_text": "MODEL XXX1D1XXX",
+        "model_confidence": 0.98,
+        "match_confidence": 0.94,
+    }
+
+    response = await client.post(
+        "/api/threads",
+        json={
+            "device_id": device.id,
+            "title": "Tabliczka: XXX1D1XXX",
+            "nameplate_data": nameplate_data,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["nameplate_data"] == nameplate_data
+
+
 async def test_should_return_404_when_creating_thread_with_nonexistent_device(client):
     response = await client.post(
         "/api/threads",
