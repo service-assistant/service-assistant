@@ -18,6 +18,33 @@ def override_attachments_dir(tmp_path):
     app.dependency_overrides.pop(get_settings, None)
 
 
+@pytest.fixture(autouse=True)
+def block_unmocked_router_openai_calls(mocker):
+    """Keep router tests deterministic and prevent accidental external API calls."""
+    translation_client = mocker.MagicMock()
+    translation_client.responses.create = mocker.AsyncMock(
+        return_value=mocker.MagicMock(output_text="translated query")
+    )
+    mocker.patch(
+        "app.services.translation.AsyncOpenAI",
+        return_value=translation_client,
+    )
+
+    routing_client = mocker.MagicMock()
+    routing_response = mocker.MagicMock()
+    routing_response.choices[0].message.content = (
+        '{"route":"standard_query","confidence":1,'
+        '"recognized_problem":null,"diagnostic_message_id":null}'
+    )
+    routing_client.chat.completions.create = mocker.AsyncMock(
+        return_value=routing_response
+    )
+    mocker.patch(
+        "app.services.message_router.AsyncOpenAI",
+        return_value=routing_client,
+    )
+
+
 @pytest.fixture
 async def client():
     async with AsyncClient(
@@ -50,7 +77,7 @@ def mock_azure_embeddings(mocker):
 
 @pytest.fixture
 def mock_openai_llm(mocker):
-    """Patches AsyncOpenAI in llm.py to stream a single 'Test response' chunk."""
+    """Patch every OpenAI client used by the message endpoint."""
 
     async def _stream():
         event = mocker.MagicMock()
@@ -67,10 +94,14 @@ def mock_openai_llm(mocker):
 
 @pytest.fixture
 def mock_ingest_fitz(mocker):
-    """Patches fitz.open in ingest.py to return an empty document (no pages processed)."""
-    mock_doc = mocker.MagicMock()
-    mock_doc.pages.return_value = iter([])
-    mocker.patch("app.services.ingest.fitz.open", return_value=mock_doc)
+    """Skip the ingestion pipeline in attachment endpoint tests."""
+    from app.services.ingest import IngestReport
+
+    return mocker.patch(
+        "app.routers.attachments.ingest_pdf_to_attachment",
+        new_callable=mocker.AsyncMock,
+        return_value=IngestReport(),
+    )
 
 
 @pytest.fixture

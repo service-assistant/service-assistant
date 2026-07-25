@@ -5,7 +5,7 @@ $serverDir = Join-Path $repoRoot 'server'
 $clientDir = Join-Path $repoRoot 'client'
 $adminDir = Join-Path $repoRoot 'admin'
 $serverRuff = Join-Path $serverDir '.venv\Scripts\ruff.exe'
-$serverPyright = Join-Path $serverDir '.venv\Scripts\pyright.exe'
+$serverPyrightEntry = Join-Path $serverDir '.venv\Lib\site-packages\pyright\dist\index.js'
 $serverTestScript = Join-Path $serverDir 'scripts\test-windows.ps1'
 $clientTsc = Join-Path $clientDir 'node_modules\.bin\tsc.cmd'
 $adminTsc = Join-Path $adminDir 'node_modules\.bin\tsc.cmd'
@@ -66,7 +66,7 @@ Assert-FileExists `
     -Path $serverTestScript `
     -MissingMessage "Server Windows test script not found: $serverTestScript"
 Assert-FileExists `
-    -Path $serverPyright `
+    -Path $serverPyrightEntry `
     -MissingMessage 'Server Pyright not found. Run "poetry install" in the server directory first.'
 Assert-FileExists `
     -Path $clientTsc `
@@ -80,6 +80,8 @@ Assert-FileExists `
 
 $npmCommand = Get-Command npm.cmd -ErrorAction Stop
 $npm = $npmCommand.Source
+$nodeCommand = Get-Command node.exe -ErrorAction Stop
+$node = $nodeCommand.Source
 
 Invoke-NativeStep `
     -Name 'Format server (Ruff)' `
@@ -102,7 +104,8 @@ Invoke-NativeStep `
 Invoke-NativeStep `
     -Name 'Type-check server (Pyright)' `
     -WorkingDirectory $serverDir `
-    -Executable $serverPyright
+    -Executable $node `
+    -CommandArguments @($serverPyrightEntry)
 
 Invoke-NativeStep `
     -Name 'Lint client (Expo ESLint)' `

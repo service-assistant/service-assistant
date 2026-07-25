@@ -1,7 +1,17 @@
+import asyncio
+import threading
+import time
+
 import fitz
 import pytest
 
-from app.services.ingest import ingest_pdf_to_attachment, render_page_for_ocr
+from app.services.ingest import (
+    EmbeddingServiceError,
+    ImageOnlyPdfError,
+    IngestReport,
+    ingest_pdf_to_attachment,
+    render_page_for_ocr,
+)
 
 
 def test_render_page_for_ocr_limits_dimensions(mocker):
@@ -40,17 +50,20 @@ def test_render_page_for_ocr_downscales_large_image(mocker):
 
 async def test_ingest_pdf_to_attachment(mocker, settings):
     session = mocker.AsyncMock()
+    main_thread_id = threading.get_ident()
+    pdf_worker_thread_ids: list[int] = []
 
     mock_page = mocker.Mock()
 
     mock_page.get_text.return_value = "This is a test page content " * 50
 
-    mock_doc = mocker.Mock()
+    mock_doc = mocker.MagicMock()
 
     mock_doc.pages.return_value = [
         mock_page,
         mock_page,
     ]
+    mock_doc.__len__.return_value = 2
 
     fake_embedding = [0.1] * 1536
 
@@ -59,7 +72,11 @@ async def test_ingest_pdf_to_attachment(mocker, settings):
         "attachments/images/img2.png",
     ]
 
-    mocker.patch("fitz.open", return_value=mock_doc)
+    def open_pdf(_path):
+        pdf_worker_thread_ids.append(threading.get_ident())
+        return mock_doc
+
+    mocker.patch("fitz.open", side_effect=open_pdf)
 
     mocker.patch(
         "app.services.ingest.pymupdf4llm.to_markdown",
@@ -83,7 +100,7 @@ async def test_ingest_pdf_to_attachment(mocker, settings):
         new_callable=mocker.AsyncMock,
     )
 
-    await ingest_pdf_to_attachment(
+    report = await ingest_pdf_to_attachment(
         session=session,
         pdf_path="test.pdf",
         attachment_id=1,
@@ -105,3 +122,226 @@ async def test_ingest_pdf_to_attachment(mocker, settings):
     assert isinstance(page_num, int)
     assert isinstance(page_images, list)
     assert page_images == fake_images
+    assert report.total_pages == 2
+    assert report.native_text_pages == 2
+    assert report.ocr_pages_attempted == 0
+    assert report.chunks_indexed == len(rows)
+    assert pdf_worker_thread_ids
+    assert pdf_worker_thread_ids[0] != main_thread_id
+
+
+async def test_image_only_pdf_is_rejected_only_after_azure_ocr_fails(mocker, settings):
+    session = mocker.AsyncMock()
+    pages = [mocker.Mock(), mocker.Mock()]
+    for page in pages:
+        page.get_text.return_value = ""
+    document = mocker.MagicMock()
+    document.__len__.return_value = 2
+    document.pages.return_value = pages
+    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+
+    mocker.patch("app.services.ingest.render_page_for_ocr", return_value=b"jpeg")
+    ocr_client = mocker.MagicMock()
+    ocr_client.begin_analyze_document.side_effect = RuntimeError("Azure is down")
+    ocr_client_factory = mocker.patch(
+        "app.services.ingest.DocumentIntelligenceClient", return_value=ocr_client
+    )
+    mocker.patch(
+        "app.services.ingest.AsyncAzureOpenAI", return_value=mocker.AsyncMock()
+    )
+    insert = mocker.patch(
+        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+    )
+
+    with pytest.raises(ImageOnlyPdfError) as error:
+        await ingest_pdf_to_attachment(session, "images.pdf", 1, settings)
+
+    assert error.value.report.total_pages == 2
+    assert error.value.report.native_text_pages == 0
+    assert error.value.report.ocr_pages_attempted == 2
+    assert error.value.report.ocr_pages_skipped == 2
+    assert "Skipped entire file" in error.value.report.events[-1]
+    assert ocr_client_factory.call_count == 2
+    insert.assert_not_awaited()
+
+
+async def test_image_only_pdf_is_kept_when_azure_ocr_recovers_text(mocker, settings):
+    session = mocker.AsyncMock()
+    page = mocker.Mock()
+    page.get_text.return_value = ""
+    document = mocker.MagicMock()
+    document.__len__.return_value = 1
+    document.pages.return_value = [page]
+    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch("app.services.ingest.render_page_for_ocr", return_value=b"jpeg")
+    mocker.patch("app.services.ingest.process_ocr_text", return_value="OCR text")
+    mocker.patch("app.services.ingest.chunk_page", return_value=["OCR chunk"])
+    mocker.patch("app.services.ingest.extract_page_images", return_value=[])
+
+    poller = mocker.MagicMock()
+    poller.result.return_value = mocker.Mock(content="raw OCR")
+    ocr_client = mocker.MagicMock()
+    ocr_client.begin_analyze_document.return_value = poller
+    mocker.patch(
+        "app.services.ingest.DocumentIntelligenceClient", return_value=ocr_client
+    )
+    embedding_client = mocker.AsyncMock()
+    embedding_client.embeddings.create.return_value = mocker.Mock(
+        data=[mocker.Mock(embedding=[0.1] * 1536)]
+    )
+    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    insert = mocker.patch(
+        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+    )
+
+    report = await ingest_pdf_to_attachment(session, "scans.pdf", 1, settings)
+
+    assert report.native_text_pages == 0
+    assert report.ocr_pages_attempted == 1
+    assert report.ocr_pages_succeeded == 1
+    assert report.ocr_pages_skipped == 0
+    assert report.chunks_indexed == 1
+    insert.assert_awaited_once()
+
+
+async def test_mixed_pdf_survives_azure_ocr_failure_and_skips_only_image_page(
+    mocker, settings
+):
+    session = mocker.AsyncMock()
+    text_page = mocker.Mock()
+    text_page.get_text.return_value = "Native text"
+    image_page = mocker.Mock()
+    image_page.get_text.return_value = ""
+    document = mocker.MagicMock()
+    document.__len__.return_value = 2
+    document.pages.return_value = [text_page, image_page]
+    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch(
+        "app.services.ingest.pymupdf4llm.to_markdown", return_value="Native markdown"
+    )
+    mocker.patch("app.services.ingest.chunk_page", return_value=["native chunk"])
+    mocker.patch("app.services.ingest.extract_page_images", return_value=[])
+    mocker.patch("app.services.ingest.render_page_for_ocr", return_value=b"jpeg")
+
+    ocr_client = mocker.MagicMock()
+    ocr_client.begin_analyze_document.side_effect = RuntimeError("Azure is down")
+    mocker.patch(
+        "app.services.ingest.DocumentIntelligenceClient", return_value=ocr_client
+    )
+    embedding_client = mocker.AsyncMock()
+    embedding_client.embeddings.create.return_value = mocker.Mock(
+        data=[mocker.Mock(embedding=[0.1] * 1536)]
+    )
+    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    insert = mocker.patch(
+        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+    )
+
+    report = await ingest_pdf_to_attachment(session, "mixed.pdf", 1, settings)
+
+    assert report.native_text_pages == 1
+    assert report.ocr_pages_attempted == 1
+    assert report.ocr_pages_succeeded == 0
+    assert report.ocr_pages_skipped == 1
+    assert report.chunks_indexed == 1
+    assert any("Azure is down" in event for event in report.events)
+    insert.assert_awaited_once()
+
+
+async def test_embedding_failure_is_bounded_and_rejects_unindexed_file(
+    mocker, settings
+):
+    session = mocker.AsyncMock()
+    page = mocker.Mock()
+    page.get_text.return_value = "Native text"
+    document = mocker.MagicMock()
+    document.__len__.return_value = 1
+    document.pages.return_value = [page]
+    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch(
+        "app.services.ingest.pymupdf4llm.to_markdown", return_value="Native markdown"
+    )
+    mocker.patch("app.services.ingest.chunk_page", return_value=["native chunk"])
+    mocker.patch("app.services.ingest.extract_page_images", return_value=[])
+    mocker.patch("app.services.ingest.DocumentIntelligenceClient")
+    embedding_client = mocker.AsyncMock()
+    embedding_client.embeddings.create.side_effect = RuntimeError("Azure is down")
+    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    insert = mocker.patch(
+        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+    )
+
+    with pytest.raises(EmbeddingServiceError, match="Azure embeddings failed"):
+        await ingest_pdf_to_attachment(session, "text.pdf", 1, settings)
+
+    insert.assert_not_awaited()
+
+
+async def test_ocr_call_has_a_hard_timeout_and_native_text_is_still_indexed(
+    mocker, settings
+):
+    short_timeout_settings = settings.model_copy(
+        update={"azure_ocr_timeout_seconds": 0.01}
+    )
+    session = mocker.AsyncMock()
+    text_page = mocker.Mock()
+    text_page.get_text.return_value = "Native text"
+    image_page = mocker.Mock()
+    image_page.get_text.return_value = ""
+    document = mocker.MagicMock()
+    document.__len__.return_value = 2
+    document.pages.return_value = [text_page, image_page]
+    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch(
+        "app.services.ingest.pymupdf4llm.to_markdown", return_value="Native markdown"
+    )
+    mocker.patch("app.services.ingest.chunk_page", return_value=["native chunk"])
+    mocker.patch("app.services.ingest.extract_page_images", return_value=[])
+    mocker.patch("app.services.ingest.render_page_for_ocr", return_value=b"jpeg")
+
+    poller = mocker.MagicMock()
+    poller.result.side_effect = lambda **_kwargs: time.sleep(0.05)
+    ocr_client = mocker.MagicMock()
+    ocr_client.begin_analyze_document.return_value = poller
+    mocker.patch(
+        "app.services.ingest.DocumentIntelligenceClient", return_value=ocr_client
+    )
+    embedding_client = mocker.AsyncMock()
+    embedding_client.embeddings.create.return_value = mocker.Mock(
+        data=[mocker.Mock(embedding=[0.1] * 1536)]
+    )
+    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    mocker.patch("app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock)
+
+    report = await ingest_pdf_to_attachment(
+        session, "mixed.pdf", 1, short_timeout_settings
+    )
+
+    assert report.ocr_pages_skipped == 1
+    assert report.chunks_indexed == 1
+    assert any("TimeoutError" in event for event in report.events)
+
+
+async def test_only_one_pdf_ingest_runs_at_a_time(mocker, settings):
+    active = 0
+    maximum_active = 0
+
+    async def fake_ingest(**_kwargs):
+        nonlocal active, maximum_active
+        active += 1
+        maximum_active = max(maximum_active, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return IngestReport()
+
+    mocker.patch(
+        "app.services.ingest._ingest_pdf_to_attachment_unlocked",
+        side_effect=fake_ingest,
+    )
+
+    await asyncio.gather(
+        ingest_pdf_to_attachment(mocker.AsyncMock(), "first.pdf", 1, settings),
+        ingest_pdf_to_attachment(mocker.AsyncMock(), "second.pdf", 2, settings),
+    )
+
+    assert maximum_active == 1
