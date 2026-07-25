@@ -92,7 +92,9 @@ async def test_ingest_pdf_to_attachment(mocker, settings):
         ]
     )
 
-    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=mock_client)
+    azure_client = mocker.patch(
+        "app.services.ingest.AsyncAzureOpenAI", return_value=mock_client
+    )
     mocker.patch("app.services.ingest.chunk_page", return_value=["chunk 1", "chunk 2"])
     mocker.patch("app.services.ingest.extract_page_images", return_value=fake_images)
     mock_insert = mocker.patch(
@@ -128,6 +130,13 @@ async def test_ingest_pdf_to_attachment(mocker, settings):
     assert report.chunks_indexed == len(rows)
     assert pdf_worker_thread_ids
     assert pdf_worker_thread_ids[0] != main_thread_id
+    azure_client.assert_called_once_with(
+        api_version=settings.azure_openai_api_version,
+        azure_endpoint=settings.azure_openai_endpoint,
+        api_key=settings.azure_openai_api_key,
+        timeout=settings.azure_embeddings_timeout_seconds,
+        max_retries=settings.azure_embeddings_max_retries,
+    )
 
 
 async def test_image_only_pdf_is_rejected_only_after_azure_ocr_fails(mocker, settings):
