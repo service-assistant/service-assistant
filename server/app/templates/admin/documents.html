@@ -190,11 +190,14 @@ document.getElementById('upload-form').addEventListener('submit', function (e) {
 </script>
 
 <script>
-function addServerBatchResult(container, upload) {
+const expandedUploadLogs = new Set();
+
+function addServerBatchResult(container, upload, logKey) {
     const styles = {
         queued: ['border-gray-200 bg-gray-50', 'text-gray-700', 'queued'],
         processing: ['border-blue-200 bg-blue-50', 'text-blue-800', 'processing'],
         succeeded: ['border-green-200 bg-green-50', 'text-green-800', 'uploaded and indexed'],
+        skipped: ['border-amber-200 bg-amber-50', 'text-amber-800', 'skipped and deleted'],
         failed: ['border-red-200 bg-red-50', 'text-red-800', 'failed and deleted'],
     };
     const style = styles[upload.state] || styles.queued;
@@ -206,9 +209,52 @@ function addServerBatchResult(container, upload) {
     title.textContent = `${upload.filename}: ${style[2]}`;
     item.appendChild(title);
 
-    if (upload.state === 'failed' && upload.error) {
+    if (upload.total_pages) {
+        const summary = document.createElement('div');
+        summary.className = 'mt-1 text-xs text-gray-600';
+        summary.textContent = [
+            `${upload.total_pages} page(s)`,
+            `${upload.native_text_pages} with native text`,
+            `${upload.ocr_pages_succeeded}/${upload.ocr_pages_attempted} OCR completed`,
+            `${upload.ocr_pages_skipped} skipped due to OCR`,
+            `${upload.chunks_indexed} chunks indexed`,
+        ].join(' · ');
+        item.appendChild(summary);
+    }
+
+    if (upload.events && upload.events.length) {
+        const details = document.createElement('details');
+        details.className = 'mt-3 border-t border-current/10 pt-2 text-xs';
+        details.open = expandedUploadLogs.has(logKey);
+        details.addEventListener('toggle', function () {
+            if (details.open) {
+                expandedUploadLogs.add(logKey);
+            } else {
+                expandedUploadLogs.delete(logKey);
+            }
+        });
+
+        const summary = document.createElement('summary');
+        summary.className = 'cursor-pointer select-none font-medium';
+        summary.textContent = `Show processing log (${upload.events.length})`;
+        details.appendChild(summary);
+
+        const process = document.createElement('ol');
+        process.className = 'mt-2 max-h-80 space-y-1 overflow-auto pl-4';
+        upload.events.forEach(function (eventText) {
+            const event = document.createElement('li');
+            event.textContent = eventText;
+            process.appendChild(event);
+        });
+        details.appendChild(process);
+        item.appendChild(details);
+    }
+
+    if ((upload.state === 'failed' || upload.state === 'skipped') && upload.error) {
         const error = document.createElement('pre');
-        error.className = 'mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100/60 p-3 font-mono text-xs text-red-900';
+        error.className = upload.state === 'failed'
+            ? 'mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded bg-red-100/60 p-3 font-mono text-xs text-red-900'
+            : 'mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded bg-amber-100/60 p-3 font-mono text-xs text-amber-900';
         error.textContent = upload.error;
         item.appendChild(error);
     }
@@ -229,10 +275,12 @@ function renderServerBatch(batch) {
     status.textContent = batch.state === 'completed'
         ? 'Upload complete'
         : active ? `Server is processing: ${active.filename}` : 'Waiting for server worker…';
-    counts.textContent = `${batch.completed} / ${batch.total} complete · ${batch.succeeded} succeeded · ${batch.failed} failed`;
+    counts.textContent = `${batch.completed} / ${batch.total} complete · ${batch.succeeded} succeeded · ${batch.skipped} skipped · ${batch.failed} failed`;
     bar.style.width = `${percent}%`;
     results.replaceChildren();
-    batch.items.forEach(function (item) { addServerBatchResult(results, item); });
+    batch.items.forEach(function (item, index) {
+        addServerBatchResult(results, item, `${batch.id}:${index}`);
+    });
 }
 
 function setServerBatchControls(running) {
@@ -276,7 +324,7 @@ async function monitorServerBatch(batchId) {
                 if (body.state === 'completed') {
                     localStorage.removeItem('admin_upload_batch_id');
                     showInlineBanner(
-                        `${body.succeeded} file(s) uploaded, ${body.failed} failed. Failed uploads were deleted.`,
+                        `${body.succeeded} file(s) uploaded, ${body.skipped} unreadable image-only skipped, ${body.failed} failed. Skipped and failed uploads were deleted.`,
                         body.failed ? 'error' : 'success'
                     );
                     break;

@@ -1,10 +1,12 @@
+import asyncio
 import logging
 import mimetypes
 import shutil
 import traceback
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import BinaryIO
 from uuid import uuid4
 
 from fastapi import (
@@ -41,11 +43,13 @@ from app.routers.brands import list_brands
 from app.routers.device_types import list_device_types
 from app.routers.devices import list_devices
 from app.routers.threads import list_threads
+from app.services.async_utils import run_blocking
+from app.services.ingest import ImageOnlyPdfError, IngestReport
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-UPLOAD_BATCH_TERMINAL_STATES = {"succeeded", "failed"}
+UPLOAD_BATCH_TERMINAL_STATES = {"succeeded", "skipped", "failed"}
 
 
 @dataclass
@@ -54,6 +58,13 @@ class UploadBatchItem:
     state: str = "queued"
     attachment_id: int | None = None
     error: str | None = None
+    events: list[str] = field(default_factory=list)
+    total_pages: int = 0
+    native_text_pages: int = 0
+    ocr_pages_attempted: int = 0
+    ocr_pages_succeeded: int = 0
+    ocr_pages_skipped: int = 0
+    chunks_indexed: int = 0
 
 
 @dataclass
@@ -65,6 +76,7 @@ class UploadBatch:
 
 
 _upload_batches: dict[str, UploadBatch] = {}
+_upload_batch_lock = asyncio.Lock()
 
 _templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
@@ -245,8 +257,9 @@ async def upload_document(
 
 def _serialize_upload_batch(batch: UploadBatch) -> dict:
     succeeded = sum(item.state == "succeeded" for item in batch.items)
+    skipped = sum(item.state == "skipped" for item in batch.items)
     failed = sum(item.state == "failed" for item in batch.items)
-    completed = succeeded + failed
+    completed = succeeded + skipped + failed
 
     return {
         "id": batch.id,
@@ -254,6 +267,7 @@ def _serialize_upload_batch(batch: UploadBatch) -> dict:
         "total": len(batch.items),
         "completed": completed,
         "succeeded": succeeded,
+        "skipped": skipped,
         "failed": failed,
         "created_at": batch.created_at,
         "finished_at": batch.finished_at,
@@ -261,7 +275,12 @@ def _serialize_upload_batch(batch: UploadBatch) -> dict:
     }
 
 
-async def _process_upload_batch(
+def _copy_staged_upload(source: BinaryIO, destination_path: Path) -> None:
+    with destination_path.open("wb") as destination:
+        shutil.copyfileobj(source, destination)
+
+
+async def _run_upload_batch(
     batch_id: str,
     staged_files: list[Path | None],
     device_ids: list[int],
@@ -276,6 +295,18 @@ async def _process_upload_batch(
                 continue
 
             item.state = "processing"
+            worker_started_event = "Server worker started processing the file."
+            item.events.append(worker_started_event)
+
+            def update_progress(report: IngestReport) -> None:
+                item.events = [worker_started_event, *report.events]
+                item.total_pages = report.total_pages
+                item.native_text_pages = report.native_text_pages
+                item.ocr_pages_attempted = report.ocr_pages_attempted
+                item.ocr_pages_succeeded = report.ocr_pages_succeeded
+                item.ocr_pages_skipped = report.ocr_pages_skipped
+                item.chunks_indexed = report.chunks_indexed
+
             try:
                 with staged_path.open("rb") as source:
                     upload = UploadFile(file=source, filename=item.filename)
@@ -283,17 +314,35 @@ async def _process_upload_batch(
                         get_engine(settings.database_url),
                         expire_on_commit=False,
                     ) as session:
-                        attachment = await save_and_ingest_attachment(
-                            settings=settings,
-                            session=session,
-                            file=upload,
-                            device_ids=device_ids,
-                        )
+                        try:
+                            attachment = await save_and_ingest_attachment(
+                                settings=settings,
+                                session=session,
+                                file=upload,
+                                device_ids=device_ids,
+                                progress_callback=update_progress,
+                            )
+                        except TimeoutError:
+                            item.events.append(
+                                "File processing exceeded the total timeout and was aborted."
+                            )
+                            raise
                 item.attachment_id = attachment.id
                 item.state = "succeeded"
+                item.events.append("File saved and ingestion finished successfully.")
+            except ImageOnlyPdfError as exc:
+                update_progress(exc.report)
+                item.state = "skipped"
+                item.error = str(exc)
+                item.events.append(
+                    "Image-only file was deleted because OCR recovered no text."
+                )
             except Exception:
                 item.state = "failed"
                 item.error = traceback.format_exc()
+                item.events.append(
+                    "File ingestion failed; its database record and uploaded file were deleted."
+                )
                 logger.exception("Admin batch upload failed for %s", item.filename)
             finally:
                 staged_path.unlink(missing_ok=True)
@@ -306,6 +355,16 @@ async def _process_upload_batch(
                 )
         batch.finished_at = datetime.now(timezone.utc).isoformat()
         shutil.rmtree(staging_dir, ignore_errors=True)
+
+
+async def _process_upload_batch(
+    batch_id: str,
+    staged_files: list[Path | None],
+    device_ids: list[int],
+    settings: Settings,
+) -> None:
+    async with _upload_batch_lock:
+        await _run_upload_batch(batch_id, staged_files, device_ids, settings)
 
 
 @router.post(
@@ -331,8 +390,7 @@ async def create_upload_batch(
         item = UploadBatchItem(filename=filename)
         staged_path = staging_dir / f"{index:04d}.upload"
         try:
-            with staged_path.open("wb") as destination:
-                shutil.copyfileobj(file.file, destination)
+            await run_blocking(_copy_staged_upload, file.file, staged_path)
             staged_files.append(staged_path)
         except Exception:
             item.state = "failed"
