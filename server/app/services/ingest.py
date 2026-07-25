@@ -137,7 +137,7 @@ async def _ingest_pdf_to_attachment_unlocked(
         azure_endpoint=settings.azure_openai_endpoint,
         api_key=settings.azure_openai_api_key,
         timeout=settings.azure_embeddings_timeout_seconds,
-        max_retries=1,
+        max_retries=settings.azure_embeddings_max_retries,
     )
     doc: fitz.Document | None = None
     try:
@@ -181,11 +181,10 @@ async def _ingest_pdf_to_attachment_unlocked(
                 progress_callback,
             )
             try:
-                async with asyncio.timeout(settings.azure_embeddings_timeout_seconds):
-                    response = await client.embeddings.create(
-                        model=settings.azure_openai_embeddings_deployment,
-                        input=[chunk for chunk, _, _ in batch],
-                    )
+                response = await client.embeddings.create(
+                    model=settings.azure_openai_embeddings_deployment,
+                    input=[chunk for chunk, _, _ in batch],
+                )
             except asyncio.CancelledError:
                 raise
             except Exception as exc:

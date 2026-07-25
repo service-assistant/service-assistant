@@ -223,10 +223,20 @@ def chunk_page(
             else:
                 chunks.extend(subchunks)
 
+    # A single table row can be larger than chunk_size. Table-aware splitting keeps
+    # rows intact where possible, so apply a final hard limit before sending chunks
+    # to the embeddings API.
+    bounded_chunks: list[str] = []
+    for chunk in chunks:
+        if len(chunk) <= chunk_size:
+            bounded_chunks.append(chunk)
+        else:
+            bounded_chunks.extend(recursive_splitter.split_text(chunk))
+
     # skip one line chunks with length less than 60
     chunks = [
         chunk
-        for chunk in chunks
+        for chunk in bounded_chunks
         if not (len(chunk.splitlines()) < 2 and len(chunk) < 60)
     ]
 
