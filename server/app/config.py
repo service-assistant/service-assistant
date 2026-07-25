@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     azure_document_intelligence_key: str
     azure_ocr_timeout_seconds: float = Field(default=30.0, gt=0)
     azure_embeddings_timeout_seconds: float = Field(default=30.0, gt=0)
+    azure_embeddings_max_retries: int = Field(default=5, ge=0)
     pdf_ingest_timeout_seconds: float = Field(default=600.0, gt=0)
 
     cors_origins: Annotated[
