@@ -9,6 +9,7 @@ from app.services.llm import (
     has_continuation_marker,
     is_completion_only_answer,
     limit_checklist_items,
+    normalize_numbered_checklist,
     promote_bare_checklist,
     stream_query,
 )
@@ -287,6 +288,50 @@ def test_should_leave_single_bullet_without_directive_unchanged():
     answer = "Informacja:\n- Jeden punkt."
 
     assert promote_bare_checklist(answer) == answer
+
+
+def test_should_normalize_numbered_procedure_with_embedded_checklist():
+    answer = (
+        "Follow these steps:\n\n"
+        "1. Apply the parking brake.\n"
+        "2. Remove the vent caps.\n"
+        "3. Connect the cables in order:\n"
+        "::checklist\n"
+        "- Positive to positive on the charging vehicle.\n"
+        "- Negative to the charging vehicle frame.\n"
+        "- Positive to positive on the other vehicle. "
+        "4. Start the charging vehicle. "
+        "5. Start the other vehicle. "
+        "6. Stop if the engine does not start."
+    )
+
+    normalized = normalize_numbered_checklist(answer)
+
+    assert normalized.startswith("Follow these steps:\n\n::checklist")
+    assert normalized.count("::checklist") == 1
+    assert "\n- Apply the parking brake." in normalized
+    assert "\n- Positive to positive on the charging vehicle." in normalized
+    assert "\n- Start the charging vehicle." in normalized
+    assert "\n- Stop if the engine does not start." in normalized
+
+
+def test_should_leave_numbers_in_regular_text_unchanged():
+    answer = "Voltage is 24. Check connector 2. before starting."
+
+    assert normalize_numbered_checklist(answer) == answer
+
+
+def test_should_preserve_warning_after_normalized_numbered_procedure():
+    answer = (
+        "Follow these steps:\n"
+        "1. Disconnect power.\n"
+        "2. Inspect the cables.\n"
+        "::warning\nDo not touch exposed terminals."
+    )
+
+    normalized = normalize_numbered_checklist(answer)
+
+    assert "\n\n::warning\nDo not touch exposed terminals." in normalized
 
 
 def test_should_add_intro_to_bare_continuation_checklist():

@@ -119,6 +119,68 @@ test('recognizeNameplate retries one transient network failure', async () => {
 	jest.useRealTimers();
 });
 
+test('recognizeNameplate retries transient HTTP responses', async () => {
+	jest.useFakeTimers();
+	const recognition = {
+		nameplate_data: {
+			model: '1D1',
+			attributes: [],
+			raw_text: 'MODEL 1D1',
+		},
+		matched_device: null,
+		candidates: [],
+		requires_confirmation: true,
+	};
+	jest.mocked(global.fetch)
+		.mockResolvedValueOnce({
+			ok: false,
+			status: 503,
+		} as Response)
+		.mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => recognition,
+		} as Response);
+	const { recognizeNameplate } = await loadApi();
+
+	const recognitionPromise = recognizeNameplate('file:///nameplate.jpg');
+	await jest.advanceTimersByTimeAsync(750);
+
+	await expect(recognitionPromise).resolves.toEqual(recognition);
+	expect(global.fetch).toHaveBeenCalledTimes(2);
+	jest.useRealTimers();
+});
+
+test('recognizeNameplate tolerates two consecutive connection failures', async () => {
+	jest.useFakeTimers();
+	const recognition = {
+		nameplate_data: {
+			model: '1D1',
+			attributes: [],
+			raw_text: 'MODEL 1D1',
+		},
+		matched_device: null,
+		candidates: [],
+		requires_confirmation: true,
+	};
+	jest.mocked(global.fetch)
+		.mockRejectedValueOnce(new TypeError('Network request failed'))
+		.mockRejectedValueOnce(new TypeError('Network request failed'))
+		.mockResolvedValueOnce({
+			ok: true,
+			json: async () => recognition,
+		} as Response);
+	const { recognizeNameplate } = await loadApi();
+
+	const recognitionPromise = recognizeNameplate('file:///nameplate.jpg');
+	await jest.advanceTimersByTimeAsync(750);
+	await jest.advanceTimersByTimeAsync(2_000);
+
+	await expect(recognitionPromise).resolves.toEqual(recognition);
+	expect(global.fetch).toHaveBeenCalledTimes(3);
+	jest.useRealTimers();
+});
+
 test('recognizeNameplate includes backend error details', async () => {
 	jest.mocked(global.fetch).mockResolvedValue({
 		ok: false,
@@ -131,6 +193,20 @@ test('recognizeNameplate includes backend error details', async () => {
 		status: 422,
 		message: 'Nameplate recognition failed (422): No text was found on the nameplate',
 	});
+});
+
+test('recognizeNameplate does not repeat a long server-side OCR timeout', async () => {
+	jest.mocked(global.fetch).mockResolvedValue({
+		ok: false,
+		status: 504,
+		json: async () => ({ detail: 'OpenAI image recognition timed out after 90 seconds' }),
+	} as Response);
+	const { recognizeNameplate } = await loadApi();
+
+	await expect(recognizeNameplate('file:///nameplate.jpg')).rejects.toMatchObject({
+		status: 504,
+	});
+	expect(global.fetch).toHaveBeenCalledTimes(1);
 });
 
 test('recognizeNameplate stops waiting after the OCR timeout', async () => {
@@ -152,7 +228,7 @@ test('recognizeNameplate stops waiting after the OCR timeout', async () => {
 		status: 408,
 		message: 'Nameplate request timed out',
 	});
-	await jest.advanceTimersByTimeAsync(70_000);
+	await jest.advanceTimersByTimeAsync(30_000);
 
 	await rejection;
 	jest.useRealTimers();

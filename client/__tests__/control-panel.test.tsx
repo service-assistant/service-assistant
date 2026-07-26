@@ -7,7 +7,10 @@ jest.mock('react', () => {
 	const actualReact = jest.requireActual('react');
 	return {
 		...actualReact,
-		useEffect: (callback: () => void | (() => void)) => callback(),
+		useEffect: (callback: () => void | (() => void)) => {
+			const cleanup = callback();
+			if (typeof cleanup === 'function') cleanup();
+		},
 		useRef: (initialValue: unknown) => ({ current: initialValue }),
 	};
 });
@@ -22,10 +25,18 @@ jest.mock('react-native', () => {
 	return {
 		Animated: {
 			View: createHost('Animated.View'),
-			Value: jest.fn(() => 'animated-value'),
+			Image: createHost('Animated.Image'),
+			Value: jest.fn(() => ({
+				interpolate: jest.fn(() => 'animated-interpolation'),
+				setValue: jest.fn(),
+			})),
 			loop: jest.fn(() => ({ start: jest.fn(), stop: jest.fn() })),
 			parallel: jest.fn((animations) => animations),
 			timing: jest.fn(() => ({ start: jest.fn() })),
+		},
+		Easing: {
+			cubic: 'cubic',
+			out: jest.fn((easing) => easing),
 		},
 		Image: createHost('Image'),
 		Platform: { OS: 'ios' },
@@ -54,6 +65,7 @@ jest.mock('@expo/vector-icons', () => {
 const baseProps = {
 	orientation: 'horizontal' as const,
 	isListening: false,
+	isMicStarting: false,
 	isMicProcessing: false,
 	isMicRestartBlocked: false,
 	isWritingActive: false,
@@ -119,11 +131,37 @@ describe('ControlPanel', () => {
 		expect(findByType(tree, 'Animated.View')).toHaveLength(1);
 	});
 
-	test('shows stop icon while processing', () => {
+	test('fills the microphone button with cyan while the recorder is starting', () => {
+		const tree = <ControlPanel {...baseProps} isMicStarting />;
+		const startingFill = findByType(tree, 'Animated.View').find(
+			(view) => view.props.testID === 'mic-starting-fill',
+		);
+		const startingIcon = findByType(tree, 'Animated.Image').find(
+			(image) => image.props.testID === 'mic-starting-icon',
+		);
+
+		expect(getTextContent(tree)).toContain('Uruchamiam...');
+		expect(startingFill?.props.style).toMatchObject({
+			height: 'animated-interpolation',
+			backgroundColor: 'rgba(8, 145, 178, 0.62)',
+		});
+		expect(startingIcon?.props.style).toMatchObject({
+			tintColor: 'animated-interpolation',
+		});
+		expect(findByType(tree, 'Animated.View')).toHaveLength(1);
+	});
+
+	test('rotates the stop square while processing', () => {
 		const tree = <ControlPanel {...baseProps} isMicProcessing />;
+		const rotatingIcon = findByType(tree, 'Animated.View').find(
+			(view) => view.props.testID === 'rotating-processing-icon',
+		);
 
 		expect(getTextContent(tree)).toContain('Przetwarzam...');
 		expect(findByType(tree, 'Icon').some((icon) => icon.props.name === 'stop')).toBe(true);
+		expect(rotatingIcon?.props.style).toEqual({
+			transform: [{ rotate: 'animated-interpolation' }],
+		});
 	});
 
 	test('disables microphone while restart is blocked', () => {

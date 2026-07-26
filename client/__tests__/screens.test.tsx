@@ -318,6 +318,7 @@ const setupChatHooks = () => {
 		abortVoiceInput,
 		handleMicPress,
 		isListening: false,
+		isMicStarting: false,
 		isMicProcessing: false,
 		isMicRestartBlocked: false,
 		resetVoiceInput,

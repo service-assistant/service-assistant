@@ -8,9 +8,10 @@ import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
 import { getAuthTokenOrThrow, throwIfAuthResponseError } from '@/utils/auth-errors';
 import { HttpError } from '@/utils/network';
 
-const OCR_TIMEOUT_MS = 70_000;
+const OCR_TIMEOUT_MS = 30_000;
 const THREAD_TIMEOUT_MS = 20_000;
-const NETWORK_RETRY_DELAY_MS = 750;
+const OCR_RETRY_DELAYS_MS = [750, 2_000];
+const OCR_RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503]);
 
 const jsonHeaders = (authToken: string) => ({
 	Accept: 'application/json',
@@ -71,7 +72,7 @@ const fetchWithTimeout = async (
 	}
 };
 
-const waitForNetworkRetry = (signal?: AbortSignal) =>
+const waitForNetworkRetry = (delayMs: number, signal?: AbortSignal) =>
 	new Promise<void>((resolve, reject) => {
 		if (signal?.aborted) {
 			const error = new Error('The operation was aborted.');
@@ -89,7 +90,7 @@ const waitForNetworkRetry = (signal?: AbortSignal) =>
 		const timeout = setTimeout(() => {
 			signal?.removeEventListener('abort', handleAbort);
 			resolve();
-		}, NETWORK_RETRY_DELAY_MS);
+		}, delayMs);
 		signal?.addEventListener('abort', handleAbort, { once: true });
 	});
 
@@ -122,14 +123,27 @@ export const recognizeNameplate = async (
 		);
 	};
 
-	let response: Response;
-	try {
-		response = await sendPhoto();
-	} catch (error) {
-		if (!(error instanceof TypeError) || signal?.aborted) throw error;
-		await waitForNetworkRetry(signal);
-		response = await sendPhoto();
+	let response: Response | undefined;
+	for (let attempt = 0; attempt <= OCR_RETRY_DELAYS_MS.length; attempt += 1) {
+		try {
+			response = await sendPhoto();
+		} catch (error) {
+			const canRetry =
+				error instanceof TypeError &&
+				!signal?.aborted &&
+				attempt < OCR_RETRY_DELAYS_MS.length;
+			if (!canRetry) throw error;
+			await waitForNetworkRetry(OCR_RETRY_DELAYS_MS[attempt], signal);
+			continue;
+		}
+
+		const canRetryResponse =
+			OCR_RETRYABLE_STATUSES.has(response.status) && attempt < OCR_RETRY_DELAYS_MS.length;
+		if (!canRetryResponse) break;
+		await waitForNetworkRetry(OCR_RETRY_DELAYS_MS[attempt], signal);
 	}
+
+	if (!response) throw new TypeError('Network request failed');
 	if (!response.ok) {
 		throwIfAuthResponseError(response);
 		const detail = await readErrorDetail(response);
