@@ -98,4 +98,34 @@ describe('VehicleFilters', () => {
 
 		expect(findByType(tree, 'ActivityIndicator')).toHaveLength(2);
 	});
+
+	test('keeps long type buttons at their full width in the horizontal list', () => {
+		const longTypeName = 'Wózki paletowe niskiego składowania';
+		const tree = (
+			<VehicleFilters
+				brands={[]}
+				deviceTypes={[{ name: longTypeName }]}
+				activeBrandFilter='WSZYSTKIE'
+				activeTypeFilter='WSZYSTKIE'
+				onBrandFilterChange={jest.fn()}
+				onTypeFilterChange={jest.fn()}
+				useTabletRefresh={false}
+			/>
+		);
+		const typeScrollView = findByType(tree, 'ScrollView')[1];
+		const longTypeButton = findByType(typeScrollView, 'TouchableOpacity').find((button) =>
+			getTextContent(button).includes(longTypeName),
+		);
+		expect(longTypeButton).toBeDefined();
+		const longTypeText = findByType(longTypeButton!, 'Text')[0];
+
+		expect(typeScrollView.props.contentContainerStyle).toEqual({ paddingRight: 16 });
+		expect(longTypeButton!.props.style).toEqual(
+			expect.arrayContaining([expect.objectContaining({ flexShrink: 0 })]),
+		);
+		expect(longTypeText.props.style).toEqual(
+			expect.arrayContaining([expect.objectContaining({ flexShrink: 0 })]),
+		);
+		expect(longTypeText.props.numberOfLines).toBe(1);
+	});
 });

@@ -47,6 +47,7 @@ const ALL_FILTER_LABEL = 'WSZYSTKIE';
 
 const androidTextStyle =
 	Platform.OS === 'android' ? { includeFontPadding: false, textAlignVertical: 'center' } : {};
+const singleLineTextStyle = Platform.OS === 'web' ? { whiteSpace: 'nowrap' as const } : {};
 
 const BrandLogoOrText: React.FC<{
 	brandName: string;
@@ -196,14 +197,21 @@ export default function VehicleFilters({
 				{isLoadingTypes ? (
 					<ActivityIndicator size='small' color={primaryColor} style={loadingStyle} />
 				) : (
-					<ScrollView horizontal showsHorizontalScrollIndicator={false}>
+					<ScrollView
+						horizontal
+						showsHorizontalScrollIndicator={false}
+						contentContainerStyle={{ paddingRight: useTabletRefresh ? 12 : 16 }}>
 						{typeFilterOptions.map((type) => (
 							<TouchableOpacity
 								key={type.name}
 								onPress={() => onTypeFilterChange(type.name)}
-								style={getFilterChipStyle(activeTypeFilter === type.name)}
+								style={[
+									getFilterChipStyle(activeTypeFilter === type.name),
+									{ flexShrink: 0 },
+								]}
 								className={chipClassName}>
 								<Text
+									numberOfLines={1}
 									className={`text-sm font-bold uppercase ${
 										lightMode
 											? activeTypeFilter === type.name
@@ -213,7 +221,13 @@ export default function VehicleFilters({
 												? 'text-white'
 												: 'text-gray-300'
 									}`}
-									style={androidTextStyle as any}>
+									style={
+										[
+											androidTextStyle,
+											singleLineTextStyle,
+											{ flexShrink: 0 },
+										] as any
+									}>
 									{type.name}
 								</Text>
 							</TouchableOpacity>

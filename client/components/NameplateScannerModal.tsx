@@ -16,6 +16,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import type { NameplateDeviceCandidate, NameplateRecognition } from '@/types/nameplate';
 import { recognizeNameplate } from '@/utils/nameplate-api';
+import { HttpError, isTransientNetworkError } from '@/utils/network';
 
 type NameplateScannerModalProps = {
 	visible: boolean;
@@ -189,12 +190,22 @@ export default function NameplateScannerModal({
 			}
 		} catch (error: any) {
 			if (error?.name !== 'AbortError') {
-				const detail =
-					error instanceof Error && error.message.trim()
-						? error.message.trim()
-						: 'Nieznany błąd rozpoznawania.';
-				setMessage(`Nie udało się odczytać tabliczki. Szczegóły: ${detail}`);
-				onServiceError('rozpoznawanie tabliczki', error);
+				const isNameplateNotFound = error instanceof HttpError && error.status === 422;
+				const detail = isNameplateNotFound
+					? 'Nie znaleziono czytelnej tabliczki znamionowej. Ustaw ją na środku kadru, zbliż aparat, unikaj odblasków i zrób zdjęcie ponownie.'
+					: isTransientNetworkError(error)
+						? 'Chwilowy problem z połączeniem. Sprawdź sieć i spróbuj ponownie.'
+						: error instanceof Error && error.message.trim()
+							? error.message.trim()
+							: 'Nieznany błąd rozpoznawania.';
+				setMessage(
+					isNameplateNotFound
+						? detail
+						: `Nie udało się odczytać tabliczki. Szczegóły: ${detail}`,
+				);
+				if (!isNameplateNotFound) {
+					onServiceError('rozpoznawanie tabliczki', error);
+				}
 			}
 		} finally {
 			if (abortRef.current === controller) {
@@ -250,7 +261,9 @@ export default function NameplateScannerModal({
 							Rozpoznano: {recognition.nameplate_data.model}
 						</Text>
 						<Text className='mb-5' style={{ color: lightMode ? '#52525B' : '#A1A1AA' }}>
-							Wybierz właściwy model lub wykonaj zdjęcie ponownie.
+							{recognition.candidates.length === 1
+								? 'Czy to na pewno ten model? Potwierdź wybór lub wykonaj zdjęcie ponownie.'
+								: 'Wybierz właściwy model lub wykonaj zdjęcie ponownie.'}
 						</Text>
 						{recognition.candidates.map((candidate) => (
 							<TouchableOpacity

@@ -10,9 +10,14 @@ from app.models import Device
 from app.schemas import NameplateRecognitionResponse
 from app.services.nameplate_matching import (
     rank_device_candidates,
-    select_automatic_match,
+    select_automatic_family_match,
 )
-from app.services.nameplate_ocr import NameplateOcrError, recognize_nameplate
+from app.services.nameplate_ocr import (
+    NameplateNotFoundError,
+    NameplateOcrError,
+    NameplateOcrTimeoutError,
+    recognize_nameplate,
+)
 
 
 router = APIRouter()
@@ -49,8 +54,12 @@ async def recognize(
 
     try:
         nameplate_data = await recognize_nameplate(image_bytes, settings)
-    except NameplateOcrError as error:
+    except NameplateNotFoundError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    except NameplateOcrTimeoutError as error:
+        raise HTTPException(status_code=504, detail=str(error)) from error
+    except NameplateOcrError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
 
     devices = list((await session.scalars(select(Device))).all())
     candidates = rank_device_candidates(
@@ -58,11 +67,9 @@ async def recognize(
         model=nameplate_data.model,
         raw_text=nameplate_data.raw_text,
     )
-    automatic_candidate = select_automatic_match(candidates)
-    matched_device = (
-        automatic_candidate
-        if automatic_candidate and (nameplate_data.model_confidence or 0) >= 0.8
-        else None
+    matched_device = select_automatic_family_match(
+        candidates,
+        model=nameplate_data.model,
     )
     if matched_device:
         nameplate_data = nameplate_data.model_copy(

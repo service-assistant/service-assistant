@@ -7,6 +7,7 @@ from app.schemas import NameplateDeviceCandidate
 
 
 _SEPARATOR_PATTERN = re.compile(r"[^A-Z0-9]+")
+_MODEL_CODE_SEPARATOR_PATTERN = re.compile(r"[,/]+")
 _MODEL_TOKEN_PATTERN = re.compile(r"[A-Z0-9]*\d[A-Z0-9]*")
 _OCR_CONFUSIONS = str.maketrans({"O": "0", "I": "1", "L": "1"})
 
@@ -22,9 +23,16 @@ def normalize_identifier(value: str) -> str:
 def _device_identifiers(device: Device) -> list[str]:
     values: list[str] = []
     if device.model_serial_code:
-        values.append(device.model_serial_code)
-    values.append(device.name)
-    values.extend(_MODEL_TOKEN_PATTERN.findall(device.name.upper()))
+        values.extend(
+            identifier.strip()
+            for identifier in _MODEL_CODE_SEPARATOR_PATTERN.split(
+                device.model_serial_code
+            )
+            if identifier.strip()
+        )
+    else:
+        values.append(device.name)
+        values.extend(_MODEL_TOKEN_PATTERN.findall(device.name.upper()))
 
     unique: list[str] = []
     seen: set[str] = set()
@@ -35,6 +43,47 @@ def _device_identifiers(device: Device) -> list[str]:
         seen.add(normalized)
         unique.append(value)
     return unique
+
+
+def _is_at_most_one_edit_apart(left: str, right: str) -> bool:
+    if abs(len(left) - len(right)) > 1:
+        return False
+    if len(left) > len(right):
+        left, right = right, left
+
+    left_index = 0
+    right_index = 0
+    differences = 0
+    while left_index < len(left) and right_index < len(right):
+        if left[left_index] == right[right_index]:
+            left_index += 1
+            right_index += 1
+            continue
+
+        differences += 1
+        if differences > 1:
+            return False
+        if len(left) == len(right):
+            left_index += 1
+        right_index += 1
+
+    return differences + (len(right) - right_index) <= 1
+
+
+def _has_single_edit_model_match(identifier: str, model: str) -> bool:
+    if len(identifier) < 3 or len(model) < 2:
+        return False
+
+    minimum_window = max(2, len(identifier) - 1)
+    maximum_window = min(len(model), len(identifier) + 1)
+    for window_length in range(minimum_window, maximum_window + 1):
+        for start in range(len(model) - window_length + 1):
+            if _is_at_most_one_edit_apart(
+                identifier,
+                model[start : start + window_length],
+            ):
+                return True
+    return False
 
 
 def _identifier_score(
@@ -63,6 +112,8 @@ def _identifier_score(
         return min(0.81, 0.75 + length_bonus)
     if confused_identifier in confused_raw_text:
         return min(0.76, 0.68 + length_bonus)
+    if _has_single_edit_model_match(normalized_identifier, normalized_model):
+        return min(0.8, 0.77 + length_bonus)
     return 0
 
 
@@ -88,6 +139,7 @@ def rank_device_candidates(
         ]
         best_score, _, best_identifier = max(
             scored_identifiers,
+            key=lambda scored_identifier: scored_identifier[:2],
             default=(0.0, 0, ""),
         )
         if best_score <= 0:
@@ -132,3 +184,23 @@ def select_automatic_match(
         ):
             return None
     return candidates[0]
+
+
+def select_automatic_family_match(
+    candidates: list[NameplateDeviceCandidate],
+    *,
+    model: str,
+) -> NameplateDeviceCandidate | None:
+    candidate = select_automatic_match(candidates)
+    if candidate is None:
+        return None
+
+    normalized_model = normalize_identifier(model)
+    normalized_identifier = normalize_identifier(candidate.matched_identifier)
+    if (
+        len(normalized_identifier) >= 3
+        and len(normalized_model) > len(normalized_identifier)
+        and normalized_model.startswith(normalized_identifier)
+    ):
+        return candidate
+    return None
