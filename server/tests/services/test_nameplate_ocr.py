@@ -4,7 +4,11 @@ import pytest
 
 from app.schemas import NameplateAttribute
 from app.services import nameplate_ocr
-from app.services.nameplate_ocr import NameplateOcrError
+from app.services.nameplate_ocr import (
+    NameplateNotFoundError,
+    NameplateOcrError,
+    NameplateOcrTimeoutError,
+)
 
 
 def _settings(mocker):
@@ -40,7 +44,11 @@ async def test_openai_vision_receives_image_and_returns_structured_data(mocker):
     parse = mocker.AsyncMock(return_value=response)
     client = mocker.MagicMock()
     client.chat.completions.parse = parse
-    mocker.patch.object(nameplate_ocr, "AsyncOpenAI", return_value=client)
+    openai_client = mocker.patch.object(
+        nameplate_ocr,
+        "AsyncOpenAI",
+        return_value=client,
+    )
 
     result = await nameplate_ocr.recognize_nameplate(b"\xff\xd8\xffimage", settings)
 
@@ -50,6 +58,8 @@ async def test_openai_vision_receives_image_and_returns_structured_data(mocker):
     request = parse.await_args.kwargs
     assert request["model"] == "gpt-4o-mini"
     assert request["response_format"] is nameplate_ocr._ExtractedNameplate
+    assert openai_client.call_args.kwargs["timeout"] == 17
+    assert openai_client.call_args.kwargs["max_retries"] == 0
     image_part = request["messages"][1]["content"][1]
     assert image_part["image_url"]["url"].startswith("data:image/jpeg;base64,")
     assert image_part["image_url"]["detail"] == "high"
@@ -84,13 +94,18 @@ async def test_recognition_requires_a_visible_model(mocker):
         ),
     )
 
-    with pytest.raises(NameplateOcrError, match="Model was not found"):
+    with pytest.raises(NameplateNotFoundError, match="No readable model/type field"):
         await nameplate_ocr.recognize_nameplate(b"image", settings)
 
 
 async def test_recognition_stops_when_openai_times_out(mocker):
     settings = _settings(mocker)
-    mocker.patch.object(nameplate_ocr, "_OPENAI_VISION_TIMEOUT_SECONDS", 0.01)
+    mocker.patch.object(nameplate_ocr, "_OPENAI_FULL_OCR_TIMEOUT_SECONDS", 0.01)
+    mocker.patch.object(
+        nameplate_ocr,
+        "_OPENAI_MODEL_FALLBACK_TIMEOUT_SECONDS",
+        0.01,
+    )
 
     async def slow_openai(*_args):
         await asyncio.sleep(0.05)
@@ -100,9 +115,45 @@ async def test_recognition_stops_when_openai_times_out(mocker):
         "_recognize_with_openai",
         side_effect=slow_openai,
     )
+    mocker.patch.object(
+        nameplate_ocr,
+        "_recognize_model_only_with_openai",
+        side_effect=slow_openai,
+    )
 
-    with pytest.raises(NameplateOcrError, match="OpenAI image recognition timed out"):
+    with pytest.raises(
+        NameplateOcrTimeoutError,
+        match="OpenAI image recognition timed out",
+    ):
         await nameplate_ocr.recognize_nameplate(b"image", settings)
+
+
+async def test_recognition_uses_model_only_fallback_after_full_ocr_timeout(mocker):
+    settings = _settings(mocker)
+    mocker.patch.object(nameplate_ocr, "_OPENAI_FULL_OCR_TIMEOUT_SECONDS", 0.01)
+
+    async def slow_openai(*_args):
+        await asyncio.sleep(0.05)
+
+    mocker.patch.object(
+        nameplate_ocr,
+        "_recognize_with_openai",
+        side_effect=slow_openai,
+    )
+    fallback = mocker.patch.object(
+        nameplate_ocr,
+        "_recognize_model_only_with_openai",
+        return_value=nameplate_ocr._ExtractedModel(
+            model="UNKNOWN-X7",
+            model_confidence=0.91,
+        ),
+    )
+
+    result = await nameplate_ocr.recognize_nameplate(b"image", settings)
+
+    assert result.model == "UNKNOWN-X7"
+    assert result.raw_text == "MODEL: UNKNOWN-X7"
+    fallback.assert_awaited_once()
 
 
 async def test_recognition_exposes_safe_openai_failure_detail(mocker):
