@@ -120,6 +120,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 	const [isListening, setIsListening] = useState<boolean>(false);
 	const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
 	const [isMicRestartBlocked, setIsMicRestartBlocked] = useState<boolean>(false);
+	const [isMicStarting, setIsMicStarting] = useState<boolean>(false);
 	const audioRecorder = useAudioRecorder({
 		...RecordingPresets.HIGH_QUALITY,
 		isMeteringEnabled: true,
@@ -160,6 +161,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 	const hasConversationActivity = messages.length > 0;
 	const isMicProcessing =
 		!isListening &&
+		!isMicStarting &&
 		(hasPendingVoiceInput ||
 			isTranscribing ||
 			(hasConversationActivity && (isLoading || isGenerating || isAudioPlaying)));
@@ -198,6 +200,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 
 	const stopRecordingWithoutSending = useCallback(async () => {
 		clearMetering();
+		setIsMicStarting(false);
 		shouldCancelAfterStartRef.current = true;
 		shouldStopAfterStartRef.current = false;
 		shouldDiscardCurrentRecordingRef.current = true;
@@ -256,6 +259,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 			sttAbortControllerRef.current = null;
 		}
 		setIsListening(false);
+		setIsMicStarting(false);
 		setIsTranscribing(false);
 		setMessages((prev) => prev.filter((message) => !message.isSpeaking));
 	}, [setMessages, stopRecordingWithoutSending]);
@@ -263,6 +267,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 	const resetVoiceInput = useCallback(() => {
 		void stopRecordingWithoutSending();
 		setIsListening(false);
+		setIsMicStarting(false);
 		setIsTranscribing(false);
 		if (sttAbortControllerRef.current) {
 			sttAbortControllerRef.current.abort();
@@ -920,10 +925,10 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 
 			onStopExternal();
 			isStartingRecordingRef.current = true;
+			setIsMicStarting(true);
 			shouldStopAfterStartRef.current = false;
 			shouldCancelAfterStartRef.current = false;
 			shouldDiscardCurrentRecordingRef.current = false;
-			setIsListening(true);
 
 			const userTempId = Date.now();
 			userSpeakingMessageIdRef.current = userTempId;
@@ -950,18 +955,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				if (canStreamPcmAudio) {
 					await startStreamingRecording();
 					isStartingRecordingRef.current = false;
-
-					if (shouldCancelAfterStartRef.current) {
-						await stopRecordingWithoutSending();
-						setMessages((prev) => prev.filter((message) => message.id !== userTempId));
-					} else if (shouldStopAfterStartRef.current) {
-						await stopRecordingAndSend();
-					}
-				} else {
-					await audioRecorder.prepareToRecordAsync();
-					audioRecorder.record();
-					recordingStartedAtRef.current = Date.now();
-					isStartingRecordingRef.current = false;
+					setIsMicStarting(false);
 
 					if (shouldCancelAfterStartRef.current) {
 						await stopRecordingWithoutSending();
@@ -969,6 +963,22 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 					} else if (shouldStopAfterStartRef.current) {
 						await stopRecordingAndSend();
 					} else {
+						setIsListening(true);
+					}
+				} else {
+					await audioRecorder.prepareToRecordAsync();
+					audioRecorder.record();
+					recordingStartedAtRef.current = Date.now();
+					isStartingRecordingRef.current = false;
+					setIsMicStarting(false);
+
+					if (shouldCancelAfterStartRef.current) {
+						await stopRecordingWithoutSending();
+						setMessages((prev) => prev.filter((message) => message.id !== userTempId));
+					} else if (shouldStopAfterStartRef.current) {
+						await stopRecordingAndSend();
+					} else {
+						setIsListening(true);
 						startMetering();
 					}
 				}
@@ -986,6 +996,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				setMessages((prev) => prev.filter((message) => message.id !== userTempId));
 			} finally {
 				isStartingRecordingRef.current = false;
+				setIsMicStarting(false);
 			}
 		} finally {
 			isHandlingMicPressRef.current = false;
@@ -996,6 +1007,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 		canStreamPcmAudio,
 		closeSttStreamSocket,
 		isListening,
+		isMicStarting,
 		isMicProcessing,
 		isMicRestartBlocked,
 		isSttStreamInterruptionExpected,
@@ -1037,6 +1049,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 		abortVoiceInput,
 		handleMicPress,
 		isListening,
+		isMicStarting,
 		isMicProcessing,
 		isMicRestartBlocked,
 		isTranscribing,

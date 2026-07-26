@@ -112,6 +112,15 @@ if (fs.existsSync(pdfViewPath)) {
 		);
 	}
 
+	if (!pdfViewSource.includes('.fitEachPage(true)')) {
+		pdfViewSource = pdfViewSource.replace(
+			'                .pageFitPolicy(this.fitPolicy)\n',
+			`                .pageFitPolicy(this.fitPolicy)
+                .fitEachPage(true)
+`,
+		);
+	}
+
 	if (!pdfViewSource.includes('private void configureDarkPdfPaint()')) {
 		pdfViewSource = pdfViewSource.replace(
 			'    public PdfView(Context context, AttributeSet set){\n        super(context, set);\n    }\n',

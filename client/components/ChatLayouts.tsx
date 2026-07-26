@@ -333,6 +333,7 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	reserveMessageScrollSpace: boolean;
 	shouldFocusStartPromptInput: boolean;
 	isListening: boolean;
+	isMicStarting: boolean;
 	isMicProcessing: boolean;
 	isMicRestartBlocked: boolean;
 	isSpeechInputUnavailable?: boolean;
@@ -451,6 +452,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	reserveMessageScrollSpace,
 	shouldFocusStartPromptInput,
 	isListening,
+	isMicStarting,
 	isMicProcessing,
 	isMicRestartBlocked,
 	isSpeechInputUnavailable,
@@ -657,6 +659,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 					orientation='horizontal'
 					edgeToEdge={isPhonePortrait}
 					isListening={isListening}
+					isMicStarting={isMicStarting}
 					isMicProcessing={isMicProcessing}
 					isMicRestartBlocked={isMicRestartBlocked}
 					isSpeechInputUnavailable={isSpeechInputUnavailable}
@@ -709,6 +712,7 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	reserveMessageScrollSpace,
 	shouldFocusStartPromptInput,
 	isListening,
+	isMicStarting,
 	isMicProcessing,
 	isMicRestartBlocked,
 	isSpeechInputUnavailable,
@@ -851,6 +855,7 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 					<ControlPanel
 						orientation='vertical'
 						isListening={isListening}
+						isMicStarting={isMicStarting}
 						isMicProcessing={isMicProcessing}
 						isMicRestartBlocked={isMicRestartBlocked}
 						isSpeechInputUnavailable={isSpeechInputUnavailable}

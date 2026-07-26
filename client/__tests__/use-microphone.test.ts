@@ -205,6 +205,7 @@ const createHarness = (
 				isListening: mockReactStateValues[0],
 				isTranscribing: mockReactStateValues[1],
 				isMicRestartBlocked: mockReactStateValues[2],
+				isMicStarting: mockReactStateValues[3],
 				isLoading,
 				messages,
 				showTextInput,
@@ -315,6 +316,31 @@ describe('useMicrophone', () => {
 		await flushPromises();
 	});
 
+	test('does not show listening before the recorder has actually started', async () => {
+		let finishPreparing: (() => void) | undefined;
+		mockRecorder.prepareToRecordAsync.mockImplementation(
+			() =>
+				new Promise<void>((resolve) => {
+					finishPreparing = resolve;
+				}),
+		);
+		const harness = createHarness();
+
+		const startPromise = harness.api.handleMicPress();
+		await flushPromises();
+
+		expect(harness.state.isListening).toBe(false);
+		expect(harness.state.isMicStarting).toBe(true);
+		expect(mockRecorder.record).not.toHaveBeenCalled();
+
+		finishPreparing?.();
+		await startPromise;
+
+		expect(mockRecorder.record).toHaveBeenCalled();
+		expect(harness.state.isMicStarting).toBe(false);
+		expect(harness.state.isListening).toBe(true);
+	});
+
 	test('removes the placeholder when recording permission is denied', async () => {
 		mockRequestRecordingPermissionsAsync.mockResolvedValue({ granted: false });
 		const harness = createHarness();
@@ -395,12 +421,14 @@ describe('useMicrophone', () => {
 		expect(socket.url).toBe(
 			'wss://api.example.test/api/threads/123/messages/transcribe-stream?token=test-token&encoding=linear16&sample_rate=16000',
 		);
+		expect(harness.state.isListening).toBe(false);
 
 		socket.emitOpen();
 		await startPromise;
 
 		expect(mockRecorder.prepareToRecordAsync).not.toHaveBeenCalled();
 		expect(mockStartPcmAudioStream).toHaveBeenCalled();
+		expect(harness.state.isListening).toBe(true);
 		expect(harness.state.messages).toEqual([
 			{ id: 1000, sender: 'user', text: '', isSpeaking: true },
 		]);

@@ -20,6 +20,7 @@ import kotlin.math.sqrt
 private const val SAMPLE_RATE = 16_000
 private const val PLAYBACK_SAMPLE_RATE = 24_000
 private const val PCM_STREAM_CHUNK_SAMPLES = 1_600
+private const val MAX_CONSECUTIVE_EMPTY_READS = 10
 
 class AudioStreamModule : Module() {
   @Volatile private var isPcmStreaming = false
@@ -87,18 +88,36 @@ class AudioStreamModule : Module() {
       throw IllegalStateException("Unable to initialize microphone streaming")
     }
 
-    pcmAudioRecord = recorder
-    isPcmStreaming = true
+    try {
+      recorder.startRecording()
+    } catch (error: IllegalStateException) {
+      recorder.release()
+      throw IllegalStateException("Unable to start microphone streaming", error)
+    }
+    if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+      recorder.release()
+      throw IllegalStateException("Microphone did not enter the recording state")
+    }
+
+    synchronized(this) {
+      pcmAudioRecord = recorder
+      isPcmStreaming = true
+    }
     pcmStreamingThread = thread(name = "fikso-pcm-stream") {
       val chunk = ShortArray(PCM_STREAM_CHUNK_SAMPLES)
+      var consecutiveEmptyReads = 0
 
       try {
-        recorder.startRecording()
         while (isPcmStreaming) {
           val samplesRead = recorder.read(chunk, 0, chunk.size)
           if (samplesRead <= 0) {
+            consecutiveEmptyReads += 1
+            if (consecutiveEmptyReads >= MAX_CONSECUTIVE_EMPTY_READS) {
+              throw IllegalStateException("Microphone stopped producing audio")
+            }
             continue
           }
+          consecutiveEmptyReads = 0
 
           val bytes = ByteArray(samplesRead * 2)
           var squareSum = 0.0
@@ -129,7 +148,13 @@ class AudioStreamModule : Module() {
         } catch (_: IllegalStateException) {
         }
         recorder.release()
-        if (pcmAudioRecord === recorder) pcmAudioRecord = null
+        synchronized(this) {
+          if (pcmAudioRecord === recorder) {
+            pcmAudioRecord = null
+            isPcmStreaming = false
+            pcmStreamingThread = null
+          }
+        }
       }
     }
   }

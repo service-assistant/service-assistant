@@ -46,6 +46,10 @@ Zasady użycia znaczników:
 1. ::checklist
 Używaj dla czynności, które technik ma sprawdzić albo wykonać teraz.
 Każdy punkt zapisuj w osobnej linii zaczynającej się od "- ".
+Jeżeli dokumentacja zawiera numerowaną lub zagnieżdżoną listę czynności, przepisz
+wszystkie jej kroki i podpunkty do jednej sekcji ::checklist. Każdy krok i podpunkt
+ma być osobnym punktem "- ". Nie kopiuj numeracji z dokumentacji i nie umieszczaj
+części tej samej procedury poza sekcją ::checklist.
 Nie dawaj więcej niż 6 punktów w jednej sekcji checklist.
 Jeżeli dokumentacja zawiera więcej kroków, wybierz najbliższy logiczny etap procedury.
 Nie mieszaj ostrzeżeń z checklistą.
@@ -198,6 +202,65 @@ def promote_bare_checklist(answer: str) -> str:
     prefix = answer[:first_bullet_start].rstrip()
     bullets = answer[first_bullet_start:].lstrip()
     return f"{prefix}\n\n::checklist\n{bullets}".lstrip()
+
+
+_NUMBERED_ITEM = re.compile(r"(?<!\d)(\d{1,2})[.)][ \t]+")
+
+
+def normalize_numbered_checklist(answer: str) -> str:
+    """Turn a numbered procedure, including an embedded checklist, into one checklist."""
+    section_end_match = re.search(r"(?mi)^\s*::(?:warning|next)\b", answer)
+    section_end = section_end_match.start() if section_end_match else len(answer)
+    procedure = answer[:section_end]
+    markers = list(_NUMBERED_ITEM.finditer(procedure))
+
+    sequence: list[re.Match[str]] = []
+    for index, marker in enumerate(markers):
+        line_start = procedure.rfind("\n", 0, marker.start()) + 1
+        if procedure[line_start : marker.start()].strip():
+            continue
+
+        current = [marker]
+        expected = int(marker.group(1)) + 1
+        for candidate in markers[index + 1 :]:
+            number = int(candidate.group(1))
+            if number == expected:
+                current.append(candidate)
+                expected += 1
+            elif number > expected:
+                break
+
+        if len(current) >= 2:
+            sequence = current
+            break
+
+    if not sequence:
+        return answer
+
+    list_start = sequence[0].start()
+    prefix = procedure[:list_start].rstrip()
+    list_content = procedure[list_start:]
+    relative_markers = [
+        (marker.start() - list_start, marker.end() - list_start) for marker in sequence
+    ]
+
+    normalized_parts: list[str] = []
+    cursor = 0
+    for marker_start, marker_end in relative_markers:
+        normalized_parts.append(list_content[cursor:marker_start])
+        normalized_parts.append("\n- ")
+        cursor = marker_end
+    normalized_parts.append(list_content[cursor:])
+
+    normalized_list = "".join(normalized_parts)
+    normalized_list = re.sub(
+        r"(?mi)^\s*::checklist\b[ \t]*", "", normalized_list
+    ).strip()
+    normalized_list = re.sub(r"\n{3,}", "\n\n", normalized_list)
+
+    rebuilt = f"{prefix}\n\n::checklist\n{normalized_list}".lstrip()
+    suffix = answer[section_end:]
+    return f"{rebuilt.rstrip()}\n\n{suffix.lstrip()}".rstrip() if suffix else rebuilt
 
 
 def ensure_continuation_intro(answer: str) -> str:
