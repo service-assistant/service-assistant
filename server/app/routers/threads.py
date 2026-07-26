@@ -440,7 +440,9 @@ async def create_message(
                 yield _sse("chunk", visible_chunk)
 
         answer = "".join(answer_parts)
+        answer = llm.normalize_numbered_checklist(answer)
         answer = llm.promote_bare_checklist(answer)
+        answer = llm.limit_checklist_items(answer)
         if is_continuation:
             answer = llm.ensure_continuation_intro(answer)
         answer = llm.clean_completion_notice(answer)

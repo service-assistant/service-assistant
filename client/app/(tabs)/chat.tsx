@@ -309,6 +309,7 @@ export default function ChatScreen() {
 		abortVoiceInput,
 		handleMicPress,
 		isListening,
+		isMicStarting,
 		isMicProcessing,
 		isMicRestartBlocked,
 		isTranscribing,
@@ -618,6 +619,7 @@ export default function ChatScreen() {
 			isChatFocused &&
 			wakeWordEnabled &&
 			!isListening &&
+			!isMicStarting &&
 			!isLoading &&
 			!isTranscribing &&
 			!isGenerating &&
@@ -661,6 +663,7 @@ export default function ChatScreen() {
 			isLoading || isGenerating || messages[messages.length - 1]?.sender === 'user',
 		shouldFocusStartPromptInput,
 		isListening,
+		isMicStarting,
 		isMicProcessing,
 		isMicRestartBlocked,
 		isSpeechInputUnavailable,

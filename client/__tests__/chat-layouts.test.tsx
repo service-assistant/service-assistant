@@ -135,6 +135,7 @@ const createLayoutProps = () => ({
 	reserveMessageScrollSpace: false,
 	shouldFocusStartPromptInput: false,
 	isListening: false,
+	isMicStarting: false,
 	isMicProcessing: false,
 	isMicRestartBlocked: false,
 	isSpeechInputUnavailable: false,
