@@ -1,3 +1,4 @@
+import { isInlineMeasurementPointSeparator } from '@/utils/chat-stream';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
 import {
@@ -448,12 +449,16 @@ export const parseAssistantResponseBlocks = (text: string): AssistantResponseBlo
 			const markers = Array.from(content.matchAll(/(^|\n|[ \t])[-*](?:[ \t]+|$)/g)).filter(
 				(marker) => {
 					const markerStart = marker.index ?? 0;
-					const previousCharacter = content.slice(0, markerStart).trimEnd().at(-1) ?? '';
-					const nextCharacter =
-						content.slice(markerStart + marker[0].length).trimStart()[0] ?? '';
+					const textBefore = content.slice(0, markerStart);
+					const textAfter = content.slice(markerStart + marker[0].length);
+					const previousCharacter = textBefore.trimEnd().at(-1) ?? '';
+					const nextCharacter = textAfter.trimStart()[0] ?? '';
 
 					// A numeric range such as "54 - 66" is part of an item, not a new item.
-					return !(/\d/.test(previousCharacter) && /\d/.test(nextCharacter));
+					return !(
+						(/\d/.test(previousCharacter) && /\d/.test(nextCharacter)) ||
+						isInlineMeasurementPointSeparator(textBefore, textAfter)
+					);
 				},
 			);
 			const items = markers.map((marker, markerIndex) => {

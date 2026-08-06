@@ -155,6 +155,19 @@ describe('ChatMessages', () => {
 		]);
 	});
 
+	test('does not split an electrical measurement point into separate checklist items', () => {
+		expect(
+			parseAssistantResponseBlocks(
+				'::checklist\n- Check voltage at measurement point F50\n- B-) and compare the value.',
+			),
+		).toEqual([
+			{
+				type: 'checklist',
+				items: ['Check voltage at measurement point F50 - B-) and compare the value.'],
+			},
+		]);
+	});
+
 	test('parses next directive glued to Polish text', () => {
 		expect(
 			parseAssistantResponseBlocks(

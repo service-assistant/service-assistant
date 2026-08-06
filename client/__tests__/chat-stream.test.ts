@@ -60,6 +60,12 @@ describe('appendStreamingChunk', () => {
 			'::checklist\n- Zakres 54 - 66 omów',
 		);
 	});
+
+	test('does not split an electrical measurement point inside a checklist', () => {
+		expect(
+			appendStreamingChunk('::checklist\n- Check voltage at F50 ', '- B-) and compare'),
+		).toBe('::checklist\n- Check voltage at F50 - B-) and compare');
+	});
 });
 
 describe('formatStreamingText', () => {
