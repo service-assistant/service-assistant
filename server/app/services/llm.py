@@ -63,6 +63,10 @@ Przykład:
 2. ::warning
 Używaj dla informacji krytycznych dla bezpieczeństwa, ryzyka uszkodzenia urządzenia albo warunków, których nie wolno pominąć.
 Ostrzeżenie ma być krótkie.
+Każda sekcja ::warning ma zawierać jeden ciągły komunikat, maksymalnie 2 krótkie zdania.
+Nie używaj w ::warning list, myślników, gwiazdek ani numeracji.
+Czynności typu „upewnij się”, „sprawdź” lub „wykonaj” umieszczaj w ::checklist;
+w ::warning pozostaw tylko bezpośrednie zagrożenie albo zakaz.
 Nie dawaj więcej niż 2 ostrzeżeń w jednej odpowiedzi, chyba że dokumentacja wyraźnie wymaga więcej.
 
 Przykład:
@@ -87,6 +91,8 @@ Po zabezpieczeniu urządzenia następnym etapem jest opróżnienie zbiornika hyd
 
 Format odpowiedzi:
 
+- Jeżeli odpowiedź zawiera zarówno ::warning, jak i ::checklist, umieść wszystkie
+  sekcje ::warning przed sekcją ::checklist. Krótki wstęp może pozostać przed ostrzeżeniem.
 - Jeżeli odpowiedź jest prostą informacją, odpowiedz jednym krótkim zdaniem.
 - Jeżeli odpowiedź zawiera czynności do wykonania, zacznij od 1–2 krótkich zdań zwykłego tekstu, a potem użyj ::checklist.
 - Wstęp ma krótko powiedzieć, czego dotyczy aktualny etap i po co technik wykonuje te czynności.
@@ -107,6 +113,9 @@ Przykładowa odpowiedź:
 
 Ten etap dotyczy przygotowania urządzenia do demontażu pompy hydraulicznej. Najpierw trzeba bezpiecznie odłączyć zasilanie i przygotować układ do pracy serwisowej.
 
+::warning
+Nie rozpoczynaj pracy przy pompie przed odłączeniem akumulatora i zmniejszeniem ciśnienia w układzie.
+
 ::checklist
 - Obniż widły do najniższej pozycji.
 - Odłącz wtyczkę akumulatora.
@@ -114,9 +123,6 @@ Ten etap dotyczy przygotowania urządzenia do demontażu pompy hydraulicznej. Na
 - Odłącz przewody pomiarowe i zasilające.
 - Zdemontuj pompę i połóż ją na czystej powierzchni.
 - Sprawdź O-ring i wymień go, jeśli jest uszkodzony.
-
-::warning
-Nie rozpoczynaj pracy przy pompie przed odłączeniem akumulatora i zmniejszeniem ciśnienia w układzie.
 
 ::next
 Po demontażu pompy następnym etapem jest kontrola elementów i przygotowanie pompy do ponownego montażu.
@@ -332,6 +338,71 @@ def limit_checklist_items(answer: str, limit: int = 6) -> str:
     return "\n\n".join(part for part in parts if part).strip()
 
 
+def order_warnings_before_checklist(answer: str) -> str:
+    """Move warning sections before checklist sections, preserving the intro."""
+    directive_pattern = re.compile(r"(?mi)^\s*::(checklist|warning|next)\b[ \t]*")
+    matches = list(directive_pattern.finditer(answer))
+    if not matches:
+        return answer
+
+    first_checklist = next(
+        (
+            index
+            for index, match in enumerate(matches)
+            if match.group(1).lower() == "checklist"
+        ),
+        None,
+    )
+    if first_checklist is None or not any(
+        match.group(1).lower() == "warning" for match in matches[first_checklist + 1 :]
+    ):
+        return answer
+
+    prefix = answer[: matches[0].start()].strip()
+    blocks: list[tuple[str, str]] = []
+    for index, match in enumerate(matches):
+        block_end = (
+            matches[index + 1].start() if index + 1 < len(matches) else len(answer)
+        )
+        blocks.append(
+            (match.group(1).lower(), answer[match.start() : block_end].strip())
+        )
+
+    warnings = [block for block_type, block in blocks if block_type == "warning"]
+    remaining = [block for block_type, block in blocks if block_type != "warning"]
+    return "\n\n".join(part for part in [prefix, *warnings, *remaining] if part)
+
+
+def normalize_warning_lists(answer: str) -> str:
+    """Render accidental bullet lists in warning sections as continuous text."""
+    directive_pattern = re.compile(r"(?mi)^\s*::(checklist|warning|next)\b[ \t]*")
+    matches = list(directive_pattern.finditer(answer))
+    if not matches:
+        return answer
+
+    has_warning_list = False
+    parts = [answer[: matches[0].start()].strip()]
+    for index, match in enumerate(matches):
+        block_type = match.group(1).lower()
+        block_end = (
+            matches[index + 1].start() if index + 1 < len(matches) else len(answer)
+        )
+        content = answer[match.end() : block_end].strip()
+
+        if block_type == "warning" and re.search(r"(?m)^\s*[-*]\s+", content):
+            has_warning_list = True
+            content = re.sub(r"(?m)^\s*[-*]\s+", "", content)
+            content = " ".join(
+                line.strip() for line in content.splitlines() if line.strip()
+            )
+
+        parts.append(f"::{block_type}\n{content}".rstrip())
+
+    if not has_warning_list:
+        return answer
+    return "\n\n".join(part for part in parts if part)
+
+
 def _build_context(chunks: list[str], max_chars: int = 12000) -> str:
     parts: list[str] = []
     total = 0
@@ -404,8 +475,10 @@ def _messages(
             "technikowi WYŁĄCZNIE pierwszą akcję z tablicy 'actions'. "
             "Nie pokazuj pełnej kolejności diagnostyki ani możliwej wymiany części. "
             "Nie dodawaj wstępu, nagłówka ani zdania opisującego cel diagnostyki. "
-            "Zacznij odpowiedź bezpośrednio od sekcji ::checklist z dokładnie jednym "
-            "konkretnym zadaniem. Nie proś o opis obserwacji, wartość, jednostkę ani "
+            "Jeżeli akcja wymaga ostrzeżenia, zacznij od sekcji ::warning, a następnie "
+            "dodaj ::checklist. W przeciwnym razie zacznij bezpośrednio od ::checklist. "
+            "Sekcja ::checklist ma zawierać dokładnie jedno konkretne zadanie. "
+            "Nie proś o opis obserwacji, wartość, jednostkę ani "
             "potwierdzenie wykonania. Nie dodawaj sekcji ::next ani zapowiedzi kolejnego "
             "kroku. Nie nazywaj ani nie opisuj żadnej przyszłej akcji. "
             "Punkt checklisty musi zajmować jedną linię. Zakresy zapisuj słowami, np. "

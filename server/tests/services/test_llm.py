@@ -10,6 +10,8 @@ from app.services.llm import (
     is_completion_only_answer,
     limit_checklist_items,
     normalize_numbered_checklist,
+    normalize_warning_lists,
+    order_warnings_before_checklist,
     promote_bare_checklist,
     stream_query,
 )
@@ -34,7 +36,8 @@ def test_should_show_only_first_next_best_step_to_technician():
     assert "Nie pokazuj pełnej kolejności diagnostyki" in prompt
     assert "Nie nazywaj ani nie opisuj żadnej przyszłej akcji" in prompt
     assert "Nie dodawaj wstępu, nagłówka" in prompt
-    assert "Zacznij odpowiedź bezpośrednio od sekcji ::checklist" in prompt
+    assert "zacznij od sekcji ::warning, a następnie" in prompt
+    assert "W przeciwnym razie zacznij bezpośrednio od ::checklist" in prompt
     assert "Nie proś o opis obserwacji, wartość, jednostkę" in prompt
     assert "expected_information" not in prompt
     assert '"status": "actions"' in prompt
@@ -346,3 +349,48 @@ def test_should_preserve_existing_continuation_intro():
     answer = "Teraz zamontuj przewody.\n\n::checklist\n- Dokręć zacisk."
 
     assert ensure_continuation_intro(answer) == answer
+
+
+def test_should_move_warnings_before_checklist_and_keep_intro_first():
+    answer = (
+        "Krótki wstęp.\n\n"
+        "::checklist\n- Odłącz zasilanie.\n- Sprawdź przewody.\n\n"
+        "::warning\nNie dotykaj odsłoniętych zacisków.\n\n"
+        "::next\nSprawdź następny obwód."
+    )
+
+    ordered = order_warnings_before_checklist(answer)
+
+    assert ordered == (
+        "Krótki wstęp.\n\n"
+        "::warning\nNie dotykaj odsłoniętych zacisków.\n\n"
+        "::checklist\n- Odłącz zasilanie.\n- Sprawdź przewody.\n\n"
+        "::next\nSprawdź następny obwód."
+    )
+
+
+def test_should_leave_warning_before_checklist_unchanged():
+    answer = "::warning\nOdłącz zasilanie.\n\n::checklist\n- Sprawdź przewody."
+
+    assert order_warnings_before_checklist(answer) == answer
+
+
+def test_should_flatten_an_accidental_list_inside_warning():
+    answer = (
+        "::warning\n"
+        "- Nie wchodź pod podniesiony wózek.\n"
+        "- Nie używaj osłony kabiny do podnoszenia.\n\n"
+        "::checklist\n- Sprawdź liny."
+    )
+
+    assert normalize_warning_lists(answer) == (
+        "::warning\n"
+        "Nie wchodź pod podniesiony wózek. Nie używaj osłony kabiny do podnoszenia.\n\n"
+        "::checklist\n- Sprawdź liny."
+    )
+
+
+def test_should_leave_regular_warning_text_unchanged():
+    answer = "::warning\nNie wchodź pod podniesiony wózek."
+
+    assert normalize_warning_lists(answer) == answer
