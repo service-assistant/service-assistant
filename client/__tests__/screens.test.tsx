@@ -155,14 +155,6 @@ jest.mock('expo-status-bar', () => {
 	};
 });
 
-jest.mock('expo-blur', () => {
-	const React = require('react');
-	return {
-		BlurView: ({ children, ...props }: Record<string, unknown>) =>
-			React.createElement('BlurView', props, children),
-	};
-});
-
 jest.mock('expo-camera', () => {
 	const React = require('react');
 	return {
