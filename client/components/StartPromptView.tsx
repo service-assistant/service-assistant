@@ -1,6 +1,16 @@
 import { Feather } from '@expo/vector-icons';
 import React from 'react';
-import { Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+	Animated,
+	Dimensions,
+	type LayoutChangeEvent,
+	Pressable,
+	StyleSheet,
+	Text,
+	TextInput,
+	TouchableOpacity,
+	View,
+} from 'react-native';
 
 const PRIMARY_ORANGE = '#FF7A00';
 
@@ -43,7 +53,6 @@ type StartPromptViewProps = {
 
 export default function StartPromptView({
 	compact = false,
-	height,
 	keyboardFrame,
 	inputText,
 	inputRef,
@@ -57,19 +66,39 @@ export default function StartPromptView({
 }: StartPromptViewProps) {
 	const promptMaxWidth = compact ? '100%' : 980;
 	const chipWidth = compact ? '100%' : '48%';
-	const keyboardOverlap = keyboardFrame
-		? Math.max(0, height - keyboardFrame.screenY, keyboardFrame.height)
-		: 0;
-	const keyboardBottomOffset = keyboardOverlap + (compact ? 18 : 22);
 	const [placeholderIndex, setPlaceholderIndex] = React.useState(0);
 	const [isInputFocused, setIsInputFocused] = React.useState(false);
+	const [containerHeight, setContainerHeight] = React.useState(0);
+	const [contentLayout, setContentLayout] = React.useState({ y: 0, height: 0 });
+	const [inputLayout, setInputLayout] = React.useState({ y: 0, height: 0 });
 	const placeholderTranslateY = React.useRef(new Animated.Value(0)).current;
 	const placeholderOpacity = React.useRef(new Animated.Value(1)).current;
 	const hasSeenKeyboardFrameRef = React.useRef(false);
+	const maximumContainerHeightRef = React.useRef(0);
+	const screenHeightRef = React.useRef(Dimensions.get('screen').height);
 	const placeholderText = `Np. ${INPUT_PLACEHOLDERS[placeholderIndex]}`;
 	const shouldUseNativePlaceholder = inputText.length === 0 && isInputFocused;
 	const shouldShowAnimatedPlaceholder = inputText.length === 0 && !isInputFocused;
 	const nativePlaceholder = shouldUseNativePlaceholder ? placeholderText : '';
+	const isKeyboardLayoutActive = keyboardFrame !== null;
+	const currentInputBottom = contentLayout.y + inputLayout.y + inputLayout.height;
+	const screenHeight = Dimensions.get('screen').height;
+	if (screenHeightRef.current !== screenHeight) {
+		screenHeightRef.current = screenHeight;
+		maximumContainerHeightRef.current = containerHeight;
+	}
+	const stableContainerHeight = Math.max(containerHeight, maximumContainerHeightRef.current);
+	const containerTopOnScreen = Math.max(0, screenHeight - stableContainerHeight);
+	const keyboardTopInContainer = keyboardFrame
+		? keyboardFrame.screenY - containerTopOnScreen
+		: containerHeight;
+	const availableContainerBottom = Math.min(containerHeight, Math.max(0, keyboardTopInContainer));
+	const desiredInputBottom = availableContainerBottom - 12;
+	const keyboardTranslateY =
+		isKeyboardLayoutActive && currentInputBottom > 0
+			? desiredInputBottom - currentInputBottom
+			: 0;
+	const keyboardOffsetStyle = { transform: [{ translateY: keyboardTranslateY }] };
 
 	React.useEffect(() => {
 		let activeAnimation: Animated.CompositeAnimation | null = null;
@@ -139,20 +168,10 @@ export default function StartPromptView({
 
 	React.useEffect(() => {
 		if (!shouldFocusInput) return;
-
-		const focusInput = () => inputRef.current?.focus();
-		const firstFocusTimeout = setTimeout(focusInput, 0);
-		const secondFocusTimeout = setTimeout(focusInput, 80);
-		const retryFocusTimeout = setTimeout(focusInput, 180);
-		const lateFocusTimeout = setTimeout(focusInput, 320);
-
-		return () => {
-			clearTimeout(firstFocusTimeout);
-			clearTimeout(secondFocusTimeout);
-			clearTimeout(retryFocusTimeout);
-			clearTimeout(lateFocusTimeout);
-		};
-	}, [inputRef, keyboardFrame, shouldFocusInput]);
+		if (!inputRef.current?.isFocused?.()) {
+			inputRef.current?.focus();
+		}
+	}, [inputRef, shouldFocusInput]);
 
 	React.useEffect(() => {
 		if (keyboardFrame) {
@@ -174,6 +193,7 @@ export default function StartPromptView({
 
 	const handlePressIn = () => {
 		setIsInputFocused(true);
+		onShowTextInputChange(true);
 	};
 
 	const handleBlur = () => {
@@ -186,13 +206,15 @@ export default function StartPromptView({
 		setIsInputFocused(false);
 	};
 
-	const renderInput = (autoFocus = false) => (
-		<View
+	const renderInput = (onLayout?: (event: LayoutChangeEvent) => void) => (
+		<Pressable
+			onLayout={onLayout}
+			onPress={() => inputRef.current?.focus()}
+			hitSlop={{ top: 12, right: 8, bottom: 12, left: 8 }}
+			accessible={false}
 			className='flex-row items-center'
 			style={{
 				width: '100%',
-				maxWidth: keyboardFrame ? promptMaxWidth : undefined,
-				alignSelf: keyboardFrame ? 'center' : undefined,
 				height: compact ? 62 : 74,
 				borderRadius: compact ? 31 : 37,
 				backgroundColor: lightMode ? '#FFFFFF' : '#242424',
@@ -200,7 +222,7 @@ export default function StartPromptView({
 				borderColor: lightMode ? 'rgba(20, 20, 20, 0.09)' : 'rgba(255, 255, 255, 0.08)',
 				paddingLeft: compact ? 18 : 32,
 				paddingRight: compact ? 8 : 10,
-				marginBottom: keyboardFrame ? undefined : compact ? 20 : 22,
+				marginBottom: compact ? 20 : 22,
 				shadowColor: '#141414',
 				shadowOffset: { width: 0, height: 8 },
 				shadowOpacity: lightMode ? 0.04 : 0.14,
@@ -220,6 +242,7 @@ export default function StartPromptView({
 				onBlur={handleBlur}
 				onEndEditing={handleEndEditing}
 				style={{
+					height: '100%',
 					fontSize: compact ? 16 : 20,
 					lineHeight: compact ? 22 : 27,
 					paddingHorizontal: 0,
@@ -227,7 +250,7 @@ export default function StartPromptView({
 					includeFontPadding: false,
 					textAlignVertical: 'center',
 				}}
-				autoFocus={autoFocus}
+				autoFocus={false}
 			/>
 			{shouldShowAnimatedPlaceholder ? (
 				<View
@@ -274,27 +297,54 @@ export default function StartPromptView({
 				}}>
 				<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
 			</TouchableOpacity>
-		</View>
+		</Pressable>
 	);
 
 	return (
 		<View
 			className='flex-1 justify-center'
+			onLayout={(event) => {
+				const nextHeight = event.nativeEvent.layout.height;
+				if (!keyboardFrame) {
+					maximumContainerHeightRef.current = Math.max(
+						maximumContainerHeightRef.current,
+						nextHeight,
+					);
+				}
+				setContainerHeight((currentHeight) =>
+					currentHeight === nextHeight ? currentHeight : nextHeight,
+				);
+			}}
 			style={{
 				paddingHorizontal: compact ? 20 : 24,
 				paddingBottom: compact ? 154 : 28,
 			}}>
 			<View
-				style={{
-					width: '100%',
-					maxWidth: promptMaxWidth,
-					alignSelf: 'center',
-				}}>
-				<View style={{ opacity: keyboardFrame ? 0 : 1 }}>
+				collapsable={false}
+				onLayout={(event) => {
+					const { y, height: nextHeight } = event.nativeEvent.layout;
+					setContentLayout((currentLayout) =>
+						currentLayout.y === y && currentLayout.height === nextHeight
+							? currentLayout
+							: { y, height: nextHeight },
+					);
+				}}
+				style={[
+					{
+						width: '100%',
+						maxWidth: promptMaxWidth,
+						alignSelf: 'center',
+					},
+					keyboardOffsetStyle,
+				]}>
+				<View>
 					<Text
 						className={`${lightMode ? 'text-[#18181B]' : 'text-white'} font-semibold`}
 						numberOfLines={1}
 						style={{
+							width: '100%',
+							maxWidth: promptMaxWidth,
+							alignSelf: 'center',
 							fontSize: compact ? 22 : 26,
 							lineHeight: compact ? 28 : 33,
 							marginBottom: compact ? 6 : 8,
@@ -307,6 +357,9 @@ export default function StartPromptView({
 						adjustsFontSizeToFit={!compact}
 						minimumFontScale={0.86}
 						style={{
+							width: '100%',
+							maxWidth: promptMaxWidth,
+							alignSelf: 'center',
 							color: lightMode ? '#52525B' : 'rgba(244, 244, 245, 0.84)',
 							fontSize: compact ? 14 : 17,
 							lineHeight: compact ? 20 : 24,
@@ -316,19 +369,22 @@ export default function StartPromptView({
 					</Text>
 				</View>
 
-				<View
-					pointerEvents={keyboardFrame ? 'none' : 'auto'}
-					style={{ opacity: keyboardFrame ? 0 : 1 }}>
-					{keyboardFrame ? null : renderInput(shouldFocusInput)}
-				</View>
+				{renderInput((event) => {
+					const { y, height: nextHeight } = event.nativeEvent.layout;
+					setInputLayout((currentLayout) =>
+						currentLayout.y === y && currentLayout.height === nextHeight
+							? currentLayout
+							: { y, height: nextHeight },
+					);
+				})}
 
 				<View
 					className='flex-row flex-wrap justify-center'
-					pointerEvents={keyboardFrame ? 'none' : 'auto'}
+					pointerEvents={isKeyboardLayoutActive ? 'none' : 'auto'}
 					style={{
 						columnGap: compact ? 8 : 12,
 						rowGap: compact ? 6 : 9,
-						opacity: keyboardFrame ? 0 : 1,
+						opacity: isKeyboardLayoutActive ? 0 : 1,
 					}}>
 					{QUICK_PROMPTS.map((prompt) => (
 						<TouchableOpacity
@@ -373,46 +429,6 @@ export default function StartPromptView({
 					))}
 				</View>
 			</View>
-			{keyboardFrame ? (
-				<View
-					className='absolute left-0 right-0'
-					style={{
-						bottom: keyboardBottomOffset,
-						paddingHorizontal: compact ? 20 : 24,
-						zIndex: 20,
-					}}>
-					<Text
-						className={`${lightMode ? 'text-[#18181B]' : 'text-white'} font-semibold`}
-						numberOfLines={1}
-						style={{
-							width: '100%',
-							maxWidth: promptMaxWidth,
-							alignSelf: 'center',
-							fontSize: compact ? 22 : 26,
-							lineHeight: compact ? 28 : 33,
-							marginBottom: compact ? 6 : 8,
-						}}>
-						Jak mogę pomóc?
-					</Text>
-					<Text
-						className='font-normal'
-						numberOfLines={1}
-						adjustsFontSizeToFit
-						minimumFontScale={0.84}
-						style={{
-							width: '100%',
-							maxWidth: promptMaxWidth,
-							alignSelf: 'center',
-							color: lightMode ? '#52525B' : 'rgba(244, 244, 245, 0.84)',
-							fontSize: compact ? 14 : 17,
-							lineHeight: compact ? 20 : 24,
-							marginBottom: compact ? 24 : 34,
-						}}>
-						Zadaj pytanie o usterkę, diagnostykę lub procedurę naprawy.
-					</Text>
-					{renderInput(true)}
-				</View>
-			) : null}
 		</View>
 	);
 }

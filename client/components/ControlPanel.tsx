@@ -1,7 +1,6 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import React, { useEffect, useRef } from 'react';
-import { Animated, Easing, Image, Platform, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Easing, Image, Text, TouchableOpacity, View } from 'react-native';
 
 const LISTENING_CYAN = '#06B6D4';
 const LIGHT_STARTING_BACKGROUND = '#CFFAFE';
@@ -292,14 +291,6 @@ export default function ControlPanel({
 		borderColor: lightMode ? '#D4D4D8' : '#2A2D36',
 		backgroundColor: lightMode ? '#FFFFFF' : '#1B1D25',
 	};
-	const controlPanelBlurProps =
-		Platform.OS === 'android'
-			? ({
-					intensity: 8,
-					blurReductionFactor: 4,
-					experimentalBlurMethod: 'dimezisBlurView',
-				} as const)
-			: { intensity: Platform.OS === 'web' ? 18 : 24 };
 	const panelBackdropStyle = {
 		borderRadius: panelRadius,
 		borderWidth: 1,
@@ -336,9 +327,6 @@ export default function ControlPanel({
 					borderTopLeftRadius: 0,
 					borderTopRightRadius: 0,
 				}
-			: {}),
-		...(Platform.OS === 'web' && !useEdgeToEdge
-			? ({ backdropFilter: 'blur(8px)' } as any)
 			: {}),
 	};
 
@@ -552,9 +540,8 @@ export default function ControlPanel({
 					/>
 				</View>
 			) : (
-				<BlurView
-					{...controlPanelBlurProps}
-					tint={lightMode ? 'light' : 'dark'}
+				<View
+					testID='control-panel-solid-backdrop'
 					pointerEvents='none'
 					className='absolute inset-0 overflow-hidden'
 					style={panelBackdropStyle}
@@ -577,6 +564,7 @@ export default function ControlPanel({
 								width: panelWidth,
 								height: panelHeight,
 								paddingVertical: 34,
+								zIndex: 1,
 							}
 				}>
 				{isHorizontal ? (

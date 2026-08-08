@@ -5,6 +5,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import 'react-native-reanimated';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import '../global.css';
@@ -22,21 +23,23 @@ export default function RootLayout() {
 
 	return (
 		<GestureHandlerRootView style={{ flex: 1 }}>
-			<SafeAreaProvider>
-				<NetworkStatusProvider>
-					<ThemeProvider value={lightThemeEnabled ? DefaultTheme : DarkTheme}>
-						<Stack>
-							<Stack.Screen name='(tabs)' options={{ headerShown: false }} />
-							<Stack.Screen
-								name='modal'
-								options={{ presentation: 'modal', title: 'Modal' }}
-							/>
-						</Stack>
-						<NetworkStatusBanner />
-						<StatusBar hidden={true} />
-					</ThemeProvider>
-				</NetworkStatusProvider>
-			</SafeAreaProvider>
+			<KeyboardProvider preload={false}>
+				<SafeAreaProvider>
+					<NetworkStatusProvider>
+						<ThemeProvider value={lightThemeEnabled ? DefaultTheme : DarkTheme}>
+							<Stack>
+								<Stack.Screen name='(tabs)' options={{ headerShown: false }} />
+								<Stack.Screen
+									name='modal'
+									options={{ presentation: 'modal', title: 'Modal' }}
+								/>
+							</Stack>
+							<NetworkStatusBanner />
+							<StatusBar hidden={true} />
+						</ThemeProvider>
+					</NetworkStatusProvider>
+				</SafeAreaProvider>
+			</KeyboardProvider>
 		</GestureHandlerRootView>
 	);
 }

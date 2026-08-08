@@ -446,6 +446,8 @@ async def create_message(
         if is_continuation:
             answer = llm.ensure_continuation_intro(answer)
         answer = llm.clean_completion_notice(answer)
+        answer = llm.normalize_warning_lists(answer)
+        answer = llm.order_warnings_before_checklist(answer)
         has_continuation = llm.has_continuation_marker(answer) or bool(
             body.diagnostic_mode_enabled
             and diagnostic_plan

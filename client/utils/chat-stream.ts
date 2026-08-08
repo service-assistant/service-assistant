@@ -11,15 +11,24 @@ export const parseStreamData = <T>(data: string | null): T | string => {
 export const buildChunkImageUrl = (serverUrl: string, imagePath: string) =>
 	`${serverUrl}/api/images/${encodeURIComponent(imagePath)}`;
 
+export const isInlineMeasurementPointSeparator = (textBefore: string, textAfter: string) =>
+	/\b[A-Z]{1,4}\d{1,4}\s*$/.test(textBefore) &&
+	/^[A-Z]{1,4}\d*[+-]\)/.test(textAfter.trimStart());
+
 export const appendStreamingChunk = (currentText: string, chunkText: string) => {
 	const checklistMarker = chunkText.match(/^[ \t]*[-*](?:[ \t]+|$)/);
 	const startsChecklistItem = checklistMarker !== null;
 	const markerEnd = checklistMarker?.[0].length ?? 0;
 	const nextCharacter = chunkText.slice(markerEnd).trimStart()[0] ?? '';
 	const continuesNumericRange = /\d\s*$/.test(currentText) && /^\d/.test(nextCharacter);
+	const continuesMeasurementPoint = isInlineMeasurementPointSeparator(
+		currentText,
+		chunkText.slice(markerEnd),
+	);
 	if (
 		!startsChecklistItem ||
 		continuesNumericRange ||
+		continuesMeasurementPoint ||
 		!currentText ||
 		currentText.endsWith('\n')
 	) {

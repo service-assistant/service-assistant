@@ -13,9 +13,9 @@ import React, {
 	useState,
 } from 'react';
 import {
+	AppState,
 	BackHandler,
 	Keyboard,
-	Platform,
 	ScrollView,
 	StyleSheet,
 	TextInput,
@@ -191,7 +191,7 @@ export default function ChatScreen() {
 	const [isGenerating, setIsGenerating] = useState<boolean>(false);
 	const [availableFiles, setAvailableFiles] = useState<AvailableFile[]>([]);
 	const [isAvailableFilesLoading, setIsAvailableFilesLoading] = useState<boolean>(true);
-	const [showTextInput, setShowTextInput] = useState<boolean>(false);
+	const [showTextInput, setShowTextInputState] = useState<boolean>(false);
 	const [inputText, setInputText] = useState<string>('');
 	const [shouldFocusStartPromptInput, setShouldFocusStartPromptInput] = useState<boolean>(false);
 	const [keyboardFrame, setKeyboardFrame] = useState<KeyboardFrame | null>(null);
@@ -208,10 +208,33 @@ export default function ChatScreen() {
 	const hasStartedChat = messages.length > 0;
 	const messagesScrollViewRef = useRef<ScrollView>(null);
 	const startPromptInputRef = useRef<TextInput>(null);
+	const isAppActiveRef = useRef(AppState.currentState === 'active');
+	const keyboardInteractionAllowedRef = useRef(false);
 	const retryInProgressRef = useRef(false);
 	const askAPIRef = useRef<(question: string) => void>(() => undefined);
 	const schemaViewerRef = useRef<FullscreenSchemaOverlayHandle>(null);
 	const currentImageRef = useRef<SchemaImageSource | null>(null);
+	const setShowTextInput = useCallback<Dispatch<SetStateAction<boolean>>>((nextValue) => {
+		if (typeof nextValue !== 'function') {
+			keyboardInteractionAllowedRef.current = nextValue;
+		}
+		setShowTextInputState((currentValue) => {
+			const nextVisibility =
+				typeof nextValue === 'function' ? nextValue(currentValue) : nextValue;
+			if (typeof nextValue === 'function') {
+				keyboardInteractionAllowedRef.current = nextVisibility;
+			}
+			return nextVisibility;
+		});
+	}, []);
+	const resetKeyboardUi = useCallback(() => {
+		keyboardInteractionAllowedRef.current = false;
+		startPromptInputRef.current?.blur();
+		Keyboard.dismiss();
+		setKeyboardFrame(null);
+		setShouldFocusStartPromptInput(false);
+		setShowTextInputState(false);
+	}, []);
 	const setCurrentImage = useCallback<Dispatch<SetStateAction<SchemaImageSource | null>>>(
 		(nextValue) => {
 			const nextImageUrl =
@@ -351,16 +374,25 @@ export default function ChatScreen() {
 	);
 
 	useEffect(() => {
-		const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-		const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+		const subscription = AppState.addEventListener('change', (nextState) => {
+			isAppActiveRef.current = nextState === 'active';
+			if (nextState !== 'active') {
+				resetKeyboardUi();
+			}
+		});
 
-		const showSubscription = Keyboard.addListener(showEvent, (event) => {
+		return () => subscription.remove();
+	}, [resetKeyboardUi]);
+
+	useEffect(() => {
+		const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+			if (!isAppActiveRef.current || !keyboardInteractionAllowedRef.current) return;
 			setKeyboardFrame({
 				screenY: event.endCoordinates.screenY,
 				height: event.endCoordinates.height,
 			});
 		});
-		const hideSubscription = Keyboard.addListener(hideEvent, () => {
+		const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
 			setKeyboardFrame(null);
 			if (!hasStartedChat) {
 				setShowTextInput(false);
@@ -371,7 +403,7 @@ export default function ChatScreen() {
 			showSubscription.remove();
 			hideSubscription.remove();
 		};
-	}, [hasStartedChat]);
+	}, [hasStartedChat, setShowTextInput]);
 
 	useEffect(() => {
 		const abortController = new AbortController();
@@ -532,6 +564,7 @@ export default function ChatScreen() {
 		resetVoiceInput,
 		sessionKey,
 		setCurrentImage,
+		setShowTextInput,
 		showServiceError,
 		stopAssistantAudio,
 		stopChatApi,

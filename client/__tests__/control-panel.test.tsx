@@ -46,14 +46,6 @@ jest.mock('react-native', () => {
 	};
 });
 
-jest.mock('expo-blur', () => {
-	const React = require('react');
-	return {
-		BlurView: ({ children, ...props }: Record<string, unknown>) =>
-			React.createElement('BlurView', props, children),
-	};
-});
-
 jest.mock('@expo/vector-icons', () => {
 	const React = require('react');
 	return {
@@ -82,11 +74,16 @@ describe('ControlPanel', () => {
 	test('renders horizontal controls and wires microphone and writing actions', () => {
 		const tree = <ControlPanel {...baseProps} />;
 		const buttons = findByType(tree, 'TouchableOpacity');
+		const backdrop = findByType(tree, 'View').find(
+			(view) => view.props.testID === 'control-panel-solid-backdrop',
+		);
 
 		buttons[1].props.onPress();
 		buttons[2].props.onPress();
 
-		expect(findByType(tree, 'BlurView')[0].props.tint).toBe('dark');
+		expect(backdrop?.props.style).toMatchObject({
+			backgroundColor: 'rgba(20, 22, 30, 0.92)',
+		});
 		expect(getTextContent(tree)).toContain('Naciśnij żeby mówić');
 		expect(baseProps.onMicPress).toHaveBeenCalled();
 		expect(baseProps.onWritingPress).toHaveBeenCalled();
@@ -101,7 +98,6 @@ describe('ControlPanel', () => {
 			(view) => view.props.testID === 'control-panel-frosted-haze',
 		);
 
-		expect(findByType(tree, 'BlurView')).toHaveLength(0);
 		expect(backdrop?.props.style).toMatchObject({
 			backgroundColor: 'rgba(12, 14, 20, 0.84)',
 			bottom: -4,

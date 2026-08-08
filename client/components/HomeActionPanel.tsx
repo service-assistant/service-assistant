@@ -1,5 +1,4 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import React, { useEffect, useRef, useState } from 'react';
@@ -150,7 +149,6 @@ export const getHomeActionPanelListPadding = ({
 export default function HomeActionPanel({
 	isPortrait,
 	isTablet,
-	isWeb,
 	onServiceError,
 }: HomeActionPanelProps) {
 	const insets = useSafeAreaInsets();
@@ -163,14 +161,6 @@ export default function HomeActionPanel({
 	const listeningPulseAnim = useRef(new Animated.Value(0)).current;
 	const cameraRef = useRef<any>(null);
 	const bottomBar = getHomeActionPanelMetrics(isPortrait, isTablet);
-	const bottomBarBlurProps =
-		Platform.OS === 'android'
-			? ({
-					intensity: 10,
-					blurReductionFactor: 4,
-					experimentalBlurMethod: 'dimezisBlurView',
-				} as const)
-			: { intensity: isWeb ? 30 : 40 };
 	const micUiState: MicUiState = isListening ? 'listening' : 'idle';
 	const micStyle = MIC_STATE_STYLES[micUiState];
 	const listeningPulseScale = listeningPulseAnim.interpolate({
@@ -276,9 +266,7 @@ export default function HomeActionPanel({
 						width: bottomBar.panelWidth,
 						height: bottomBar.panelHeight,
 					}}>
-					<BlurView
-						{...bottomBarBlurProps}
-						tint='dark'
+					<View
 						pointerEvents='none'
 						className='absolute inset-0 overflow-hidden'
 						style={{
@@ -291,10 +279,7 @@ export default function HomeActionPanel({
 							shadowRadius: 36,
 							elevation: 12,
 							zIndex: 0,
-							backgroundColor:
-								Platform.OS === 'android'
-									? 'rgba(18, 18, 22, 0.82)'
-									: 'rgba(24, 24, 28, 0.76)',
+							backgroundColor: 'rgba(18, 18, 22, 0.9)',
 						}}
 					/>
 					<View

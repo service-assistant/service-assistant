@@ -1,3 +1,4 @@
+import { isInlineMeasurementPointSeparator } from '@/utils/chat-stream';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useEffect, useRef } from 'react';
 import {
@@ -448,12 +449,16 @@ export const parseAssistantResponseBlocks = (text: string): AssistantResponseBlo
 			const markers = Array.from(content.matchAll(/(^|\n|[ \t])[-*](?:[ \t]+|$)/g)).filter(
 				(marker) => {
 					const markerStart = marker.index ?? 0;
-					const previousCharacter = content.slice(0, markerStart).trimEnd().at(-1) ?? '';
-					const nextCharacter =
-						content.slice(markerStart + marker[0].length).trimStart()[0] ?? '';
+					const textBefore = content.slice(0, markerStart);
+					const textAfter = content.slice(markerStart + marker[0].length);
+					const previousCharacter = textBefore.trimEnd().at(-1) ?? '';
+					const nextCharacter = textAfter.trimStart()[0] ?? '';
 
 					// A numeric range such as "54 - 66" is part of an item, not a new item.
-					return !(/\d/.test(previousCharacter) && /\d/.test(nextCharacter));
+					return !(
+						(/\d/.test(previousCharacter) && /\d/.test(nextCharacter)) ||
+						isInlineMeasurementPointSeparator(textBefore, textAfter)
+					);
 				},
 			);
 			const items = markers.map((marker, markerIndex) => {
@@ -674,9 +679,13 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 						className={
 							compact
 								? 'self-end bg-[#B85000] rounded-[18px] px-4 py-3 mb-5'
-								: 'self-end bg-[#B85000] rounded-full px-7 py-2.5 mb-8'
+								: 'self-end bg-[#B85000] rounded-[18px] px-6 py-3 mb-8'
 						}
-						style={{ maxWidth: compact ? '88%' : '65%' }}>
+						style={{
+							maxWidth: compact ? '88%' : '65%',
+							minWidth: 0,
+							flexShrink: 1,
+						}}>
 						{message.isSpeaking && !message.text ? (
 							isListening ? (
 								<SoundWaveformIndicator soundLevel={soundLevelAnim} />
@@ -688,8 +697,9 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 								className={
 									compact
 										? 'text-white text-[17px] leading-[22px]'
-										: 'text-white text-[18px]'
-								}>
+										: 'text-white text-[18px] leading-[24px]'
+								}
+								style={{ flexShrink: 1, minWidth: 0 }}>
 								{message.text}
 							</Text>
 						)}
