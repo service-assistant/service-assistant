@@ -7,6 +7,7 @@ import StartPromptView from '../components/StartPromptView';
 
 let mockReactStateValues: unknown[] = [];
 let mockReactStateIndex = 0;
+let mockScreenDimensions = { width: 1280, height: 800 };
 
 jest.mock('react', () => {
 	const actualReact = jest.requireActual('react');
@@ -60,7 +61,11 @@ jest.mock('react-native', () => {
 					callback?.({ finished: true }),
 			})),
 		},
+		Dimensions: {
+			get: jest.fn(() => mockScreenDimensions),
+		},
 		Modal: createHost('Modal'),
+		Platform: { OS: 'android' },
 		Pressable: createHost('Pressable'),
 		ScrollView: createHost('ScrollView'),
 		StyleSheet: { hairlineWidth: 0.5 },
@@ -131,6 +136,7 @@ const findByText = (node: unknown, text: string) =>
 beforeEach(() => {
 	mockReactStateValues = [];
 	mockReactStateIndex = 0;
+	mockScreenDimensions = { width: 1280, height: 800 };
 });
 
 const files: AvailableFile[] = [
@@ -321,6 +327,88 @@ describe('StartPromptView', () => {
 		expect(inputs[0].props.autoFocus).toBe(false);
 		expect(findByText(tree, 'Jak mogę pomóc?')).toBeTruthy();
 	});
+
+	test('focuses the start input only once when writing mode is opened', () => {
+		const focus = jest.fn();
+		const props = {
+			...createProps(),
+			shouldFocusInput: true,
+			inputRef: { current: { focus, isFocused: () => false } } as never,
+		};
+
+		const tree = <StartPromptView {...props} />;
+		const input = findByType(tree, 'TextInput')[0];
+
+		expect(focus).toHaveBeenCalledTimes(1);
+		expect(input.props.autoFocus).toBe(false);
+	});
+
+	test.each([
+		{
+			name: 'phone portrait',
+			compact: true,
+			screen: { width: 583, height: 1289 },
+			containerHeight: 1142,
+			contentLayout: { y: 100, height: 650 },
+			inputLayout: { y: 165, height: 74 },
+			keyboardFrame: { screenY: 805, height: 484 },
+			expectedTranslateY: 307,
+		},
+		{
+			name: 'tablet portrait',
+			compact: true,
+			screen: { width: 800, height: 1200 },
+			containerHeight: 1100,
+			contentLayout: { y: 200, height: 700 },
+			inputLayout: { y: 450, height: 74 },
+			keyboardFrame: { screenY: 700, height: 500 },
+			expectedTranslateY: -136,
+		},
+		{
+			name: 'phone and tablet landscape',
+			compact: false,
+			screen: { width: 1280, height: 600 },
+			containerHeight: 524,
+			contentLayout: { y: 30, height: 360 },
+			inputLayout: { y: 180, height: 74 },
+			keyboardFrame: { screenY: 300, height: 300 },
+			expectedTranslateY: -72,
+		},
+	])(
+		'snaps the whole start screen above the keyboard on $name without animation',
+		({
+			compact,
+			screen,
+			containerHeight,
+			contentLayout,
+			inputLayout,
+			keyboardFrame,
+			expectedTranslateY,
+		}) => {
+			mockScreenDimensions = screen;
+			mockReactStateValues = [0, true, containerHeight, contentLayout, inputLayout];
+
+			const elements = collectElements(
+				<StartPromptView
+					{...createProps()}
+					compact={compact}
+					height={screen.height}
+					keyboardFrame={keyboardFrame}
+				/>,
+			);
+			const positionedContent = elements.find(
+				(element) =>
+					element.type === 'View' &&
+					Array.isArray(element.props.style) &&
+					element.props.style[1]?.transform,
+			);
+
+			expect(positionedContent?.props.style[1]).toEqual({
+				transform: [{ translateY: expectedTranslateY }],
+			});
+			expect(elements.some((element) => element.type === 'Reanimated.View')).toBe(false);
+		},
+	);
 
 	test('uses animated placeholder without focus and native placeholder with focus', () => {
 		const props = { ...createProps(), inputText: '' };

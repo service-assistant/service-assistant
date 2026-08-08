@@ -16,7 +16,6 @@ import {
 	AppState,
 	BackHandler,
 	Keyboard,
-	Platform,
 	ScrollView,
 	StyleSheet,
 	TextInput,
@@ -386,23 +385,14 @@ export default function ChatScreen() {
 	}, [resetKeyboardUi]);
 
 	useEffect(() => {
-		const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-		const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-
-		const showSubscription = Keyboard.addListener(showEvent, (event) => {
-			if (
-				!isAppActiveRef.current ||
-				!keyboardInteractionAllowedRef.current ||
-				hasStartedChat
-			) {
-				return;
-			}
+		const showSubscription = Keyboard.addListener('keyboardDidShow', (event) => {
+			if (!isAppActiveRef.current || !keyboardInteractionAllowedRef.current) return;
 			setKeyboardFrame({
 				screenY: event.endCoordinates.screenY,
 				height: event.endCoordinates.height,
 			});
 		});
-		const hideSubscription = Keyboard.addListener(hideEvent, () => {
+		const hideSubscription = Keyboard.addListener('keyboardDidHide', () => {
 			setKeyboardFrame(null);
 			if (!hasStartedChat) {
 				setShowTextInput(false);

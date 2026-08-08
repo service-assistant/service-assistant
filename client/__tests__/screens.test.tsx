@@ -480,6 +480,27 @@ describe('tab screens', () => {
 		expect(reactNative.Keyboard.dismiss).toHaveBeenCalledTimes(1);
 	});
 
+	test('chat screen applies only the final Android keyboard frame', () => {
+		setupChatHooks();
+		mockWindowDimensions = { width: 500, height: 900 };
+		mockSearchParams = { deviceId: '1', chatSession: 'android-keyboard-resize' };
+		jest.mocked(global.fetch).mockResolvedValue(createJsonResponse([]));
+		const reactNative = require('react-native') as {
+			Platform: { OS: string };
+		};
+		reactNative.Platform.OS = 'android';
+		const ChatScreen = require('../app/(tabs)/chat').default;
+
+		collectElements(renderScreen(ChatScreen));
+		const keyboardEvents = (mockKeyboardAddListener.mock.calls as unknown[][]).map(
+			([eventName]) => eventName,
+		);
+
+		expect(keyboardEvents).toContain('keyboardDidHide');
+		expect(keyboardEvents).toContain('keyboardDidShow');
+		expect(keyboardEvents).not.toContain('keyboardWillShow');
+	});
+
 	test('chat screen uses portrait layout and navigates back to home', () => {
 		const hooks = setupChatHooks();
 		mockWindowDimensions = { width: 500, height: 900 };

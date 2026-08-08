@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import React from 'react';
 import {
 	Animated,
+	Dimensions,
 	Image,
 	Pressable,
 	ScrollView,
@@ -11,11 +12,6 @@ import {
 	View,
 	type LayoutChangeEvent,
 } from 'react-native';
-import { useGenericKeyboardHandler } from 'react-native-keyboard-controller';
-import Reanimated, {
-	useAnimatedStyle,
-	useSharedValue,
-} from 'react-native-reanimated';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
 import { getPortraitChatHeaderMetrics } from '@/components/chat-header-metrics';
@@ -260,7 +256,6 @@ function FloatingChatInput({
 	inputText,
 	onChangeText,
 	onSend,
-	restingBottom,
 	autoFocus = false,
 	lightMode = false,
 }: {
@@ -268,52 +263,13 @@ function FloatingChatInput({
 	inputText: string;
 	onChangeText: (text: string) => void;
 	onSend: () => void;
-	restingBottom: number;
 	autoFocus?: boolean;
 	lightMode?: boolean;
 }) {
 	const inputRef = React.useRef<TextInput>(null);
-	const keyboardHeight = useSharedValue(0);
-
-	useGenericKeyboardHandler(
-		{
-			onMove: (event) => {
-				'worklet';
-				keyboardHeight.value = Math.max(0, event.height);
-			},
-			onInteractive: (event) => {
-				'worklet';
-				keyboardHeight.value = Math.max(0, event.height);
-			},
-			onEnd: (event) => {
-				'worklet';
-				keyboardHeight.value = Math.max(0, event.height);
-			},
-		},
-		[],
-	);
-
-	const keyboardOffsetStyle = useAnimatedStyle(() => {
-		const restingOffset = Math.max(0, restingBottom - KEYBOARD_INPUT_GAP);
-
-		return {
-			transform: [
-				{
-					translateY:
-						keyboardHeight.value > 0
-							? -Math.max(0, keyboardHeight.value - restingOffset)
-							: 0,
-				},
-			],
-		};
-	});
 
 	return (
-		<Reanimated.View
-			collapsable={false}
-			renderToHardwareTextureAndroid
-			shouldRasterizeIOS
-			style={keyboardOffsetStyle}>
+		<View collapsable={false}>
 			<Pressable
 				onPress={() => inputRef.current?.focus()}
 				hitSlop={{ top: 12, right: 8, bottom: 12, left: 8 }}
@@ -368,7 +324,7 @@ function FloatingChatInput({
 					<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
 				</TouchableOpacity>
 			</Pressable>
-		</Reanimated.View>
+		</View>
 	);
 }
 
@@ -559,7 +515,9 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	const headerLogoHeight = isPhonePortrait ? 15 : 20;
 	const headerLogoMaxWidth = isPhonePortrait ? 110 : 120;
 	const headerTitleFontSize = headerMetrics.titleFontSize;
-	const keyboardOverlap = keyboardFrame ? Math.max(0, height - keyboardFrame.screenY) : 0;
+	const keyboardOverlap = keyboardFrame
+		? Math.max(0, keyboardFrame.height, Dimensions.get('screen').height - keyboardFrame.screenY)
+		: 0;
 	const portraitInputBottom = keyboardFrame ? keyboardOverlap + 12 : portraitRestingInputBottom;
 	const portraitMessagesBottomPadding = Math.max(
 		portraitControlsHeight + 54,
@@ -697,15 +655,12 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 			)}
 
 			{showTextInput && hasStartedChat ? (
-				<View
-					className='absolute left-4 right-4'
-					style={{ bottom: portraitRestingInputBottom }}>
+				<View className='absolute left-4 right-4' style={{ bottom: portraitInputBottom }}>
 					<FloatingChatInput
 						compact
 						inputText={inputText}
 						onChangeText={onChangeText}
 						onSend={onSendText}
-						restingBottom={portraitRestingInputBottom}
 						autoFocus
 						lightMode={lightMode}
 					/>
@@ -800,6 +755,13 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	onMicPress,
 	onWritingPress,
 }: SharedLayoutProps<TMessage>) {
+	const keyboardOverlap = keyboardFrame
+		? Math.max(0, keyboardFrame.height, Dimensions.get('screen').height - keyboardFrame.screenY)
+		: 0;
+	const desktopInputBottom = keyboardFrame
+		? Math.max(24, keyboardOverlap + KEYBOARD_INPUT_GAP)
+		: 24;
+
 	return (
 		<View className={`flex-1 ${lightMode ? 'bg-[#F7F5F1]' : 'bg-[#080808]'}`}>
 			<ChatBackgroundTexture lightMode={lightMode} />
@@ -927,12 +889,13 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 			</View>
 
 			{showTextInput && hasStartedChat ? (
-				<View className='absolute left-6 right-[245px]' style={{ bottom: 24 }}>
+				<View
+					className='absolute left-6 right-[245px]'
+					style={{ bottom: desktopInputBottom }}>
 					<FloatingChatInput
 						inputText={inputText}
 						onChangeText={onChangeText}
 						onSend={onSendText}
-						restingBottom={24}
 						autoFocus
 						lightMode={lightMode}
 					/>

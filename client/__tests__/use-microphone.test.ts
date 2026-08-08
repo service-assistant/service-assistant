@@ -339,6 +339,9 @@ describe('useMicrophone', () => {
 		expect(mockRecorder.record).toHaveBeenCalled();
 		expect(harness.state.isMicStarting).toBe(false);
 		expect(harness.state.isListening).toBe(true);
+
+		await harness.api.abortVoiceInput();
+		await flushPromises();
 	});
 
 	test('removes the placeholder when recording permission is denied', async () => {
@@ -446,6 +449,9 @@ describe('useMicrophone', () => {
 		]);
 		expect(harness.onTranscript).not.toHaveBeenCalled();
 		expect(mockPcmStreamErrorListener).toEqual(expect.any(Function));
+
+		await harness.api.abortVoiceInput();
+		await flushPromises();
 	});
 
 	test('does not report STT stream connection errors after voice input is cancelled', async () => {

@@ -36,6 +36,9 @@ jest.mock('react-native', () => {
 			sequence: jest.fn(() => animation),
 			timing: jest.fn(() => animation),
 		},
+		Dimensions: {
+			get: jest.fn(() => ({ width: 1280, height: 800 })),
+		},
 		Image: Object.assign(createHost('Image'), {
 			getSize: jest.fn((_uri, onSuccess) => onSuccess(300, 100)),
 		}),
@@ -48,29 +51,6 @@ jest.mock('react-native', () => {
 		TextInput: createHost('TextInput'),
 		TouchableOpacity: createHost('TouchableOpacity'),
 		View: createHost('View'),
-	};
-});
-
-jest.mock('react-native-keyboard-controller', () => {
-	return {
-		useGenericKeyboardHandler: jest.fn(),
-		useReanimatedKeyboardAnimation: () => ({
-			height: { value: 0 },
-			progress: { value: 0 },
-		}),
-	};
-});
-
-jest.mock('react-native-reanimated', () => {
-	const React = require('react');
-	return {
-		__esModule: true,
-		default: {
-			View: ({ children, ...props }: Record<string, unknown>) =>
-				React.createElement('Reanimated.View', props, children),
-		},
-		useAnimatedStyle: (factory: () => unknown) => factory(),
-		useSharedValue: (value: unknown) => ({ value }),
 	};
 });
 
@@ -251,10 +231,43 @@ describe('ChatLayouts', () => {
 
 		expect(input.props.value).toBe('pytanie');
 		expect(input.props.autoFocus).toBe(true);
-		expect(findByType(tree, 'Reanimated.View')).toHaveLength(1);
+		expect(findByType(tree, 'Reanimated.View')).toHaveLength(0);
 		expect(findByType(tree, 'View').some((view) => view.props.style?.bottom === 24)).toBe(true);
 		expect(props.onChangeText).toHaveBeenCalledWith('nowe');
 		expect(props.onSendText).toHaveBeenCalledTimes(2);
+	});
+
+	test('snaps the desktop input to the final keyboard frame without animation', () => {
+		const tree = (
+			<DesktopChatLayout
+				{...createLayoutProps()}
+				height={800}
+				keyboardFrame={{ screenY: 500, height: 240 }}
+				showTextInput
+			/>
+		);
+
+		expect(findByType(tree, 'View').some((view) => view.props.style?.bottom === 312)).toBe(
+			true,
+		);
+		expect(findByType(tree, 'Reanimated.View')).toHaveLength(0);
+	});
+
+	test('snaps the portrait input to the final keyboard frame without animation', () => {
+		const tree = (
+			<PortraitChatLayout
+				{...createLayoutProps()}
+				height={800}
+				keyboardFrame={{ screenY: 500, height: 240 }}
+				showTextInput
+				insets={{ top: 10, right: 0, bottom: 20, left: 0 }}
+			/>
+		);
+
+		expect(findByType(tree, 'View').some((view) => view.props.style?.bottom === 312)).toBe(
+			true,
+		);
+		expect(findByType(tree, 'Reanimated.View')).toHaveLength(0);
 	});
 
 	test('PortraitChatLayout renders compact chat and horizontal controls', () => {
