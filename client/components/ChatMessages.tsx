@@ -679,9 +679,13 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 						className={
 							compact
 								? 'self-end bg-[#B85000] rounded-[18px] px-4 py-3 mb-5'
-								: 'self-end bg-[#B85000] rounded-full px-7 py-2.5 mb-8'
+								: 'self-end bg-[#B85000] rounded-[18px] px-6 py-3 mb-8'
 						}
-						style={{ maxWidth: compact ? '88%' : '65%' }}>
+						style={{
+							maxWidth: compact ? '88%' : '65%',
+							minWidth: 0,
+							flexShrink: 1,
+						}}>
 						{message.isSpeaking && !message.text ? (
 							isListening ? (
 								<SoundWaveformIndicator soundLevel={soundLevelAnim} />
@@ -693,8 +697,9 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 								className={
 									compact
 										? 'text-white text-[17px] leading-[22px]'
-										: 'text-white text-[18px]'
-								}>
+										: 'text-white text-[18px] leading-[24px]'
+								}
+								style={{ flexShrink: 1, minWidth: 0 }}>
 								{message.text}
 							</Text>
 						)}

@@ -193,6 +193,36 @@ describe('ChatMessages', () => {
 		expect(getTextContent(tree)).toContain('Sprawdź bagnet przy zimnym silniku.');
 	});
 
+	test.each(
+		[false, true].flatMap((compact) =>
+			[
+				'PĹ‚yn?',
+				'Jak wymieniÄ‡ pĹ‚yn hydrauliczny w tym modelu wĂłzka?',
+				'Jak wymieniÄ‡ pĹ‚yn hydrauliczny, odpowietrzyÄ‡ ukĹ‚ad i sprawdziÄ‡ szczelnoĹ›Ä‡ wszystkich przewodĂłw po zakoĹ„czeniu procedury serwisowej?',
+			].map((query) => ({ compact, query })),
+		),
+	)('keeps the complete user query visible (compact=$compact): $query', ({ compact, query }) => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				compact={compact}
+				messages={[{ id: 1, sender: 'user', text: query }]}
+			/>
+		);
+		const userBubble = findByType(tree, 'View').find(
+			(view) => view.props.onLayout && getTextContent(view) === query,
+		);
+		const queryText = findByType(userBubble!, 'Text')[0];
+
+		expect(userBubble?.props.className).toContain('rounded-[18px]');
+		expect(userBubble?.props.className).not.toContain('rounded-full');
+		expect(userBubble?.props.style).toMatchObject({ minWidth: 0, flexShrink: 1 });
+		expect(queryText.props.children).toBe(query);
+		expect(queryText.props.numberOfLines).toBeUndefined();
+		expect(queryText.props.ellipsizeMode).toBeUndefined();
+		expect(queryText.props.style).toMatchObject({ minWidth: 0, flexShrink: 1 });
+	});
+
 	test('renders a typing indicator for empty assistant messages', () => {
 		const tree = <ChatMessages {...baseProps} messages={[{ id: 1, sender: 'ai', text: '' }]} />;
 
