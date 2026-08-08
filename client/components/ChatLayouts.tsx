@@ -3,6 +3,7 @@ import React from 'react';
 import {
 	Animated,
 	Image,
+	Pressable,
 	ScrollView,
 	Text,
 	TextInput,
@@ -10,6 +11,11 @@ import {
 	View,
 	type LayoutChangeEvent,
 } from 'react-native';
+import { useGenericKeyboardHandler } from 'react-native-keyboard-controller';
+import Reanimated, {
+	useAnimatedStyle,
+	useSharedValue,
+} from 'react-native-reanimated';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
 import { getPortraitChatHeaderMetrics } from '@/components/chat-header-metrics';
@@ -26,6 +32,7 @@ import StartPromptView, { type KeyboardFrame } from '@/components/StartPromptVie
 import ThemeAwareLogo from '@/components/ThemeAwareLogo';
 
 const PRIMARY_ORANGE = '#FF7A00';
+const KEYBOARD_INPUT_GAP = 12;
 
 function ChatBackgroundTexture({ lightMode }: { lightMode: boolean }) {
 	if (!lightMode) return null;
@@ -253,6 +260,7 @@ function FloatingChatInput({
 	inputText,
 	onChangeText,
 	onSend,
+	restingBottom,
 	autoFocus = false,
 	lightMode = false,
 }: {
@@ -260,57 +268,107 @@ function FloatingChatInput({
 	inputText: string;
 	onChangeText: (text: string) => void;
 	onSend: () => void;
+	restingBottom: number;
 	autoFocus?: boolean;
 	lightMode?: boolean;
 }) {
+	const inputRef = React.useRef<TextInput>(null);
+	const keyboardHeight = useSharedValue(0);
+
+	useGenericKeyboardHandler(
+		{
+			onMove: (event) => {
+				'worklet';
+				keyboardHeight.value = Math.max(0, event.height);
+			},
+			onInteractive: (event) => {
+				'worklet';
+				keyboardHeight.value = Math.max(0, event.height);
+			},
+			onEnd: (event) => {
+				'worklet';
+				keyboardHeight.value = Math.max(0, event.height);
+			},
+		},
+		[],
+	);
+
+	const keyboardOffsetStyle = useAnimatedStyle(() => {
+		const restingOffset = Math.max(0, restingBottom - KEYBOARD_INPUT_GAP);
+
+		return {
+			transform: [
+				{
+					translateY:
+						keyboardHeight.value > 0
+							? -Math.max(0, keyboardHeight.value - restingOffset)
+							: 0,
+				},
+			],
+		};
+	});
+
 	return (
-		<View
-			className='flex-row items-center'
-			style={{
-				width: '100%',
-				height: compact ? 62 : 74,
-				borderRadius: compact ? 31 : 37,
-				backgroundColor: lightMode ? '#FFFFFF' : '#242424',
-				borderWidth: 1,
-				borderColor: lightMode ? 'rgba(20, 20, 20, 0.09)' : 'rgba(255, 255, 255, 0.08)',
-				paddingLeft: compact ? 18 : 32,
-				paddingRight: compact ? 8 : 10,
-				shadowColor: '#141414',
-				shadowOffset: { width: 0, height: 8 },
-				shadowOpacity: lightMode ? 0.04 : 0.14,
-				shadowRadius: 24,
-				elevation: lightMode ? 3 : 5,
-			}}>
-			<TextInput
-				className={`flex-1 ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
-				placeholder='Np. nie działa podnoszenie wideł'
-				placeholderTextColor={lightMode ? '#71717A' : '#A1A1AA'}
-				value={inputText}
-				onChangeText={onChangeText}
-				onSubmitEditing={onSend}
+		<Reanimated.View
+			collapsable={false}
+			renderToHardwareTextureAndroid
+			shouldRasterizeIOS
+			style={keyboardOffsetStyle}>
+			<Pressable
+				onPress={() => inputRef.current?.focus()}
+				hitSlop={{ top: 12, right: 8, bottom: 12, left: 8 }}
+				accessible={false}
+				className='flex-row items-center'
 				style={{
-					fontSize: compact ? 16 : 20,
-					lineHeight: compact ? 22 : 27,
-				}}
-				autoFocus={autoFocus}
-			/>
-			<TouchableOpacity
-				onPress={onSend}
-				className='items-center justify-center'
-				style={{
-					width: compact ? 46 : 56,
-					height: compact ? 46 : 56,
-					borderRadius: compact ? 23 : 28,
-					backgroundColor: PRIMARY_ORANGE,
-					shadowColor: PRIMARY_ORANGE,
-					shadowOffset: { width: 0, height: 4 },
-					shadowOpacity: 0.2,
-					shadowRadius: 8,
-					elevation: 3,
+					width: '100%',
+					height: compact ? 62 : 74,
+					borderRadius: compact ? 31 : 37,
+					backgroundColor: lightMode ? '#FFFFFF' : '#242424',
+					borderWidth: 1,
+					borderColor: lightMode ? 'rgba(20, 20, 20, 0.09)' : 'rgba(255, 255, 255, 0.08)',
+					paddingLeft: compact ? 18 : 32,
+					paddingRight: compact ? 8 : 10,
+					shadowColor: '#141414',
+					shadowOffset: { width: 0, height: 8 },
+					shadowOpacity: lightMode ? 0.04 : 0.14,
+					shadowRadius: 24,
+					elevation: 0,
 				}}>
-				<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
-			</TouchableOpacity>
-		</View>
+				<TextInput
+					ref={inputRef}
+					className={`flex-1 ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
+					placeholder='Np. nie działa podnoszenie wideł'
+					placeholderTextColor={lightMode ? '#71717A' : '#A1A1AA'}
+					value={inputText}
+					onChangeText={onChangeText}
+					onSubmitEditing={onSend}
+					style={{
+						height: '100%',
+						fontSize: compact ? 16 : 20,
+						lineHeight: compact ? 22 : 27,
+						paddingVertical: 0,
+						textAlignVertical: 'center',
+					}}
+					autoFocus={autoFocus}
+				/>
+				<TouchableOpacity
+					onPress={onSend}
+					className='items-center justify-center'
+					style={{
+						width: compact ? 46 : 56,
+						height: compact ? 46 : 56,
+						borderRadius: compact ? 23 : 28,
+						backgroundColor: PRIMARY_ORANGE,
+						shadowColor: PRIMARY_ORANGE,
+						shadowOffset: { width: 0, height: 4 },
+						shadowOpacity: 0.2,
+						shadowRadius: 8,
+						elevation: 3,
+					}}>
+					<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
+				</TouchableOpacity>
+			</Pressable>
+		</Reanimated.View>
 	);
 }
 
@@ -489,6 +547,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 			? insets.bottom + 14
 			: 24;
 	const portraitControlsHeight = portraitPanelHeight;
+	const portraitRestingInputBottom = portraitControlsBottom + portraitControlsHeight + 12;
 	const headerMetrics = getPortraitChatHeaderMetrics({
 		isTablet,
 		topInset: insets.top,
@@ -501,9 +560,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	const headerLogoMaxWidth = isPhonePortrait ? 110 : 120;
 	const headerTitleFontSize = headerMetrics.titleFontSize;
 	const keyboardOverlap = keyboardFrame ? Math.max(0, height - keyboardFrame.screenY) : 0;
-	const portraitInputBottom = keyboardFrame
-		? keyboardOverlap + 8
-		: portraitControlsBottom + portraitControlsHeight + 12;
+	const portraitInputBottom = keyboardFrame ? keyboardOverlap + 12 : portraitRestingInputBottom;
 	const portraitMessagesBottomPadding = Math.max(
 		portraitControlsHeight + 54,
 		portraitInputBottom + (showTextInput ? 70 : 0),
@@ -640,12 +697,15 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 			)}
 
 			{showTextInput && hasStartedChat ? (
-				<View className='absolute left-4 right-4' style={{ bottom: portraitInputBottom }}>
+				<View
+					className='absolute left-4 right-4'
+					style={{ bottom: portraitRestingInputBottom }}>
 					<FloatingChatInput
 						compact
 						inputText={inputText}
 						onChangeText={onChangeText}
 						onSend={onSendText}
+						restingBottom={portraitRestingInputBottom}
 						autoFocus
 						lightMode={lightMode}
 					/>
@@ -740,8 +800,6 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	onMicPress,
 	onWritingPress,
 }: SharedLayoutProps<TMessage>) {
-	const keyboardOverlap = keyboardFrame ? Math.max(0, height - keyboardFrame.screenY) : 0;
-
 	return (
 		<View className={`flex-1 ${lightMode ? 'bg-[#F7F5F1]' : 'bg-[#080808]'}`}>
 			<ChatBackgroundTexture lightMode={lightMode} />
@@ -869,13 +927,12 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 			</View>
 
 			{showTextInput && hasStartedChat ? (
-				<View
-					className='absolute left-6 right-[245px]'
-					style={{ bottom: keyboardFrame ? keyboardOverlap + 8 : 24 }}>
+				<View className='absolute left-6 right-[245px]' style={{ bottom: 24 }}>
 					<FloatingChatInput
 						inputText={inputText}
 						onChangeText={onChangeText}
 						onSend={onSendText}
+						restingBottom={24}
 						autoFocus
 						lightMode={lightMode}
 					/>

@@ -39,6 +39,7 @@ jest.mock('react-native', () => {
 		Image: Object.assign(createHost('Image'), {
 			getSize: jest.fn((_uri, onSuccess) => onSuccess(300, 100)),
 		}),
+		Pressable: createHost('Pressable'),
 		ScrollView: createHost('ScrollView'),
 		StyleSheet: {
 			absoluteFill: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 },
@@ -47,6 +48,29 @@ jest.mock('react-native', () => {
 		TextInput: createHost('TextInput'),
 		TouchableOpacity: createHost('TouchableOpacity'),
 		View: createHost('View'),
+	};
+});
+
+jest.mock('react-native-keyboard-controller', () => {
+	return {
+		useGenericKeyboardHandler: jest.fn(),
+		useReanimatedKeyboardAnimation: () => ({
+			height: { value: 0 },
+			progress: { value: 0 },
+		}),
+	};
+});
+
+jest.mock('react-native-reanimated', () => {
+	const React = require('react');
+	return {
+		__esModule: true,
+		default: {
+			View: ({ children, ...props }: Record<string, unknown>) =>
+				React.createElement('Reanimated.View', props, children),
+		},
+		useAnimatedStyle: (factory: () => unknown) => factory(),
+		useSharedValue: (value: unknown) => ({ value }),
 	};
 });
 
@@ -227,6 +251,8 @@ describe('ChatLayouts', () => {
 
 		expect(input.props.value).toBe('pytanie');
 		expect(input.props.autoFocus).toBe(true);
+		expect(findByType(tree, 'Reanimated.View')).toHaveLength(1);
+		expect(findByType(tree, 'View').some((view) => view.props.style?.bottom === 24)).toBe(true);
 		expect(props.onChangeText).toHaveBeenCalledWith('nowe');
 		expect(props.onSendText).toHaveBeenCalledTimes(2);
 	});

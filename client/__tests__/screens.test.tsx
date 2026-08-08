@@ -20,6 +20,10 @@ const mockOrientationLockAsync = jest.fn(() => Promise.resolve());
 const mockOrientationUnlockAsync = jest.fn(() => Promise.resolve());
 const mockImageGetSize = jest.fn();
 const mockKeyboardAddListener = jest.fn(() => ({ remove: jest.fn() }));
+const mockKeyboardDismiss = jest.fn();
+const mockAppStateAddListener = jest.fn(
+	(_eventName: string, _listener: (state: string) => void) => ({ remove: jest.fn() }),
+);
 const mockAnimatedValueSetValue = jest.fn();
 const mockAnimatedInterpolate = jest.fn(() => 'interpolated');
 const mockAnimatedStopAnimation = jest.fn();
@@ -68,6 +72,10 @@ jest.mock('react-native', () => {
 
 	return {
 		ActivityIndicator: createHost('ActivityIndicator'),
+		AppState: {
+			currentState: 'active',
+			addEventListener: mockAppStateAddListener,
+		},
 		BackHandler: { addEventListener: jest.fn(() => ({ remove: jest.fn() })) },
 		Animated: {
 			View: AnimatedView,
@@ -83,9 +91,10 @@ jest.mock('react-native', () => {
 			timing: jest.fn(() => ({ start: jest.fn() })),
 		},
 		Image: Object.assign(createHost('Image'), { getSize: mockImageGetSize }),
-		Keyboard: { addListener: mockKeyboardAddListener },
+		Keyboard: { addListener: mockKeyboardAddListener, dismiss: mockKeyboardDismiss },
 		FlatList: createHost('FlatList'),
 		Modal: createHost('Modal'),
+		Pressable: createHost('Pressable'),
 		Platform: {
 			OS: 'ios',
 			select: (options: Record<string, unknown>) => options.ios ?? options.default,
@@ -355,6 +364,8 @@ describe('tab screens', () => {
 		mockUseSourcePanelFiles.mockReset();
 		mockUseWakeWord.mockClear();
 		mockKeyboardAddListener.mockClear();
+		mockKeyboardDismiss.mockClear();
+		mockAppStateAddListener.mockClear();
 		mockAnimatedValueSetValue.mockClear();
 		mockImpactAsync.mockClear();
 		mockSelectionAsync.mockClear();
@@ -453,6 +464,28 @@ describe('tab screens', () => {
 			}),
 		);
 		expect(findByType(tree, 'ServiceErrorModal')[0].props.visible).toBe(false);
+	});
+
+	test('chat screen dismisses stale keyboard state when the app leaves foreground', () => {
+		setupChatHooks();
+		mockSearchParams = { deviceId: '1', chatSession: 'keyboard-lifecycle' };
+		jest.mocked(global.fetch).mockResolvedValue(createJsonResponse([]));
+		const ChatScreen = require('../app/(tabs)/chat').default;
+
+		collectElements(renderScreen(ChatScreen));
+		const reactNative = require('react-native') as {
+			AppState: { addEventListener: jest.Mock };
+			Keyboard: { dismiss: jest.Mock };
+		};
+		const appStateListener = reactNative.AppState.addEventListener.mock.calls.find(
+			([eventName]) => eventName === 'change',
+		)?.[1] as ((state: string) => void) | undefined;
+
+		expect(appStateListener).toBeDefined();
+		appStateListener?.('active');
+		expect(reactNative.Keyboard.dismiss).not.toHaveBeenCalled();
+		appStateListener?.('background');
+		expect(reactNative.Keyboard.dismiss).toHaveBeenCalledTimes(1);
 	});
 
 	test('chat screen uses portrait layout and navigates back to home', () => {

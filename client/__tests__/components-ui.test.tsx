@@ -267,11 +267,15 @@ describe('StartPromptView', () => {
 	});
 
 	test('wires input focus, blur, text change, and submit callbacks', () => {
-		const props = createProps();
+		const focus = jest.fn();
+		const props = { ...createProps(), inputRef: { current: { focus } } as never };
 		const tree = <StartPromptView {...props} />;
 		const input = findByType(tree, 'TextInput')[0];
+		const inputContainer = findByType(tree, 'Pressable')[0];
 		const sendButton = findByType(tree, 'TouchableOpacity')[0];
 
+		inputContainer.props.onPress();
+		input.props.onPressIn();
 		input.props.onFocus();
 		input.props.onChangeText('nowe pytanie');
 		input.props.onSubmitEditing();
@@ -279,7 +283,16 @@ describe('StartPromptView', () => {
 		sendButton.props.onPress();
 
 		expect(input.props.value).toBe('test');
+		expect(input.props.style).toEqual(expect.objectContaining({ height: '100%' }));
+		expect(inputContainer.props.hitSlop).toEqual({
+			top: 12,
+			right: 8,
+			bottom: 12,
+			left: 8,
+		});
+		expect(focus).toHaveBeenCalledTimes(1);
 		expect(props.onShowTextInputChange).toHaveBeenNthCalledWith(1, true);
+		expect(props.onShowTextInputChange).toHaveBeenNthCalledWith(2, true);
 		expect(props.onShouldFocusStartPromptInputChange).toHaveBeenCalledWith(false);
 		expect(props.onChangeText).toHaveBeenCalledWith('nowe pytanie');
 		expect(props.onSend).toHaveBeenCalledTimes(2);
@@ -297,7 +310,7 @@ describe('StartPromptView', () => {
 		expect(props.onShowTextInputChange).toHaveBeenCalledWith(false);
 	});
 
-	test('renders keyboard overlay input with autofocus', () => {
+	test('keeps one input mounted without retriggering autofocus for the keyboard layout', () => {
 		const props = createProps();
 		const tree = (
 			<StartPromptView {...props} keyboardFrame={{ screenY: 500, height: 300 }} compact />
@@ -305,7 +318,7 @@ describe('StartPromptView', () => {
 		const inputs = findByType(tree, 'TextInput');
 
 		expect(inputs).toHaveLength(1);
-		expect(inputs[0].props.autoFocus).toBe(true);
+		expect(inputs[0].props.autoFocus).toBe(false);
 		expect(findByText(tree, 'Jak mogę pomóc?')).toBeTruthy();
 	});
 
