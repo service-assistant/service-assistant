@@ -59,7 +59,10 @@ import { useAssistantAudio } from '../hooks/use-assistant-audio';
 
 const originalAuthToken = process.env.AUTH_TOKEN;
 
-const createHarness = () => {
+const createHarness = (
+	ttsVoice: 'Algenib' | 'Leda' = 'Algenib',
+	ttsStyle: 'neutral' | 'warm' | 'sensual' | 'extra_sensual' | 'extreme_sensual' = 'neutral',
+) => {
 	mockReactStateValues = [];
 	mockReactStateIndex = 0;
 
@@ -69,6 +72,8 @@ const createHarness = () => {
 	const api = useAssistantAudio({
 		setIsLoading,
 		setIsGenerating,
+		ttsVoice,
+		ttsStyle,
 		onServiceError,
 	});
 
@@ -115,7 +120,7 @@ describe('useAssistantAudio', () => {
 				headers: { 'content-type': 'audio/wav' },
 			}),
 		);
-		const harness = createHarness();
+		const harness = createHarness('Leda', 'extreme_sensual');
 
 		await harness.api.playAssistantAudio('Dzień dobry');
 
@@ -128,7 +133,11 @@ describe('useAssistantAudio', () => {
 					Authorization: 'Bearer test-token',
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({ text: 'Dzień dobry' }),
+				body: JSON.stringify({
+					text: 'Dzień dobry',
+					voice: 'Leda',
+					style: 'extreme_sensual',
+				}),
 			}),
 		);
 		expect(mockWriteAsStringAsync).toHaveBeenCalledWith(
@@ -211,7 +220,7 @@ describe('useAssistantAudio', () => {
 					Authorization: 'Bearer test-token',
 					'Content-Type': 'application/json',
 				},
-				body: JSON.stringify({ text: 'Android audio' }),
+				body: JSON.stringify({ text: 'Android audio', voice: 'Algenib', style: 'neutral' }),
 			}),
 		);
 		expect(mockWriteAsStringAsync).toHaveBeenCalledWith(

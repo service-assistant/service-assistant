@@ -87,7 +87,7 @@ Invoke-NativeStep `
     -Name 'Format server (Ruff)' `
     -WorkingDirectory $serverDir `
     -Executable $serverRuff `
-    -CommandArguments @('format', 'app', 'tests')
+    -CommandArguments @('format', 'app', 'tests', '--no-cache')
 
 Invoke-NativeStep `
     -Name 'Format client (Prettier)' `
@@ -99,7 +99,7 @@ Invoke-NativeStep `
     -Name 'Lint server (Ruff)' `
     -WorkingDirectory $serverDir `
     -Executable $serverRuff `
-    -CommandArguments @('check', 'app', 'tests', 'alembic')
+    -CommandArguments @('check', 'app', 'tests', 'alembic', '--no-cache')
 
 Invoke-NativeStep `
     -Name 'Type-check server (Pyright)' `
@@ -111,7 +111,7 @@ Invoke-NativeStep `
     -Name 'Lint client (Expo ESLint)' `
     -WorkingDirectory $clientDir `
     -Executable $npm `
-    -CommandArguments @('run', 'lint')
+    -CommandArguments @('run', 'lint', '--', '--no-cache')
 
 Invoke-NativeStep `
     -Name 'Type-check client (TypeScript)' `

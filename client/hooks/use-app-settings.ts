@@ -6,8 +6,33 @@ export type AppSettings = {
 	lightThemeEnabled: boolean;
 	wakeWordEnabled: boolean;
 	ttsEnabled: boolean;
+	ttsVoice: TtsVoice;
+	ttsStyle: TtsStyle;
 	diagnosticModeEnabled: boolean;
 };
+
+export type TtsVoice =
+	| 'Algenib'
+	| 'Leda'
+	| 'Aoede'
+	| 'Despina'
+	| 'Erinome'
+	| 'Achernar'
+	| 'Sulafat'
+	| 'Vindemiatrix';
+
+export type TtsStyle = 'neutral' | 'warm' | 'sensual' | 'extra_sensual' | 'extreme_sensual';
+
+const TTS_VOICES: readonly TtsVoice[] = [
+	'Algenib',
+	'Leda',
+	'Aoede',
+	'Despina',
+	'Erinome',
+	'Achernar',
+	'Sulafat',
+	'Vindemiatrix',
+];
 
 const STORAGE_KEY = 'service-assistant:app-settings';
 const STORAGE_FILE_URI = FileSystem.documentDirectory
@@ -18,6 +43,8 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
 	lightThemeEnabled: false,
 	wakeWordEnabled: false,
 	ttsEnabled: false,
+	ttsVoice: 'Algenib',
+	ttsStyle: 'neutral',
 	diagnosticModeEnabled: false,
 };
 
@@ -41,6 +68,16 @@ const parseStoredAppSettings = (storedValue: string | null): Partial<AppSettings
 			: {}),
 		...(typeof parsedValue.ttsEnabled === 'boolean'
 			? { ttsEnabled: parsedValue.ttsEnabled }
+			: {}),
+		...(TTS_VOICES.includes(parsedValue.ttsVoice as TtsVoice)
+			? { ttsVoice: parsedValue.ttsVoice }
+			: {}),
+		...(parsedValue.ttsStyle === 'neutral' ||
+		parsedValue.ttsStyle === 'warm' ||
+		parsedValue.ttsStyle === 'sensual' ||
+		parsedValue.ttsStyle === 'extra_sensual' ||
+		parsedValue.ttsStyle === 'extreme_sensual'
+			? { ttsStyle: parsedValue.ttsStyle }
 			: {}),
 		...(typeof diagnosticModeEnabled === 'boolean' ? { diagnosticModeEnabled } : {}),
 	};
@@ -150,6 +187,8 @@ export const useAppSettings = () => {
 		setLightThemeEnabled: (value: boolean) => setAppSetting('lightThemeEnabled', value),
 		setWakeWordEnabled: (value: boolean) => setAppSetting('wakeWordEnabled', value),
 		setTtsEnabled: (value: boolean) => setAppSetting('ttsEnabled', value),
+		setTtsVoice: (value: TtsVoice) => setAppSetting('ttsVoice', value),
+		setTtsStyle: (value: TtsStyle) => setAppSetting('ttsStyle', value),
 		setDiagnosticModeEnabled: (value: boolean) => setAppSetting('diagnosticModeEnabled', value),
 	};
 };

@@ -26,23 +26,25 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _copy_upload_to_path(source: BinaryIO, destination_path: Path) -> None:
-    with destination_path.open("wb") as destination:
-        shutil.copyfileobj(source, destination)
-
-
-def get_unique_filepath(base_path: Path) -> Path:
-    if not base_path.exists():
-        return base_path
+def _copy_upload_to_unique_path(source: BinaryIO, base_path: Path) -> Path:
     stem = base_path.stem
     suffix = base_path.suffix
     parent = base_path.parent
-    counter = 1
+    counter = 0
+
     while True:
-        new_path = parent / f"{stem}__{counter}{suffix}"
-        if not new_path.exists():
-            return new_path
-        counter += 1
+        destination_path = (
+            base_path if counter == 0 else parent / f"{stem}__{counter}{suffix}"
+        )
+        try:
+            with destination_path.open("xb") as destination:
+                shutil.copyfileobj(source, destination)
+            return destination_path
+        except FileExistsError:
+            counter += 1
+        except Exception:
+            destination_path.unlink(missing_ok=True)
+            raise
 
 
 @router.get(
@@ -68,11 +70,14 @@ async def save_and_ingest_attachment(
             raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
 
     original_name = Path(str(file.filename)).name
-    saved_path = get_unique_filepath(settings.attachments_dir / original_name)
+    base_path = settings.attachments_dir / original_name
+    saved_path: Path | None = None
     attachment: Attachment | None = None
 
     try:
-        await run_blocking(_copy_upload_to_path, file.file, saved_path)
+        saved_path = await run_blocking(
+            _copy_upload_to_unique_path, file.file, base_path
+        )
 
         attachment = Attachment(
             file_global_path=str(saved_path), original_filename=original_name
@@ -109,13 +114,14 @@ async def save_and_ingest_attachment(
                     attachment.id,
                 )
 
-        try:
-            saved_path.unlink(missing_ok=True)
-        except OSError:
-            logger.exception(
-                "Could not remove uploaded file %s after its ingestion failed",
-                saved_path,
-            )
+        if saved_path is not None:
+            try:
+                saved_path.unlink(missing_ok=True)
+            except OSError:
+                logger.exception(
+                    "Could not remove uploaded file %s after its ingestion failed",
+                    saved_path,
+                )
         raise
     finally:
         file.file.close()

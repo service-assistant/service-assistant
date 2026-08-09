@@ -409,6 +409,53 @@ describe('tab screens', () => {
 		expect(mockOrientationUnlockAsync).not.toHaveBeenCalled();
 	});
 
+	test('settings screen combines TTS state and voice in one expandable selector', () => {
+		mockReactStateValues = [
+			{
+				lightThemeEnabled: false,
+				wakeWordEnabled: false,
+				ttsEnabled: false,
+				ttsVoice: 'Algenib',
+				ttsStyle: 'neutral',
+				diagnosticModeEnabled: false,
+			},
+			{ top: 100, left: 16 },
+			{ top: 280, left: 16 },
+		];
+		const SettingsScreen = require('../app/(tabs)/settings').default;
+		const tree = renderScreen(SettingsScreen);
+		const elements = collectElements(tree);
+		const visibleText = elements
+			.filter((element) => element.type === 'Text')
+			.map((element) => getTextContent(element));
+		const femaleVoiceOption = elements.find(
+			(element) => element.props.accessibilityLabel === 'Leda',
+		);
+		const sensualStyleOption = elements.find(
+			(element) => element.props.accessibilityLabel === 'Ekstra++',
+		);
+
+		expect(visibleText).toContain('Wyłączone');
+		expect(visibleText).toContain('Algenib');
+		expect(visibleText).toContain('Leda');
+		expect(visibleText).toContain('Aoede');
+		expect(visibleText).toContain('Vindemiatrix');
+		expect(visibleText).toContain('Ekstra++');
+		if (!femaleVoiceOption) throw new Error('Female TTS voice option was not rendered.');
+		if (!sensualStyleOption) throw new Error('Sensual TTS style option was not rendered.');
+		expect(femaleVoiceOption.props.onPressIn).toBeUndefined();
+		expect(sensualStyleOption.props.onPressIn).toBeUndefined();
+
+		femaleVoiceOption.props.onPress();
+		sensualStyleOption.props.onPress();
+		const { getAppSettings } = require('../hooks/use-app-settings');
+		expect(getAppSettings()).toMatchObject({
+			ttsEnabled: true,
+			ttsVoice: 'Leda',
+			ttsStyle: 'extreme_sensual',
+		});
+	});
+
 	test('chat screen renders desktop layout with chat params and hook wiring', () => {
 		const hooks = setupChatHooks();
 		mockSearchParams = {
