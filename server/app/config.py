@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     azure_openai_embeddings_deployment: str
     openai_api_key: str
     openai_chat_model: str
+    openai_stt_model: str = "gpt-transcribe"
+    openai_stt_prompt: str = (
+        "Nagranie zawiera wypowiedź polskiego technika serwisowego dotyczącą "
+        "maszyny lub urządzenia przemysłowego. Zapisz wypowiedź możliwie "
+        "dosłownie. Zachowaj dokładnie usłyszane kody błędów, oznaczenia, "
+        "liczby, symbole i jednostki. Nie zgaduj brakujących informacji."
+    )
     azure_openai_api_version: str
     attachments_dir: Path
     deepgram_api_key: str | None = None

@@ -12,6 +12,8 @@ type AudioStreamError = {
 type AudioStreamNativeModule = {
 	startPcmStream?: () => Promise<void>;
 	stopPcmStream?: () => Promise<void>;
+	startPcmRecording?: () => Promise<void>;
+	stopPcmRecording?: (discard: boolean) => Promise<string | null>;
 	startPcmPlayback?: () => Promise<void>;
 	enqueuePcmPlaybackChunk?: (chunkBase64: string) => Promise<void>;
 	stopPcmPlayback?: () => Promise<void>;
@@ -26,17 +28,27 @@ const nativeModule = requireOptionalNativeModule<AudioStreamNativeModule>('Audio
 const hasPcmAudioStream =
 	typeof nativeModule?.startPcmStream === 'function' &&
 	typeof nativeModule?.stopPcmStream === 'function';
+const hasPcmAudioRecording =
+	typeof nativeModule?.startPcmRecording === 'function' &&
+	typeof nativeModule?.stopPcmRecording === 'function';
 const hasPcmAudioPlayback =
 	typeof nativeModule?.startPcmPlayback === 'function' &&
 	typeof nativeModule?.enqueuePcmPlaybackChunk === 'function' &&
 	typeof nativeModule?.stopPcmPlayback === 'function';
 
 export const isPcmAudioStreamAvailable = hasPcmAudioStream;
+export const isPcmAudioRecordingAvailable = hasPcmAudioRecording;
 export const isPcmAudioPlaybackAvailable = hasPcmAudioPlayback;
 
 export const startPcmAudioStream = () => nativeModule?.startPcmStream?.() ?? Promise.resolve();
 
 export const stopPcmAudioStream = () => nativeModule?.stopPcmStream?.() ?? Promise.resolve();
+
+export const startPcmAudioRecording = () =>
+	nativeModule?.startPcmRecording?.() ?? Promise.resolve();
+
+export const stopPcmAudioRecording = (discard = false) =>
+	nativeModule?.stopPcmRecording?.(discard) ?? Promise.resolve(null);
 
 export const startPcmAudioPlayback = () => nativeModule?.startPcmPlayback?.() ?? Promise.resolve();
 
