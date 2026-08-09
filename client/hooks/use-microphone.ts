@@ -6,8 +6,10 @@ import { Animated, Platform } from 'react-native';
 import {
 	addPcmAudioListener,
 	addPcmStreamErrorListener,
-	isPcmAudioStreamAvailable,
+	isPcmAudioRecordingAvailable,
+	startPcmAudioRecording,
 	startPcmAudioStream,
+	stopPcmAudioRecording,
 	stopPcmAudioStream,
 } from '@/modules/audio-stream';
 import {
@@ -32,6 +34,9 @@ const SPEECH_OVER_NOISE_DB = 8;
 const STRONG_SPEECH_OVER_NOISE_DB = 14;
 const SPEECH_PEAK_DROP_DB = 7;
 const MINIMUM_SPEECH_DB = -52;
+
+const isRecordingTooShort = (startedAt: number | null) =>
+	startedAt !== null && Date.now() - startedAt < MIN_RECORDING_DURATION_MS;
 
 type VoiceMessage = {
 	id: number;
@@ -65,6 +70,11 @@ type NativeFormDataFile = {
 	type: string;
 };
 
+type RecordingFileMetadata = {
+	name: string;
+	type: string;
+};
+
 type PcmAudioEventSubscription = {
 	remove: () => void;
 };
@@ -84,18 +94,28 @@ const getSttStreamUrl = (serverUrl: string, threadId: number, authToken: string)
 	return url.toString();
 };
 
-const appendRecordingToFormData = async (formData: FormData, uri: string, signal: AbortSignal) => {
+const DEFAULT_RECORDING_FILE: RecordingFileMetadata = {
+	name: 'recording.m4a',
+	type: 'audio/m4a',
+};
+
+const appendRecordingToFormData = async (
+	formData: FormData,
+	uri: string,
+	signal: AbortSignal,
+	file: RecordingFileMetadata,
+) => {
 	if (Platform.OS === 'web') {
 		const responseFile = await fetch(uri, { signal });
 		const audioBlob = await responseFile.blob();
-		formData.append('audio', audioBlob, 'recording.m4a');
+		formData.append('audio', audioBlob, file.name);
 		return;
 	}
 
 	formData.append('audio', {
 		uri,
-		name: 'recording.m4a',
-		type: 'audio/m4a',
+		name: file.name,
+		type: file.type,
 	} as NativeFormDataFile as unknown as Blob);
 };
 
@@ -141,6 +161,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 	const sttStreamReconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const pcmAudioSubscriptionRef = useRef<PcmAudioEventSubscription | null>(null);
 	const pcmErrorSubscriptionRef = useRef<PcmAudioEventSubscription | null>(null);
+	const isNativePcmRecordingRef = useRef<boolean>(false);
 	const isStreamingRecordingRef = useRef<boolean>(false);
 	const streamedFinalTranscriptRef = useRef<string>('');
 	const streamedPartialTranscriptRef = useRef<string>('');
@@ -157,7 +178,10 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 	const wasMicProcessingRef = useRef<boolean>(false);
 	const micProcessingStartedAtRef = useRef<number | null>(null);
 	const hasPendingVoiceInput = messages.some((message) => message.isSpeaking);
-	const canStreamPcmAudio = Platform.OS === 'android' && isPcmAudioStreamAvailable;
+	const canUseNoiseSuppressedRecording =
+		Platform.OS === 'android' && isPcmAudioRecordingAvailable;
+	// gpt-transcribe accepts a completed recording, so use the file-upload path on every platform.
+	const canStreamPcmAudio = false;
 	const hasConversationActivity = messages.length > 0;
 	const isMicProcessing =
 		!isListening &&
@@ -206,6 +230,22 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 		shouldDiscardCurrentRecordingRef.current = true;
 
 		if (isStoppingRecordingRef.current) return;
+
+		if (isNativePcmRecordingRef.current) {
+			removePcmStreamListeners();
+			try {
+				await stopPcmAudioRecording(true);
+			} catch (error) {
+				console.error('Error while cancelling noise-suppressed recording:', error);
+			} finally {
+				isNativePcmRecordingRef.current = false;
+				recordingStartedAtRef.current = null;
+				setIsListening(false);
+				setIsLoading(false);
+				setIsTranscribing(false);
+			}
+			return;
+		}
 
 		if (isStreamingRecordingRef.current || sttStreamWebSocketRef.current) {
 			removePcmStreamListeners();
@@ -379,7 +419,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 	);
 
 	const transcribeWithServer = useCallback(
-		async (uri: string) => {
+		async (uri: string, file = DEFAULT_RECORDING_FILE) => {
 			const abortController = new AbortController();
 			sttAbortControllerRef.current = abortController;
 			setIsLoading(true);
@@ -388,7 +428,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				const authToken = authTokenOverride ?? getAuthTokenOrThrow();
 				const threadId = await getTranscriptionThreadId(abortController.signal);
 				const formData = new FormData();
-				await appendRecordingToFormData(formData, uri, abortController.signal);
+				await appendRecordingToFormData(formData, uri, abortController.signal, file);
 
 				const response = await fetch(
 					`${serverUrl}/api/threads/${threadId}/messages/transcribe`,
@@ -404,11 +444,25 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 
 				if (!response.ok) {
 					throwIfAuthResponseError(response);
+					if (response.status === 422) {
+						setMessages((prev) =>
+							prev.filter(
+								(message) => message.id !== userSpeakingMessageIdRef.current,
+							),
+						);
+						setIsLoading(false);
+						setIsTranscribing(false);
+						return;
+					}
 					throw new Error(`Speech transcription error: ${response.status}`);
 				}
 				if (abortController.signal.aborted) return;
 
-				const data = (await response.json()) as { transcript?: string };
+				const data = (await response.json()) as {
+					decision?: 'accept' | 'ignore';
+					transcript?: string;
+					message?: string | null;
+				};
 				if (abortController.signal.aborted) return;
 				const transcript = data.transcript || '';
 
@@ -467,6 +521,56 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 
 		if (isStoppingRecordingRef.current) return;
 
+		if (isNativePcmRecordingRef.current) {
+			isStoppingRecordingRef.current = true;
+			setIsTranscribing(true);
+			setIsLoading(true);
+			setIsListening(false);
+
+			try {
+				const recordingStartedAt = recordingStartedAtRef.current;
+				const tooShort = isRecordingTooShort(recordingStartedAt);
+				if (recordingStartedAt && !tooShort) {
+					const remainingRecordingTime =
+						MIN_RECORDING_DURATION_MS - (Date.now() - recordingStartedAt);
+					if (remainingRecordingTime > 0) {
+						await new Promise((resolve) => setTimeout(resolve, remainingRecordingTime));
+					}
+				}
+
+				removePcmStreamListeners();
+				const discard = shouldDiscardRecording() || tooShort;
+				const uri = await stopPcmAudioRecording(discard);
+				isNativePcmRecordingRef.current = false;
+
+				if (discard || !uri) {
+					setMessages((prev) =>
+						prev.filter((message) => message.id !== userSpeakingMessageIdRef.current),
+					);
+					setIsLoading(false);
+					setIsTranscribing(false);
+				} else {
+					void transcribeWithServer(uri, {
+						name: 'recording.wav',
+						type: 'audio/wav',
+					});
+				}
+			} catch (error) {
+				onServiceError?.('nagrywanie głosu', error);
+				setMessages((prev) =>
+					prev.filter((message) => message.id !== userSpeakingMessageIdRef.current),
+				);
+				setIsLoading(false);
+				setIsTranscribing(false);
+			} finally {
+				isNativePcmRecordingRef.current = false;
+				isStoppingRecordingRef.current = false;
+				recordingStartedAtRef.current = null;
+				shouldDiscardCurrentRecordingRef.current = false;
+			}
+			return;
+		}
+
 		if (isStreamingRecordingRef.current) {
 			isStoppingRecordingRef.current = true;
 			setIsTranscribing(true);
@@ -475,6 +579,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 
 			try {
 				const recordingStartedAt = recordingStartedAtRef.current;
+				const tooShort = isRecordingTooShort(recordingStartedAt);
 				if (recordingStartedAt) {
 					const remainingRecordingTime =
 						MIN_RECORDING_DURATION_MS - (Date.now() - recordingStartedAt);
@@ -488,7 +593,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				isStreamingRecordingRef.current = false;
 				recordingStartedAtRef.current = null;
 
-				if (shouldDiscardRecording()) {
+				if (shouldDiscardRecording() || tooShort) {
 					finalizeStreamingTranscript();
 					return;
 				}
@@ -523,6 +628,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 
 		try {
 			const recordingStartedAt = recordingStartedAtRef.current;
+			const tooShort = isRecordingTooShort(recordingStartedAt);
 			if (recordingStartedAt) {
 				const remainingRecordingTime =
 					MIN_RECORDING_DURATION_MS - (Date.now() - recordingStartedAt);
@@ -535,7 +641,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 			await audioRecorder.stop();
 			const uri = audioRecorder.uri;
 
-			if (shouldDiscardRecording()) {
+			if (shouldDiscardRecording() || tooShort) {
 				setMessages((prev) =>
 					prev.filter((message) => message.id !== userSpeakingMessageIdRef.current),
 				);
@@ -664,6 +770,47 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 		},
 		[soundLevelAnim, stopRecordingAndSend],
 	);
+
+	const startNoiseSuppressedRecording = useCallback(async () => {
+		pcmAudioSubscriptionRef.current = addPcmAudioListener((event) => {
+			processMetering(event.metering);
+		});
+		pcmErrorSubscriptionRef.current = addPcmStreamErrorListener((event) => {
+			if (!isNativePcmRecordingRef.current) return;
+
+			const error = new Error(event.message);
+			isNativePcmRecordingRef.current = false;
+			removePcmStreamListeners();
+			void stopPcmAudioRecording(true);
+			onSpeechInputError?.(error);
+			onServiceError?.(getServiceErrorFeature(error, 'rozpoznawanie mowy'), error);
+			setMessages((prev) =>
+				prev.filter((message) => message.id !== userSpeakingMessageIdRef.current),
+			);
+			setIsListening(false);
+			setIsLoading(false);
+			setIsTranscribing(false);
+		});
+
+		lastLoudTime.current = Date.now();
+		hasSpoken.current = false;
+		ambientNoiseDbRef.current = null;
+		speechFrameCountRef.current = 0;
+		meteringStartedAtRef.current = Date.now();
+		speechStartedAtRef.current = null;
+		speechPeakDbRef.current = null;
+
+		await startPcmAudioRecording();
+		isNativePcmRecordingRef.current = true;
+		recordingStartedAtRef.current = Date.now();
+	}, [
+		onServiceError,
+		onSpeechInputError,
+		processMetering,
+		removePcmStreamListeners,
+		setIsLoading,
+		setMessages,
+	]);
 
 	const startMetering = useCallback(() => {
 		lastLoudTime.current = Date.now();
@@ -876,6 +1023,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 			if (
 				isStartingRecordingRef.current ||
 				isListening ||
+				isNativePcmRecordingRef.current ||
 				isStreamingRecordingRef.current ||
 				sttStreamWebSocketRef.current
 			) {
@@ -893,7 +1041,12 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 
 			if (isStoppingRecordingRef.current) return;
 
-			if (isListening || isStartingRecordingRef.current || audioRecorder.isRecording) {
+			if (
+				isListening ||
+				isStartingRecordingRef.current ||
+				isNativePcmRecordingRef.current ||
+				audioRecorder.isRecording
+			) {
 				await stopRecordingAndSend();
 				return;
 			}
@@ -952,7 +1105,20 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 					return;
 				}
 
-				if (canStreamPcmAudio) {
+				if (canUseNoiseSuppressedRecording) {
+					await startNoiseSuppressedRecording();
+					isStartingRecordingRef.current = false;
+					setIsMicStarting(false);
+
+					if (shouldCancelAfterStartRef.current) {
+						await stopRecordingWithoutSending();
+						setMessages((prev) => prev.filter((message) => message.id !== userTempId));
+					} else if (shouldStopAfterStartRef.current) {
+						await stopRecordingAndSend();
+					} else {
+						setIsListening(true);
+					}
+				} else if (canStreamPcmAudio) {
 					await startStreamingRecording();
 					isStartingRecordingRef.current = false;
 					setIsMicStarting(false);
@@ -984,6 +1150,10 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				}
 			} catch (error) {
 				removePcmStreamListeners();
+				if (isNativePcmRecordingRef.current) {
+					void stopPcmAudioRecording(true);
+					isNativePcmRecordingRef.current = false;
+				}
 				void stopPcmAudioStream();
 				closeSttStreamSocket();
 				if (isSttStreamInterruptionExpected(sttAbortControllerRef.current?.signal)) {
@@ -1004,6 +1174,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 	}, [
 		audioRecorder,
 		blockMicRestart,
+		canUseNoiseSuppressedRecording,
 		canStreamPcmAudio,
 		closeSttStreamSocket,
 		isListening,
@@ -1022,6 +1193,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 		showTextInput,
 		soundLevelAnim,
 		startStreamingRecording,
+		startNoiseSuppressedRecording,
 		startMetering,
 		stopRecordingWithoutSending,
 		stopRecordingAndSend,

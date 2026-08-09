@@ -23,9 +23,18 @@ from app.schemas import (
     MessageCreate,
     MessageRead,
     ThreadCreate,
+    TranscriptDecision,
     TranscriptResponse,
 )
-from app.services import llm, message_router, next_best_step, retrieval, streaming, stt
+from app.services import (
+    llm,
+    message_router,
+    next_best_step,
+    retrieval,
+    streaming,
+    stt,
+    voice_query_selector,
+)
 from fastapi import WebSocket, WebSocketDisconnect
 from contextlib import suppress
 
@@ -513,9 +522,8 @@ async def create_message(
     response_model=TranscriptResponse,
     summary="Transcribe voice message",
     description=(
-        "Accepts an audio file, runs Deepgram STT on the server, "
-        "and returns the transcript. Does not call the LLM — "
-        "send the transcript via POST /{thread_id}/messages (JSON + SSE)."
+        "Transcribes an uploaded recording, then uses the configured chat model to "
+        "select the technician's intended query from the full transcript."
     ),
     responses={
         404: {"description": "Thread not found"},
@@ -537,14 +545,33 @@ async def transcribe_message(
     content_type = audio.content_type or "audio/m4a"
 
     try:
-        transcript = await stt.transcribe(audio_bytes, content_type, settings)
+        full_transcript = await stt.transcribe(
+            audio_bytes,
+            content_type,
+            settings,
+            filename=audio.filename or "recording.m4a",
+        )
     except stt.SttError as exc:
         detail = str(exc)
         if "Empty" in detail:
             raise HTTPException(status_code=422, detail=detail) from exc
         raise HTTPException(status_code=502, detail=detail) from exc
 
-    return TranscriptResponse(transcript=transcript)
+    try:
+        selection = await voice_query_selector.select_technician_query(
+            full_transcript, settings
+        )
+    except voice_query_selector.VoiceQuerySelectorError:
+        selection = None
+
+    transcript = voice_query_selector.selected_text_or_full_transcript(
+        full_transcript, selection
+    )
+    return TranscriptResponse(
+        decision=TranscriptDecision.accept,
+        transcript=transcript,
+        message=None,
+    )
 
 
 @router.websocket("/{thread_id}/messages/transcribe-stream")

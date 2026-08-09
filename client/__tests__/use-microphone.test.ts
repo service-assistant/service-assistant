@@ -24,11 +24,14 @@ const mockRecorder = {
 	}),
 };
 const mockUseAudioRecorder = jest.fn(() => mockRecorder);
+const mockStartPcmAudioRecording = jest.fn();
+const mockStopPcmAudioRecording = jest.fn();
 const mockStartPcmAudioStream = jest.fn();
 const mockStopPcmAudioStream = jest.fn();
 const mockPcmAudioRemove = jest.fn();
 const mockPcmStreamErrorRemove = jest.fn();
 let mockIsPcmAudioStreamAvailable = false;
+let mockIsPcmAudioRecordingAvailable = false;
 let mockPcmAudioListener: ((event: { pcm: string; metering: number }) => void) | null = null;
 let mockPcmStreamErrorListener: ((event: { message: string }) => void) | null = null;
 
@@ -122,6 +125,11 @@ jest.mock('@/modules/audio-stream', () => ({
 	get isPcmAudioStreamAvailable() {
 		return mockIsPcmAudioStreamAvailable;
 	},
+	get isPcmAudioRecordingAvailable() {
+		return mockIsPcmAudioRecordingAvailable;
+	},
+	startPcmAudioRecording: mockStartPcmAudioRecording,
+	stopPcmAudioRecording: mockStopPcmAudioRecording,
 	startPcmAudioStream: mockStartPcmAudioStream,
 	stopPcmAudioStream: mockStopPcmAudioStream,
 }));
@@ -130,8 +138,13 @@ import { useMicrophone } from '../hooks/use-microphone';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-const createTranscriptResponse = (transcript: string, status = 200) =>
-	new Response(JSON.stringify({ transcript }), {
+const createTranscriptResponse = (
+	transcript: string,
+	status = 200,
+	decision: 'accept' | 'ignore' = 'accept',
+	message?: string,
+) =>
+	new Response(JSON.stringify({ decision, transcript, message }), {
 		status,
 		headers: { 'content-type': 'application/json' },
 	});
@@ -233,6 +246,10 @@ describe('useMicrophone', () => {
 		mockSetAudioModeAsync.mockReset();
 		mockAnimatedValueSetValue.mockClear();
 		mockAnimatedTimingStart.mockClear();
+		mockStartPcmAudioRecording.mockReset();
+		mockStartPcmAudioRecording.mockResolvedValue(undefined);
+		mockStopPcmAudioRecording.mockReset();
+		mockStopPcmAudioRecording.mockResolvedValue(null);
 		mockStartPcmAudioStream.mockReset();
 		mockStartPcmAudioStream.mockResolvedValue(undefined);
 		mockStopPcmAudioStream.mockReset();
@@ -240,6 +257,7 @@ describe('useMicrophone', () => {
 		mockPcmAudioRemove.mockClear();
 		mockPcmStreamErrorRemove.mockClear();
 		mockIsPcmAudioStreamAvailable = false;
+		mockIsPcmAudioRecordingAvailable = false;
 		mockPcmAudioListener = null;
 		mockPcmStreamErrorListener = null;
 		MockWebSocket.instances = [];
@@ -412,7 +430,155 @@ describe('useMicrophone', () => {
 		expect(harness.state.isTranscribing).toBe(false);
 	});
 
-	test('streams PCM audio to backend STT and shows partial transcript while speaking', async () => {
+	test('silently handles 422 for an empty or too-short recording', async () => {
+		const harness = createHarness();
+		await harness.api.handleMicPress();
+
+		jest.useFakeTimers({ doNotFake: ['Date'] });
+		(Date.now as jest.Mock).mockReturnValue(2000);
+		jest.mocked(global.fetch).mockResolvedValueOnce(createTranscriptResponse('', 422));
+
+		const stopPromise = harness.api.handleMicPress();
+		await Promise.resolve();
+		await jest.advanceTimersByTimeAsync(500);
+		await stopPromise;
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(harness.state.messages).toEqual([]);
+		expect(harness.onSpeechInputError).not.toHaveBeenCalled();
+		expect(harness.onServiceError).not.toHaveBeenCalled();
+		expect(harness.state.isTranscribing).toBe(false);
+	});
+
+	test('always applies a returned transcript instead of asking for a repeat', async () => {
+		const harness = createHarness();
+		await harness.api.handleMicPress();
+
+		jest.useFakeTimers({ doNotFake: ['Date'] });
+		(Date.now as jest.Mock).mockReturnValue(2000);
+		jest.mocked(global.fetch).mockResolvedValueOnce(
+			createTranscriptResponse('...błąd dwa', 200, 'ignore'),
+		);
+
+		const stopPromise = harness.api.handleMicPress();
+		await Promise.resolve();
+		await jest.advanceTimersByTimeAsync(500);
+		await stopPromise;
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(harness.state.messages).toEqual([
+			{
+				id: 1000,
+				sender: 'user',
+				text: '...błąd dwa',
+				isSpeaking: false,
+			},
+		]);
+		expect(harness.onTranscript).toHaveBeenCalledWith('...błąd dwa');
+		expect(harness.state.isTranscribing).toBe(false);
+	});
+
+	test('silently removes a recording classified as background speech', async () => {
+		const harness = createHarness();
+		await harness.api.handleMicPress();
+
+		jest.useFakeTimers({ doNotFake: ['Date'] });
+		(Date.now as jest.Mock).mockReturnValue(2000);
+		jest.mocked(global.fetch).mockResolvedValueOnce(
+			createTranscriptResponse('', 200, 'ignore'),
+		);
+
+		const stopPromise = harness.api.handleMicPress();
+		await Promise.resolve();
+		await jest.advanceTimersByTimeAsync(500);
+		await stopPromise;
+		await Promise.resolve();
+		await Promise.resolve();
+
+		expect(harness.state.messages).toEqual([]);
+		expect(harness.onTranscript).not.toHaveBeenCalled();
+		expect(harness.state.isTranscribing).toBe(false);
+	});
+
+	test('records noise-suppressed PCM as WAV and sends the completed file to STT', async () => {
+		mockIsPcmAudioRecordingAvailable = true;
+		mockStopPcmAudioRecording.mockResolvedValue('file:///cache/fikso-voice.wav');
+		const harness = createHarness();
+
+		await harness.api.handleMicPress();
+
+		expect(mockStartPcmAudioRecording).toHaveBeenCalledTimes(1);
+		expect(mockRecorder.prepareToRecordAsync).not.toHaveBeenCalled();
+		expect(mockRecorder.record).not.toHaveBeenCalled();
+		expect(mockPcmAudioListener).toEqual(expect.any(Function));
+		expect(mockPcmStreamErrorListener).toEqual(expect.any(Function));
+
+		(Date.now as jest.Mock).mockReturnValue(2000);
+		jest.mocked(global.fetch).mockResolvedValueOnce(createTranscriptResponse('podnieś widły'));
+
+		await harness.api.handleMicPress();
+		await flushPromises();
+		await flushPromises();
+
+		expect(mockStopPcmAudioRecording).toHaveBeenCalledWith(false);
+		expect(global.fetch).toHaveBeenCalledWith(
+			'https://api.example.test/api/threads/123/messages/transcribe',
+			expect.objectContaining({
+				method: 'POST',
+				headers: { Authorization: 'Bearer test-token' },
+				body: expect.any(FormData),
+			}),
+		);
+		expect(harness.onTranscript).toHaveBeenCalledWith('podnieś widły');
+	});
+
+	test('discards a millisecond native recording without calling STT', async () => {
+		mockIsPcmAudioRecordingAvailable = true;
+		const harness = createHarness();
+
+		await harness.api.handleMicPress();
+		(Date.now as jest.Mock).mockReturnValue(1001);
+		await harness.api.handleMicPress();
+		await flushPromises();
+
+		expect(mockStopPcmAudioRecording).toHaveBeenCalledWith(true);
+		expect(global.fetch).not.toHaveBeenCalled();
+		expect(harness.state.messages).toEqual([]);
+		expect(harness.onSpeechInputError).not.toHaveBeenCalled();
+		expect(harness.onServiceError).not.toHaveBeenCalled();
+	});
+
+	test('discards a native PCM recording when voice input is aborted', async () => {
+		mockIsPcmAudioRecordingAvailable = true;
+		const harness = createHarness();
+
+		await harness.api.handleMicPress();
+		harness.api.abortVoiceInput();
+		await flushPromises();
+
+		expect(mockStopPcmAudioRecording).toHaveBeenCalledWith(true);
+		expect(global.fetch).not.toHaveBeenCalled();
+		expect(harness.state.messages).toEqual([]);
+	});
+
+	test('uses the completed-recording path when PCM streaming is available', async () => {
+		mockIsPcmAudioStreamAvailable = true;
+		const harness = createHarness();
+
+		await harness.api.handleMicPress();
+
+		expect(mockRecorder.prepareToRecordAsync).toHaveBeenCalled();
+		expect(mockRecorder.record).toHaveBeenCalled();
+		expect(mockStartPcmAudioStream).not.toHaveBeenCalled();
+		expect(MockWebSocket.instances).toHaveLength(0);
+
+		await harness.api.abortVoiceInput();
+		await flushPromises();
+	});
+
+	test.skip('streams PCM audio to backend STT and shows partial transcript while speaking', async () => {
 		mockIsPcmAudioStreamAvailable = true;
 		const harness = createHarness();
 
@@ -454,7 +620,7 @@ describe('useMicrophone', () => {
 		await flushPromises();
 	});
 
-	test('does not report STT stream connection errors after voice input is cancelled', async () => {
+	test.skip('does not report STT stream connection errors after voice input is cancelled', async () => {
 		mockIsPcmAudioStreamAvailable = true;
 		const harness = createHarness();
 
@@ -477,7 +643,7 @@ describe('useMicrophone', () => {
 		);
 	});
 
-	test('queues cancellation when microphone is tapped again during streaming startup', async () => {
+	test.skip('queues cancellation when microphone is tapped again during streaming startup', async () => {
 		mockIsPcmAudioStreamAvailable = true;
 		const harness = createHarness();
 
@@ -500,7 +666,7 @@ describe('useMicrophone', () => {
 		);
 	});
 
-	test('does not report cancelled streaming voice input as a service error', async () => {
+	test.skip('does not report cancelled streaming voice input as a service error', async () => {
 		mockIsPcmAudioStreamAvailable = true;
 		const harness = createHarness();
 

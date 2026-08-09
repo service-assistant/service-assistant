@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import Enum
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
@@ -21,10 +22,21 @@ class MessageCreate(BaseModel):
     )
 
 
+class TranscriptDecision(str, Enum):
+    accept = "accept"
+    ignore = "ignore"
+
+
 class TranscriptResponse(BaseModel):
+    decision: TranscriptDecision
     transcript: str = Field(
-        description="Speech-to-text result for the uploaded audio.",
+        default="",
+        description="Selected technician utterance, empty unless decision is accept.",
         examples=["Jak zresetować błąd E-23?"],
+    )
+    message: str | None = Field(
+        default=None,
+        description="Optional feedback to display instead of sending a chat message.",
     )
 
 

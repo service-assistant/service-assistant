@@ -7,10 +7,17 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
+import android.media.audiofx.NoiseSuppressor
+import android.net.Uri
 import android.util.Base64
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -29,6 +36,8 @@ class AudioStreamModule : Module() {
   private var pcmPlaybackThread: Thread? = null
   private var pcmAudioRecord: AudioRecord? = null
   private var pcmAudioTrack: AudioTrack? = null
+  private var pcmRecordingRawFile: File? = null
+  private var lastPcmRecordingWavFile: File? = null
   private val pcmPlaybackQueue = LinkedBlockingQueue<ByteArray>()
 
   override fun definition() = ModuleDefinition {
@@ -41,6 +50,14 @@ class AudioStreamModule : Module() {
 
     AsyncFunction("stopPcmStream") {
       stopPcmStreaming()
+    }
+
+    AsyncFunction("startPcmRecording") {
+      startPcmStreaming(recordToFile = true)
+    }
+
+    AsyncFunction("stopPcmRecording") { discard: Boolean ->
+      stopPcmRecording(discard)
     }
 
     AsyncFunction("startPcmPlayback") {
@@ -58,10 +75,12 @@ class AudioStreamModule : Module() {
     OnDestroy {
       stopPcmStreaming()
       stopPcmPlayback()
+      pcmRecordingRawFile?.delete()
+      lastPcmRecordingWavFile?.delete()
     }
   }
 
-  private fun startPcmStreaming() {
+  private fun startPcmStreaming(recordToFile: Boolean = false) {
     if (isPcmStreaming) {
       return
     }
@@ -76,25 +95,60 @@ class AudioStreamModule : Module() {
       AudioFormat.CHANNEL_IN_MONO,
       AudioFormat.ENCODING_PCM_16BIT
     )
-    val recorder = AudioRecord(
-      MediaRecorder.AudioSource.MIC,
-      SAMPLE_RATE,
-      AudioFormat.CHANNEL_IN_MONO,
-      AudioFormat.ENCODING_PCM_16BIT,
-      max(minBufferSize, PCM_STREAM_CHUNK_SAMPLES * 2)
-    )
+    val recorder = AudioRecord.Builder()
+      .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+      .setAudioFormat(
+        AudioFormat.Builder()
+          .setSampleRate(SAMPLE_RATE)
+          .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+          .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+          .build()
+      )
+      .setBufferSizeInBytes(max(minBufferSize, PCM_STREAM_CHUNK_SAMPLES * 2))
+      .build()
     if (recorder.state != AudioRecord.STATE_INITIALIZED) {
       recorder.release()
       throw IllegalStateException("Unable to initialize microphone streaming")
     }
 
+    val noiseSuppressor = if (NoiseSuppressor.isAvailable()) {
+      val suppressor = runCatching { NoiseSuppressor.create(recorder.audioSessionId) }.getOrNull()
+      if (suppressor != null && runCatching { suppressor.enabled = true }.isFailure) {
+        suppressor.release()
+        null
+      } else suppressor
+    } else null
+
+    val rawFile = try {
+      if (recordToFile) {
+        val contextCacheDir = context.cacheDir
+        lastPcmRecordingWavFile?.delete()
+        lastPcmRecordingWavFile = null
+        File.createTempFile("fikso-voice-", ".pcm", contextCacheDir).also {
+          pcmRecordingRawFile = it
+        }
+      } else {
+        null
+      }
+    } catch (error: Exception) {
+      noiseSuppressor?.release()
+      recorder.release()
+      throw IllegalStateException("Unable to create PCM recording file", error)
+    }
+
     try {
       recorder.startRecording()
     } catch (error: IllegalStateException) {
+      noiseSuppressor?.release()
+      rawFile?.delete()
+      if (pcmRecordingRawFile === rawFile) pcmRecordingRawFile = null
       recorder.release()
       throw IllegalStateException("Unable to start microphone streaming", error)
     }
     if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+      noiseSuppressor?.release()
+      rawFile?.delete()
+      if (pcmRecordingRawFile === rawFile) pcmRecordingRawFile = null
       recorder.release()
       throw IllegalStateException("Microphone did not enter the recording state")
     }
@@ -106,8 +160,10 @@ class AudioStreamModule : Module() {
     pcmStreamingThread = thread(name = "fikso-pcm-stream") {
       val chunk = ShortArray(PCM_STREAM_CHUNK_SAMPLES)
       var consecutiveEmptyReads = 0
+      var rawOutput: BufferedOutputStream? = null
 
       try {
+        rawOutput = rawFile?.let { BufferedOutputStream(FileOutputStream(it)) }
         while (isPcmStreaming) {
           val samplesRead = recorder.read(chunk, 0, chunk.size)
           if (samplesRead <= 0) {
@@ -128,6 +184,7 @@ class AudioStreamModule : Module() {
             val normalized = sample / 32768.0
             squareSum += normalized * normalized
           }
+          rawOutput?.write(bytes)
           val rms = sqrt(squareSum / samplesRead)
           val metering = if (rms > 0.0) 20.0 * kotlin.math.log10(rms) else -160.0
           sendEvent(
@@ -143,10 +200,12 @@ class AudioStreamModule : Module() {
           sendEvent("onPcmStreamError", mapOf("message" to (error.message ?: "Unknown microphone streaming error")))
         }
       } finally {
+        runCatching { rawOutput?.close() }
         try {
           recorder.stop()
         } catch (_: IllegalStateException) {
         }
+        noiseSuppressor?.release()
         recorder.release()
         synchronized(this) {
           if (pcmAudioRecord === recorder) {
@@ -166,8 +225,68 @@ class AudioStreamModule : Module() {
     } catch (_: IllegalStateException) {
     }
     val currentThread = pcmStreamingThread
-    if (currentThread != Thread.currentThread()) currentThread?.join(750)
+    if (currentThread != Thread.currentThread()) currentThread?.join(2_000)
+    if (currentThread?.isAlive == true) {
+      throw IllegalStateException("Microphone recording did not stop in time")
+    }
     pcmStreamingThread = null
+  }
+
+  private fun stopPcmRecording(discard: Boolean): String? {
+    stopPcmStreaming()
+    val rawFile = pcmRecordingRawFile
+    pcmRecordingRawFile = null
+
+    if (rawFile == null || !rawFile.exists()) {
+      if (discard) return null
+      throw IllegalStateException("PCM recording file is unavailable")
+    }
+
+    if (discard) {
+      rawFile.delete()
+      return null
+    }
+
+    val wavFile = File(rawFile.parentFile, "${rawFile.nameWithoutExtension}.wav")
+    writePcmAsWav(rawFile, wavFile)
+    rawFile.delete()
+    lastPcmRecordingWavFile = wavFile
+    return Uri.fromFile(wavFile).toString()
+  }
+
+  private fun writePcmAsWav(rawFile: File, wavFile: File) {
+    val dataSize = rawFile.length()
+    BufferedOutputStream(FileOutputStream(wavFile)).use { output ->
+      output.write("RIFF".toByteArray(Charsets.US_ASCII))
+      writeLittleEndianInt(output, (36L + dataSize).toInt())
+      output.write("WAVE".toByteArray(Charsets.US_ASCII))
+      output.write("fmt ".toByteArray(Charsets.US_ASCII))
+      writeLittleEndianInt(output, 16)
+      writeLittleEndianShort(output, 1)
+      writeLittleEndianShort(output, 1)
+      writeLittleEndianInt(output, SAMPLE_RATE)
+      writeLittleEndianInt(output, SAMPLE_RATE * 2)
+      writeLittleEndianShort(output, 2)
+      writeLittleEndianShort(output, 16)
+      output.write("data".toByteArray(Charsets.US_ASCII))
+      writeLittleEndianInt(output, dataSize.toInt())
+
+      BufferedInputStream(FileInputStream(rawFile)).use { input ->
+        input.copyTo(output)
+      }
+    }
+  }
+
+  private fun writeLittleEndianInt(output: BufferedOutputStream, value: Int) {
+    output.write(value and 0xff)
+    output.write((value shr 8) and 0xff)
+    output.write((value shr 16) and 0xff)
+    output.write((value shr 24) and 0xff)
+  }
+
+  private fun writeLittleEndianShort(output: BufferedOutputStream, value: Int) {
+    output.write(value and 0xff)
+    output.write((value shr 8) and 0xff)
   }
 
   private fun startPcmPlayback() {

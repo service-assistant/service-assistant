@@ -16,6 +16,7 @@ from app.services.next_best_step import (
     cache_diagnostic_plan,
 )
 from app.services.stt import SttError
+from app.services.voice_query_selector import VoiceDecision, VoiceQuerySelection
 
 from tests.routers.factories import (
     create_attachment,
@@ -736,16 +737,22 @@ async def test_should_transcribe_audio_when_thread_exists(client, session, mocke
     thread = await create_thread(session, device.id)
 
     mock_response = mocker.MagicMock(status_code=200)
-    mock_response.json.return_value = {
-        "results": {
-            "channels": [{"alternatives": [{"transcript": "Oil pressure low"}]}]
-        }
-    }
+    mock_response.json.return_value = {"text": "Oil pressure low. Bring me the wrench."}
     mock_http = mocker.AsyncMock()
     mock_http.post = mocker.AsyncMock(return_value=mock_response)
     mock_http.__aenter__ = mocker.AsyncMock(return_value=mock_http)
     mock_http.__aexit__ = mocker.AsyncMock(return_value=False)
     mocker.patch("app.services.stt.httpx.AsyncClient", return_value=mock_http)
+    selector = mocker.patch(
+        "app.routers.threads.voice_query_selector.select_technician_query",
+        new=mocker.AsyncMock(
+            return_value=VoiceQuerySelection(
+                decision=VoiceDecision.accept,
+                selected_text="Oil pressure low.",
+                confidence=0.98,
+            )
+        ),
+    )
 
     response = await client.post(
         f"/api/threads/{thread.id}/messages/transcribe",
@@ -753,7 +760,21 @@ async def test_should_transcribe_audio_when_thread_exists(client, session, mocke
     )
 
     assert response.status_code == 200
-    assert response.json()["transcript"] == "Oil pressure low"
+    assert response.json() == {
+        "decision": "accept",
+        "transcript": "Oil pressure low.",
+        "message": None,
+    }
+    selector.assert_awaited_once()
+    stt_call = mock_http.post.call_args
+    assert stt_call.args[0] == "https://api.openai.com/v1/audio/transcriptions"
+    assert stt_call.kwargs["headers"] == {"Authorization": "Bearer test-openai-key"}
+    assert stt_call.kwargs["files"] == {
+        "file": ("recording.m4a", b"fake audio bytes", "audio/m4a")
+    }
+    assert stt_call.kwargs["data"]["model"] == "gpt-transcribe"
+    assert stt_call.kwargs["data"]["language"] == "pl"
+    assert "Nie zgaduj" in stt_call.kwargs["data"]["prompt"]
 
 
 async def test_should_return_404_when_transcribing_for_nonexistent_thread(client):
