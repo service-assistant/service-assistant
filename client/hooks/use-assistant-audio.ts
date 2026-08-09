@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { Platform } from 'react-native';
 
+import type { TtsStyle, TtsVoice } from '@/hooks/use-app-settings';
 import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
 	getAuthTokenOrThrow,
@@ -19,6 +20,9 @@ import {
 import * as FileSystem from 'expo-file-system/legacy';
 
 const PLAYBACK_START_GRACE_MS = 1000;
+// The backend can process up to four chunks in two concurrent batches, with one
+// retry per chunk. Keep the client alive slightly longer than that server budget.
+const TTS_REQUEST_TIMEOUT_MS = 220000;
 const VOICE_OUTPUT_FEATURE = 'odtwarzanie odpowiedzi głosowej';
 const MAX_ERROR_DETAIL_CHARS = 500;
 
@@ -50,12 +54,16 @@ const isReleasedAudioPlayerError = (error: unknown) => {
 type UseAssistantAudioParams = {
 	setIsLoading: Dispatch<SetStateAction<boolean>>;
 	setIsGenerating: Dispatch<SetStateAction<boolean>>;
+	ttsVoice: TtsVoice;
+	ttsStyle: TtsStyle;
 	onServiceError?: (featureName: string, error: unknown) => void;
 };
 
 export const useAssistantAudio = ({
 	setIsLoading,
 	setIsGenerating,
+	ttsVoice,
+	ttsStyle,
 	onServiceError,
 }: UseAssistantAudioParams) => {
 	const ttsPlayer = useAudioPlayer(null);
@@ -131,6 +139,8 @@ export const useAssistantAudio = ({
 	const playAssistantAudio = useCallback(
 		async (text: string) => {
 			const abortController = new AbortController();
+			let didRequestTimeout = false;
+			let requestTimeout: ReturnType<typeof setTimeout> | null = null;
 			ttsAbortControllerRef.current = abortController;
 			isPreparingAudioRef.current = true;
 			hasObservedPlaybackRef.current = false;
@@ -142,6 +152,10 @@ export const useAssistantAudio = ({
 				setIsLoading(true);
 				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
 				const authToken = getAuthTokenOrThrow();
+				requestTimeout = setTimeout(() => {
+					didRequestTimeout = true;
+					abortController.abort();
+				}, TTS_REQUEST_TIMEOUT_MS);
 
 				const response = await fetch(`${AUTH_URL}/api/tts`, {
 					method: 'POST',
@@ -150,7 +164,7 @@ export const useAssistantAudio = ({
 						Authorization: `Bearer ${authToken}`,
 						'Content-Type': 'application/json',
 					},
-					body: JSON.stringify({ text }),
+					body: JSON.stringify({ text, voice: ttsVoice, style: ttsStyle }),
 					signal: abortController.signal,
 				});
 
@@ -200,10 +214,16 @@ export const useAssistantAudio = ({
 					}
 				}
 			} catch (error: any) {
-				if (error.name === 'AbortError') return;
+				if (error.name === 'AbortError') {
+					if (!didRequestTimeout) return;
+					error = new Error(
+						'Przekroczono limit czasu generowania głosu. Spróbuj ponownie.',
+					);
+				}
 				console.log('Handled assistant TTS error:', error);
 				onServiceError?.(getServiceErrorFeature(error, VOICE_OUTPUT_FEATURE), error);
 			} finally {
+				if (requestTimeout) clearTimeout(requestTimeout);
 				isPreparingAudioRef.current = false;
 				if (!didStartPlayback) {
 					hasObservedPlaybackRef.current = false;
@@ -217,7 +237,7 @@ export const useAssistantAudio = ({
 				}
 			}
 		},
-		[onServiceError, setIsGenerating, setIsLoading, ttsPlayer],
+		[onServiceError, setIsGenerating, setIsLoading, ttsPlayer, ttsStyle, ttsVoice],
 	);
 
 	return {

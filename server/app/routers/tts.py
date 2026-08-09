@@ -36,7 +36,9 @@ async def synthesize_speech(
 ):
     input_chars = len(body.text)
     try:
-        pcm = await tts.synthesize_pcm(body.text, settings)
+        pcm = await tts.synthesize_pcm(
+            body.text, settings, voice=body.voice, style=body.style
+        )
     except tts.TtsError as exc:
         detail = _safe_error_detail(str(exc))
         status_code = 503 if "not configured" in detail else 502

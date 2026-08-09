@@ -71,6 +71,8 @@ describe('use-app-settings store', () => {
 					lightThemeEnabled: true,
 					wakeWordEnabled: true,
 					ttsEnabled: true,
+					ttsVoice: 'Leda',
+					ttsStyle: 'extreme_sensual',
 					diagnosticMode2002Enabled: false,
 				}),
 			}),
@@ -83,6 +85,8 @@ describe('use-app-settings store', () => {
 				lightThemeEnabled: true,
 				wakeWordEnabled: true,
 				ttsEnabled: true,
+				ttsVoice: 'Leda',
+				ttsStyle: 'extreme_sensual',
 				diagnosticModeEnabled: false,
 			});
 		});
@@ -98,6 +102,8 @@ describe('use-app-settings store', () => {
 			setAppSetting('lightThemeEnabled', true);
 			setAppSetting('wakeWordEnabled', true);
 			setAppSetting('ttsEnabled', true);
+			setAppSetting('ttsVoice', 'Leda');
+			setAppSetting('ttsStyle', 'sensual');
 			setAppSetting('diagnosticModeEnabled', false);
 
 			expect(localStorage.setItem).toHaveBeenLastCalledWith(
@@ -106,6 +112,8 @@ describe('use-app-settings store', () => {
 					lightThemeEnabled: true,
 					wakeWordEnabled: true,
 					ttsEnabled: true,
+					ttsVoice: 'Leda',
+					ttsStyle: 'sensual',
 					diagnosticModeEnabled: false,
 				}),
 			);
@@ -120,6 +128,8 @@ describe('use-app-settings store', () => {
 				lightThemeEnabled: true,
 				wakeWordEnabled: true,
 				ttsEnabled: true,
+				ttsVoice: 'Leda',
+				ttsStyle: 'sensual',
 				diagnosticMode2002Enabled: false,
 			}),
 		);
@@ -142,6 +152,8 @@ describe('use-app-settings store', () => {
 				lightThemeEnabled: true,
 				wakeWordEnabled: true,
 				ttsEnabled: true,
+				ttsVoice: 'Leda',
+				ttsStyle: 'sensual',
 				diagnosticModeEnabled: false,
 			});
 		});
@@ -156,6 +168,8 @@ describe('use-app-settings store', () => {
 			setAppSetting('lightThemeEnabled', true);
 			setAppSetting('wakeWordEnabled', true);
 			setAppSetting('ttsEnabled', true);
+			setAppSetting('ttsVoice', 'Leda');
+			setAppSetting('ttsStyle', 'sensual');
 			setAppSetting('diagnosticModeEnabled', false);
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -165,6 +179,8 @@ describe('use-app-settings store', () => {
 					lightThemeEnabled: true,
 					wakeWordEnabled: true,
 					ttsEnabled: true,
+					ttsVoice: 'Leda',
+					ttsStyle: 'sensual',
 					diagnosticModeEnabled: false,
 				}),
 			);
