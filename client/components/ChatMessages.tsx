@@ -788,114 +788,142 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 							if (schemaImages.length === 0 && sourceReferences.length === 0)
 								return null;
 
-							const materials = Array.from(
-								{
-									length: Math.min(
-										5,
-										Math.max(schemaImages.length, sourceReferences.length),
-									),
-								},
-								(_, index) => {
-									const schemaImage = schemaImages[index];
-									const source =
-										sourceReferences.find(
-											(reference) => reference.previewImage === schemaImage,
-										) || sourceReferences[index];
-
-									return { schemaImage, source };
-								},
-							);
-
 							return (
 								<View className='mt-4'>
-									<Text
-										className={`${lightMode ? 'text-[#52525B]' : 'text-[#AEB3BA]'} text-[14px]`}>
-										Schematy z dokumentacji
-									</Text>
-									<Text
-										className={`${lightMode ? 'text-[#71717A]' : 'text-[#7F858D]'} text-[12px] mb-2`}>
-										Kliknij schemat, aby otworzyć go w pełnym rozmiarze.
-									</Text>
-									<ScrollView
-										horizontal
-										showsHorizontalScrollIndicator={false}
-										style={{ width: '100%' }}
-										contentContainerStyle={
-											compact
-												? { gap: 8, paddingRight: 4 }
-												: { gap: 8, width: '100%' }
-										}>
-										{materials.map(({ schemaImage, source }, index) => (
-											<View
-												key={`${schemaImage ? getSchemaImageUri(schemaImage) : source?.sourceAttachmentId || 'material'}-${index}`}
-												className={`rounded-lg overflow-hidden border ${
-													lightMode
-														? 'border-[#D4D4D8] bg-white'
-														: 'border-[#292D33] bg-[#111318]'
-												}`}
-												style={
+									{schemaImages.length > 0 ? (
+										<View>
+											<Text
+												className={`${lightMode ? 'text-[#52525B]' : 'text-[#AEB3BA]'} text-[14px]`}>
+												Schematy z dokumentacji
+											</Text>
+											<Text
+												className={`${lightMode ? 'text-[#71717A]' : 'text-[#7F858D]'} text-[12px] mb-2`}>
+												Kliknij schemat, aby otworzyć go w pełnym rozmiarze.
+											</Text>
+											<ScrollView
+												horizontal
+												showsHorizontalScrollIndicator={false}
+												style={{ width: '100%' }}
+												contentContainerStyle={
 													compact
-														? { width: 136 }
-														: { flex: 1, minWidth: 0 }
+														? { gap: 8, paddingRight: 4 }
+														: { gap: 8, width: '100%' }
 												}>
-												<TouchableOpacity
-													onPress={() =>
-														schemaImage && onOpenSchema(schemaImage)
-													}
-													disabled={!schemaImage}
-													accessibilityRole='button'
-													accessibilityLabel={`Powiększ schemat ${index + 1}`}
-													className='items-center justify-center'
-													style={{ width: '100%', aspectRatio: 1 }}>
-													{schemaImage ? (
-														<InvertedSchemaPreview
-															imageUrl={schemaImage}
-															aspectRatio={1}
-															lightMode={lightMode}
-														/>
-													) : (
-														<Feather
-															name='file-text'
-															size={compact ? 22 : 28}
-															color={PRIMARY_ORANGE}
-														/>
-													)}
-												</TouchableOpacity>
-												{source ? (
+												{schemaImages.map((schemaImage, index) => (
+													<View
+														key={`${getSchemaImageUri(schemaImage)}-${index}`}
+														className={`rounded-lg overflow-hidden border ${
+															lightMode
+																? 'border-[#D4D4D8] bg-white'
+																: 'border-[#292D33] bg-[#111318]'
+														}`}
+														style={
+															compact
+																? { width: 136 }
+																: { flex: 1, minWidth: 0 }
+														}>
+														<TouchableOpacity
+															onPress={() =>
+																schemaImage &&
+																onOpenSchema(schemaImage)
+															}
+															accessibilityRole='button'
+															accessibilityLabel={`Powiększ schemat ${index + 1}`}
+															className='items-center justify-center'
+															style={{
+																width: '100%',
+																aspectRatio: 1,
+															}}>
+															<InvertedSchemaPreview
+																imageUrl={schemaImage}
+																aspectRatio={1}
+																lightMode={lightMode}
+															/>
+														</TouchableOpacity>
+													</View>
+												))}
+												{!compact
+													? Array.from(
+															{ length: 5 - schemaImages.length },
+															(_, index) => (
+																<View
+																	key={`empty-schema-slot-${index}`}
+																	pointerEvents='none'
+																	accessibilityElementsHidden
+																	style={{ flex: 1, minWidth: 0 }}
+																/>
+															),
+														)
+													: null}
+											</ScrollView>
+										</View>
+									) : null}
+									{sourceReferences.length > 0 ? (
+										<View
+											className={
+												schemaImages.length > 0 ? 'mt-7' : undefined
+											}>
+											<Text
+												className={`${lightMode ? 'text-[#52525B]' : 'text-[#AEB3BA]'} text-[14px]`}>
+												Źródła odpowiedzi
+											</Text>
+											<Text
+												className={`${lightMode ? 'text-[#71717A]' : 'text-[#7F858D]'} mb-2 text-[12px]`}>
+												Kliknij źródło, aby otworzyć dokument.
+											</Text>
+											<ScrollView
+												horizontal
+												showsHorizontalScrollIndicator
+												persistentScrollbar={false}
+												indicatorStyle={lightMode ? 'black' : 'white'}
+												style={{ width: '100%' }}
+												contentContainerStyle={{
+													gap: 8,
+													paddingRight: 4,
+													paddingBottom: 10,
+												}}>
+												{sourceReferences.map((source, index) => (
 													<TouchableOpacity
+														key={`${source.sourceAttachmentId}-${source.sourceAttachmentPage || 'document'}-${index}`}
 														onPress={() => onOpenSource(source)}
 														accessibilityRole='button'
 														accessibilityLabel={`Otwórz źródło ${index + 1}`}
-														className={`flex-row items-center border-t px-2.5 py-2 ${
+														className={`flex-row items-center rounded-lg border px-3 py-2.5 ${
 															lightMode
-																? 'border-[#E4E4E7] bg-[#FAFAFA]'
-																: 'border-[#292D33] bg-[#111318]'
+																? 'border-[#D4D4D8] bg-[#FAFAFA]'
+																: 'border-[#3F444C] bg-[#111318]'
 														}`}
-														style={{ minHeight: compact ? 48 : 56 }}>
+														style={{
+															minHeight: compact ? 46 : 50,
+															width: compact ? 176 : 210,
+														}}>
 														<MaterialCommunityIcons
 															name='file-pdf-box'
-															size={compact ? 18 : 21}
+															size={compact ? 19 : 21}
 															color='#EF4444'
 															style={{
-																marginRight: 6,
+																marginRight: 8,
 																flexShrink: 0,
 															}}
 														/>
 														<Text
-															className={`${lightMode ? 'text-[#27272A]' : 'text-[#F4F4F5]'} flex-1 font-semibold`}
+															className={`${lightMode ? 'text-[#18181B]' : 'text-[#F4F4F5]'} font-semibold`}
 															style={{
 																fontSize: compact ? 12 : 13,
-																lineHeight: compact ? 16 : 17,
+																flexShrink: 1,
 															}}
-															numberOfLines={2}>
+															numberOfLines={3}>
 															{source.sourceAttachmentName ||
 																`Dokument_${source.sourceAttachmentId}.pdf`}
+															{source.sourceAttachmentPage
+																? ` · str. ${source.sourceAttachmentPage}`
+																: ''}
 														</Text>
 													</TouchableOpacity>
-												) : null}
-											</View>
-										))}
-									</ScrollView>
+												))}
+											</ScrollView>
+										</View>
+									) : null}
 								</View>
 							);
 						})()}
