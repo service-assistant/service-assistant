@@ -21,11 +21,13 @@ import ChatMessages, {
 	type ChatMessageSourceReference,
 	type SchemaImageSource,
 } from '@/components/ChatMessages';
+import ComposerPhotoPreview from '@/components/ComposerPhotoPreview';
 import ControlPanel from '@/components/ControlPanel';
 import MachineInfoPanel from '@/components/MachineInfoPanel';
 import SourcePanel from '@/components/SourcePanel';
 import StartPromptView, { type KeyboardFrame } from '@/components/StartPromptView';
 import ThemeAwareLogo from '@/components/ThemeAwareLogo';
+import { MAX_CHAT_PHOTOS } from '@/types/chat';
 
 const PRIMARY_ORANGE = '#FF7A00';
 const KEYBOARD_INPUT_GAP = 12;
@@ -257,6 +259,8 @@ function FloatingChatInput({
 	onChangeText,
 	onSend,
 	autoFocus = false,
+	pendingPhotoUris = [],
+	onRemovePendingPhoto,
 	lightMode = false,
 }: {
 	compact?: boolean;
@@ -264,9 +268,12 @@ function FloatingChatInput({
 	onChangeText: (text: string) => void;
 	onSend: () => void;
 	autoFocus?: boolean;
+	pendingPhotoUris?: string[];
+	onRemovePendingPhoto?: (photoUri: string) => void;
 	lightMode?: boolean;
 }) {
 	const inputRef = React.useRef<TextInput>(null);
+	const hasPendingPhotos = pendingPhotoUris.length > 0;
 
 	return (
 		<View collapsable={false}>
@@ -274,55 +281,78 @@ function FloatingChatInput({
 				onPress={() => inputRef.current?.focus()}
 				hitSlop={{ top: 12, right: 8, bottom: 12, left: 8 }}
 				accessible={false}
-				className='flex-row items-center'
 				style={{
 					width: '100%',
-					height: compact ? 62 : 74,
-					borderRadius: compact ? 31 : 37,
+					borderRadius: hasPendingPhotos ? (compact ? 24 : 28) : compact ? 31 : 37,
 					backgroundColor: lightMode ? '#FFFFFF' : '#242424',
 					borderWidth: 1,
 					borderColor: lightMode ? 'rgba(20, 20, 20, 0.09)' : 'rgba(255, 255, 255, 0.08)',
-					paddingLeft: compact ? 18 : 32,
-					paddingRight: compact ? 8 : 10,
 					shadowColor: '#141414',
 					shadowOffset: { width: 0, height: 8 },
 					shadowOpacity: lightMode ? 0.04 : 0.14,
 					shadowRadius: 24,
 					elevation: 0,
 				}}>
-				<TextInput
-					ref={inputRef}
-					className={`flex-1 ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
-					placeholder='Np. nie działa podnoszenie wideł'
-					placeholderTextColor={lightMode ? '#71717A' : '#A1A1AA'}
-					value={inputText}
-					onChangeText={onChangeText}
-					onSubmitEditing={onSend}
+				{hasPendingPhotos && onRemovePendingPhoto ? (
+					<ScrollView
+						horizontal
+						showsHorizontalScrollIndicator={false}
+						contentContainerStyle={{
+							gap: 10,
+							paddingTop: compact ? 12 : 14,
+							paddingHorizontal: compact ? 12 : 16,
+						}}>
+						{pendingPhotoUris.map((photoUri) => (
+							<ComposerPhotoPreview
+								key={photoUri}
+								photoUri={photoUri}
+								onRemove={() => onRemovePendingPhoto(photoUri)}
+								size={compact ? 96 : 112}
+							/>
+						))}
+					</ScrollView>
+				) : null}
+				<View
+					className='flex-row items-center'
 					style={{
-						height: '100%',
-						fontSize: compact ? 16 : 20,
-						lineHeight: compact ? 22 : 27,
-						paddingVertical: 0,
-						textAlignVertical: 'center',
-					}}
-					autoFocus={autoFocus}
-				/>
-				<TouchableOpacity
-					onPress={onSend}
-					className='items-center justify-center'
-					style={{
-						width: compact ? 46 : 56,
-						height: compact ? 46 : 56,
-						borderRadius: compact ? 23 : 28,
-						backgroundColor: PRIMARY_ORANGE,
-						shadowColor: PRIMARY_ORANGE,
-						shadowOffset: { width: 0, height: 4 },
-						shadowOpacity: 0.2,
-						shadowRadius: 8,
-						elevation: 3,
+						minHeight: compact ? 62 : 74,
+						paddingLeft: compact ? 18 : 32,
+						paddingRight: compact ? 8 : 10,
 					}}>
-					<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
-				</TouchableOpacity>
+					<TextInput
+						ref={inputRef}
+						className={`flex-1 ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
+						placeholder='Np. nie działa podnoszenie wideł'
+						placeholderTextColor={lightMode ? '#71717A' : '#A1A1AA'}
+						value={inputText}
+						onChangeText={onChangeText}
+						onSubmitEditing={onSend}
+						style={{
+							height: '100%',
+							fontSize: compact ? 16 : 20,
+							lineHeight: compact ? 22 : 27,
+							paddingVertical: 0,
+							textAlignVertical: 'center',
+						}}
+						autoFocus={autoFocus}
+					/>
+					<TouchableOpacity
+						onPress={onSend}
+						className='items-center justify-center'
+						style={{
+							width: compact ? 46 : 56,
+							height: compact ? 46 : 56,
+							borderRadius: compact ? 23 : 28,
+							backgroundColor: PRIMARY_ORANGE,
+							shadowColor: PRIMARY_ORANGE,
+							shadowOffset: { width: 0, height: 4 },
+							shadowOpacity: 0.2,
+							shadowRadius: 8,
+							elevation: 3,
+						}}>
+						<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
+					</TouchableOpacity>
+				</View>
 			</Pressable>
 		</View>
 	);
@@ -366,19 +396,23 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	onChangeText: (text: string) => void;
 	onShowTextInputChange: (visible: boolean) => void;
 	onShouldFocusStartPromptInputChange: (shouldFocus: boolean) => void;
-	onOpenSchema: (imageSource: SchemaImageSource) => void;
+	onOpenSchema: (imageSource: SchemaImageSource, title?: string) => void;
 	onOpenSource: (source: TMessage | ChatMessageSourceReference) => void;
 	onRetryMessage: (message: TMessage) => void;
 	onContinueMessage: (message: TMessage) => void;
 	isRetryDisabled?: boolean;
 	onUserMessageLayout: (message: TMessage, y: number) => void;
+	pendingPhotoUris: string[];
+	onRemovePendingPhoto: (photoUri: string) => void;
 	onMicPress: () => void;
+	onCameraPress: () => void;
 	onWritingPress: () => void;
 };
 
 type FullscreenSchemaViewProps = {
 	lightMode?: boolean;
 	imageUrl: SchemaImageSource;
+	title?: string;
 	aspectRatio: number;
 	insets: EdgeInsets;
 	isTablet?: boolean;
@@ -388,6 +422,7 @@ type FullscreenSchemaViewProps = {
 export function FullscreenSchemaView({
 	lightMode = false,
 	imageUrl,
+	title = 'SCHEMAT POMOCNICZY',
 	aspectRatio,
 	insets,
 	isTablet = false,
@@ -432,7 +467,7 @@ export function FullscreenSchemaView({
 						lineHeight: headerMetrics.titleFontSize + 5,
 					}}
 					numberOfLines={1}>
-					SCHEMAT POMOCNICZY
+					{title}
 				</Text>
 				<View
 					style={{ width: headerMetrics.buttonSize, height: headerMetrics.buttonSize }}
@@ -491,7 +526,10 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	onContinueMessage,
 	isRetryDisabled,
 	onUserMessageLayout,
+	pendingPhotoUris,
+	onRemovePendingPhoto,
 	onMicPress,
+	onCameraPress,
 	onWritingPress,
 	insets,
 }: SharedLayoutProps<TMessage> & { insets: EdgeInsets }) {
@@ -521,7 +559,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	const portraitInputBottom = keyboardFrame ? keyboardOverlap + 12 : portraitRestingInputBottom;
 	const portraitMessagesBottomPadding = Math.max(
 		portraitControlsHeight + 54,
-		portraitInputBottom + (showTextInput ? 70 : 0),
+		portraitInputBottom + (showTextInput ? (pendingPhotoUris.length > 0 ? 180 : 70) : 0),
 	);
 
 	return (
@@ -650,6 +688,8 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 					onSend={onSendText}
 					onShowTextInputChange={onShowTextInputChange}
 					onShouldFocusStartPromptInputChange={onShouldFocusStartPromptInputChange}
+					pendingPhotoUris={pendingPhotoUris}
+					onRemovePendingPhoto={onRemovePendingPhoto}
 					lightMode={lightMode}
 				/>
 			)}
@@ -662,6 +702,8 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 						onChangeText={onChangeText}
 						onSend={onSendText}
 						autoFocus
+						pendingPhotoUris={pendingPhotoUris}
+						onRemovePendingPhoto={onRemovePendingPhoto}
 						lightMode={lightMode}
 					/>
 				</View>
@@ -680,7 +722,10 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 					isSpeechInputUnavailable={isSpeechInputUnavailable}
 					isVoiceOutputUnavailable={isVoiceOutputUnavailable}
 					isWritingActive={showTextInput}
+					attachedPhotoCount={pendingPhotoUris.length}
+					isCameraDisabled={pendingPhotoUris.length >= MAX_CHAT_PHOTOS}
 					onMicPress={onMicPress}
+					onCameraPress={onCameraPress}
 					onWritingPress={onWritingPress}
 					lightMode={lightMode}
 				/>
@@ -752,7 +797,10 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	onContinueMessage,
 	isRetryDisabled,
 	onUserMessageLayout,
+	pendingPhotoUris,
+	onRemovePendingPhoto,
 	onMicPress,
+	onCameraPress,
 	onWritingPress,
 }: SharedLayoutProps<TMessage>) {
 	const keyboardOverlap = keyboardFrame
@@ -867,6 +915,8 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 						onSend={onSendText}
 						onShowTextInputChange={onShowTextInputChange}
 						onShouldFocusStartPromptInputChange={onShouldFocusStartPromptInputChange}
+						pendingPhotoUris={pendingPhotoUris}
+						onRemovePendingPhoto={onRemovePendingPhoto}
 						lightMode={lightMode}
 					/>
 				)}
@@ -881,7 +931,10 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 						isSpeechInputUnavailable={isSpeechInputUnavailable}
 						isVoiceOutputUnavailable={isVoiceOutputUnavailable}
 						isWritingActive={showTextInput}
+						attachedPhotoCount={pendingPhotoUris.length}
+						isCameraDisabled={pendingPhotoUris.length >= MAX_CHAT_PHOTOS}
 						onMicPress={onMicPress}
+						onCameraPress={onCameraPress}
 						onWritingPress={onWritingPress}
 						lightMode={lightMode}
 					/>
@@ -897,6 +950,8 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 						onChangeText={onChangeText}
 						onSend={onSendText}
 						autoFocus
+						pendingPhotoUris={pendingPhotoUris}
+						onRemovePendingPhoto={onRemovePendingPhoto}
 						lightMode={lightMode}
 					/>
 				</View>

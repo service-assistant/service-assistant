@@ -7,6 +7,7 @@ import type {
 	SchemaImageSource,
 } from '@/components/ChatMessages';
 import { stripResponseDirectivesForSpeech } from '@/components/ChatMessages';
+import { MAX_CHAT_PHOTOS } from '@/types/chat';
 import { AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
 	AUTH_SERVICE_FEATURE,
@@ -47,6 +48,16 @@ type SourceChunkPayload = {
 type AttachmentPayload = {
 	id?: number;
 	original_filename?: string;
+};
+
+type PhotoObservationPayload = {
+	component: string;
+	main_identifier?: string | null;
+	confidence?: number | null;
+};
+
+type PhotoContextPayload = {
+	observations?: PhotoObservationPayload[];
 };
 
 type UseChatApiParams<TMessage extends ChatMessageItem> = {
@@ -156,7 +167,8 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 	);
 
 	const askAPI = useCallback(
-		async (question: string) => {
+		async (question: string, photoUris: string[] = []) => {
+			const attachedPhotoUris = photoUris.slice(0, MAX_CHAT_PHOTOS);
 			setIsLoading(true);
 			setIsGenerating(true);
 			const aiMessageId = Date.now() + Math.random();
@@ -174,6 +186,41 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 			try {
 				const AUTH_TOKEN = authTokenOverride ?? getAuthTokenOrThrow();
 				const activeThreadId = await ensureThread(question, abortController.signal);
+				let photoContext: PhotoObservationPayload[] = [];
+
+				if (attachedPhotoUris.length > 0) {
+					const formData = new FormData();
+					formData.append('question', question);
+					attachedPhotoUris.forEach((photoUri, index) => {
+						formData.append('photos', {
+							uri: photoUri,
+							name: `technician-photo-${index + 1}.jpg`,
+							type: 'image/jpeg',
+						} as unknown as Blob);
+					});
+
+					const photoResponse = await fetch(
+						`${serverUrl}/api/threads/${activeThreadId}/photo-context`,
+						{
+							method: 'POST',
+							headers: {
+								Accept: 'application/json',
+								Authorization: `Bearer ${AUTH_TOKEN}`,
+							},
+							body: formData,
+							signal: abortController.signal,
+						},
+					);
+					throwIfAuthResponseError(photoResponse);
+					if (!photoResponse.ok) {
+						throw new HttpError(
+							photoResponse.status,
+							`Photo analysis failed: ${photoResponse.status}`,
+						);
+					}
+					const payload = (await photoResponse.json()) as PhotoContextPayload;
+					photoContext = (payload.observations || []).slice(0, MAX_CHAT_PHOTOS);
+				}
 
 				let imageUrl: string | null = null;
 				let systemMessageId: number | null = null;
@@ -191,6 +238,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 							body: JSON.stringify({
 								content: question,
 								diagnostic_mode_enabled: diagnosticModeEnabled,
+								...(photoContext.length > 0 ? { photo_context: photoContext } : {}),
 							}),
 							pollingInterval: 0,
 							timeoutBeforeConnection: 0,
@@ -523,6 +571,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 												fullText ||
 												'Połączenie zostało przerwane. Spróbuj wysłać pytanie ponownie.',
 											retryQuestion: question,
+											retryPhotoUris: attachedPhotoUris,
 										} as TMessage)
 									: message,
 							),

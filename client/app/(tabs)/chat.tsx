@@ -30,6 +30,7 @@ import {
 	PortraitChatLayout,
 } from '@/components/ChatLayouts';
 import type { ChatMessageSourceReference, SchemaImageSource } from '@/components/ChatMessages';
+import NameplateScannerModal from '@/components/NameplateScannerModal';
 import ServiceErrorModal from '@/components/ServiceErrorModal';
 import type { KeyboardFrame } from '@/components/StartPromptView';
 import { useAppSettings } from '@/hooks/use-app-settings';
@@ -39,7 +40,7 @@ import { useMicrophone } from '@/hooks/use-microphone';
 import { useNetworkStatus } from '@/hooks/use-network-status';
 import { useSourcePanelFiles } from '@/hooks/use-source-panel-files';
 import { useWakeWord } from '@/hooks/use-wake-word';
-import type { AvailableFile, Message } from '@/types/chat';
+import { type AvailableFile, MAX_CHAT_PHOTOS, type Message } from '@/types/chat';
 import type { ChatThreadWithNameplate, NameplateData } from '@/types/nameplate';
 import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
@@ -59,6 +60,7 @@ type ChatMessage = Message & {
 	sourceAttachmentPage?: number;
 	sourceReferences?: ChatMessageSourceReference[];
 	retryQuestion?: string;
+	retryPhotoUris?: string[];
 };
 
 type DeviceAttachmentPayload = {
@@ -84,7 +86,7 @@ const FILE_ICON_OPTIONS = [
 
 type FullscreenSchemaOverlayHandle = {
 	prepare: (imageSource: SchemaImageSource | null) => void;
-	open: (imageSource: SchemaImageSource) => void;
+	open: (imageSource: SchemaImageSource, title?: string) => void;
 };
 
 const FullscreenSchemaOverlay = forwardRef<
@@ -96,6 +98,7 @@ const FullscreenSchemaOverlay = forwardRef<
 	}
 >(({ lightMode, insets, isTablet }, ref) => {
 	const [imageUrl, setImageUrl] = useState<SchemaImageSource | null>(null);
+	const [title, setTitle] = useState('SCHEMAT POMOCNICZY');
 	const [visible, setVisible] = useState(false);
 
 	useImperativeHandle(
@@ -103,10 +106,12 @@ const FullscreenSchemaOverlay = forwardRef<
 		() => ({
 			prepare: (nextImageUrl) => {
 				setImageUrl(nextImageUrl);
+				setTitle('SCHEMAT POMOCNICZY');
 				if (!nextImageUrl) setVisible(false);
 			},
-			open: (nextImageUrl) => {
+			open: (nextImageUrl, nextTitle) => {
 				setImageUrl(nextImageUrl);
+				setTitle(nextTitle ?? 'SCHEMAT POMOCNICZY');
 				setVisible(true);
 			},
 		}),
@@ -142,6 +147,7 @@ const FullscreenSchemaOverlay = forwardRef<
 			<FullscreenSchemaView
 				lightMode={lightMode}
 				imageUrl={imageUrl}
+				title={title}
 				aspectRatio={1}
 				insets={insets}
 				isTablet={isTablet}
@@ -209,6 +215,8 @@ export default function ChatScreen() {
 	const [isChatFocused, setIsChatFocused] = useState<boolean>(false);
 	const [nameplateData, setNameplateData] = useState<NameplateData | null>(null);
 	const [isMachineInfoVisible, setIsMachineInfoVisible] = useState(false);
+	const [isPhotoCaptureVisible, setIsPhotoCaptureVisible] = useState(false);
+	const [pendingPhotoUris, setPendingPhotoUris] = useState<string[]>([]);
 	const { reconnectCount } = useNetworkStatus();
 
 	const hasStartedChat = messages.length > 0;
@@ -217,7 +225,7 @@ export default function ChatScreen() {
 	const isAppActiveRef = useRef(AppState.currentState === 'active');
 	const keyboardInteractionAllowedRef = useRef(false);
 	const retryInProgressRef = useRef(false);
-	const askAPIRef = useRef<(question: string) => void>(() => undefined);
+	const askAPIRef = useRef<(question: string, photoUris?: string[]) => void>(() => undefined);
 	const schemaViewerRef = useRef<FullscreenSchemaOverlayHandle>(null);
 	const currentImageRef = useRef<SchemaImageSource | null>(null);
 	const setShowTextInput = useCallback<Dispatch<SetStateAction<boolean>>>((nextValue) => {
@@ -363,7 +371,20 @@ export default function ChatScreen() {
 			stopChatApi();
 			stopAssistantAudio();
 		},
-		onTranscript: (transcript) => askAPIRef.current(transcript),
+		onTranscript: (transcript, messageId) => {
+			const photoUris = pendingPhotoUris;
+			if (photoUris.length > 0) {
+				setMessages((currentMessages) =>
+					currentMessages.map((message) =>
+						message.id === messageId
+							? { ...message, attachedPhotoUris: photoUris }
+							: message,
+					),
+				);
+			}
+			setPendingPhotoUris([]);
+			askAPIRef.current(transcript, photoUris);
+		},
 		onServiceError: showServiceError,
 		onSpeechInputError: handleSpeechInputError,
 	});
@@ -493,6 +514,8 @@ export default function ChatScreen() {
 		setCurrentImage(null);
 		setNameplateData(null);
 		setIsMachineInfoVisible(false);
+		setIsPhotoCaptureVisible(false);
+		setPendingPhotoUris([]);
 		setIsGenerating(false);
 		setIsLoading(Boolean(threadId));
 
@@ -595,12 +618,20 @@ export default function ChatScreen() {
 		if (trimmedInput.length === 0) return;
 
 		handleStop();
+		const photoUris = pendingPhotoUris;
 
 		setMessages((prev) => [
 			...prev,
-			{ id: Date.now(), sender: 'user', text: trimmedInput, isSpeaking: false },
+			{
+				id: Date.now(),
+				sender: 'user',
+				text: trimmedInput,
+				attachedPhotoUris: photoUris,
+				isSpeaking: false,
+			},
 		]);
-		askAPI(trimmedInput);
+		setPendingPhotoUris([]);
+		askAPI(trimmedInput, photoUris);
 		setInputText('');
 		setShowTextInput(false);
 	};
@@ -611,12 +642,19 @@ export default function ChatScreen() {
 
 		retryInProgressRef.current = true;
 		handleStop();
+		const photoUris = message.retryPhotoUris ?? [];
 		setMessages((currentMessages) => [
 			...currentMessages.filter((currentMessage) => currentMessage.id !== message.id),
-			{ id: Date.now(), sender: 'user', text: question, isSpeaking: false },
+			{
+				id: Date.now(),
+				sender: 'user',
+				text: question,
+				attachedPhotoUris: photoUris,
+				isSpeaking: false,
+			},
 		]);
 
-		void askAPI(question).finally(() => {
+		void askAPI(question, photoUris).finally(() => {
 			retryInProgressRef.current = false;
 		});
 	};
@@ -685,8 +723,28 @@ export default function ChatScreen() {
 		}
 	};
 
-	const openSchemaFullscreen = useCallback((imageSource: SchemaImageSource) => {
-		schemaViewerRef.current?.open(imageSource);
+	const handleCameraPress = () => {
+		if (pendingPhotoUris.length >= MAX_CHAT_PHOTOS) return;
+		handleStop();
+		Keyboard.dismiss();
+		setIsPhotoCaptureVisible(true);
+	};
+
+	const handlePhotoCaptured = (photoUri: string) => {
+		setPendingPhotoUris((currentUris) => {
+			if (currentUris.length >= MAX_CHAT_PHOTOS || currentUris.includes(photoUri)) {
+				return currentUris;
+			}
+			return [...currentUris, photoUri];
+		});
+		setShowTextInput(true);
+		if (!hasStartedChat) {
+			setShouldFocusStartPromptInput(true);
+		}
+	};
+
+	const openSchemaFullscreen = useCallback((imageSource: SchemaImageSource, title?: string) => {
+		schemaViewerRef.current?.open(imageSource, title);
 	}, []);
 
 	const commonLayoutProps = {
@@ -734,15 +792,31 @@ export default function ChatScreen() {
 		onContinueMessage: handleContinueMessage,
 		isRetryDisabled: isLoading || isGenerating,
 		onUserMessageLayout: handleUserMessageLayout,
+		pendingPhotoUris,
+		onRemovePendingPhoto: (photoUri: string) =>
+			setPendingPhotoUris((currentUris) => currentUris.filter((uri) => uri !== photoUri)),
 		onMicPress: handleMicPressWithFeedback,
+		onCameraPress: handleCameraPress,
 		onWritingPress: handleWritingPress,
 	};
+
+	const photoCaptureModal = (
+		<NameplateScannerModal
+			visible={isPhotoCaptureVisible}
+			lightMode={lightThemeEnabled}
+			mode='photo'
+			onClose={() => setIsPhotoCaptureVisible(false)}
+			onPhotoCaptured={handlePhotoCaptured}
+			onServiceError={showServiceError}
+		/>
+	);
 
 	if (isPortrait) {
 		return (
 			<View style={{ flex: 1 }}>
 				<StatusBar style={lightThemeEnabled ? 'dark' : 'light'} />
 				<PortraitChatLayout {...commonLayoutProps} insets={insets} />
+				{photoCaptureModal}
 				<ServiceErrorModal
 					visible={Boolean(serviceErrorFeature)}
 					featureName={serviceErrorFeature || 'wybrana funkcja'}
@@ -763,6 +837,7 @@ export default function ChatScreen() {
 		<View style={{ flex: 1 }}>
 			<StatusBar style={lightThemeEnabled ? 'dark' : 'light'} />
 			<DesktopChatLayout {...commonLayoutProps} />
+			{photoCaptureModal}
 			<ServiceErrorModal
 				visible={Boolean(serviceErrorFeature)}
 				featureName={serviceErrorFeature || 'wybrana funkcja'}

@@ -16,9 +16,12 @@ type ControlPanelProps = {
 	isMicProcessing: boolean;
 	isMicRestartBlocked: boolean;
 	isWritingActive: boolean;
+	attachedPhotoCount?: number;
+	isCameraDisabled?: boolean;
 	isSpeechInputUnavailable?: boolean;
 	isVoiceOutputUnavailable?: boolean;
 	onMicPress: () => void;
+	onCameraPress: () => void;
 	onWritingPress: () => void;
 	lightMode?: boolean;
 };
@@ -178,9 +181,12 @@ export default function ControlPanel({
 	isMicProcessing,
 	isMicRestartBlocked,
 	isWritingActive,
+	attachedPhotoCount = 0,
+	isCameraDisabled = false,
 	isSpeechInputUnavailable = false,
 	isVoiceOutputUnavailable = false,
 	onMicPress,
+	onCameraPress,
 	onWritingPress,
 	lightMode = false,
 }: ControlPanelProps) {
@@ -332,35 +338,39 @@ export default function ControlPanel({
 
 	const renderSideButton = (type: 'camera' | 'writing') => {
 		const isWritingButton = type === 'writing';
-		const isDisabled = !isWritingButton;
-		const isActive = isWritingButton && isWritingActive;
+		const isDisabled = !isWritingButton && isCameraDisabled;
+		const isCameraActive = !isWritingButton && attachedPhotoCount > 0;
+		const isActive = (isWritingButton && isWritingActive) || isCameraActive;
 
 		return (
 			<TouchableOpacity
 				key={type}
-				onPress={isWritingButton ? onWritingPress : undefined}
+				onPress={isWritingButton ? onWritingPress : onCameraPress}
 				disabled={isDisabled}
+				accessibilityRole='button'
+				accessibilityLabel={isWritingButton ? 'Napisz pytanie' : 'Dodaj zdjęcie'}
+				accessibilityState={{ disabled: isDisabled }}
 				activeOpacity={0.72}
 				className='rounded-[12px] items-center justify-center'
 				style={{
 					...controlButtonStyle,
 					width: sideButtonSize,
 					height: sideButtonSize,
-					backgroundColor: isDisabled
+					backgroundColor: isActive
 						? lightMode
-							? '#F4F4F5'
-							: '#161820'
-						: isActive
+							? '#FFF7ED'
+							: '#242028'
+						: isDisabled
 							? lightMode
-								? '#FFF7ED'
-								: '#242028'
+								? '#F4F4F5'
+								: '#161820'
 							: controlButtonStyle.backgroundColor,
-					borderColor: isDisabled
-						? lightMode
-							? '#E4E4E7'
-							: 'rgba(63, 68, 82, 0.42)'
-						: isActive
-							? 'rgba(255, 122, 0, 0.72)'
+					borderColor: isActive
+						? 'rgba(255, 122, 0, 0.72)'
+						: isDisabled
+							? lightMode
+								? '#E4E4E7'
+								: 'rgba(63, 68, 82, 0.42)'
 							: controlButtonStyle.borderColor,
 					shadowColor: '#000000',
 					shadowOffset: { width: 0, height: 0 },
@@ -380,8 +390,11 @@ export default function ControlPanel({
 						style={{
 							width: sideIconSize,
 							height: sideIconSize,
-							opacity: 0.38,
-							tintColor: lightMode ? '#71717A' : '#7A7F8C',
+							tintColor: isCameraActive
+								? '#FF7A00'
+								: lightMode
+									? '#52525B'
+									: '#D4D4D8',
 						}}
 						resizeMode='contain'
 					/>
@@ -397,6 +410,26 @@ export default function ControlPanel({
 							backgroundColor: '#FF7A00',
 						}}
 					/>
+				) : null}
+				{isCameraActive ? (
+					<View
+						testID='camera-attachment-count'
+						className='absolute items-center justify-center'
+						style={{
+							top: -8,
+							right: -8,
+							minWidth: 28,
+							height: 28,
+							paddingHorizontal: 7,
+							borderRadius: 14,
+							backgroundColor: '#FF7A00',
+							borderWidth: 2,
+							borderColor: lightMode ? '#FFFFFF' : '#161820',
+						}}>
+						<Text className='text-white text-xs font-bold'>
+							{isCameraDisabled ? `${attachedPhotoCount} – maks` : attachedPhotoCount}
+						</Text>
+					</View>
 				) : null}
 			</TouchableOpacity>
 		);

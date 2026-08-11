@@ -1,7 +1,10 @@
+export const MAX_CHAT_PHOTOS = 5;
+
 export interface Message {
 	id: number;
 	sender: 'ai' | 'user';
 	text: string;
+	attachedPhotoUris?: string[];
 	isSpeaking?: boolean;
 	hasContinuation?: boolean;
 }

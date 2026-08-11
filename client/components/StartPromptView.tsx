@@ -5,12 +5,15 @@ import {
 	Dimensions,
 	type LayoutChangeEvent,
 	Pressable,
+	ScrollView,
 	StyleSheet,
 	Text,
 	TextInput,
 	TouchableOpacity,
 	View,
 } from 'react-native';
+
+import ComposerPhotoPreview from '@/components/ComposerPhotoPreview';
 
 const PRIMARY_ORANGE = '#FF7A00';
 
@@ -48,6 +51,8 @@ type StartPromptViewProps = {
 	onSend: () => void;
 	onShowTextInputChange: (show: boolean) => void;
 	onShouldFocusStartPromptInputChange: (shouldFocus: boolean) => void;
+	pendingPhotoUris?: string[];
+	onRemovePendingPhoto?: (photoUri: string) => void;
 	lightMode?: boolean;
 };
 
@@ -62,8 +67,11 @@ export default function StartPromptView({
 	onSend,
 	onShowTextInputChange,
 	onShouldFocusStartPromptInputChange,
+	pendingPhotoUris = [],
+	onRemovePendingPhoto,
 	lightMode = false,
 }: StartPromptViewProps) {
+	const hasPendingPhotos = pendingPhotoUris.length > 0;
 	const promptMaxWidth = compact ? '100%' : 980;
 	const chipWidth = compact ? '100%' : '48%';
 	const [placeholderIndex, setPlaceholderIndex] = React.useState(0);
@@ -212,16 +220,12 @@ export default function StartPromptView({
 			onPress={() => inputRef.current?.focus()}
 			hitSlop={{ top: 12, right: 8, bottom: 12, left: 8 }}
 			accessible={false}
-			className='flex-row items-center'
 			style={{
 				width: '100%',
-				height: compact ? 62 : 74,
-				borderRadius: compact ? 31 : 37,
+				borderRadius: hasPendingPhotos ? (compact ? 24 : 28) : compact ? 31 : 37,
 				backgroundColor: lightMode ? '#FFFFFF' : '#242424',
 				borderWidth: 1,
 				borderColor: lightMode ? 'rgba(20, 20, 20, 0.09)' : 'rgba(255, 255, 255, 0.08)',
-				paddingLeft: compact ? 18 : 32,
-				paddingRight: compact ? 8 : 10,
 				marginBottom: compact ? 20 : 22,
 				shadowColor: '#141414',
 				shadowOffset: { width: 0, height: 8 },
@@ -229,74 +233,101 @@ export default function StartPromptView({
 				shadowRadius: 24,
 				elevation: lightMode ? 3 : 5,
 			}}>
-			<TextInput
-				ref={inputRef}
-				className={`flex-1 ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
-				placeholder={nativePlaceholder}
-				placeholderTextColor={lightMode ? '#71717A' : '#A1A1AA'}
-				value={inputText}
-				onChangeText={onChangeText}
-				onSubmitEditing={onSend}
-				onPressIn={handlePressIn}
-				onFocus={handleFocus}
-				onBlur={handleBlur}
-				onEndEditing={handleEndEditing}
-				style={{
-					height: '100%',
-					fontSize: compact ? 16 : 20,
-					lineHeight: compact ? 22 : 27,
-					paddingHorizontal: 0,
-					paddingVertical: 0,
-					includeFontPadding: false,
-					textAlignVertical: 'center',
-				}}
-				autoFocus={false}
-			/>
-			{shouldShowAnimatedPlaceholder ? (
-				<View
-					pointerEvents='none'
-					className='absolute flex-row items-center'
-					style={{
-						left: compact ? 18 : 32,
-						right: compact ? 58 : 74,
+			{hasPendingPhotos && onRemovePendingPhoto ? (
+				<ScrollView
+					horizontal
+					showsHorizontalScrollIndicator={false}
+					contentContainerStyle={{
+						gap: 10,
+						paddingTop: compact ? 12 : 14,
+						paddingHorizontal: compact ? 12 : 16,
 					}}>
-					<Text
-						className='text-[#A1A1AA]'
-						style={{
-							fontSize: compact ? 16 : 20,
-							lineHeight: compact ? 22 : 27,
-						}}>
-						Np.{' '}
-					</Text>
-					<Animated.Text
-						className='text-[#A1A1AA] flex-1'
-						numberOfLines={1}
-						style={{
-							fontSize: compact ? 16 : 20,
-							lineHeight: compact ? 22 : 27,
-							opacity: placeholderOpacity,
-							transform: [{ translateY: placeholderTranslateY }],
-						}}>
-						{INPUT_PLACEHOLDERS[placeholderIndex]}
-					</Animated.Text>
-				</View>
+					{pendingPhotoUris.map((photoUri) => (
+						<ComposerPhotoPreview
+							key={photoUri}
+							photoUri={photoUri}
+							onRemove={() => onRemovePendingPhoto(photoUri)}
+							size={compact ? 96 : 112}
+						/>
+					))}
+				</ScrollView>
 			) : null}
-			<TouchableOpacity
-				onPress={onSend}
-				className='items-center justify-center'
+			<View
+				className='flex-row items-center'
 				style={{
-					width: compact ? 46 : 56,
-					height: compact ? 46 : 56,
-					borderRadius: compact ? 23 : 28,
-					backgroundColor: PRIMARY_ORANGE,
-					shadowColor: PRIMARY_ORANGE,
-					shadowOffset: { width: 0, height: 4 },
-					shadowOpacity: 0.2,
-					shadowRadius: 8,
-					elevation: 3,
+					minHeight: compact ? 62 : 74,
+					paddingLeft: compact ? 18 : 32,
+					paddingRight: compact ? 8 : 10,
 				}}>
-				<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
-			</TouchableOpacity>
+				<TextInput
+					ref={inputRef}
+					className={`flex-1 ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
+					placeholder={nativePlaceholder}
+					placeholderTextColor={lightMode ? '#71717A' : '#A1A1AA'}
+					value={inputText}
+					onChangeText={onChangeText}
+					onSubmitEditing={onSend}
+					onPressIn={handlePressIn}
+					onFocus={handleFocus}
+					onBlur={handleBlur}
+					onEndEditing={handleEndEditing}
+					style={{
+						height: '100%',
+						fontSize: compact ? 16 : 20,
+						lineHeight: compact ? 22 : 27,
+						paddingHorizontal: 0,
+						paddingVertical: 0,
+						includeFontPadding: false,
+						textAlignVertical: 'center',
+					}}
+					autoFocus={false}
+				/>
+				{shouldShowAnimatedPlaceholder ? (
+					<View
+						pointerEvents='none'
+						className='absolute flex-row items-center'
+						style={{
+							left: compact ? 18 : 32,
+							right: compact ? 58 : 74,
+						}}>
+						<Text
+							className='text-[#A1A1AA]'
+							style={{
+								fontSize: compact ? 16 : 20,
+								lineHeight: compact ? 22 : 27,
+							}}>
+							Np.{' '}
+						</Text>
+						<Animated.Text
+							className='text-[#A1A1AA] flex-1'
+							numberOfLines={1}
+							style={{
+								fontSize: compact ? 16 : 20,
+								lineHeight: compact ? 22 : 27,
+								opacity: placeholderOpacity,
+								transform: [{ translateY: placeholderTranslateY }],
+							}}>
+							{INPUT_PLACEHOLDERS[placeholderIndex]}
+						</Animated.Text>
+					</View>
+				) : null}
+				<TouchableOpacity
+					onPress={onSend}
+					className='items-center justify-center'
+					style={{
+						width: compact ? 46 : 56,
+						height: compact ? 46 : 56,
+						borderRadius: compact ? 23 : 28,
+						backgroundColor: PRIMARY_ORANGE,
+						shadowColor: PRIMARY_ORANGE,
+						shadowOffset: { width: 0, height: 4 },
+						shadowOpacity: 0.2,
+						shadowRadius: 8,
+						elevation: 3,
+					}}>
+					<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
+				</TouchableOpacity>
+			</View>
 		</Pressable>
 	);
 

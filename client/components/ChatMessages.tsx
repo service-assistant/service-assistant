@@ -36,6 +36,7 @@ export type ChatMessageItem = {
 	id: number;
 	sender: 'user' | 'ai';
 	text: string;
+	attachedPhotoUris?: string[];
 	isSpeaking?: boolean;
 	schemaImage?: SchemaImageSource;
 	schemaImages?: SchemaImageSource[];
@@ -44,6 +45,7 @@ export type ChatMessageItem = {
 	sourceAttachmentPage?: number;
 	sourceReferences?: ChatMessageSourceReference[];
 	retryQuestion?: string;
+	retryPhotoUris?: string[];
 	hasContinuation?: boolean;
 };
 
@@ -52,7 +54,7 @@ type ChatMessagesProps<TMessage extends ChatMessageItem> = {
 	compact?: boolean;
 	isListening: boolean;
 	soundLevelAnim: Animated.Value;
-	onOpenSchema: (imageSource: SchemaImageSource) => void;
+	onOpenSchema: (imageSource: SchemaImageSource, title?: string) => void;
 	onOpenSource: (source: TMessage | ChatMessageSourceReference) => void;
 	onRetryMessage: (message: TMessage) => void;
 	onContinueMessage: (message: TMessage) => void;
@@ -676,33 +678,71 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 						onLayout={(event: LayoutChangeEvent) =>
 							onUserMessageLayout(message, event.nativeEvent.layout.y)
 						}
-						className={
-							compact
-								? 'self-end bg-[#B85000] rounded-[18px] px-4 py-3 mb-5'
-								: 'self-end bg-[#B85000] rounded-[18px] px-6 py-3 mb-8'
-						}
+						className={compact ? 'self-end mb-5' : 'self-end mb-8'}
 						style={{
 							maxWidth: compact ? '88%' : '65%',
 							minWidth: 0,
 							flexShrink: 1,
+							alignItems: 'flex-end',
 						}}>
-						{message.isSpeaking && !message.text ? (
-							isListening ? (
-								<SoundWaveformIndicator soundLevel={soundLevelAnim} />
-							) : (
-								<TypingDotsIndicator />
-							)
-						) : (
-							<Text
+						{message.attachedPhotoUris?.length ? (
+							<View
+								style={{
+									flexDirection: 'row',
+									flexWrap: 'wrap',
+									justifyContent: 'flex-end',
+									gap: 8,
+									marginBottom: message.text || message.isSpeaking ? 8 : 0,
+								}}>
+								{message.attachedPhotoUris.slice(0, 5).map((photoUri, index) => (
+									<TouchableOpacity
+										key={`${photoUri}-${index}`}
+										onPress={() => onOpenSchema(photoUri, 'ZAŁĄCZONE ZDJĘCIE')}
+										accessibilityRole='button'
+										accessibilityLabel={`Powiększ załączone zdjęcie ${index + 1}`}
+										activeOpacity={0.8}>
+										<Image
+											source={{ uri: photoUri }}
+											accessibilityLabel={`Załączone zdjęcie ${index + 1}`}
+											style={{
+												width: compact ? 76 : 96,
+												height: compact ? 76 : 96,
+												borderRadius: 12,
+												backgroundColor: 'rgba(0, 0, 0, 0.18)',
+											}}
+											resizeMode='cover'
+										/>
+									</TouchableOpacity>
+								))}
+							</View>
+						) : null}
+						{message.text || message.isSpeaking ? (
+							<View
 								className={
 									compact
-										? 'text-white text-[17px] leading-[22px]'
-										: 'text-white text-[18px] leading-[24px]'
+										? 'self-end bg-[#B85000] rounded-[18px] px-4 py-3'
+										: 'self-end bg-[#B85000] rounded-[18px] px-6 py-3'
 								}
-								style={{ flexShrink: 1, minWidth: 0 }}>
-								{message.text}
-							</Text>
-						)}
+								style={{ minWidth: 0, flexShrink: 1 }}>
+								{message.isSpeaking && !message.text ? (
+									isListening ? (
+										<SoundWaveformIndicator soundLevel={soundLevelAnim} />
+									) : (
+										<TypingDotsIndicator />
+									)
+								) : (
+									<Text
+										className={
+											compact
+												? 'text-white text-[17px] leading-[22px]'
+												: 'text-white text-[18px] leading-[24px]'
+										}
+										style={{ flexShrink: 1, minWidth: 0 }}>
+										{message.text}
+									</Text>
+								)}
+							</View>
+						) : null}
 					</View>
 				) : (
 					<View

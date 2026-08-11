@@ -405,7 +405,7 @@ describe('useMicrophone', () => {
 		expect(harness.state.messages).toEqual([
 			{ id: 1000, sender: 'user', text: 'podnieś widły', isSpeaking: false },
 		]);
-		expect(harness.onTranscript).toHaveBeenCalledWith('podnieś widły');
+		expect(harness.onTranscript).toHaveBeenCalledWith('podnieś widły', 1000);
 		expect(harness.state.isTranscribing).toBe(false);
 	});
 
@@ -476,7 +476,7 @@ describe('useMicrophone', () => {
 				isSpeaking: false,
 			},
 		]);
-		expect(harness.onTranscript).toHaveBeenCalledWith('...błąd dwa');
+		expect(harness.onTranscript).toHaveBeenCalledWith('...błąd dwa', 1000);
 		expect(harness.state.isTranscribing).toBe(false);
 	});
 
@@ -531,7 +531,7 @@ describe('useMicrophone', () => {
 				body: expect.any(FormData),
 			}),
 		);
-		expect(harness.onTranscript).toHaveBeenCalledWith('podnieś widły');
+		expect(harness.onTranscript).toHaveBeenCalledWith('podnieś widły', 1000);
 	});
 
 	test('discards a millisecond native recording without calling STT', async () => {

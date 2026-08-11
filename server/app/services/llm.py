@@ -453,6 +453,7 @@ def _messages(
     diagnostic_plan: DiagnosticPlan | None = None,
     continuation_requested: bool = False,
     continuation_hint: str = "",
+    photo_context: str = "",
 ) -> list[ChatCompletionMessageParam]:
     plan_instruction = ""
     continuation_instruction = ""
@@ -513,13 +514,17 @@ def _messages(
         plan_json = diagnostic_plan.model_dump_json(exclude_none=True, indent=2)
         plan_section = f"\n\nDiagnostic plan JSON:\n{plan_json}\n\n{plan_instruction}"
 
+    photo_section = (
+        f"\n\nTechnician photo observations:\n{photo_context}" if photo_context else ""
+    )
+
     return [
         {"role": "system", "content": SYSTEM_PROMPT},
         *history_messages,
         {
             "role": "user",
             "content": (
-                f"Context:\n{context_text}{plan_section}{continuation_instruction}"
+                f"Context:\n{context_text}{photo_section}{plan_section}{continuation_instruction}"
                 f"\n\nQuestion:\n{question}\n\nAnswer in Polish."
             ),
         },
@@ -537,6 +542,7 @@ async def stream_query(
     diagnostic_plan: DiagnosticPlan | None = None,
     continuation_requested: bool = False,
     continuation_hint: str = "",
+    photo_context: str = "",
 ) -> AsyncGenerator[str, None]:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     context_text = _build_context(chunks)
@@ -552,6 +558,7 @@ async def stream_query(
         diagnostic_plan,
         continuation_requested,
         continuation_hint,
+        photo_context,
     )
 
     stream = await client.chat.completions.create(

@@ -15,6 +15,7 @@ from .nameplate import (
     NameplateDeviceCandidate,
     NameplateRecognitionResponse,
 )
+from .photo_context import PhotoContextResponse, PhotoObservation
 from .tts import TtsRequest
 
 __all__ = [
@@ -36,6 +37,8 @@ __all__ = [
     "NameplateData",
     "NameplateDeviceCandidate",
     "NameplateRecognitionResponse",
+    "PhotoContextResponse",
+    "PhotoObservation",
     "ThreadCreate",
     "TranscriptResponse",
     "TranscriptDecision",

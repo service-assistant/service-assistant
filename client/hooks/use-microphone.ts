@@ -59,7 +59,7 @@ type UseMicrophoneParams<TMessage extends VoiceMessage> = {
 	setShowTextInput: React.Dispatch<React.SetStateAction<boolean>>;
 	setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
 	onStopExternal: () => void;
-	onTranscript: (transcript: string) => void;
+	onTranscript: (transcript: string, messageId: number) => void;
 	onServiceError?: (featureName: string, error: unknown) => void;
 	onSpeechInputError?: (error: unknown) => void;
 };
@@ -395,7 +395,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 							: message,
 					),
 				);
-				onTranscript(transcript);
+				onTranscript(transcript, userSpeakingMessageIdRef.current);
 				setIsTranscribing(false);
 				return;
 			}
@@ -474,7 +474,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 								: message,
 						),
 					);
-					onTranscript(transcript);
+					onTranscript(transcript, userSpeakingMessageIdRef.current);
 					setIsTranscribing(false);
 				} else {
 					setMessages((prev) =>

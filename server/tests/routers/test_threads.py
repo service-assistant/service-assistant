@@ -297,6 +297,52 @@ async def test_should_skip_diagnostic_mode_when_client_disables_it(
     build_diagnostic_plan.assert_not_awaited()
 
 
+async def test_photo_context_augments_retrieval_and_keeps_original_user_message(
+    client, session, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    retrieve = mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={
+            "content": "Jak zmierzyć uzwojenia?",
+            "photo_context": [
+                {
+                    "component": "silnik elektryczny",
+                    "main_identifier": "AF 124-L1",
+                    "confidence": 0.94,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    retrieval_query = retrieve.await_args.args[1]
+    assert retrieval_query == (
+        "Jak zmierzyć uzwojenia?\n\n"
+        "Najważniejsze informacje ze zdjęć:\n"
+        "- silnik elektryczny; główne oznaczenie: AF 124-L1"
+    )
+    user_message = await session.scalar(
+        select(Message).where(
+            Message.thread_id == thread.id,
+            Message.sender == MessageSender.user,
+        )
+    )
+    assert user_message is not None
+    assert user_message.content == "Jak zmierzyć uzwojenia?"
+    llm_context = _assistant_message_context(mock_openai_llm)
+    assert "Technician photo observations" in llm_context
+    assert "AF 124-L1" in llm_context
+
+
 async def test_standard_mode_should_not_use_diagnostic_flow_for_exhausted_continuation(
     client, session, mock_openai_llm, mocker
 ):

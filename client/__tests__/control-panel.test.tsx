@@ -62,12 +62,14 @@ const baseProps = {
 	isMicRestartBlocked: false,
 	isWritingActive: false,
 	onMicPress: jest.fn(),
+	onCameraPress: jest.fn(),
 	onWritingPress: jest.fn(),
 };
 
 describe('ControlPanel', () => {
 	beforeEach(() => {
 		baseProps.onMicPress.mockClear();
+		baseProps.onCameraPress.mockClear();
 		baseProps.onWritingPress.mockClear();
 	});
 
@@ -78,6 +80,7 @@ describe('ControlPanel', () => {
 			(view) => view.props.testID === 'control-panel-solid-backdrop',
 		);
 
+		buttons[0].props.onPress();
 		buttons[1].props.onPress();
 		buttons[2].props.onPress();
 
@@ -85,6 +88,7 @@ describe('ControlPanel', () => {
 			backgroundColor: 'rgba(20, 22, 30, 0.92)',
 		});
 		expect(getTextContent(tree)).toContain('Naciśnij żeby mówić');
+		expect(baseProps.onCameraPress).toHaveBeenCalled();
 		expect(baseProps.onMicPress).toHaveBeenCalled();
 		expect(baseProps.onWritingPress).toHaveBeenCalled();
 	});
@@ -113,11 +117,36 @@ describe('ControlPanel', () => {
 
 		buttons[0].props.onPress();
 		buttons[1].props.onPress();
+		buttons[2].props.onPress();
 
 		expect(buttons).toHaveLength(3);
 		expect(baseProps.onWritingPress).toHaveBeenCalled();
 		expect(baseProps.onMicPress).toHaveBeenCalled();
+		expect(baseProps.onCameraPress).toHaveBeenCalled();
 		expect(getTextContent(tree)).toContain('Naciśnij, aby mówić');
+	});
+
+	test('highlights the camera and shows the attached photo count', () => {
+		const tree = <ControlPanel {...baseProps} attachedPhotoCount={3} />;
+		const countBadge = findByType(tree, 'View').find(
+			(view) => view.props.testID === 'camera-attachment-count',
+		);
+		const cameraImage = findByType(tree, 'Image').find(
+			(image) => image.props.style?.tintColor === '#FF7A00',
+		);
+
+		expect(countBadge).toBeDefined();
+		expect(getTextContent(countBadge!)).toBe('3');
+		expect(cameraImage).toBeDefined();
+	});
+
+	test('disables adding another photo when the limit is reached', () => {
+		const tree = <ControlPanel {...baseProps} attachedPhotoCount={5} isCameraDisabled />;
+		const cameraButton = findByType(tree, 'TouchableOpacity')[0];
+
+		expect(cameraButton.props.disabled).toBe(true);
+		expect(cameraButton.props.accessibilityState).toEqual({ disabled: true });
+		expect(getTextContent(tree)).toContain('5 – maks');
 	});
 
 	test('shows listening pulse and label while listening', () => {

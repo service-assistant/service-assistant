@@ -21,11 +21,13 @@ import { HttpError, isTransientNetworkError } from '@/utils/network';
 type NameplateScannerModalProps = {
 	visible: boolean;
 	lightMode: boolean;
+	mode?: 'nameplate' | 'photo';
 	onClose: () => void;
-	onComplete: (
+	onComplete?: (
 		recognition: NameplateRecognition,
 		device: NameplateDeviceCandidate,
 	) => Promise<void>;
+	onPhotoCaptured?: (photoUri: string) => void | Promise<void>;
 	onServiceError: (featureName: string, error: unknown) => void;
 };
 
@@ -59,10 +61,13 @@ export const selectOcrPictureSize = (sizes: string[]): string | undefined =>
 export default function NameplateScannerModal({
 	visible,
 	lightMode,
+	mode = 'nameplate',
 	onClose,
 	onComplete,
+	onPhotoCaptured,
 	onServiceError,
 }: NameplateScannerModalProps) {
+	const isPhotoMode = mode === 'photo';
 	const insets = useSafeAreaInsets();
 	const { width, height } = useWindowDimensions();
 	const [permission, requestPermission] = useCameraPermissions();
@@ -130,7 +135,7 @@ export default function NameplateScannerModal({
 				setMessage('Aparat nie zapisał zdjęcia. Spróbuj ponownie.');
 			}
 		} catch (error) {
-			onServiceError('kamera tabliczki', error);
+			onServiceError(isPhotoMode ? 'kamera' : 'kamera tabliczki', error);
 			setMessage('Nie udało się zrobić zdjęcia. Spróbuj ponownie.');
 		} finally {
 			setIsCapturing(false);
@@ -159,6 +164,7 @@ export default function NameplateScannerModal({
 		currentRecognition: NameplateRecognition,
 		device: NameplateDeviceCandidate,
 	) => {
+		if (!onComplete) return;
 		setIsProcessing(true);
 		try {
 			await onComplete(currentRecognition, device);
@@ -167,6 +173,20 @@ export default function NameplateScannerModal({
 			setIsProcessing(false);
 			setMessage('Nie udało się zapisać rozpoznanej tabliczki. Spróbuj ponownie.');
 			onServiceError('zapis danych tabliczki', error);
+		}
+	};
+
+	const finishWithPhoto = async () => {
+		if (!photoUri || !onPhotoCaptured || isProcessing) return;
+		setIsProcessing(true);
+		setMessage(null);
+		try {
+			await onPhotoCaptured(photoUri);
+			close();
+		} catch (error) {
+			setIsProcessing(false);
+			setMessage('Nie udało się dodać zdjęcia. Spróbuj ponownie.');
+			onServiceError('dodawanie zdjęcia', error);
 		}
 	};
 
@@ -239,19 +259,21 @@ export default function NameplateScannerModal({
 					<TouchableOpacity
 						onPress={close}
 						accessibilityRole='button'
-						accessibilityLabel='Zamknij skaner'
+						accessibilityLabel={isPhotoMode ? 'Zamknij aparat' : 'Zamknij skaner'}
 						className='w-11 h-11 items-center justify-center'>
 						<MaterialCommunityIcons name='close' size={28} color='#FF6B00' />
 					</TouchableOpacity>
 					<Text
 						className='flex-1 text-center text-lg font-bold'
 						style={{ color: foreground }}>
-						SKANUJ TABLICZKĘ
+						{isPhotoMode ? 'DODAJ ZDJĘCIE' : 'SKANUJ TABLICZKĘ'}
 					</Text>
 					<View className='w-11' />
 				</View>
 
-				{recognition?.requires_confirmation && recognition.candidates.length > 0 ? (
+				{!isPhotoMode &&
+				recognition?.requires_confirmation &&
+				recognition.candidates.length > 0 ? (
 					<ScrollView
 						contentContainerStyle={{
 							padding: 20,
@@ -357,10 +379,14 @@ export default function NameplateScannerModal({
 										<Text className='font-bold text-white'>PONÓW</Text>
 									</TouchableOpacity>
 									<TouchableOpacity
-										onPress={() => void analyzePhoto()}
+										onPress={() =>
+											void (isPhotoMode ? finishWithPhoto() : analyzePhoto())
+										}
 										disabled={isProcessing}
 										className='h-14 px-7 rounded-[12px] bg-[#FF6B00] items-center justify-center'>
-										<Text className='text-white font-bold'>ROZPOZNAJ</Text>
+										<Text className='text-white font-bold'>
+											{isPhotoMode ? 'DODAJ' : 'ROZPOZNAJ'}
+										</Text>
 									</TouchableOpacity>
 								</>
 							) : permission?.granted ? (
@@ -386,7 +412,7 @@ export default function NameplateScannerModal({
 							<View className='absolute inset-0 bg-black/70 items-center justify-center'>
 								<ActivityIndicator size='large' color='#FF6B00' />
 								<Text className='text-white font-bold mt-4'>
-									ODCZYTUJĘ TABLICZKĘ…
+									{isPhotoMode ? 'DODAJĘ ZDJĘCIE…' : 'ODCZYTUJĘ TABLICZKĘ…'}
 								</Text>
 							</View>
 						) : null}

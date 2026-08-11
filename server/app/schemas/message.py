@@ -5,6 +5,8 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from app.models.message import MessageSender
 
+from .photo_context import PhotoObservation
+
 
 class MessageCreate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -19,6 +21,13 @@ class MessageCreate(BaseModel):
             "diagnostic_mode_enabled", "diagnostic_mode_2002"
         ),
         description="Whether the Next Best Step diagnostic flow is enabled.",
+    )
+    photo_context: list[PhotoObservation] = Field(
+        default_factory=list,
+        max_length=5,
+        description=(
+            "Concise observations extracted from technician photos before retrieval."
+        ),
     )
 
 

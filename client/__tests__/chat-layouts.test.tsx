@@ -163,7 +163,10 @@ const createLayoutProps = () => ({
 	onRetryMessage: jest.fn(),
 	onContinueMessage: jest.fn(),
 	onUserMessageLayout: jest.fn(),
+	pendingPhotoUris: [],
+	onRemovePendingPhoto: jest.fn(),
 	onMicPress: jest.fn(),
+	onCameraPress: jest.fn(),
 	onWritingPress: jest.fn(),
 });
 
@@ -235,6 +238,35 @@ describe('ChatLayouts', () => {
 		expect(findByType(tree, 'View').some((view) => view.props.style?.bottom === 24)).toBe(true);
 		expect(props.onChangeText).toHaveBeenCalledWith('nowe');
 		expect(props.onSendText).toHaveBeenCalledTimes(2);
+	});
+
+	test('shows and removes a pending technician photo', () => {
+		const props = createLayoutProps();
+		const tree = (
+			<DesktopChatLayout
+				{...props}
+				showTextInput
+				pendingPhotoUris={[
+					'file:///technician-photo.jpg',
+					'file:///second-technician-photo.jpg',
+				]}
+			/>
+		);
+		const photo = findByType(tree, 'Image').find(
+			(image) => image.props.source?.uri === 'file:///technician-photo.jpg',
+		);
+		const removeButton = findByType(tree, 'TouchableOpacity').find(
+			(button) => button.props.accessibilityLabel === 'Usuń dodane zdjęcie',
+		);
+
+		expect(photo).toBeDefined();
+		expect(
+			findByType(tree, 'Image').some(
+				(image) => image.props.source?.uri === 'file:///second-technician-photo.jpg',
+			),
+		).toBe(true);
+		removeButton?.props.onPress();
+		expect(props.onRemovePendingPhoto).toHaveBeenCalledWith('file:///technician-photo.jpg');
 	});
 
 	test('snaps the desktop input to the final keyboard frame without animation', () => {
@@ -365,5 +397,19 @@ describe('ChatLayouts', () => {
 			aspectRatio: 1.6,
 		});
 		expect(onBack).toHaveBeenCalled();
+	});
+
+	test('FullscreenSchemaView displays an attached photo title', () => {
+		const tree = (
+			<FullscreenSchemaView
+				imageUrl='file:///attached-photo.jpg'
+				title='ZAŁĄCZONE ZDJĘCIE'
+				aspectRatio={1}
+				insets={{ top: 0, right: 0, bottom: 0, left: 0 }}
+				onBack={jest.fn()}
+			/>
+		);
+
+		expect(findByText(tree, 'ZAŁĄCZONE ZDJĘCIE')).toBeTruthy();
 	});
 });

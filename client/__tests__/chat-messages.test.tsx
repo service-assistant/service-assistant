@@ -193,6 +193,40 @@ describe('ChatMessages', () => {
 		expect(getTextContent(tree)).toContain('Sprawdź bagnet przy zimnym silniku.');
 	});
 
+	test('renders photos attached to a sent user message', () => {
+		const onOpenSchema = jest.fn();
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				onOpenSchema={onOpenSchema}
+				messages={[
+					{
+						id: 1,
+						sender: 'user',
+						text: 'Co to za element?',
+						attachedPhotoUris: ['file:///first.jpg', 'file:///second.jpg'],
+					},
+				]}
+			/>
+		);
+		const images = findByType(tree, 'Image');
+		const userMessage = findByType(tree, 'View').find((view) => view.props.onLayout);
+		const userBubble = findByType(userMessage!, 'View').find((view) =>
+			view.props.className?.includes('bg-[#B85000]'),
+		);
+
+		expect(images).toHaveLength(2);
+		expect(images[0].props.source).toEqual({ uri: 'file:///first.jpg' });
+		expect(findByType(userBubble!, 'Image')).toHaveLength(0);
+		expect(images[1].props.accessibilityLabel).toBe('Załączone zdjęcie 2');
+
+		const photoButton = findByType(tree, 'TouchableOpacity').find(
+			(button) => button.props.accessibilityLabel === 'Powiększ załączone zdjęcie 1',
+		);
+		photoButton?.props.onPress();
+		expect(onOpenSchema).toHaveBeenCalledWith('file:///first.jpg', 'ZAŁĄCZONE ZDJĘCIE');
+	});
+
 	test.each(
 		[false, true].flatMap((compact) =>
 			[
@@ -209,8 +243,11 @@ describe('ChatMessages', () => {
 				messages={[{ id: 1, sender: 'user', text: query }]}
 			/>
 		);
-		const userBubble = findByType(tree, 'View').find(
+		const userMessage = findByType(tree, 'View').find(
 			(view) => view.props.onLayout && getTextContent(view) === query,
+		);
+		const userBubble = findByType(userMessage!, 'View').find((view) =>
+			view.props.className?.includes('bg-[#B85000]'),
 		);
 		const queryText = findByType(userBubble!, 'Text')[0];
 

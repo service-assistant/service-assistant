@@ -230,6 +230,59 @@ describe('useChatApi', () => {
 		expect(harness.state.isLoading).toBe(false);
 	});
 
+	test('analyzes attached photos before sending concise context with the message', async () => {
+		const fetchMock = jest.mocked(global.fetch);
+		fetchMock
+			.mockResolvedValueOnce(
+				createJsonResponse({
+					observations: [
+						{
+							component: 'silnik elektryczny',
+							main_identifier: 'AF 124-L1',
+							confidence: 0.94,
+						},
+					],
+				}),
+			)
+			.mockResolvedValueOnce(createJsonResponse([]));
+		const harness = createHarness({ currentThreadId: 123 });
+
+		const request = harness.api.askAPI('Jak zmierzyć uzwojenia?', ['file:///motor.jpg']);
+		await flushPromises();
+
+		expect(fetchMock).toHaveBeenNthCalledWith(
+			1,
+			'https://api.example.test/api/threads/123/photo-context',
+			expect.objectContaining({
+				method: 'POST',
+				headers: {
+					Accept: 'application/json',
+					Authorization: 'Bearer test-token',
+				},
+				body: expect.any(FormData),
+			}),
+		);
+		expect(MockEventSource.instances).toHaveLength(1);
+		expect(MockEventSource.instances[0].options).toMatchObject({
+			body: JSON.stringify({
+				content: 'Jak zmierzyć uzwojenia?',
+				diagnostic_mode_enabled: false,
+				photo_context: [
+					{
+						component: 'silnik elektryczny',
+						main_identifier: 'AF 124-L1',
+						confidence: 0.94,
+					},
+				],
+			}),
+		});
+
+		MockEventSource.instances[0].emit('message', {
+			data: JSON.stringify({ id: 556, content: 'Odpowiedź', image_url: null }),
+		});
+		await request;
+	});
+
 	test('sends the disabled diagnostic mode to the server', async () => {
 		const harness = createHarness({
 			currentThreadId: 321,

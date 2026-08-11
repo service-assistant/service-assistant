@@ -3,7 +3,16 @@ import json
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -22,6 +31,7 @@ from app.schemas import (
     ChatThreadRead,
     MessageCreate,
     MessageRead,
+    PhotoContextResponse,
     ThreadCreate,
     TranscriptDecision,
     TranscriptResponse,
@@ -30,6 +40,7 @@ from app.services import (
     llm,
     message_router,
     next_best_step,
+    photo_context,
     retrieval,
     streaming,
     stt,
@@ -39,6 +50,9 @@ from fastapi import WebSocket, WebSocketDisconnect
 from contextlib import suppress
 
 router = APIRouter()
+
+_ALLOWED_PHOTO_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+_MAX_PHOTO_BYTES = 10 * 1024 * 1024
 
 
 @router.post(
@@ -61,6 +75,61 @@ async def create_thread(
     await session.commit()
     await session.refresh(thread)
     return thread
+
+
+@router.post(
+    "/{thread_id}/photo-context",
+    response_model=PhotoContextResponse,
+    summary="Extract concise context from technician photos",
+    description=(
+        "Uses the chat vision model to extract only the visible component type and "
+        "one primary identifier per photo for subsequent RAG retrieval."
+    ),
+)
+async def create_photo_context(
+    thread_id: int,
+    settings: Annotated[Settings, Depends(get_settings)],
+    question: str = Form(default=""),
+    photos: list[UploadFile] = File(...),
+    session: AsyncSession = Depends(get_session),
+):
+    if not await session.get(ChatThread, thread_id):
+        raise HTTPException(status_code=404, detail="Thread not found")
+    if not photos or len(photos) > photo_context.MAX_CHAT_PHOTOS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Upload between 1 and {photo_context.MAX_CHAT_PHOTOS} photos",
+        )
+
+    photo_inputs: list[photo_context.PhotoInput] = []
+    for photo in photos:
+        if photo.content_type not in _ALLOWED_PHOTO_CONTENT_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="Photos must be JPEG, PNG, or WebP images",
+            )
+        image_bytes = await photo.read(_MAX_PHOTO_BYTES + 1)
+        if not image_bytes:
+            raise HTTPException(status_code=400, detail="Photo is empty")
+        if len(image_bytes) > _MAX_PHOTO_BYTES:
+            raise HTTPException(status_code=413, detail="Photo is too large")
+        photo_inputs.append(
+            photo_context.PhotoInput(
+                content=image_bytes,
+                media_type=photo.content_type,
+            )
+        )
+
+    try:
+        observations = await photo_context.analyze_photos(
+            photo_inputs, question, settings
+        )
+    except photo_context.PhotoContextTimeoutError as error:
+        raise HTTPException(status_code=504, detail=str(error)) from error
+    except photo_context.PhotoContextError as error:
+        raise HTTPException(status_code=502, detail=str(error)) from error
+
+    return PhotoContextResponse(observations=observations)
 
 
 @router.get(
@@ -162,6 +231,10 @@ async def create_message(
         raise HTTPException(status_code=404, detail="Thread not found")
 
     device_id = thread.device_id
+    rag_question = photo_context.build_augmented_rag_query(
+        body.content, body.photo_context
+    )
+    rag_photo_context = photo_context.build_rag_photo_context(body.photo_context)
 
     recent_messages = list(
         (
@@ -249,8 +322,10 @@ async def create_message(
     ):
         diagnostic_route = message_router.MessageRoute.standard_query
 
-    might_continue = latest_system_message is not None and _looks_like_continuation(
-        body.content
+    might_continue = (
+        not body.photo_context
+        and latest_system_message is not None
+        and _looks_like_continuation(body.content)
     )
     has_promised_continuation = bool(
         latest_system_message
@@ -262,6 +337,7 @@ async def create_message(
     standard_completion_answer = (
         llm.DOCUMENTATION_EXHAUSTED_ANSWER
         if not body.diagnostic_mode_enabled
+        and not body.photo_context
         and latest_system_message
         and _is_explicit_continuation(body.content)
         and not has_promised_continuation
@@ -287,7 +363,7 @@ async def create_message(
             llm.is_message_continuation_request(body.content, settings),
             retrieval.retrieve_context_chunks(
                 session,
-                body.content,
+                rag_question,
                 device_id=device_id,
                 settings=settings,
                 diagnostic_mode_2002=body.diagnostic_mode_enabled,
@@ -297,7 +373,7 @@ async def create_message(
         is_continuation = might_continue
         fresh_chunks = await retrieval.retrieve_context_chunks(
             session,
-            body.content,
+            rag_question,
             device_id=device_id,
             settings=settings,
             diagnostic_mode_2002=body.diagnostic_mode_enabled,
@@ -383,6 +459,10 @@ async def create_message(
                     "duration_ms": round((retrieved_at - routed_at) * 1000),
                     "data": {
                         "device_id": device_id,
+                        "photo_context": [
+                            observation.model_dump(mode="json")
+                            for observation in body.photo_context
+                        ],
                         "continuation": is_continuation,
                         "chunks": [
                             {
@@ -439,6 +519,7 @@ async def create_message(
                 diagnostic_plan=response_plan,
                 continuation_requested=is_continuation,
                 continuation_hint=continuation_hint,
+                photo_context=rag_photo_context,
             ):
                 for visible_chunk in stream_limiter.feed(chunk):
                     answer_parts.append(visible_chunk)

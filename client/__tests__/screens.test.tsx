@@ -580,7 +580,7 @@ describe('tab screens', () => {
 		const tree = renderScreen(ChatScreen);
 
 		expect(findByType(tree, 'PortraitChatLayout')).toHaveLength(1);
-		expect(findByType(tree, 'Modal')).toHaveLength(0);
+		expect(findByType(tree, 'Modal').filter((modal) => modal.props.visible)).toHaveLength(0);
 	});
 
 	test('history screen requests threads with auth headers', async () => {
