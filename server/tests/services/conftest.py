@@ -14,7 +14,7 @@ def settings(tmp_path):
         azure_openai_api_version="2024-01-01",
         azure_document_intelligence_endpoint="https://document-intelligence.example",
         azure_document_intelligence_key="document-intelligence-key",
-        openai_chat_model="gpt-4o-mini",
+        openai_chat_model="gpt-5.6-luna",
         openai_api_key="test-openai-key",
         attachments_dir=tmp_path,
         auth_token="token",

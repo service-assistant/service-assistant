@@ -564,7 +564,6 @@ async def stream_query(
     stream = await client.chat.completions.create(
         model=settings.openai_chat_model,
         stream=True,
-        temperature=0.2,
         messages=messages,
     )
 

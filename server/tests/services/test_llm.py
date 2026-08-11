@@ -8,6 +8,7 @@ from app.services.llm import (
     ensure_continuation_intro,
     has_continuation_marker,
     is_completion_only_answer,
+    is_message_continuation_request,
     limit_checklist_items,
     normalize_numbered_checklist,
     normalize_warning_lists,
@@ -156,10 +157,25 @@ async def test_should_pass_question_and_context_to_llm(
         pass
 
     call_kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert "reasoning_effort" not in call_kwargs
+    assert "temperature" not in call_kwargs
     messages = call_kwargs["messages"]
     user_message = messages[-1]["content"]
     assert "My question" in user_message
     assert "context chunk" in user_message
+
+
+async def test_continuation_classifier_omits_unsupported_reasoning(mocker, settings):
+    mock_client = mocker.MagicMock()
+    mock_client.responses.create = mocker.AsyncMock(
+        return_value=mocker.MagicMock(output_text="1")
+    )
+    mocker.patch("app.services.llm.AsyncOpenAI", return_value=mock_client)
+
+    assert await is_message_continuation_request("Co dalej?", settings) is True
+    request = mock_client.responses.create.await_args.kwargs
+    assert request["model"] == "gpt-5.6-luna"
+    assert "reasoning" not in request
 
 
 def test_should_detect_continuation_marker():

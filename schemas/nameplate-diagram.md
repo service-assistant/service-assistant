@@ -16,7 +16,7 @@ flowchart TD
     subgraph Api["FastAPI"]
         RECOGNIZE["POST /api/nameplates/recognize<br/>Zdjęcie multipart/form-data"]
         VALIDATE["Walidacja formatu, rozmiaru<br/>i orientacji zdjęcia"]
-        VISION["OpenAI Vision (gpt-4o-mini)<br/>Bezpośredni odczyt zdjęcia"]
+        VISION["OpenAI Vision (gpt-5.6-luna)<br/>Bezpośredni odczyt zdjęcia"]
         PARSE["Structured Outputs + Pydantic<br/>model wymagany<br/>attributes jako dowolne pary etykieta-wartość"]
         NORMALIZE["Normalizacja porównania<br/>wielkość liter, spacje, myślniki<br/>i typowe błędy OCR: O/0, I/1"]
         MATCH["Dopasowanie do katalogu<br/>dokładny model lub kod serii<br/>kod Device może być fragmentem modelu albo tekstu OCR"]

@@ -202,7 +202,8 @@ async def test_should_extract_actions_for_dynamic_problem_and_rank_them(mocker):
         "replace_module",
     ]
     call = mock_client.chat.completions.create.call_args.kwargs
-    assert call["temperature"] == 0
+    assert "reasoning_effort" not in call
+    assert "temperature" not in call
     assert call["response_format"]["type"] == "json_schema"
     action_schema = call["response_format"]["json_schema"]["schema"]["$defs"][
         "DiagnosticAction"

@@ -78,7 +78,6 @@ async def _recognize_with_openai(
     )
     response = await client.chat.completions.parse(
         model=settings.openai_chat_model,
-        temperature=0,
         response_format=_ExtractedNameplate,
         messages=[
             {
@@ -148,7 +147,6 @@ async def _recognize_model_only_with_openai(
     )
     response = await client.chat.completions.parse(
         model=settings.openai_chat_model,
-        temperature=0,
         response_format=_ExtractedModel,
         messages=[
             {

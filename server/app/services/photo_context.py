@@ -90,7 +90,6 @@ async def _analyze_with_openai(
 
     response = await client.chat.completions.parse(
         model=settings.openai_chat_model,
-        temperature=0,
         response_format=_ExtractedPhotoContext,
         messages=cast(
             Any,

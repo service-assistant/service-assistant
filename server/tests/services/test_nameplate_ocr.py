@@ -14,7 +14,7 @@ from app.services.nameplate_ocr import (
 def _settings(mocker):
     settings = mocker.MagicMock()
     settings.openai_api_key = "openai-secret"
-    settings.openai_chat_model = "gpt-4o-mini"
+    settings.openai_chat_model = "gpt-5.6-luna"
     return settings
 
 
@@ -56,7 +56,8 @@ async def test_openai_vision_receives_image_and_returns_structured_data(mocker):
     assert result.raw_text == "MODEL FD25T-16\nSERIAL 558123"
     assert result.attributes[0].value == "558123"
     request = parse.await_args.kwargs
-    assert request["model"] == "gpt-4o-mini"
+    assert request["model"] == "gpt-5.6-luna"
+    assert "reasoning_effort" not in request
     assert request["response_format"] is nameplate_ocr._ExtractedNameplate
     assert openai_client.call_args.kwargs["timeout"] == 17
     assert openai_client.call_args.kwargs["max_retries"] == 0

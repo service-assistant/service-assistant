@@ -15,7 +15,7 @@ def _response(payload: dict):
     )
 
 
-async def test_selects_exact_technician_question_with_gpt_4o_mini(mocker, settings):
+async def test_selects_exact_technician_question_with_luna(mocker, settings):
     transcript = "Jak skasować błąd E-23? Podaj mi klucz ze stołu."
     mock_client = mocker.MagicMock()
     mock_client.chat.completions.create = mocker.AsyncMock(
@@ -36,7 +36,8 @@ async def test_selects_exact_technician_question_with_gpt_4o_mini(mocker, settin
     assert selection.decision == VoiceDecision.accept
     assert selection.selected_text == "Jak skasować błąd E-23?"
     call = mock_client.chat.completions.create.call_args.kwargs
-    assert call["model"] == "gpt-4o-mini"
+    assert call["model"] == "gpt-5.6-luna"
+    assert "reasoning_effort" not in call
     assert call["messages"][1]["content"] == transcript
     assert call["response_format"]["type"] == "json_schema"
 

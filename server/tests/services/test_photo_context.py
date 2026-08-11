@@ -5,7 +5,7 @@ from app.services import photo_context
 def _settings(mocker):
     settings = mocker.MagicMock()
     settings.openai_api_key = "openai-secret"
-    settings.openai_chat_model = "gpt-4o-mini"
+    settings.openai_chat_model = "gpt-5.6-luna"
     return settings
 
 
@@ -48,6 +48,8 @@ async def test_analyzes_multiple_photos_with_minimal_structured_output(mocker):
     ]
     assert [item.main_identifier for item in result] == ["AF 124-L1", "X14"]
     request = parse.await_args.kwargs
+    assert request["model"] == "gpt-5.6-luna"
+    assert "reasoning_effort" not in request
     user_content = request["messages"][1]["content"]
     image_parts = [part for part in user_content if part["type"] == "image_url"]
     assert len(image_parts) == 2
