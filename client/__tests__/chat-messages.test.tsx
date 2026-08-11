@@ -41,6 +41,7 @@ jest.mock('react-native', () => {
 		},
 		Image: createHost('Image'),
 		Platform: { OS: 'ios' },
+		ScrollView: createHost('ScrollView'),
 		Text: createHost('Text'),
 		TouchableOpacity: createHost('TouchableOpacity'),
 		View: createHost('View'),
@@ -521,6 +522,8 @@ describe('ChatMessages', () => {
 		schemaButtons[0].props.onPress();
 		sourceButtons.forEach((button) => button.props.onPress());
 
+		expect(findByText(tree, 'Źródła odpowiedzi')).toBeTruthy();
+		expect(findByText(tree, 'Kliknij źródło, aby otworzyć dokument.')).toBeTruthy();
 		expect(findByText(tree, 'Schematy z dokumentacji')).toBeTruthy();
 		expect(
 			findByText(tree, 'Kliknij schemat, aby otworzyć go w pełnym rozmiarze.'),
@@ -528,6 +531,25 @@ describe('ChatMessages', () => {
 		expect(findByText(tree, 'manual.pdf')).toBeTruthy();
 		expect(schemaButtons).toHaveLength(5);
 		expect(sourceButtons).toHaveLength(5);
+		expect(buttons.indexOf(schemaButtons[0])).toBeLessThan(buttons.indexOf(sourceButtons[0]));
+		expect(findByText(tree, 'manual.pdf · str. 1')).toBeTruthy();
+		expect(sourceButtons[0].props.style).toMatchObject({
+			width: 210,
+		});
+		expect(
+			findByType(tree, 'Text').find((text) =>
+				getTextContent(text).includes('manual.pdf · str. 1'),
+			)?.props.numberOfLines,
+		).toBe(3);
+		const horizontalScrollViews = findByType(tree, 'ScrollView');
+		expect(horizontalScrollViews).toHaveLength(2);
+		expect(horizontalScrollViews.every((view) => view.props.horizontal)).toBe(true);
+		expect(horizontalScrollViews[1].props).toMatchObject({
+			showsHorizontalScrollIndicator: true,
+			persistentScrollbar: false,
+			indicatorStyle: 'white',
+			contentContainerStyle: expect.objectContaining({ paddingBottom: 10 }),
+		});
 		expect(findByType(tree, 'WebView')).toHaveLength(0);
 		expect(findByType(tree, 'Image')).toHaveLength(5);
 		expect(onOpenSchema).toHaveBeenCalledWith('data:image/png;base64,abc');
@@ -535,5 +557,25 @@ describe('ChatMessages', () => {
 		expect(onOpenSource.mock.calls.map(([source]) => source)).toEqual(
 			sourceReferences.slice(0, 5),
 		);
+	});
+
+	test('keeps schema previews sized as a five-item row', () => {
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[
+					{
+						id: 1,
+						sender: 'ai',
+						text: 'Odpowiedź ze schematem.',
+						schemaImages: ['data:image/png;base64,only-one'],
+					},
+				]}
+			/>
+		);
+
+		expect(
+			findByType(tree, 'View').filter((view) => view.props.accessibilityElementsHidden),
+		).toHaveLength(4);
 	});
 });
