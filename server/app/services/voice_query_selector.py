@@ -78,7 +78,6 @@ async def select_technician_query(
     try:
         response = await client.chat.completions.create(
             model=settings.openai_chat_model,
-            temperature=0,
             messages=[
                 {"role": "system", "content": SELECTOR_PROMPT},
                 {"role": "user", "content": transcript},

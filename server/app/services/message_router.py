@@ -111,7 +111,6 @@ async def classify_message(
     history_json = json.dumps(recent_messages, ensure_ascii=False)
     response = await client.chat.completions.create(
         model=settings.openai_chat_model,
-        temperature=0,
         messages=[
             {"role": "system", "content": ROUTING_PROMPT},
             {

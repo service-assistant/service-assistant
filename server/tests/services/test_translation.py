@@ -85,6 +85,8 @@ async def test_translate_query_returns_translation_when_no_codes(mocker, setting
     result = await translate_query("Jak zresetować urządzenie?", settings)
 
     assert result == "How to reset the device?"
+    request = client_mock.responses.create.await_args.kwargs
+    assert "reasoning" not in request
 
 
 async def test_translate_query_restores_codes_after_translation(mocker, settings):

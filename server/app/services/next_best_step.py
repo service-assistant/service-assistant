@@ -329,7 +329,6 @@ async def extract_and_rank_actions(
     }
     response = await client.chat.completions.create(
         model=settings.openai_chat_model,
-        temperature=0,
         messages=[
             {"role": "system", "content": EXTRACTION_PROMPT},
             {
@@ -369,7 +368,6 @@ async def classify_followup(
     action_data = current_action.model_dump(exclude={"score"}, mode="json")
     response = await client.chat.completions.create(
         model=settings.openai_chat_model,
-        temperature=0,
         messages=[
             {"role": "system", "content": FOLLOWUP_PROMPT},
             {

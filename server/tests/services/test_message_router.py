@@ -59,7 +59,8 @@ async def test_should_route_safety_question_to_standard_chat(mocker, settings):
 
     assert decision.route == MessageRoute.standard_query
     call = mock_client.chat.completions.create.call_args.kwargs
-    assert call["temperature"] == 0
+    assert "reasoning_effort" not in call
+    assert "temperature" not in call
     assert call["response_format"]["type"] == "json_schema"
 
 
