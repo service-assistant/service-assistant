@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from app.config import Settings, get_settings
-from app.database import get_session
+from app.database import get_session, release_read_transaction
 from app.models import (
     ChatThread,
     ChunkMessage,
@@ -37,6 +37,7 @@ from app.schemas import (
     TranscriptResponse,
 )
 from app.services import (
+    context_support,
     llm,
     message_router,
     next_best_step,
@@ -265,19 +266,89 @@ async def create_message(
         for message in reversed(recent_messages)
     ]
 
+    if (
+        latest_system_message
+        and latest_system_message.router_decision
+        == message_router.MessageRoute.needs_clarification.value
+    ):
+        clarification_origin = next(
+            (
+                message
+                for message in recent_messages
+                if message.sender == MessageSender.user
+            ),
+            None,
+        )
+        if clarification_origin:
+            contextual_question = (
+                f"Pierwotne zgłoszenie: {clarification_origin.content}\n"
+                f"Doprecyzowanie: {body.content}"
+            )
+            rag_question = photo_context.build_augmented_rag_query(
+                contextual_question, body.photo_context
+            )
+
+    might_continue = (
+        not body.photo_context
+        and latest_system_message is not None
+        and _looks_like_continuation(body.content)
+    )
+    has_promised_continuation = bool(
+        latest_system_message
+        and (
+            latest_system_message.has_continuation
+            or llm.has_continuation_marker(latest_system_message.content)
+        )
+    )
+    direct_answer = (
+        llm.DOCUMENTATION_EXHAUSTED_ANSWER
+        if not body.diagnostic_mode_enabled
+        and not body.photo_context
+        and latest_system_message
+        and _is_explicit_continuation(body.content)
+        and not has_promised_continuation
+        else None
+    )
+
+    # Thread history and its chunk relationships are eagerly loaded, and the request
+    # session uses expire_on_commit=False. Do not hold that read transaction while the
+    # router and retrieval providers run.
+    await release_read_transaction(session)
+
     route_decision = message_router.RouteDecision(
         route=message_router.MessageRoute.standard_query,
         confidence=1,
-        recognized_problem=None,
-        diagnostic_message_id=None,
     )
-    if body.diagnostic_mode_enabled:
-        route_decision = await message_router.route_message(
-            body.content,
-            settings,
-            recent_messages=routing_history,
+    route_task = None
+    fresh_retrieval_task = None
+    continuation_task = None
+    if not direct_answer:
+        route_task = asyncio.create_task(
+            message_router.route_message(
+                body.content,
+                settings,
+                recent_messages=routing_history,
+                diagnostic_mode_enabled=body.diagnostic_mode_enabled,
+            )
         )
-        if next_best_step.requests_next_action(body.content):
+        fresh_retrieval_task = asyncio.create_task(
+            retrieval.retrieve_context_chunks(
+                session,
+                rag_question,
+                device_id=device_id,
+                settings=settings,
+                diagnostic_mode_2002=body.diagnostic_mode_enabled,
+            )
+        )
+        if might_continue and not _is_explicit_continuation(body.content):
+            continuation_task = asyncio.create_task(
+                llm.is_message_continuation_request(body.content, settings)
+            )
+
+        route_decision = await route_task
+        if body.diagnostic_mode_enabled and next_best_step.requests_next_action(
+            body.content
+        ):
             cached_message_and_plan = next(
                 (
                     (message, plan)
@@ -299,6 +370,7 @@ async def create_message(
                     recognized_problem=cached_plan.problem,
                     diagnostic_message_id=cached_message.id,
                 )
+
     routed_at = time.perf_counter()
     diagnostic_route = route_decision.route
     diagnostic_message = next(
@@ -322,32 +394,30 @@ async def create_message(
     ):
         diagnostic_route = message_router.MessageRoute.standard_query
 
-    might_continue = (
-        not body.photo_context
-        and latest_system_message is not None
-        and _looks_like_continuation(body.content)
-    )
-    has_promised_continuation = bool(
-        latest_system_message
-        and (
-            latest_system_message.has_continuation
-            or llm.has_continuation_marker(latest_system_message.content)
+    if diagnostic_route == message_router.MessageRoute.needs_clarification:
+        direct_answer = route_decision.clarification_question
+        if fresh_retrieval_task:
+            fresh_retrieval_task.cancel()
+        if continuation_task:
+            continuation_task.cancel()
+        await asyncio.gather(
+            *(task for task in (fresh_retrieval_task, continuation_task) if task),
+            return_exceptions=True,
         )
-    )
-    standard_completion_answer = (
-        llm.DOCUMENTATION_EXHAUSTED_ANSWER
-        if not body.diagnostic_mode_enabled
-        and not body.photo_context
-        and latest_system_message
-        and _is_explicit_continuation(body.content)
-        and not has_promised_continuation
-        else None
-    )
-
-    if standard_completion_answer:
+        is_continuation = False
+        fresh_chunks = []
+    elif direct_answer:
         is_continuation = False
         fresh_chunks = []
     elif current_diagnostic_plan and diagnostic_message:
+        if fresh_retrieval_task:
+            fresh_retrieval_task.cancel()
+        if continuation_task:
+            continuation_task.cancel()
+        await asyncio.gather(
+            *(task for task in (fresh_retrieval_task, continuation_task) if task),
+            return_exceptions=True,
+        )
         is_continuation = False
         fresh_chunks = [
             {
@@ -358,26 +428,13 @@ async def create_message(
             }
             for chunk in diagnostic_message.chunks
         ]
-    elif might_continue and not _is_explicit_continuation(body.content):
+    elif continuation_task and fresh_retrieval_task:
         is_continuation, fresh_chunks = await asyncio.gather(
-            llm.is_message_continuation_request(body.content, settings),
-            retrieval.retrieve_context_chunks(
-                session,
-                rag_question,
-                device_id=device_id,
-                settings=settings,
-                diagnostic_mode_2002=body.diagnostic_mode_enabled,
-            ),
+            continuation_task, fresh_retrieval_task
         )
     else:
         is_continuation = might_continue
-        fresh_chunks = await retrieval.retrieve_context_chunks(
-            session,
-            rag_question,
-            device_id=device_id,
-            settings=settings,
-            diagnostic_mode_2002=body.diagnostic_mode_enabled,
-        )
+        fresh_chunks = await fresh_retrieval_task if fresh_retrieval_task else []
 
     if is_continuation and latest_system_message and latest_system_message.chunks:
         retrieved_chunks = [
@@ -392,6 +449,36 @@ async def create_message(
     else:
         retrieved_chunks = fresh_chunks
     retrieved_at = time.perf_counter()
+
+    # All ORM data needed below was loaded eagerly and expire_on_commit is disabled.
+    # Release the read transaction before waiting on support/planning LLM calls so a
+    # database connection is not held idle for the duration of external API requests.
+    await release_read_transaction(session)
+
+    support_decision: context_support.ContextSupportDecision | None = None
+    should_evaluate_support = bool(
+        not direct_answer
+        and not is_continuation
+        and not (current_diagnostic_plan and diagnostic_message)
+    )
+    if should_evaluate_support:
+        support_decision = context_support.decide_from_reranker_scores(
+            retrieved_chunks, settings
+        )
+        if support_decision is None:
+            support_decision = await context_support.evaluate_context_support(
+                rag_question,
+                retrieved_chunks,
+                settings,
+            )
+        if support_decision.support == context_support.ContextSupport.direct_support:
+            direct_chunk_ids = set(support_decision.direct_chunk_ids)
+            retrieved_chunks = [
+                chunk for chunk in retrieved_chunks if chunk["id"] in direct_chunk_ids
+            ]
+        else:
+            direct_answer = "Dostarczona dokumentacja nie zawiera tej informacji."
+            retrieved_chunks = []
 
     context_chunks = [chunk["content"] for chunk in retrieved_chunks]
 
@@ -464,12 +551,18 @@ async def create_message(
                             for observation in body.photo_context
                         ],
                         "continuation": is_continuation,
+                        "support": (
+                            support_decision.model_dump(mode="json")
+                            if support_decision
+                            else None
+                        ),
                         "chunks": [
                             {
                                 "id": chunk["id"],
                                 "attachment_id": chunk["attachment_id"],
                                 "preview": chunk["content"][:500],
                                 "metadata": chunk.get("extra_metadata") or {},
+                                "reranker_score": chunk.get("reranker_score"),
                             }
                             for chunk in retrieved_chunks
                         ],
@@ -504,9 +597,9 @@ async def create_message(
 
         yield _sse("route", diagnostic_route.value)
 
-        if standard_completion_answer:
-            answer_parts.append(standard_completion_answer)
-            yield _sse("chunk", standard_completion_answer)
+        if direct_answer:
+            answer_parts.append(direct_answer)
+            yield _sse("chunk", direct_answer)
         else:
             stream_limiter = streaming.ChecklistStreamLimiter()
             async for chunk in llm.stream_query(

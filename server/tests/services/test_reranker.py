@@ -52,6 +52,7 @@ async def test_reranker_sends_translated_query_and_content_only_documents(
     result = await rerank_chunks("przetłumaczone pytanie", chunks, settings)
 
     assert [chunk["id"] for chunk in result] == [3, 1, 2]
+    assert [chunk["reranker_score"] for chunk in result] == [0.9, 0.8, 0.7]
     assert captured == {
         "timeout": settings.reranker_timeout_seconds,
         "url": "https://api.voyageai.com/v1/rerank",

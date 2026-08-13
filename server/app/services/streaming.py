@@ -13,6 +13,7 @@ class ChecklistStreamLimiter:
         self.omitted_item = ""
         self.output_suffix = ""
         self.passthrough_line = False
+        self.has_intro_text = False
 
     def _remember_output(self, text: str) -> None:
         self.output_suffix = f"{self.output_suffix}{text}"[-2:]
@@ -23,16 +24,22 @@ class ChecklistStreamLimiter:
 
         if directive:
             block_type = directive.group(1).lower()
+            intro = ""
+            if not self.has_intro_text:
+                intro = "Postępuj zgodnie z poniższymi wskazówkami:\n\n"
+                self.has_intro_text = True
             if block_type == "checklist":
                 self.in_checklist = True
                 self.suppress_section = self.item_count >= self.limit
-                return "" if self.suppress_section else line
+                return "" if self.suppress_section else f"{intro}{line}"
 
             self.in_checklist = False
             self.suppress_section = block_type == "next" and bool(self.omitted_item)
-            return "" if self.suppress_section else line
+            return "" if self.suppress_section else f"{intro}{line}"
 
         if not self.in_checklist:
+            if stripped:
+                self.has_intro_text = True
             return "" if self.suppress_section else line
 
         bullet = re.match(r"\s*[-*]\s+(.*)", line.rstrip("\r\n"))
@@ -125,6 +132,8 @@ class ChecklistStreamLimiter:
             if not could_be_directive:
                 output.append(self.pending)
                 self._remember_output(self.pending)
+                if self.pending.strip():
+                    self.has_intro_text = True
                 self.pending = ""
                 self.passthrough_line = True
 

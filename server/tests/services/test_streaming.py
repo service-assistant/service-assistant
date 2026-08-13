@@ -40,8 +40,26 @@ def test_should_stream_allowed_checklist_item_as_soon_as_marker_arrives():
     marker_chunks = limiter.feed("::checklist\n- ")
     content_chunks = limiter.feed("Krok 1")
 
-    assert marker_chunks == ["::checklist\n", "- "]
+    assert marker_chunks == [
+        "Postępuj zgodnie z poniższymi wskazówkami:\n\n::checklist\n",
+        "- ",
+    ]
     assert content_chunks == ["Krok 1"]
+
+
+def test_should_not_add_fallback_intro_after_streamed_model_intro():
+    limiter = ChecklistStreamLimiter()
+
+    first_chunks = limiter.feed("Sprawdź elementy układu")
+    second_chunks = limiter.feed(" podnoszenia:\n\n::checklist\n- Opuść widły.")
+    final_chunks = limiter.finish()
+
+    answer = "".join(first_chunks + second_chunks + final_chunks)
+    assert answer == (
+        "Sprawdź elementy układu podnoszenia:\n\n"
+        "::checklist\n- Opuść widły."
+    )
+    assert "Postępuj zgodnie z poniższymi wskazówkami" not in answer
 
 
 def test_should_not_buffer_an_inline_checklist_until_the_answer_finishes():
@@ -50,9 +68,15 @@ def test_should_not_buffer_an_inline_checklist_until_the_answer_finishes():
     first_chunks = limiter.feed("::checklist - Krok 1")
     second_chunks = limiter.feed(" - Krok 2")
 
-    assert first_chunks == ["::checklist\n", "- Krok 1"]
+    assert first_chunks == [
+        "Postępuj zgodnie z poniższymi wskazówkami:\n\n::checklist\n",
+        "- Krok 1",
+    ]
     assert second_chunks == ["\n", "- Krok 2"]
-    assert "".join(first_chunks + second_chunks) == ("::checklist\n- Krok 1\n- Krok 2")
+    assert "".join(first_chunks + second_chunks) == (
+        "Postępuj zgodnie z poniższymi wskazówkami:\n\n"
+        "::checklist\n- Krok 1\n- Krok 2"
+    )
 
 
 def test_should_keep_streaming_numeric_ranges_inside_inline_checklist_items():
@@ -61,5 +85,8 @@ def test_should_keep_streaming_numeric_ranges_inside_inline_checklist_items():
     first_chunks = limiter.feed("::checklist - Zakres 54")
     second_chunks = limiter.feed(" - 66 omów")
 
-    assert first_chunks == ["::checklist\n", "- Zakres 54"]
+    assert first_chunks == [
+        "Postępuj zgodnie z poniższymi wskazówkami:\n\n::checklist\n",
+        "- Zakres 54",
+    ]
     assert second_chunks == [" - 66 omów"]

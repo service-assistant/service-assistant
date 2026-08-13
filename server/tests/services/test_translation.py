@@ -86,7 +86,8 @@ async def test_translate_query_returns_translation_when_no_codes(mocker, setting
 
     assert result == "How to reset the device?"
     request = client_mock.responses.create.await_args.kwargs
-    assert "reasoning" not in request
+    assert request["model"] == settings.openai_translation_model
+    assert request["reasoning"] == {"effort": "none"}
 
 
 async def test_translate_query_restores_codes_after_translation(mocker, settings):

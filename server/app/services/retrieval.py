@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
+from ..database import release_read_transaction
 from ..models import AttachmentDevice, Chunk
 from .document_language import get_device_document_language
 from .embedding import RetrievedChunk, embed_question
@@ -271,6 +272,11 @@ async def retrieve_context_chunks(
             session, translated_query, device_id, rows=rows, limit=bm25_limit
         ),
     )
+
+    # The remaining reranking step can wait on an external provider. All database
+    # rows have already been converted to plain dictionaries, so do not keep the
+    # request's database connection idle while reranking.
+    await release_read_transaction(session)
 
     if not reranking_enabled:
         return merge_hybrid_chunks(exact, semantic, bm25)

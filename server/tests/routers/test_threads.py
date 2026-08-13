@@ -1,14 +1,18 @@
 import json
+import asyncio
 from contextlib import asynccontextmanager
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
 from app.config import get_settings
 from app.main import app
 from app.models import ChatThread, ChunkMessage, Message, MessageSender
+from app.database import release_read_transaction
 from app.routers.threads import _sse
 from app.services import retrieval as retrieval_module
+from app.services.context_support import ContextSupport, ContextSupportDecision
 from app.services.message_router import MessageRoute, RouteDecision
 from app.services.next_best_step import (
     DiagnosticPlan,
@@ -64,6 +68,41 @@ def test_sse_preserves_every_line_of_streamed_checklist_chunk():
     assert _sse("chunk", "::checklist\n- First step\n- Second step") == (
         "event: chunk\ndata: ::checklist\ndata: - First step\ndata: - Second step\n\n"
     )
+
+
+async def test_should_release_active_read_transaction_before_provider_wait(mocker):
+    session = mocker.MagicMock()
+    session.in_transaction.return_value = True
+    session.commit = mocker.AsyncMock()
+
+    await release_read_transaction(session)
+
+    session.commit.assert_awaited_once()
+
+
+async def test_should_not_commit_when_there_is_no_read_transaction(mocker):
+    session = mocker.MagicMock()
+    session.in_transaction.return_value = False
+    session.commit = mocker.AsyncMock()
+
+    await release_read_transaction(session)
+
+    session.commit.assert_not_awaited()
+
+
+async def test_should_invalidate_closed_connection_when_releasing_read_transaction(
+    mocker,
+):
+    session = mocker.MagicMock()
+    session.in_transaction.return_value = True
+    session.commit = mocker.AsyncMock(
+        side_effect=OperationalError("COMMIT", {}, Exception("connection closed"))
+    )
+    session.invalidate = mocker.AsyncMock()
+
+    await release_read_transaction(session)
+
+    session.invalidate.assert_awaited_once()
 
 
 async def _persisted_source_chunk_ids(session, message_id: int) -> set[int]:
@@ -295,6 +334,363 @@ async def test_should_skip_diagnostic_mode_when_client_disables_it(
     assert response.status_code == 200
     assert _parse_message_event(response)["router_decision"] == "standard_query"
     build_diagnostic_plan.assert_not_awaited()
+
+
+async def test_should_stream_clarification_without_calling_answer_llm(
+    client, session, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    clarification = (
+        "Co dokładnie nie działa: jazda, podnoszenie czy uruchomienie urządzenia?"
+    )
+    route_message = mocker.patch(
+        "app.routers.threads.message_router.route_message",
+        new=mocker.AsyncMock(
+            return_value=RouteDecision(
+                route=MessageRoute.needs_clarification,
+                confidence=0.98,
+                clarification_question=clarification,
+            )
+        ),
+    )
+    retrieve = mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "Nie działa", "diagnostic_mode_enabled": False},
+    )
+
+    assert response.status_code == 200
+    message = _parse_message_event(response)
+    assert message["content"] == clarification
+    assert message["router_decision"] == "needs_clarification"
+    assert message["has_continuation"] is False
+    route_message.assert_awaited_once()
+    assert route_message.await_args.kwargs["diagnostic_mode_enabled"] is False
+    retrieve.assert_awaited_once()
+    mock_openai_llm.chat.completions.create.assert_not_awaited()
+    assert await _persisted_source_chunk_ids(session, message["id"]) == set()
+
+
+async def test_should_start_router_and_retrieval_in_parallel(
+    client, session, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    router_started = asyncio.Event()
+    retrieval_started = asyncio.Event()
+
+    async def route_in_parallel(*args, **kwargs):
+        router_started.set()
+        await asyncio.wait_for(retrieval_started.wait(), timeout=1)
+        return RouteDecision(
+            route=MessageRoute.standard_query,
+            confidence=1,
+        )
+
+    async def retrieve_in_parallel(*args, **kwargs):
+        retrieval_started.set()
+        await asyncio.wait_for(router_started.wait(), timeout=1)
+        return []
+
+    mocker.patch(
+        "app.routers.threads.message_router.route_message",
+        side_effect=route_in_parallel,
+    )
+    mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        side_effect=retrieve_in_parallel,
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "Jak wymienić filtr?"},
+    )
+
+    assert response.status_code == 200
+    assert _parse_message_event(response)["content"] == "Test response"
+
+
+async def test_should_keep_sources_when_answer_only_partly_reports_missing_docs(
+    client, session, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    chunk = await create_chunk(
+        session,
+        attachment.id,
+        content="Zmierz prędkość podnoszenia wideł bez obciążenia.",
+    )
+    answer = (
+        "Dokumentacja opisuje pomiar prędkości.\n\n"
+        "::checklist\n- Zmierz prędkość podnoszenia wideł bez obciążenia.\n"
+        "Dostarczona dokumentacja nie zawiera dalszej procedury."
+    )
+
+    async def stream_answer():
+        event = mocker.MagicMock()
+        event.choices[0].delta.content = answer
+        yield event
+
+    mock_openai_llm.chat.completions.create = mocker.AsyncMock(
+        return_value=stream_answer()
+    )
+    mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(
+            return_value=[
+                {
+                    "id": chunk.id,
+                    "content": chunk.content,
+                    "attachment_id": attachment.id,
+                    "extra_metadata": chunk.extra_metadata,
+                }
+            ]
+        ),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "Widły podnoszą się zbyt wolno"},
+    )
+
+    assert response.status_code == 200
+    message_id = _parse_message_event(response)["id"]
+    assert await _persisted_source_chunk_ids(session, message_id) == {chunk.id}
+
+
+async def test_should_not_generate_answer_for_only_related_context(
+    client, session, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    chunk = await create_chunk(
+        session,
+        attachment.id,
+        content="Perform test operation after installing the hydraulic pump.",
+    )
+    mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(
+            return_value=[
+                {
+                    "id": chunk.id,
+                    "content": chunk.content,
+                    "attachment_id": attachment.id,
+                    "extra_metadata": chunk.extra_metadata,
+                }
+            ]
+        ),
+    )
+    mocker.patch(
+        "app.services.context_support.evaluate_context_support",
+        new=mocker.AsyncMock(
+            return_value=ContextSupportDecision(
+                support=ContextSupport.related_only,
+                direct_chunk_ids=[],
+            )
+        ),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "Pompa hydrauliczna mocno wyje podczas pracy."},
+    )
+
+    assert response.status_code == 200
+    message = _parse_message_event(response)
+    assert message["content"] == "Dostarczona dokumentacja nie zawiera tej informacji."
+    assert await _persisted_source_chunk_ids(session, message["id"]) == set()
+    mock_openai_llm.chat.completions.create.assert_not_awaited()
+
+
+async def test_should_generate_from_directly_supported_chunks_only(
+    client, session, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    related_chunk = await create_chunk(
+        session, attachment.id, content="General hydraulic pump installation."
+    )
+    direct_chunk = await create_chunk(
+        session,
+        attachment.id,
+        content="Metallic pump noise indicates bearing damage.",
+    )
+    retrieved = [
+        {
+            "id": chunk.id,
+            "content": chunk.content,
+            "attachment_id": attachment.id,
+            "extra_metadata": chunk.extra_metadata,
+        }
+        for chunk in (related_chunk, direct_chunk)
+    ]
+    mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(return_value=retrieved),
+    )
+    mocker.patch(
+        "app.services.context_support.evaluate_context_support",
+        new=mocker.AsyncMock(
+            return_value=ContextSupportDecision(
+                support=ContextSupport.direct_support,
+                direct_chunk_ids=[direct_chunk.id],
+            )
+        ),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "Pompa wydaje metaliczny hałas."},
+    )
+
+    assert response.status_code == 200
+    message_id = _parse_message_event(response)["id"]
+    assert await _persisted_source_chunk_ids(session, message_id) == {direct_chunk.id}
+    context = _assistant_message_context(mock_openai_llm)
+    assert direct_chunk.content in context
+    assert related_chunk.content not in context
+
+
+async def test_should_bypass_support_llm_for_high_reranker_score(
+    client, session, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    direct_chunk = await create_chunk(
+        session,
+        attachment.id,
+        content="Cylinder insufficient speed: inspect the lifting system.",
+    )
+    support_llm = mocker.patch(
+        "app.services.context_support.evaluate_context_support",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(
+            return_value=[
+                {
+                    "id": direct_chunk.id,
+                    "content": direct_chunk.content,
+                    "attachment_id": attachment.id,
+                    "extra_metadata": direct_chunk.extra_metadata,
+                    "reranker_score": 0.91,
+                }
+            ]
+        ),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "Widły podnoszą się zbyt wolno"},
+    )
+
+    assert response.status_code == 200
+    support_llm.assert_not_awaited()
+    message_id = _parse_message_event(response)["id"]
+    assert await _persisted_source_chunk_ids(session, message_id) == {direct_chunk.id}
+
+
+async def test_should_reject_low_reranker_score_without_support_llm(
+    client, session, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    attachment = await create_attachment(session)
+    weak_chunk = await create_chunk(
+        session, attachment.id, content="Unrelated maintenance information."
+    )
+    support_llm = mocker.patch(
+        "app.services.context_support.evaluate_context_support",
+        new=mocker.AsyncMock(),
+    )
+    mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(
+            return_value=[
+                {
+                    "id": weak_chunk.id,
+                    "content": weak_chunk.content,
+                    "attachment_id": attachment.id,
+                    "extra_metadata": weak_chunk.extra_metadata,
+                    "reranker_score": 0.12,
+                }
+            ]
+        ),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "Widły podnoszą się zbyt wolno"},
+    )
+
+    assert response.status_code == 200
+    support_llm.assert_not_awaited()
+    message = _parse_message_event(response)
+    assert message["content"] == "Dostarczona dokumentacja nie zawiera tej informacji."
+    assert await _persisted_source_chunk_ids(session, message["id"]) == set()
+
+
+async def test_should_retrieve_with_original_problem_after_clarification(
+    client, session, mock_openai_llm, mocker
+):
+    brand = await create_brand(session)
+    dt = await create_device_type(session)
+    device = await create_device(session, brand.id, dt.id)
+    thread = await create_thread(session, device.id)
+    await create_message(
+        session,
+        thread.id,
+        content="Nie działa podnoszenie wideł",
+        sender=MessageSender.user,
+    )
+    clarification = await create_message(
+        session,
+        thread.id,
+        content=("Czy widły w ogóle się nie podnoszą, czy podnoszą się zbyt wolno?"),
+        sender=MessageSender.assistant,
+    )
+    clarification.router_decision = MessageRoute.needs_clarification.value
+    await session.commit()
+    retrieve = mocker.patch(
+        "app.routers.threads.retrieval.retrieve_context_chunks",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+
+    response = await client.post(
+        f"/api/threads/{thread.id}/messages",
+        json={"content": "Podnoszą się zbyt wolno"},
+    )
+
+    assert response.status_code == 200
+    assert retrieve.await_args.args[1] == (
+        "Pierwotne zgłoszenie: Nie działa podnoszenie wideł\n"
+        "Doprecyzowanie: Podnoszą się zbyt wolno"
+    )
 
 
 async def test_photo_context_augments_retrieval_and_keeps_original_user_message(

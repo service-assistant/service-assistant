@@ -1,6 +1,7 @@
 import pytest
 
 from app.services.llm import (
+    GENERATION_SYSTEM_PROMPT,
     _build_context,
     _messages,
     clean_completion_notice,
@@ -9,6 +10,7 @@ from app.services.llm import (
     has_continuation_marker,
     is_completion_only_answer,
     is_message_continuation_request,
+    is_no_source_answer,
     limit_checklist_items,
     normalize_numbered_checklist,
     normalize_warning_lists,
@@ -17,6 +19,14 @@ from app.services.llm import (
     stream_query,
 )
 from app.services.next_best_step import DiagnosticPlan, DiagnosticPlanStatus
+
+
+def test_generation_prompt_is_compact_and_keeps_rendering_contract():
+    assert len(GENERATION_SYSTEM_PROMPT) < 2500
+    assert "::checklist" in GENERATION_SYSTEM_PROMPT
+    assert "::warning" in GENERATION_SYSTEM_PROMPT
+    assert "::next" in GENERATION_SYSTEM_PROMPT
+    assert "wyłącznie z ich treści" in GENERATION_SYSTEM_PROMPT
 
 
 def test_should_show_only_first_next_best_step_to_technician():
@@ -36,9 +46,9 @@ def test_should_show_only_first_next_best_step_to_technician():
     assert "Nie dodawaj sekcji ::next" in prompt
     assert "Nie pokazuj pełnej kolejności diagnostyki" in prompt
     assert "Nie nazywaj ani nie opisuj żadnej przyszłej akcji" in prompt
-    assert "Nie dodawaj wstępu, nagłówka" in prompt
-    assert "zacznij od sekcji ::warning, a następnie" in prompt
-    assert "W przeciwnym razie zacznij bezpośrednio od ::checklist" in prompt
+    assert "Dodaj jedno krótkie zdanie wprowadzenia" in prompt
+    assert "po wprowadzeniu dodaj sekcję ::warning" in prompt
+    assert "W przeciwnym razie po wprowadzeniu dodaj ::checklist" in prompt
     assert "Nie proś o opis obserwacji, wartość, jednostkę" in prompt
     assert "expected_information" not in prompt
     assert '"status": "actions"' in prompt
@@ -72,6 +82,21 @@ def test_should_return_no_context_message_when_all_chunks_are_whitespace():
     result = _build_context(["   ", "\n", ""])
 
     assert result == "No relevant context found."
+
+
+def test_should_only_mark_entire_no_source_reply_as_without_sources():
+    assert (
+        is_no_source_answer("Dostarczona dokumentacja nie zawiera tej informacji.")
+        is True
+    )
+    assert (
+        is_no_source_answer(
+            "Dokumentacja opisuje pomiar prędkości.\n\n"
+            "::checklist\n- Zmierz prędkość podnoszenia.\n"
+            "Dostarczona dokumentacja nie zawiera dalszej procedury."
+        )
+        is False
+    )
 
 
 def test_should_skip_empty_and_whitespace_chunks():

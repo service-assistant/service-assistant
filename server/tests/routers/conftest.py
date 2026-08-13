@@ -1,3 +1,4 @@
+import json
 import os
 
 import pytest
@@ -31,17 +32,46 @@ def block_unmocked_router_openai_calls(mocker):
     )
 
     routing_client = mocker.MagicMock()
-    routing_response = mocker.MagicMock()
-    routing_response.choices[0].message.content = (
-        '{"route":"standard_query","confidence":1,'
-        '"recognized_problem":null,"diagnostic_message_id":null}'
-    )
+
+    async def standard_routing_response(**kwargs):
+        schema = kwargs["response_format"]["json_schema"]["schema"]
+        diagnostic_mode = "recognized_problem" in schema["properties"]
+        payload = {
+            "route": "standard_query",
+            "confidence": 1,
+            "clarification_question": None,
+            "missing_information": [],
+        }
+        if diagnostic_mode:
+            payload.update(
+                {
+                    "recognized_problem": None,
+                    "diagnostic_message_id": None,
+                }
+            )
+        routing_response = mocker.MagicMock()
+        routing_response.choices[0].message.content = json.dumps(payload)
+        return routing_response
+
     routing_client.chat.completions.create = mocker.AsyncMock(
-        return_value=routing_response
+        side_effect=standard_routing_response
     )
     mocker.patch(
         "app.services.message_router.AsyncOpenAI",
         return_value=routing_client,
+    )
+
+    from app.services.context_support import ContextSupport, ContextSupportDecision
+
+    async def direct_context_support(question, chunks, settings):
+        return ContextSupportDecision(
+            support=ContextSupport.direct_support,
+            direct_chunk_ids=[chunk["id"] for chunk in chunks],
+        )
+
+    mocker.patch(
+        "app.services.context_support.evaluate_context_support",
+        side_effect=direct_context_support,
     )
 
 

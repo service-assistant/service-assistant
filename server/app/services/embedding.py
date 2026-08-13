@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from openai import AsyncAzureOpenAI
 
@@ -11,6 +11,7 @@ class RetrievedChunk(TypedDict):
     content: str
     attachment_id: int
     extra_metadata: dict | None
+    reranker_score: NotRequired[float]
 
 
 async def embed_question(question: str, settings: Settings) -> list[float]:

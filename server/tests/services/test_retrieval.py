@@ -363,9 +363,20 @@ async def test_enabled_reranking_uses_wider_deduplicated_pool_and_translated_que
     )
     captured_query = ""
     captured_candidates: list[RetrievedChunk] = []
+    read_transaction_released = False
+
+    async def release_before_rerank(session):
+        nonlocal read_transaction_released
+        read_transaction_released = True
+
+    mocker.patch(
+        "app.services.retrieval.release_read_transaction",
+        side_effect=release_before_rerank,
+    )
 
     async def fake_rerank(query, candidates, received_settings):
         nonlocal captured_query, captured_candidates
+        assert read_transaction_released is True
         captured_query = query
         captured_candidates = candidates
         return candidates

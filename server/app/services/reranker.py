@@ -23,7 +23,7 @@ class RetryableRerankerError(RerankerError):
     """Raised for temporary provider failures that are safe to retry."""
 
 
-def _parse_ranking_indexes(payload: object, candidate_count: int) -> list[int]:
+def _parse_ranking(payload: object, candidate_count: int) -> list[tuple[int, float]]:
     if not isinstance(payload, dict):
         raise RerankerError("Voyage response must be a JSON object")
 
@@ -31,7 +31,7 @@ def _parse_ranking_indexes(payload: object, candidate_count: int) -> list[int]:
     if not isinstance(results, list) or len(results) != candidate_count:
         raise RerankerError("Voyage response does not contain a complete ranking")
 
-    indexes: list[int] = []
+    ranking: list[tuple[int, float]] = []
     for result in results:
         if not isinstance(result, dict):
             raise RerankerError("Voyage ranking item must be an object")
@@ -42,7 +42,7 @@ def _parse_ranking_indexes(payload: object, candidate_count: int) -> list[int]:
             isinstance(index, bool)
             or not isinstance(index, int)
             or not 0 <= index < candidate_count
-            or index in indexes
+            or index in {item[0] for item in ranking}
         ):
             raise RerankerError("Voyage returned an invalid or duplicate index")
         if (
@@ -51,9 +51,9 @@ def _parse_ranking_indexes(payload: object, candidate_count: int) -> list[int]:
             or not math.isfinite(float(score))
         ):
             raise RerankerError("Voyage returned an invalid relevance score")
-        indexes.append(index)
+        ranking.append((index, float(score)))
 
-    return indexes
+    return ranking
 
 
 async def rerank_chunks(
@@ -98,14 +98,17 @@ async def rerank_chunks(
                 if not 200 <= response.status_code < 300:
                     raise RerankerError(f"Voyage returned HTTP {response.status_code}")
                 try:
-                    indexes = _parse_ranking_indexes(response.json(), len(chunks))
+                    ranking = _parse_ranking(response.json(), len(chunks))
                 except RerankerError:
                     raise
                 except Exception as exc:
                     raise RerankerError(
                         "Voyage returned an invalid JSON response"
                     ) from exc
-                return [chunks[index] for index in indexes]
+                return [
+                    {**chunks[index], "reranker_score": score}
+                    for index, score in ranking
+                ]
             except (httpx.TransportError, RetryableRerankerError) as exc:
                 if attempt >= MAX_RETRIES:
                     raise RerankerError(

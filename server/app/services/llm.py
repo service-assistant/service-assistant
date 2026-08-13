@@ -128,21 +128,52 @@ Nie rozpoczynaj pracy przy pompie przed odłączeniem akumulatora i zmniejszenie
 Po demontażu pompy następnym etapem jest kontrola elementów i przygotowanie pompy do ponownego montażu.
 """
 
+# Retrieval context is pre-validated by context_support before this prompt is used.
+# Keep generation instructions focused on faithful rendering and the client's text
+# directives; relevance assessment belongs to the preceding classifier.
+GENERATION_SYSTEM_PROMPT: Final[str] = """
+Jesteś asystentem serwisowym technika. Odpowiadaj po polsku, krótko i praktycznie.
+
+Przekazane fragmenty zostały wybrane jako bezpośrednio wspierające pytanie. Korzystaj
+wyłącznie z ich treści. Nie dodawaj własnych przyczyn, zależności, parametrów ani
+procedur i nie łącz fragmentów w zależność, której dokumentacja nie podaje wprost.
+Jeśli mimo to brakuje informacji koniecznej do odpowiedzi, napisz wyłącznie:
+„Dostarczona dokumentacja nie zawiera tej informacji.” Możesz odpowiadać na pytania
+o przebieg aktualnej rozmowy na podstawie historii wiadomości.
+
+Dozwolone znaczniki sekcji:
+- ::checklist — czynności do wykonania teraz; każda w osobnej linii „- ”, maksymalnie
+  6 punktów. Zachowaj wszystkie podpunkty procedury, ale nie kopiuj jej numeracji.
+- ::warning — krótkie zagrożenie lub zakaz, bez listy, maksymalnie 2 krótkie zdania.
+  Czynności umieszczaj w checklist, nie w warning.
+- ::next — jedna krótka zapowiedź konkretnej, niepokazanej jeszcze części dokumentacji.
+  Używaj tylko gdy taka dalsza treść istnieje; nie używaj, gdy czekasz na wynik technika.
+
+Umieść warning przed checklist. Prostą informację podaj w krótkim tekście. Każdą
+odpowiedź zawierającą warning lub checklist poprzedź jednym krótkim zdaniem
+wprowadzenia. Nie zaczynaj odpowiedzi bezpośrednio od znacznika. Nie używaj JSON,
+tabel, nagłówków Markdown ani numerowanych kroków. Nie pokazuj metadanych ani ocen
+trafności źródeł.
+""".strip()
+
 DOCUMENTATION_EXHAUSTED_ANSWER: Final[str] = (
     "To już wszystko, co dokumentacja zawiera na ten temat."
 )
 
-_NO_SOURCE_PHRASES = [
-    "dokumentacja nie zawiera",
-    "dokumenty nie zawierają",
-    "nie zawiera odpowiedzi na to pytanie",
-    "brak informacji w dokumentacji",
-]
+_NO_SOURCE_ANSWER_RE = re.compile(
+    r"^(?:dostarczona\s+)?(?:"
+    r"dokumentacja\s+nie\s+zawiera\b[^.!?]*|"
+    r"dokumenty\s+nie\s+zawierają\b[^.!?]*|"
+    r"brak\s+informacji\s+w\s+dokumentacji\b[^.!?]*"
+    r")[.!?]*$",
+    re.IGNORECASE,
+)
 
 
 def is_no_source_answer(answer: str) -> bool:
-    lower = answer.lower()
-    return any(pharse in lower for pharse in _NO_SOURCE_PHRASES)
+    """Return true only when the entire answer says that no source was found."""
+    normalized = re.sub(r"\s+", " ", answer).strip()
+    return _NO_SOURCE_ANSWER_RE.fullmatch(normalized) is not None
 
 
 def is_completion_only_answer(answer: str) -> bool:
@@ -475,9 +506,10 @@ def _messages(
             "Dane planu są przekazane jako JSON. Dla diagnozowanego problemu pokaż "
             "technikowi WYŁĄCZNIE pierwszą akcję z tablicy 'actions'. "
             "Nie pokazuj pełnej kolejności diagnostyki ani możliwej wymiany części. "
-            "Nie dodawaj wstępu, nagłówka ani zdania opisującego cel diagnostyki. "
-            "Jeżeli akcja wymaga ostrzeżenia, zacznij od sekcji ::warning, a następnie "
-            "dodaj ::checklist. W przeciwnym razie zacznij bezpośrednio od ::checklist. "
+            "Dodaj jedno krótkie zdanie wprowadzenia opisujące bieżące sprawdzenie. "
+            "Jeżeli akcja wymaga ostrzeżenia, po wprowadzeniu dodaj sekcję ::warning, "
+            "a następnie ::checklist. W przeciwnym razie po wprowadzeniu dodaj "
+            "::checklist. "
             "Sekcja ::checklist ma zawierać dokładnie jedno konkretne zadanie. "
             "Nie proś o opis obserwacji, wartość, jednostkę ani "
             "potwierdzenie wykonania. Nie dodawaj sekcji ::next ani zapowiedzi kolejnego "
@@ -519,7 +551,7 @@ def _messages(
     )
 
     return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": GENERATION_SYSTEM_PROMPT},
         *history_messages,
         {
             "role": "user",

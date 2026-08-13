@@ -86,8 +86,9 @@ async def translate_query(
 
     try:
         response = await client.responses.create(
-            model=settings.openai_chat_model,
+            model=settings.openai_translation_model,
             input=prompt,
+            reasoning={"effort": "none"},
         )
     except Exception:
         return query

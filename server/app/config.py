@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     azure_openai_embeddings_deployment: str
     openai_api_key: str
     openai_chat_model: str = "gpt-5.6-luna"
+    openai_router_model: str = "gpt-5.4-nano"
+    openai_context_support_model: str = "gpt-5.4-nano"
+    openai_translation_model: str = "gpt-5.4-nano"
     openai_stt_model: str = "gpt-transcribe"
     openai_stt_prompt: str = (
         "Nagranie zawiera wypowiedź polskiego technika serwisowego dotyczącą "
@@ -41,6 +44,8 @@ class Settings(BaseSettings):
     voyage_api_key: str | None = None
     reranker_model: str = "rerank-2.5"
     reranker_timeout_seconds: float = Field(default=5.0, gt=0)
+    reranker_direct_support_threshold: float = Field(default=0.7, ge=0, le=1)
+    reranker_no_support_threshold: float = Field(default=0.3, ge=0, le=1)
 
     azure_document_intelligence_endpoint: str
     azure_document_intelligence_key: str
@@ -64,6 +69,14 @@ class Settings(BaseSettings):
             not self.voyage_api_key or not self.voyage_api_key.strip()
         ):
             raise ValueError("VOYAGE_API_KEY is required when RERANKER_ENABLED is true")
+        if (
+            self.reranker_no_support_threshold
+            >= self.reranker_direct_support_threshold
+        ):
+            raise ValueError(
+                "RERANKER_NO_SUPPORT_THRESHOLD must be lower than "
+                "RERANKER_DIRECT_SUPPORT_THRESHOLD"
+            )
         return self
 
 
