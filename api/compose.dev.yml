@@ -1,0 +1,27 @@
+name: service-assistant-dev-api
+
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      ENV: development
+    command: fastapi dev --host 0.0.0.0 --port 8000
+    ports:
+      - "${PORT}:8000"
+    volumes:
+      - ./app:/app/app
+      - ./alembic:/app/alembic
+      - attachments:/attachments
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:${DOCKER_GATEWAY}"
+
+volumes:
+  attachments:

@@ -1,0 +1,30 @@
+services:
+  app:
+    build: .
+    env_file: .env
+    command: >
+      sh -c "alembic upgrade head && fastapi run --host 0.0.0.0 --port 8000 --workers 1"
+    ports:
+      - "127.0.0.1:${PORT}:8000"
+    volumes:
+      - attachments:/attachments
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:${DOCKER_GATEWAY}"
+
+volumes:
+  attachments:
+
+networks:
+  default:
+    driver: bridge
+    ipam:
+      config:
+      # Constant subnet to let Postgres know what ąddress to listen on
+        - subnet: ${DOCKER_SUBNET}

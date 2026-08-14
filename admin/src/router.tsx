@@ -1,4 +1,3 @@
-import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 import { ProtectedLayout } from '@/components/ProtectedLayout'
 import { AddDocumentPage } from '@/pages/AddDocumentPage'
 import { AddMachinePage } from '@/pages/AddMachinePage'
@@ -12,6 +11,7 @@ import { DocumentsPage } from '@/pages/DocumentsPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { MachineDetailPage } from '@/pages/MachineDetailPage'
 import { UsersPage } from '@/pages/UsersPage'
+import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 
 const rootRoute = createRootRoute()
 

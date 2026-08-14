@@ -1,13 +1,13 @@
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$serverDir = Join-Path $repoRoot 'server'
-$clientDir = Join-Path $repoRoot 'client'
+$apiDir = Join-Path $repoRoot 'api'
+$appDir = Join-Path $repoRoot 'app'
 $adminDir = Join-Path $repoRoot 'admin'
-$serverRuff = Join-Path $serverDir '.venv\Scripts\ruff.exe'
-$serverPyrightEntry = Join-Path $serverDir '.venv\Lib\site-packages\pyright\dist\index.js'
-$serverTestScript = Join-Path $serverDir 'scripts\test-windows.ps1'
-$clientTsc = Join-Path $clientDir 'node_modules\.bin\tsc.cmd'
+$apiRuff = Join-Path $apiDir '.venv\Scripts\ruff.exe'
+$apiPyrightEntry = Join-Path $apiDir '.venv\Lib\site-packages\pyright\dist\index.js'
+$apiTestScript = Join-Path $apiDir 'scripts\test-windows.ps1'
+$appTsc = Join-Path $appDir 'node_modules\.bin\tsc.cmd'
 $adminTsc = Join-Path $adminDir 'node_modules\.bin\tsc.cmd'
 $adminOxlint = Join-Path $adminDir 'node_modules\.bin\oxlint.cmd'
 $powerShell = (Get-Process -Id $PID).Path
@@ -60,17 +60,17 @@ function Invoke-NativeStep {
 }
 
 Assert-FileExists `
-    -Path $serverRuff `
-    -MissingMessage 'Server virtual environment not found. Run "poetry install" in the server directory first.'
+    -Path $apiRuff `
+    -MissingMessage 'API virtual environment not found. Run "poetry install" in the api directory first.'
 Assert-FileExists `
-    -Path $serverTestScript `
-    -MissingMessage "Server Windows test script not found: $serverTestScript"
+    -Path $apiTestScript `
+    -MissingMessage "API Windows test script not found: $apiTestScript"
 Assert-FileExists `
-    -Path $serverPyrightEntry `
-    -MissingMessage 'Server Pyright not found. Run "poetry install" in the server directory first.'
+    -Path $apiPyrightEntry `
+    -MissingMessage 'API Pyright not found. Run "poetry install" in the api directory first.'
 Assert-FileExists `
-    -Path $clientTsc `
-    -MissingMessage 'Client dependencies not found. Run "npm install" in the client directory first.'
+    -Path $appTsc `
+    -MissingMessage 'App dependencies not found. Run "npm install" in the app directory first.'
 Assert-FileExists `
     -Path $adminTsc `
     -MissingMessage 'Admin dependencies not found. Run "npm install" in the admin directory first.'
@@ -84,39 +84,39 @@ $nodeCommand = Get-Command node.exe -ErrorAction Stop
 $node = $nodeCommand.Source
 
 Invoke-NativeStep `
-    -Name 'Format server (Ruff)' `
-    -WorkingDirectory $serverDir `
-    -Executable $serverRuff `
+    -Name 'Format api (Ruff)' `
+    -WorkingDirectory $apiDir `
+    -Executable $apiRuff `
     -CommandArguments @('format', 'app', 'tests', '--no-cache')
 
 Invoke-NativeStep `
-    -Name 'Format client (Prettier)' `
-    -WorkingDirectory $clientDir `
+    -Name 'Format app (Prettier)' `
+    -WorkingDirectory $appDir `
     -Executable $npm `
     -CommandArguments @('run', 'format')
 
 Invoke-NativeStep `
-    -Name 'Lint server (Ruff)' `
-    -WorkingDirectory $serverDir `
-    -Executable $serverRuff `
+    -Name 'Lint api (Ruff)' `
+    -WorkingDirectory $apiDir `
+    -Executable $apiRuff `
     -CommandArguments @('check', 'app', 'tests', 'alembic', '--no-cache')
 
 Invoke-NativeStep `
-    -Name 'Type-check server (Pyright)' `
-    -WorkingDirectory $serverDir `
+    -Name 'Type-check api (Pyright)' `
+    -WorkingDirectory $apiDir `
     -Executable $node `
-    -CommandArguments @($serverPyrightEntry)
+    -CommandArguments @($apiPyrightEntry)
 
 Invoke-NativeStep `
-    -Name 'Lint client (Expo ESLint)' `
-    -WorkingDirectory $clientDir `
+    -Name 'Lint app (Expo ESLint)' `
+    -WorkingDirectory $appDir `
     -Executable $npm `
     -CommandArguments @('run', 'lint', '--', '--no-cache')
 
 Invoke-NativeStep `
-    -Name 'Type-check client (TypeScript)' `
-    -WorkingDirectory $clientDir `
-    -Executable $clientTsc `
+    -Name 'Type-check app (TypeScript)' `
+    -WorkingDirectory $appDir `
+    -Executable $appTsc `
     -CommandArguments @('--noEmit')
 
 Invoke-NativeStep `
@@ -134,20 +134,20 @@ Invoke-NativeStep `
 # Run this exact repository script in a child PowerShell process. It configures
 # WindowsSelectorEventLoopPolicy and the Docker test database required by psycopg.
 Invoke-NativeStep `
-    -Name 'Test server (Windows test runner)' `
-    -WorkingDirectory $serverDir `
+    -Name 'Test api (Windows test runner)' `
+    -WorkingDirectory $apiDir `
     -Executable $powerShell `
     -CommandArguments @(
         '-NoProfile',
         '-ExecutionPolicy',
         'Bypass',
         '-File',
-        $serverTestScript
+        $apiTestScript
     )
 
 Invoke-NativeStep `
-    -Name 'Test client (Jest)' `
-    -WorkingDirectory $clientDir `
+    -Name 'Test app (Jest)' `
+    -WorkingDirectory $appDir `
     -Executable $npm `
     -CommandArguments @('run', 'test', '--', '--runInBand')
 

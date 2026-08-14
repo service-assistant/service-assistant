@@ -1,0 +1,12 @@
+name: service-assistant-app
+
+services:
+    app:
+        build:
+            context: .
+            args:
+                EXPO_PUBLIC_API_URL: ${EXPO_PUBLIC_API_URL}
+                EXPO_PUBLIC_AUTH_TOKEN: ${EXPO_PUBLIC_AUTH_TOKEN}
+        ports:
+            - '127.0.0.1:${PORT}:80'
+        restart: unless-stopped

@@ -9,68 +9,68 @@ on:
       - "**"
 
 jobs:
-  client-lint:
-    name: Lint (client)
+  app-lint:
+    name: Lint (app)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
       - name: Run lint check
-        run: npm --prefix ./client run lint
+        run: npm --prefix ./app run lint
 
-  client-format-check:
-    name: Check formatting (client)
+  app-format-check:
+    name: Check formatting (app)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
       - name: Run format check
-        run: cd client && npm exec prettier -- --check .
+        run: cd app && npm exec prettier -- --check .
 
-  client-test:
-    name: Run tests (client)
+  app-test:
+    name: Run tests (app)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
       - name: Run tests
-        run: npm --prefix ./client test
+        run: npm --prefix ./app test
 
-  server-lint:
-    name: Lint (server)
+  api-lint:
+    name: Lint (api)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python-poetry
       - name: Install dependencies
-        run: poetry --directory ./server install --all-groups
+        run: poetry --directory ./api install --all-groups
       - name: Run lint check
-        run: poetry --directory ./server run ruff check app tests
+        run: poetry --directory ./api run ruff check app tests
 
-  server-format-check:
-    name: Check formatting (server)
+  api-format-check:
+    name: Check formatting (api)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python-poetry
       - name: Install dependencies
-        run: poetry --directory ./server install --all-groups
+        run: poetry --directory ./api install --all-groups
       - name: Run format check
-        run: poetry --directory ./server run ruff format --check app tests
+        run: poetry --directory ./api run ruff format --check app tests
 
-  server-typecheck:
-    name: Type check (server)
+  api-typecheck:
+    name: Type check (api)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python-poetry
       - name: Install dependencies
-        run: poetry --directory ./server install --all-groups
+        run: poetry --directory ./api install --all-groups
       - name: Run type check
-        run: poetry --directory ./server run pyright
+        run: poetry --directory ./api run pyright
 
-  server-test:
-    name: Run tests (server)
+  api-test:
+    name: Run tests (api)
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -90,8 +90,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-python-poetry
       - name: Install dependencies
-        run: poetry --directory ./server install --all-groups
+        run: poetry --directory ./api install --all-groups
       - name: Run tests
-        run: poetry --directory ./server run pytest
+        run: poetry --directory ./api run pytest
         env:
           DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5433/service_assistant_test

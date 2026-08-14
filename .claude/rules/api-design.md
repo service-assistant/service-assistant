@@ -1,6 +1,6 @@
 ---
 paths:
-  - "server/app/router/**/*.py"
+  - "api/app/router/**/*.py"
 ---
 
 # API Design Rules

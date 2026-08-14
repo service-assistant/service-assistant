@@ -8,7 +8,7 @@ runs:
       with:
         node-version: "24.14.0"
         cache: "npm"
-        cache-dependency-path: "./client/package-lock.json"
+        cache-dependency-path: "./app/package-lock.json"
     - name: Install dependencies
       shell: bash
-      run: npm ci --prefix ./client
+      run: npm ci --prefix ./app
