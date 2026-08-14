@@ -22,11 +22,11 @@ cp api/.env.example api/.env
 
 **Postgres:** you need a Postgres instance with the [`pgvector`](https://github.com/pgvector/pgvector) extension for both `make dev` and `make test`. A few options, pick whichever suits you:
 
-- **Dockerized (recommended, zero setup):** if you don't have Postgres installed on your OS, run `cd api && make dev-db` to spin up `pgvector/pgvector` in Docker on port `5432`, using `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` from `api/.env` (see `api/compose.db.yml`) — nothing extra to install. `make dev` does NOT start this for you, so run it separately first.
+- **Dockerized (recommended, zero setup):** if you don't have Postgres installed on your OS, run `cd api && make dev-db` to spin up `pgvector/pgvector` in Docker on port `5432`, using the credentials/db name hardcoded in `api/compose.db.yml` — nothing extra to install. `make dev` does NOT start this for you, so run it separately first.
 - **Install natively:** e.g. on macOS, `brew install postgresql@18` (ships with `pgvector` support via a separate formula or `pgxman`), `brew services start postgresql@18`, then `createdb service_assistant_dev && createdb service_assistant_test` and run `CREATE EXTENSION vector;` in both. Point `DATABASE_URL` at `127.0.0.1:5432` either way.
 - **Remote managed Postgres (e.g. [Supabase](https://supabase.com)):** if you don't want to run Postgres locally at all, spin up a free Supabase project, enable the `vector` extension from the dashboard (Database → Extensions), and point `DATABASE_URL` at the connection string Supabase gives you — just make sure it's in the `postgresql+psycopg://...` form (async psycopg3 driver), not the plain `postgresql://` Supabase shows by default.
 
-The app itself only ever reads `DATABASE_URL` — the `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`/`POSTGRES_HOST_AUTH_METHOD` vars in `.env` only configure the container in `compose.db.yml`, so they're irrelevant (and safe to ignore) if you're not using the dockerized option.
+The app itself only ever reads `DATABASE_URL` — the Postgres credentials/db name/auth method are hardcoded directly in `compose.db.yml`, so they're irrelevant (and safe to ignore) if you're not using the dockerized option.
 
 **Migrations:** production runs `alembic upgrade head` automatically on startup. Dev does not — run `make migrate` after `make dev` is up.
 
