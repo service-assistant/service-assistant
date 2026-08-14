@@ -2,8 +2,11 @@
 node_modules/
 .env
 .pytest_cache/
+/server/.pytest-tmp/
+/server/tests/.tmp-voice/
 /tmp/
 /outputs/
+.benchmark_documents/
 
 # EAS CLI on Windows does not currently honor nested .gitignore files reliably.
 # Keep generated client artifacts out of the archive from the repository root.

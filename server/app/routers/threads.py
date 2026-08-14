@@ -1,7 +1,7 @@
 import asyncio
 import json
 import time
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import (
     APIRouter,
@@ -343,6 +343,7 @@ async def create_message(
         and not has_promised_continuation
         else None
     )
+    retrieval_trace: dict[str, Any] = {}
 
     if standard_completion_answer:
         is_continuation = False
@@ -367,6 +368,7 @@ async def create_message(
                 device_id=device_id,
                 settings=settings,
                 diagnostic_mode_2002=body.diagnostic_mode_enabled,
+                retrieval_trace=retrieval_trace,
             ),
         )
     else:
@@ -377,6 +379,7 @@ async def create_message(
             device_id=device_id,
             settings=settings,
             diagnostic_mode_2002=body.diagnostic_mode_enabled,
+            retrieval_trace=retrieval_trace,
         )
 
     if is_continuation and latest_system_message and latest_system_message.chunks:
@@ -392,6 +395,14 @@ async def create_message(
     else:
         retrieved_chunks = fresh_chunks
     retrieved_at = time.perf_counter()
+
+    if not retrieval_trace:
+        retrieval_trace = {
+            "reranker_enabled": False,
+            "reranker_status": "not_run",
+            "before_reranker": fresh_chunks,
+            "after_reranker": retrieved_chunks,
+        }
 
     context_chunks = [chunk["content"] for chunk in retrieved_chunks]
 
@@ -464,6 +475,30 @@ async def create_message(
                             for observation in body.photo_context
                         ],
                         "continuation": is_continuation,
+                        "reranker_enabled": retrieval_trace.get(
+                            "reranker_enabled", False
+                        ),
+                        "reranker_status": retrieval_trace.get(
+                            "reranker_status", "not_run"
+                        ),
+                        "before_reranker": [
+                            {
+                                "id": chunk["id"],
+                                "attachment_id": chunk["attachment_id"],
+                                "preview": chunk["content"][:1000],
+                                "metadata": chunk.get("extra_metadata") or {},
+                            }
+                            for chunk in retrieval_trace.get("before_reranker", [])
+                        ],
+                        "after_reranker": [
+                            {
+                                "id": chunk["id"],
+                                "attachment_id": chunk["attachment_id"],
+                                "preview": chunk["content"][:1000],
+                                "metadata": chunk.get("extra_metadata") or {},
+                            }
+                            for chunk in retrieval_trace.get("after_reranker", [])
+                        ],
                         "chunks": [
                             {
                                 "id": chunk["id"],

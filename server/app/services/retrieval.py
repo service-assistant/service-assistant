@@ -2,6 +2,7 @@ import asyncio
 import logging
 import re
 from functools import partial
+from typing import Any
 
 from rank_bm25 import BM25Okapi
 from sqlalchemy import select
@@ -245,6 +246,7 @@ async def retrieve_context_chunks(
     settings: Settings,
     *,
     diagnostic_mode_2002: bool = False,
+    retrieval_trace: dict[str, Any] | None = None,
 ) -> list[RetrievedChunk]:
     target_language = get_device_document_language(device_id)
     reranking_enabled = settings.reranker_enabled and not diagnostic_mode_2002
@@ -273,9 +275,27 @@ async def retrieve_context_chunks(
     )
 
     if not reranking_enabled:
-        return merge_hybrid_chunks(exact, semantic, bm25)
+        selected = merge_hybrid_chunks(exact, semantic, bm25)
+        if retrieval_trace is not None:
+            retrieval_trace.update(
+                {
+                    "reranker_enabled": False,
+                    "reranker_status": "disabled",
+                    "before_reranker": selected,
+                    "after_reranker": selected,
+                }
+            )
+        return selected
 
     candidates = merge_hybrid_chunks(exact, semantic, bm25)
+    if retrieval_trace is not None:
+        retrieval_trace.update(
+            {
+                "reranker_enabled": True,
+                "reranker_status": "running",
+                "before_reranker": candidates,
+            }
+        )
     try:
         ranked = await rerank_chunks(translated_query, candidates, settings)
         candidate_ids = {chunk["id"] for chunk in candidates}
@@ -287,10 +307,26 @@ async def retrieve_context_chunks(
             "Voyage reranking failed for %d candidates; using hybrid fallback",
             len(candidates),
         )
-        return merge_hybrid_chunks(
+        selected = merge_hybrid_chunks(
             exact,
             semantic[:SEMANTIC_LIMIT],
             bm25[:BM25_LIMIT],
         )
+        if retrieval_trace is not None:
+            retrieval_trace.update(
+                {
+                    "reranker_status": "fallback",
+                    "after_reranker": selected,
+                }
+            )
+        return selected
 
-    return _select_reranked_chunks(question, ranked, candidates)
+    selected = _select_reranked_chunks(question, ranked, candidates)
+    if retrieval_trace is not None:
+        retrieval_trace.update(
+            {
+                "reranker_status": "applied",
+                "after_reranker": selected,
+            }
+        )
+    return selected

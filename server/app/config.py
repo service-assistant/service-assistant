@@ -32,6 +32,15 @@ class Settings(BaseSettings):
     attachments_dir: Path
     deepgram_api_key: str | None = None
 
+    benchmark_r2_endpoint: str | None = None
+    benchmark_r2_bucket: str | None = None
+    benchmark_r2_access_key_id: str | None = None
+    benchmark_r2_secret_access_key: str | None = None
+    benchmark_r2_prefix: str = ""
+    benchmark_documents_dir: Path | None = None
+    benchmark_judge_model: str = "gpt-5.1"
+    benchmark_judge_reasoning_effort: str = "high"
+
     gemini_api_key: str | None = None
     gemini_tts_model: str = "gemini-2.5-flash-preview-tts"
     gemini_tts_voice: str = "Algenib"
