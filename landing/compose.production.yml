@@ -1,5 +1,3 @@
-name: service-assistant-landing
-
 services:
   app:
     build:

@@ -1,5 +1,3 @@
-name: service-assistant-admin
-
 services:
     app:
         build:

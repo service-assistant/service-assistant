@@ -1,5 +1,3 @@
-name: service-assistant-app
-
 services:
     app:
         build:

@@ -175,7 +175,7 @@ Android is still distributed by building an `.apk` manually.
 
 ### Deployment script
 
-Deploys run via a shell script on the VPS (one per environment, e.g. `deploy-service-assistant-staging.sh`) that pulls latest code and rebuilds each project's compose stack:
+Deploys run via a shell script on the VPS (one per environment, e.g. `deploy-service-assistant-staging.sh`) that pulls latest code and rebuilds each project's compose stack. Each `docker compose` invocation must pass `--project-directory` pointing at that app's own directory — otherwise Compose resolves `.env` (and thus `COMPOSE_PROJECT_NAME`, which is how staging/production are distinguished when sharing a host) relative to the script's `cd`, not the app directory:
 
 ```sh
 #!/bin/bash
@@ -187,21 +187,23 @@ echo "Pulling latest code..."
 git pull
 
 echo "Building and restarting API..."
-docker compose -f ./api/compose.production.yml up -d --build
+docker compose -f ./api/compose.production.yml --project-directory ./api up -d --build
 
 echo "Building and restarting main app..."
-docker compose -f ./app/compose.production.yml up -d --build
+docker compose -f ./app/compose.production.yml --project-directory ./app up -d --build
 
 echo "Building and restarting admin app..."
-docker compose -f ./admin/compose.production.yml up -d --build
+docker compose -f ./admin/compose.production.yml --project-directory ./admin up -d --build
 
 echo "Building and restarting landing page..."
-docker compose -f ./landing/compose.production.yml up -d --build
+docker compose -f ./landing/compose.production.yml --project-directory ./landing up -d --build
 
 echo "Cleaning up old images..."
 docker image prune -f
 
 echo "Done."
 ```
+
+Each app's `.env` on the VPS should set `COMPOSE_PROJECT_NAME` (e.g. `service-assistant-staging` / `service-assistant-production`) to keep the two environments' containers from colliding — the compose files themselves don't hardcode a project `name:`.
 
 In case of any questions, ask [@mateuszmanczak04](https://github.com/mateuszmanczak04)
