@@ -1,6 +1,8 @@
 from types import SimpleNamespace
 import asyncio
+from typing import cast
 
+from app.config import Settings
 from app.routers import admin
 from app.services import benchmark_setup
 from app.services.benchmark_cases import load_benchmark_dataset
@@ -46,7 +48,9 @@ async def test_benchmark_setup_should_report_all_completed_stages(mocker):
         "app.routers.admin.benchmark_setup.run_benchmark_setup",
         side_effect=fake_setup,
     )
-    settings = SimpleNamespace(database_url="postgresql+psycopg://unused")
+    settings = cast(
+        Settings, SimpleNamespace(database_url="postgresql+psycopg://unused")
+    )
 
     try:
         await admin._process_benchmark_setup(run.id, settings)
@@ -76,7 +80,9 @@ async def test_benchmark_setup_should_mark_active_stage_as_failed(mocker):
         "app.routers.admin.benchmark_setup.run_benchmark_setup",
         side_effect=failing_setup,
     )
-    settings = SimpleNamespace(database_url="postgresql+psycopg://unused")
+    settings = cast(
+        Settings, SimpleNamespace(database_url="postgresql+psycopg://unused")
+    )
 
     try:
         await admin._process_benchmark_setup(run.id, settings)
@@ -117,6 +123,7 @@ async def test_latest_setup_should_detect_persisted_database_state_by_ids(sessio
 
     result = await admin.get_latest_benchmark_setup(session)
 
+    assert result is not None
     assert result["state"] == "completed"
     assert result["id"] == "persisted-database-state"
     assert result["result"] == {

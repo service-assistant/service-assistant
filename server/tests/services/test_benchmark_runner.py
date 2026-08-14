@@ -1,9 +1,11 @@
 import asyncio
 import json
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
+from app.config import Settings
 from app.services import benchmark_runner
 from app.services.benchmark_cases import load_benchmark_dataset
 
@@ -142,7 +144,9 @@ async def test_judge_should_use_reasoning_model_and_validate_all_criteria(mocker
         benchmark_judge_reasoning_effort="high",
     )
 
-    result = await benchmark_runner._judge_answer(case, "answer", settings)
+    result = await benchmark_runner._judge_answer(
+        case, "answer", cast(Settings, settings)
+    )
 
     assert all(item.satisfied for item in result.required_facts)
     assert not any(item.satisfied for item in result.forbidden_claims)
@@ -197,7 +201,7 @@ async def test_chunk_judge_should_score_each_chunk_and_fact_coverage(mocker):
             {"content": "fault details", "source_name": "manual.pdf"},
             {"content": "generic text", "source_name": "manual.pdf"},
         ],
-        settings,
+        cast(Settings, settings),
     )
 
     assert [item.relevance_score for item in result.chunks] == [3, 1]

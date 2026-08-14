@@ -1,5 +1,7 @@
 from types import SimpleNamespace
+from typing import cast
 
+from app.config import Settings
 from app.services import benchmark_documents
 
 
@@ -48,7 +50,7 @@ def test_status_should_report_missing_ready_and_outdated_documents(tmp_path, moc
         ],
     )
 
-    result = benchmark_documents.get_document_status(settings)
+    result = benchmark_documents.get_document_status(cast(Settings, settings))
 
     assert result["ready"] == 1
     assert result["missing"] == 1
@@ -68,7 +70,7 @@ def test_status_should_list_missing_configuration_without_contacting_r2(
         "app.services.benchmark_documents._list_remote_documents"
     )
 
-    result = benchmark_documents.get_document_status(settings)
+    result = benchmark_documents.get_document_status(cast(Settings, settings))
 
     assert result["configured"] is False
     assert result["missing_configuration"] == ["BENCHMARK_R2_SECRET_ACCESS_KEY"]
@@ -108,7 +110,7 @@ def test_download_should_only_fetch_missing_or_outdated_documents(tmp_path, mock
         side_effect=fake_download,
     )
 
-    result = benchmark_documents.download_missing_documents(settings)
+    result = benchmark_documents.download_missing_documents(cast(Settings, settings))
 
     assert download_object.call_count == 1
     assert download_object.call_args.args[1] == "benchmark/v1/folder/missing.pdf"

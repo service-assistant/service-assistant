@@ -2,6 +2,8 @@
 node_modules/
 .env
 .pytest_cache/
+/server/.pytest-tmp/
+/server/tests/.tmp-voice/
 /tmp/
 /outputs/
 .benchmark_documents/
