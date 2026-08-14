@@ -44,6 +44,12 @@ from app.routers.device_types import list_device_types
 from app.routers.devices import list_devices
 from app.routers.threads import list_threads
 from app.services.async_utils import run_blocking
+from app.services import (
+    benchmark_cases,
+    benchmark_documents,
+    benchmark_runner,
+    benchmark_setup,
+)
 from app.services.ingest import ImageOnlyPdfError, IngestReport
 
 router = APIRouter()
@@ -75,8 +81,54 @@ class UploadBatch:
     finished_at: str | None = None
 
 
+@dataclass
+class BenchmarkSetupStep:
+    key: str
+    label: str
+    state: str = "queued"
+    message: str = "Waiting"
+    details: dict | None = None
+
+
+@dataclass
+class BenchmarkSetupRun:
+    id: str
+    state: str
+    steps: list[BenchmarkSetupStep]
+    created_at: str
+    finished_at: str | None = None
+    error: str | None = None
+    result: dict | None = None
+
+
+@dataclass
+class BenchmarkCaseRun:
+    id: str
+    case_id: str
+    state: str
+    created_at: str
+    finished_at: str | None = None
+    error: str | None = None
+    result: dict | None = None
+    cancel_requested: bool = False
+
+
 _upload_batches: dict[str, UploadBatch] = {}
 _upload_batch_lock = asyncio.Lock()
+_benchmark_download_lock = asyncio.Lock()
+_benchmark_setup_lock = asyncio.Lock()
+_benchmark_setup_runs: dict[str, BenchmarkSetupRun] = {}
+_benchmark_case_runs: dict[str, BenchmarkCaseRun] = {}
+_benchmark_case_cancel_events: dict[str, asyncio.Event] = {}
+
+BENCHMARK_SETUP_STEPS = [
+    ("download", "Download documents from R2"),
+    ("brand", "Create benchmark brand"),
+    ("device_type", "Create benchmark device type"),
+    ("device", "Create benchmark machine"),
+    ("ingest", "Link and chunk documents"),
+    ("verify", "Verify benchmark setup"),
+]
 
 _templates_dir = Path(__file__).parent.parent / "templates"
 templates = Jinja2Templates(directory=str(_templates_dir))
@@ -158,6 +210,369 @@ async def admin_root(request: Request, settings: Settings = Depends(get_settings
     if request.cookies.get("admin_token") == settings.auth_token:
         return RedirectResponse("/admin/documents")
     return RedirectResponse("/admin/login")
+
+
+@router.get(
+    "/benchmark",
+    response_class=HTMLResponse,
+    dependencies=[Depends(_require_auth)],
+)
+async def get_benchmark_page(
+    request: Request,
+):
+    cases = benchmark_cases.load_benchmark_dataset()
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/benchmark.html",
+        context={
+            "request": request,
+            "active": "benchmark",
+            "benchmark_dataset": cases,
+        },
+    )
+
+
+@router.get(
+    "/benchmark/cases",
+    dependencies=[Depends(_require_auth)],
+)
+async def get_benchmark_cases():
+    return {
+        "version": benchmark_cases.load_benchmark_dataset().version,
+        "cases": benchmark_cases.serialize_benchmark_cases(),
+    }
+
+
+def _get_benchmark_case(case_id: str):
+    return next(
+        (
+            case
+            for case in benchmark_cases.load_benchmark_dataset().cases
+            if case.id == case_id
+        ),
+        None,
+    )
+
+
+def _serialize_benchmark_case_run(run: BenchmarkCaseRun) -> dict:
+    return asdict(run)
+
+
+async def _process_benchmark_case_run(run_id: str, settings: Settings) -> None:
+    run = _benchmark_case_runs[run_id]
+    cancellation_event = _benchmark_case_cancel_events.setdefault(
+        run_id, asyncio.Event()
+    )
+    run.state = "processing"
+    case = _get_benchmark_case(run.case_id)
+    try:
+        if case is None:
+            raise RuntimeError(f"Benchmark case not found: {run.case_id}")
+        async with AsyncSession(
+            get_engine(settings.database_url),
+            expire_on_commit=False,
+        ) as session:
+            run.result = await benchmark_runner.run_benchmark_case(
+                case=case,
+                settings=settings,
+                session=session,
+                cancellation_event=cancellation_event,
+            )
+        run.state = "completed"
+    except benchmark_runner.BenchmarkCancelledError:
+        run.state = "cancelled"
+        run.error = None
+    except Exception as exc:
+        run.state = "failed"
+        run.error = str(exc)
+        logger.exception("Benchmark case run %s failed", run_id)
+    finally:
+        run.finished_at = datetime.now(timezone.utc).isoformat()
+        _benchmark_case_cancel_events.pop(run_id, None)
+
+
+@router.post(
+    "/benchmark/cases/{case_id}/runs",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(_require_auth)],
+)
+async def start_benchmark_case_run(
+    case_id: str,
+    background_tasks: BackgroundTasks,
+    settings: Settings = Depends(get_settings),
+):
+    if _get_benchmark_case(case_id) is None:
+        raise HTTPException(status_code=404, detail="Benchmark case not found")
+    active_run = next(
+        (
+            run
+            for run in reversed(list(_benchmark_case_runs.values()))
+            if run.case_id == case_id and run.state in {"queued", "processing"}
+        ),
+        None,
+    )
+    if active_run is not None:
+        return _serialize_benchmark_case_run(active_run)
+
+    run_id = str(uuid4())
+    run = BenchmarkCaseRun(
+        id=run_id,
+        case_id=case_id,
+        state="queued",
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    _benchmark_case_runs[run_id] = run
+    _benchmark_case_cancel_events[run_id] = asyncio.Event()
+    background_tasks.add_task(_process_benchmark_case_run, run_id, settings)
+    return _serialize_benchmark_case_run(run)
+
+
+@router.get(
+    "/benchmark/runs/{run_id}",
+    dependencies=[Depends(_require_auth)],
+)
+async def get_benchmark_case_run(run_id: str):
+    run = _benchmark_case_runs.get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Benchmark run not found")
+    return _serialize_benchmark_case_run(run)
+
+
+@router.post(
+    "/benchmark/runs/{run_id}/cancel",
+    dependencies=[Depends(_require_auth)],
+)
+async def cancel_benchmark_case_run(run_id: str):
+    run = _benchmark_case_runs.get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Benchmark run not found")
+    if run.state in {"completed", "failed", "cancelled"}:
+        return _serialize_benchmark_case_run(run)
+    run.cancel_requested = True
+    cancellation_event = _benchmark_case_cancel_events.get(run_id)
+    if cancellation_event is not None:
+        cancellation_event.set()
+    return _serialize_benchmark_case_run(run)
+
+
+@router.get(
+    "/benchmark/documents/status",
+    dependencies=[Depends(_require_auth)],
+)
+async def get_benchmark_documents_status(
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        return await run_blocking(benchmark_documents.get_document_status, settings)
+    except benchmark_documents.BenchmarkStorageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post(
+    "/benchmark/documents/download",
+    dependencies=[Depends(_require_auth)],
+)
+async def download_benchmark_documents(
+    settings: Settings = Depends(get_settings),
+):
+    try:
+        async with _benchmark_download_lock:
+            return await run_blocking(
+                benchmark_documents.download_missing_documents,
+                settings,
+            )
+    except benchmark_documents.BenchmarkStorageError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(exc),
+        ) from exc
+
+
+def _serialize_benchmark_setup(run: BenchmarkSetupRun) -> dict:
+    return {
+        "id": run.id,
+        "state": run.state,
+        "created_at": run.created_at,
+        "finished_at": run.finished_at,
+        "error": run.error,
+        "result": run.result,
+        "steps": [asdict(step) for step in run.steps],
+    }
+
+
+async def _process_benchmark_setup(setup_id: str, settings: Settings) -> None:
+    run = _benchmark_setup_runs[setup_id]
+    run.state = "processing"
+
+    def update_step(
+        key: str,
+        state: str,
+        message: str,
+        details: dict | None,
+    ) -> None:
+        step = next(item for item in run.steps if item.key == key)
+        step.state = state
+        step.message = message
+        step.details = details
+
+    try:
+        async with _benchmark_setup_lock:
+            async with AsyncSession(
+                get_engine(settings.database_url),
+                expire_on_commit=False,
+            ) as session:
+                run.result = await benchmark_setup.run_benchmark_setup(
+                    settings=settings,
+                    session=session,
+                    progress=update_step,
+                )
+        run.state = "completed"
+    except Exception as exc:
+        run.state = "failed"
+        run.error = str(exc)
+        active_step = next(
+            (step for step in run.steps if step.state == "processing"), None
+        )
+        if active_step is not None:
+            active_step.state = "failed"
+            active_step.message = str(exc)
+        logger.exception("Benchmark setup %s failed", setup_id)
+    finally:
+        run.finished_at = datetime.now(timezone.utc).isoformat()
+
+
+@router.post(
+    "/benchmark/setup",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(_require_auth)],
+)
+async def start_benchmark_setup(
+    background_tasks: BackgroundTasks,
+    settings: Settings = Depends(get_settings),
+):
+    active_run = next(
+        (
+            run
+            for run in reversed(list(_benchmark_setup_runs.values()))
+            if run.state in {"queued", "processing"}
+        ),
+        None,
+    )
+    if active_run is not None:
+        return _serialize_benchmark_setup(active_run)
+
+    setup_id = str(uuid4())
+    run = BenchmarkSetupRun(
+        id=setup_id,
+        state="queued",
+        steps=[
+            BenchmarkSetupStep(key=key, label=label)
+            for key, label in BENCHMARK_SETUP_STEPS
+        ],
+        created_at=datetime.now(timezone.utc).isoformat(),
+    )
+    _benchmark_setup_runs[setup_id] = run
+    background_tasks.add_task(_process_benchmark_setup, setup_id, settings)
+    return _serialize_benchmark_setup(run)
+
+
+@router.get(
+    "/benchmark/setup",
+    dependencies=[Depends(_require_auth)],
+)
+async def get_latest_benchmark_setup(
+    session: AsyncSession = Depends(get_session),
+):
+    active_run = next(
+        (
+            run
+            for run in reversed(list(_benchmark_setup_runs.values()))
+            if run.state in {"queued", "processing"}
+        ),
+        None,
+    )
+    if active_run is not None:
+        return _serialize_benchmark_setup(active_run)
+
+    inspection = await benchmark_setup.inspect_benchmark_setup(session)
+    if inspection["ready"]:
+        result = inspection["result"]
+        completed_steps = [
+            BenchmarkSetupStep(
+                key="download",
+                label="Download documents from R2",
+                state="completed",
+                message=f"{result['attachments']} document(s) present in the database.",
+            ),
+            BenchmarkSetupStep(
+                key="brand",
+                label="Create benchmark brand",
+                state="completed",
+                message=f"Brand verified by ID {result['brand_id']}.",
+                details={"id": result["brand_id"]},
+            ),
+            BenchmarkSetupStep(
+                key="device_type",
+                label="Create benchmark device type",
+                state="completed",
+                message=f"Device type verified by ID {result['device_type_id']}.",
+                details={"id": result["device_type_id"]},
+            ),
+            BenchmarkSetupStep(
+                key="device",
+                label="Create benchmark machine",
+                state="completed",
+                message=f"Machine verified by ID {result['device_id']}.",
+                details={"id": result["device_id"]},
+            ),
+            BenchmarkSetupStep(
+                key="ingest",
+                label="Link and chunk documents",
+                state="completed",
+                message=(
+                    f"{result['attachments']} attachment(s) and "
+                    f"{result['chunks']} chunk(s) verified by ID relationships."
+                ),
+                details={"documents": inspection["documents"]},
+            ),
+            BenchmarkSetupStep(
+                key="verify",
+                label="Verify benchmark setup",
+                state="completed",
+                message="Persisted benchmark setup is complete.",
+                details=result,
+            ),
+        ]
+        persisted_run = BenchmarkSetupRun(
+            id="persisted-database-state",
+            state="completed",
+            steps=completed_steps,
+            created_at=datetime.now(timezone.utc).isoformat(),
+            finished_at=datetime.now(timezone.utc).isoformat(),
+            result=result,
+        )
+        return _serialize_benchmark_setup(persisted_run)
+
+    if _benchmark_setup_runs:
+        latest_id = next(reversed(_benchmark_setup_runs))
+        latest = _benchmark_setup_runs[latest_id]
+        if latest.state == "failed":
+            return _serialize_benchmark_setup(latest)
+    return None
+
+
+@router.get(
+    "/benchmark/setup/{setup_id}",
+    dependencies=[Depends(_require_auth)],
+)
+async def get_benchmark_setup(setup_id: str):
+    run = _benchmark_setup_runs.get(setup_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Benchmark setup not found")
+    return _serialize_benchmark_setup(run)
 
 
 @router.get(

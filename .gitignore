@@ -4,6 +4,7 @@ node_modules/
 .pytest_cache/
 /tmp/
 /outputs/
+.benchmark_documents/
 
 # EAS CLI on Windows does not currently honor nested .gitignore files reliably.
 # Keep generated client artifacts out of the archive from the repository root.

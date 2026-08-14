@@ -1,0 +1,192 @@
+{
+  "version": "1.0",
+  "cases": [
+    {
+      "id": "fault_2002_without_colon",
+      "title": "Kod 2:002 zapisany bez dwukropka",
+      "category": "fault_code",
+      "question": "mam błąd 2002",
+      "diagnostic_mode_enabled": false,
+      "expected_route": "standard_query",
+      "canonical_fault_code": "2:002",
+      "reference_answer": "Kod 2:002 oznacza, że parametry zostały ustawione na wartości domyślne. Podczas rozruchu wykryto co najmniej jeden parametr poza dopuszczalnym zakresem i wyzerowano go do wartości domyślnej. Nie ma to bezpośredniego wpływu na zachowanie wózka. Możliwe przyczyny to wczytanie nowego oprogramowania, które dodało parametr lub zmieniło limity parametrów, albo uszkodzona pamięć A5. Najpierw sprawdź parametry: upewnij się, że parametry fabryczne odpowiadają konfiguracji wózka oraz że pozostałe parametry są ustawione prawidłowo. Jeżeli przyczyną jest uszkodzona pamięć A5, wymień A5 zgodnie z procedurą z rozdziału 13.1.3 „Wymiana karty logicznej”.",
+      "required_facts": [
+        "Odpowiedź używa kodu 2:002 jako kodu odpowiadającego zapytaniu użytkownika 2002; nie musi wprost powtarzać obu zapisów ani wyjaśniać normalizacji.",
+        "Parametry zostały ustawione na wartości domyślne.",
+        "Podczas rozruchu wykryto co najmniej jeden parametr poza dopuszczalnym zakresem i wyzerowano go do wartości domyślnej.",
+        "Błąd nie ma bezpośredniego wpływu na zachowanie wózka.",
+        "Możliwą przyczyną jest nowe oprogramowanie dodające parametr lub zmieniające limity parametrów.",
+        "Drugą możliwą przyczyną jest uszkodzona pamięć A5.",
+        "Pierwszym działaniem jest sprawdzenie parametrów fabrycznych i pozostałych parametrów.",
+        "Wymiana A5 dotyczy ścieżki uszkodzonej pamięci i odwołuje się do rozdziału 13.1.3 „Wymiana karty logicznej”."
+      ],
+      "forbidden_claims": [
+        "Należy natychmiast wymienić A5 bez sprawdzenia parametrów.",
+        "Kod 2002 jest innym kodem niż 2:002.",
+        "Błąd wpływa na zachowanie wózka.",
+        "Samo skasowanie błędu usuwa jego przyczynę."
+      ],
+      "source": {
+        "filename": "LPE200 - nowy model - kody błędów.pdf",
+        "locator": "wiersz tabeli dla kodu 2:002",
+        "page": null
+      }
+    },
+    {
+      "id": "fault_2504_without_colon",
+      "title": "Kod 2:504 zapisany bez dwukropka",
+      "category": "fault_code",
+      "question": "mam blad 2504",
+      "diagnostic_mode_enabled": false,
+      "expected_route": "standard_query",
+      "canonical_fault_code": "2:504",
+      "reference_answer": "Kod 2:504 oznacza, że napięcie akumulatora mierzone przy kondensatorach modułu T1 było niższe niż 16,0 V w chwili, gdy konieczne było zamknięcie styków stycznika głównego. Wózek równocześnie zatrzymuje wszystkie funkcje, włącza hamulec postojowy i otwiera styki stycznika głównego. Możliwe przyczyny to rozładowany akumulator, spadek napięcia zasilania wejściowego modułu T1, uszkodzony akumulator albo nieprawidłowa wartość parametru akumulatora 107. Najpierw naładuj akumulator. Następnie sprawdź napięcia w module T1: bezpieczniki F50 i F1, napięcia w punktach F50-B- oraz F1-B- i porównaj je z rzeczywistą wartością TruckCom „Battery Voltage”. Przy otwartym styczniku różnica kilku woltów jest normalna; przy zamkniętym styczniku dokument pokazuje nieuzupełniony próg „+XX”, więc nie należy wymyślać konkretnej wartości. Sprawdź także złącza, miejsca połączeń, rozgałęzienia oraz podłączenie dodatkowego wyposażenia zgodnie z zaleceniami producenta. Sprawdź akumulator oraz parametry: fabryczne muszą odpowiadać konfiguracji wózka, a pozostałe powinny być ustawione prawidłowo.",
+      "required_facts": [
+        "Odpowiedź używa kodu 2:504 jako kodu odpowiadającego zapytaniu użytkownika 2504; nie musi wprost powtarzać obu zapisów ani wyjaśniać normalizacji.",
+        "Kod oznacza napięcie akumulatora przy kondensatorach modułu T1 niższe niż 16,0 V podczas konieczności zamknięcia styków stycznika głównego.",
+        "Reakcją wózka jest jednoczesne zatrzymanie wszystkich funkcji, włączenie hamulca postojowego i otwarcie styków stycznika głównego.",
+        "Możliwą przyczyną jest rozładowany akumulator.",
+        "Pozostałe możliwe przyczyny to spadek napięcia zasilania wejściowego modułu T1, uszkodzony akumulator lub nieprawidłowa wartość parametru akumulatora 107.",
+        "Pierwszym działaniem jest naładowanie akumulatora.",
+        "Kontrola modułu T1 obejmuje bezpieczniki F50 i F1 oraz pomiary F50-B- i F1-B- porównane z rzeczywistą wartością TruckCom „Battery Voltage”.",
+        "Należy również sprawdzić złącza, połączenia, rozgałęzienia, dodatkowe wyposażenie, akumulator oraz poprawność parametrów fabrycznych i pozostałych parametrów."
+      ],
+      "forbidden_claims": [
+        "Należy od razu wymienić moduł T1 bez wykonania pomiarów.",
+        "Kod 2504 jest innym kodem niż 2:504.",
+        "Wózek może pracować normalnie mimo aktywnego błędu.",
+        "Dokument podaje konkretną wartość napięcia w miejscu oznaczonym jako +XX.",
+        "Samo skasowanie błędu usuwa jego przyczynę."
+      ],
+      "source": {
+        "filename": "LPE200 - nowy model - kody błędów.pdf",
+        "locator": "wiersz tabeli dla kodu 2:504",
+        "page": null
+      }
+    },
+    {
+      "id": "battery_replacement_procedure",
+      "title": "Wymiana akumulatora",
+      "category": "maintenance_procedure",
+      "question": "jak wymienić akumulator?",
+      "diagnostic_mode_enabled": false,
+      "expected_route": "standard_query",
+      "canonical_fault_code": null,
+      "reference_answer": "Przed wymianą sprawdź masę akumulatora na tabliczce identyfikacyjnej wózka: można zastosować wyłącznie akumulator o takiej samej masie, ponieważ jego masa wpływa na stabilność i zdolność hamowania. Do podnoszenia używaj zatwierdzonego urządzenia podnoszącego oraz dopasowanego jarzma akumulatora. Po montażu upewnij się, że zatrzask akumulatora jest zablokowany. Jeżeli wózek ma listwę E-bar, przed wymianą zwolnij jej blokadę, przytrzymaj ramię sterujące na dole i przesuń listwę na bok; przy wspomaganiu kierownicy najpierw opuść ramię do najniższego położenia przełącznikiem regulacji wysokości. Procedura: 1. Wyłącz wózek. 2. Włącz przycisk awaryjny. 3. Otwórz pokrywę komory akumulatora. 4. Odłącz złącze akumulatora od wózka i umieść je we wsporniku obok krótszego boku akumulatora. 5. Zwolnij zatrzask akumulatora. 6. Podnieś akumulator zatwierdzonym urządzeniem podnoszącym i prawidłowo podłączonym jarzmem. 7. Po zakończeniu ładowania użyj jarzma, aby podnieść akumulator i umieścić go ponownie w wózku. 8. Jeżeli wózek ma stół do wymiany akumulatora, wypchnij rozładowany akumulator i wepchnij naładowany. 9. Obniż blokadę akumulatora i upewnij się, że jest prawidłowo zabezpieczona. 10. Podłącz złącze akumulatora do akumulatora. 11. Zwolnij blokadę drzwiczek akumulatora i zamknij drzwiczki. 12. Zresetuj awaryjny wyłącznik bezpieczeństwa.",
+      "required_facts": [
+        "Akumulator zastępczy musi mieć taką samą masę, zgodną z tabliczką identyfikacyjną wózka, ponieważ masa wpływa na stabilność i hamowanie.",
+        "Akumulator należy podnosić zatwierdzonym urządzeniem podnoszącym i dopasowanym jarzmem, a jego zatrzask musi zostać prawidłowo zablokowany.",
+        "Jeżeli wózek ma E-bar, przed wymianą należy zwolnić blokadę, utrzymać ramię sterujące na dole i przesunąć listwę na bok; przy wspomaganiu kierownicy ramię opuszcza się przełącznikiem regulacji wysokości.",
+        "Procedura rozpoczyna się od wyłączenia wózka, włączenia przycisku awaryjnego i otwarcia pokrywy komory akumulatora.",
+        "Następnie odłącza się złącze od wózka, odkłada je do wspornika obok krótszego boku akumulatora i zwalnia zatrzask akumulatora.",
+        "Akumulator podnosi się zatwierdzonym urządzeniem z prawidłowo podłączonym jarzmem, a naładowany akumulator umieszcza się z powrotem przy użyciu jarzma.",
+        "Jeżeli wózek ma stół do wymiany, należy wypchnąć rozładowany akumulator i wepchnąć naładowany.",
+        "Przed ponownym podłączeniem należy obniżyć blokadę akumulatora i upewnić się, że akumulator jest prawidłowo zabezpieczony.",
+        "Po zabezpieczeniu akumulatora podłącza się złącze, zwalnia blokadę drzwiczek i zamyka drzwiczki akumulatora.",
+        "Ostatnim krokiem jest zresetowanie awaryjnego wyłącznika bezpieczeństwa."
+      ],
+      "forbidden_claims": [
+        "Można zastosować akumulator o dowolnej albo mniejszej masie niż określona na tabliczce wózka.",
+        "Akumulator można bezpiecznie podnieść bez zatwierdzonego urządzenia podnoszącego lub bez dopasowanego jarzma.",
+        "Wymianę należy wykonywać przy włączonym i normalnie pracującym wózku.",
+        "Złącze akumulatora należy podłączyć przed opuszczeniem blokady i sprawdzeniem prawidłowego zabezpieczenia akumulatora.",
+        "Można pominąć sprawdzenie lub zablokowanie zatrzasku akumulatora.",
+        "E-bar albo stół do wymiany są obowiązkowo obecne w każdym wózku."
+      ],
+      "source": {
+        "filename": "LPE200, LPE220, LPE250 - podręcznik operatora PL.pdf",
+        "locator": "rozdział 8.1.4 „Wymiana akumulatora”",
+        "page": null
+      }
+    },
+    {
+      "id": "pre_operation_inspection",
+      "title": "Kontrola wózka przed rozpoczęciem pracy",
+      "category": "general_operation",
+      "question": "co powinienem sprawdzić przed rozpoczęciem pracy wózkiem?",
+      "diagnostic_mode_enabled": false,
+      "expected_route": "standard_query",
+      "canonical_fault_code": null,
+      "reference_answer": "Kontrolę należy wykonywać na początku każdego dnia pracy lub zmiany, w bezpieczny sposób. Nie używaj wózka, dopóki wykryte uszkodzenia lub błędy wpływające na bezpieczeństwo nie zostaną usunięte. Przed włączeniem wózka sprawdź podwozie i karetkę wideł pod kątem uszkodzeń oraz zabrudzeń. Sprawdź koła pod kątem uszkodzeń, oleju i metalowych wiórów. Obejrzyj podłogę pod układem hydraulicznym i napędowym pod kątem wycieków oleju. Jeżeli awaryjny wyłącznik bezpieczeństwa jest wciśnięty, zresetuj go. Po włączeniu wózka sprawdź poziom naładowania akumulatora, licznik czasu pracy i termin wymaganej konserwacji, klakson oraz dźwignię sterującą — ruch do przodu i do tyłu oraz powrót do położenia neutralnego. Podczas jazdy z niewielką prędkością sprawdź hamulec jezdny i hamulec postojowy. Jeśli wózek ma stałe osłony boczne, sprawdź ich funkcjonowanie zgodnie z procedurą opisaną przy kontroli hamulca jezdnego.",
+      "required_facts": [
+        "Kontrole należy wykonywać bezpiecznie na początku każdego dnia pracy lub zmiany.",
+        "Wózka nie wolno używać, dopóki wykryte uszkodzenia lub błędy wpływające na bezpieczeństwo nie zostaną usunięte.",
+        "Przed włączeniem należy sprawdzić podwozie i karetkę wideł pod kątem uszkodzeń oraz zabrudzeń.",
+        "Koła należy sprawdzić pod kątem uszkodzeń, oleju i metalowych wiórów.",
+        "Należy sprawdzić układ hydrauliczny i napędowy pod kątem wycieków oleju.",
+        "Jeśli awaryjny wyłącznik bezpieczeństwa jest wciśnięty, należy go zresetować.",
+        "Po włączeniu trzeba sprawdzić wymagany poziom naładowania akumulatora oraz licznik czasu pracy i termin konserwacji.",
+        "Należy sprawdzić działanie klaksonu.",
+        "Należy sprawdzić działanie dźwigni lub sterowania jazdą; szczegółowe wymienienie ruchu do przodu, do tyłu i powrotu do położenia neutralnego nie jest wymagane.",
+        "Hamulec jezdny i hamulec postojowy należy sprawdzić podczas jazdy z niewielką prędkością."
+      ],
+      "forbidden_claims": [
+        "Można używać uszkodzonego wózka do końca zmiany, jeśli uszkodzenie zostało zgłoszone.",
+        "Kontrola przed użyciem jest opcjonalna i wystarczy wykonywać ją tylko po naprawie.",
+        "Hamulce należy testować podczas jazdy z dużą prędkością.",
+        "Wykryte wycieki oleju z układu hydraulicznego lub napędowego można zignorować.",
+        "Po włączeniu wózka nie trzeba sprawdzać akumulatora, klaksonu, dźwigni ani hamulców.",
+        "Brak widocznych uszkodzeń podwozia oznacza, że pozostałe kontrole można pominąć."
+      ],
+      "source": {
+        "filename": "LPE200, LPE220, LPE250 - podręcznik operatora PL.pdf",
+        "locator": "rozdziały 7.1, 7.1.1 i 7.1.2 „Kontrola przed użyciem”",
+        "page": null
+      }
+    },
+    {
+      "id": "forks_not_lifting_low_battery",
+      "title": "Widły się nie podnoszą",
+      "category": "symptom_troubleshooting",
+      "question": "widły się nie podnoszą",
+      "diagnostic_mode_enabled": false,
+      "expected_route": "standard_query",
+      "canonical_fault_code": null,
+      "reference_answer": "Najpierw sprawdź wyświetlacz: poziom naładowania akumulatora oraz symbol, komunikat lub kod błędu. Nie da się przypisać jednego kodu na podstawie samego objawu — jeśli kod jest wyświetlany, trzeba zastosować opis i działania przypisane dokładnie do niego. Gdy wskaźnik akumulatora osiągnie 0%, funkcja podnoszenia zostaje wyłączona; wózek może nadal poruszać się, aby dojechać do punktu ładowania — należy naładować akumulator. Miganie symbolu przy 10% jest wcześniejszym sygnałem do ładowania, a nie progiem wyłączenia podnoszenia. Jeżeli wózek ma opcjonalny czujnik wstrząsów, po silnej kolizji może on zatrzymać wózek i zablokować podnoszenie; mogą temu towarzyszyć sygnał dźwiękowy, prędkość pełzania oraz symbol, komunikat lub kod błędu. W takim przypadku zresetuj wózek metodą przewidzianą w jego konfiguracji — standardowym kodem, specjalnym kodem resetowania albo przez I_Site — a następnie wykonaj wszystkie czynności kontroli przed użyciem. Sprawdź też, czy wyłącznik awaryjny nie jest wciśnięty; podręcznik nakazuje go zresetować przed użyciem, a na wyświetlaczu jego aktywację oznacza komunikat ESO. W tabeli kodów bezpośrednią blokadę podnoszenia i opuszczania opisują między innymi 2:102 — nieprawidłowa konfiguracja parametru 1102 — oraz 2:180 — wewnętrzny błąd oprogramowania; w obu przypadkach występuje też prędkość pełzania. Kody 2:501 i 2:504 dotyczą niskiego napięcia i zatrzymują wszystkie funkcje: 2:501 oznacza napięcie akumulatora poniżej 16,8 V przez ponad 2 sekundy, a 2:504 napięcie na kondensatorach modułu T1 poniżej 16,0 V podczas próby zamknięcia stycznika głównego. Jeżeli żadna z opisanych sytuacji nie pasuje, zanotuj dokładny kod lub komunikat i kontynuuj diagnostykę zamiast zakładać z góry awarię hydrauliki lub pompy.",
+      "required_facts": [
+        "Najpierw należy sprawdzić na wyświetlaczu poziom naładowania akumulatora oraz dokładny symbol, komunikat lub kod błędu; kod należy interpretować według przypisanego do niego wpisu zamiast zgadywać go z samego objawu.",
+        "Przy poziomie naładowania 0% funkcja podnoszenia zostaje wyłączona.",
+        "Przy 0% wózek może nadal poruszać się, aby dojechać do punktu ładowania, a akumulator należy naładować.",
+        "Opcjonalny czujnik wstrząsów może po silnej kolizji zablokować podnoszenie; mogą temu towarzyszyć sygnał dźwiękowy, prędkość pełzania i symbol, komunikat lub kod błędu.",
+        "Po zadziałaniu czujnika wstrząsów należy zresetować wózek metodą przewidzianą w konfiguracji i przeprowadzić wszystkie czynności kontroli przed użyciem; jeśli żadna z opisanych przyczyn nie pasuje, należy kontynuować diagnostykę bez przesądzania awarii hydrauliki."
+      ],
+      "forbidden_claims": [
+        "Brak podnoszenia jednoznacznie oznacza uszkodzenie hydrauliki lub pompy.",
+        "Należy od razu wymienić akumulator bez sprawdzenia poziomu naładowania.",
+        "Przy 0% można dalej normalnie eksploatować wózek bez ładowania.",
+        "Funkcja podnoszenia zostaje wyłączona już przy 10% naładowania.",
+        "Jeżeli widły się nie podnoszą, wózek na pewno nie może się poruszać.",
+        "Samo skasowanie ewentualnego błędu kończy procedurę i po resecie czujnika wstrząsów nie trzeba wykonywać kontroli przed użyciem.",
+        "Czujnik wstrząsów jest wyposażeniem standardowym każdego wózka i na pewno spowodował ten objaw.",
+        "Sam objaw braku podnoszenia jednoznacznie wskazuje kod 2:102, 2:180, 2:501 albo 2:504.",
+        "Kody 2:102 i 2:180 oznaczają uszkodzenie pompy hydraulicznej."
+      ],
+      "source": {
+        "filename": "LPE200, LPE220, LPE250 - podręcznik operatora PL.pdf",
+        "locator": "rozdziały 6.3 „Wyświetlacz”, 7.1 „Kontrola przed użyciem” i 7.6.5 „Czujnik wstrząsów”; dodatkowo „LPE200 - nowy model - kody błędów.pdf”, wpisy 2:102, 2:180, 2:501 i 2:504",
+        "page": null
+      }
+    },
+    {
+      "id": "show_electrical_schematic",
+      "title": "Wyświetlenie schematu elektrycznego",
+      "category": "source_image",
+      "question": "pokaż schemat elektryczny",
+      "diagnostic_mode_enabled": false,
+      "expected_route": "standard_query",
+      "canonical_fault_code": null,
+      "reference_answer": "Odpowiedź powinna udostępnić co najmniej jeden obraz schematu pochodzący z dokumentu „LWE200 EX - schemat elektryczny.pdf”. Kryterium dotyczy obrazu faktycznie powiązanego z wiadomością asystenta i możliwego do wyświetlenia w kliencie, a nie tekstowego opisu schematu.",
+      "required_facts": [
+        "Wiadomość asystenta ma powiązany co najmniej jeden obraz z pliku „LWE200 EX - schemat elektryczny.pdf”, dzięki czemu klient może wyświetlić schemat."
+      ],
+      "forbidden_claims": [],
+      "source": {
+        "filename": "LWE200 EX - schemat elektryczny.pdf",
+        "locator": "obraz schematu elektrycznego",
+        "page": null
+      },
+      "evaluation_mode": "source_image",
+      "minimum_source_images": 1
+    }
+  ]
+}
