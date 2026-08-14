@@ -19,7 +19,7 @@ This test confirms that the built APK:
 - EAS `preview` environment contains:
     - `EXPO_PUBLIC_API_URL`
     - `EXPO_PUBLIC_AUTH_TOKEN`
-- `client/eas.json` preview profile uses:
+- `app/eas.json` preview profile uses:
     - `environment: "preview"`
     - `android.buildType: "apk"`
 - Backend/staging API is reachable.
@@ -27,7 +27,7 @@ This test confirms that the built APK:
 
 ## Build
 
-From `client/`:
+From `app/`:
 
 ```bash
 npm.cmd run lint

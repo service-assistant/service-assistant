@@ -1,6 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, API_URL } from '@/lib/api'
 import type { Attachment, Device } from '@/lib/types'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 export function useAttachments() {
 	return useQuery({

@@ -1,7 +1,7 @@
 ---
 paths:
-  - "client/__tests__/**/*.ts"
-  - "server/tests/**/*.py"
+  - "app/__tests__/**/*.ts"
+  - "api/tests/**/*.py"
 ---
 
 # Testing Rules

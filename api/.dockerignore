@@ -83,11 +83,11 @@
 .gitignore
 README.md
 CLAUDE.md
-docker-compose.dev.yml
-docker-compose.test.yml
-docker-compose.production.yml
+compose.dev.yml
+compose.test.yml
+compose.production.yml
 tests
 Makefile
-docker-compose.db.yml
+compose.db.yml
 scripts
 .env.test.windows

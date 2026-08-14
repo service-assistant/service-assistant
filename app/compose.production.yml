@@ -1,4 +1,4 @@
-name: service-assistant-client
+name: service-assistant-app
 
 services:
     app:

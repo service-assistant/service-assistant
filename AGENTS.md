@@ -5,12 +5,12 @@ This file provides guidance to Codex (or any other AI assistant) when working wi
 ## Architecture
 
 Monorepo with two subdirectories:
-- `client/` — React Native / Expo mobile app (TypeScript, file-based routing via Expo Router)
-- `server/` — FastAPI backend (Python, Poetry)
+- `app/` — React Native / Expo mobile app (TypeScript, file-based routing via Expo Router)
+- `api/` — FastAPI backend (Python, Poetry)
 
 ## Commands
 
-### Server (`cd server`)
+### API (`cd api`)
 
 ```sh
 make install       # poetry install
@@ -22,7 +22,7 @@ make format-check  # ruff format --check app tests
 ```
 OpenAPI docs available at `http://localhost:8000/docs`.
 
-### Client (`cd client`)
+### App (`cd app`)
 
 ```sh
 make install   # npm install
@@ -34,12 +34,12 @@ make format    # prettier --write .
 
 ## Code Style
 
-### Client
-- Prettier: 100-char print width, tabs, 4-space indent, single quotes (see `client/.prettierrc`)
+### App
+- Prettier: 100-char print width, tabs, 4-space indent, single quotes (see `app/.prettierrc`)
 - TypeScript strict mode; use `@/` path alias for imports
 - Use `npm`, not any of `bun`, `pnpm` or `yarn`
 
-### Server
+### API
 - Ruff for both linting and formatting (no other formatters)
 - Routers go in `app/routers/`, business logic in `app/services/`, Pydantic models in `app/models/`
 - Python type checking mode is set to Standard
@@ -48,8 +48,8 @@ make format    # prettier --write .
 ## Key Configuration
 
 - Tool versions pinned via asdf in `.tool-versions` (Node 24.14.0, Python 3.12.13, Poetry 2.3.2)
-- Server env vars (OpenAI key, Postgres, Qdrant URL) live in `server/.env`
-- Expo new architecture and React Compiler are enabled (`client/app.json`)
+- API env vars (OpenAI key, Postgres, Qdrant URL) live in `api/.env`
+- Expo new architecture and React Compiler are enabled (`app/app.json`)
 
 ## Debugging
 

@@ -1,7 +1,7 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
-	--font-sans: "Inter", Arial, sans-serif;
+	--font-sans: 'Inter', Arial, sans-serif;
 	--color-ink: #0b1118;
 	--color-panel: rgba(22, 29, 38, 0.94);
 	--color-panel-soft: rgba(32, 40, 50, 0.9);

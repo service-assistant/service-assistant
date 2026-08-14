@@ -1,14 +1,14 @@
 $ErrorActionPreference = 'Stop'
 
-$serverDir = Split-Path -Parent $PSScriptRoot
-$envFile = Join-Path $serverDir '.env.test.windows'
-$python = Join-Path $serverDir '.venv\Scripts\python.exe'
+$apiDir = Split-Path -Parent $PSScriptRoot
+$envFile = Join-Path $apiDir '.env.test.windows'
+$python = Join-Path $apiDir '.venv\Scripts\python.exe'
 
 if (-not (Test-Path -LiteralPath $python)) {
-    throw 'Python virtual environment not found. Run "poetry install" in the server directory first.'
+    throw 'Python virtual environment not found. Run "poetry install" in the api directory first.'
 }
 
-Push-Location $serverDir
+Push-Location $apiDir
 try {
     Get-Content -LiteralPath $envFile |
         Where-Object { $_ -and -not $_.StartsWith('#') } |

@@ -44,4 +44,4 @@ check:
 	$(MAKE) test
 
 production:
-	docker compose -f docker-compose.production.yml up --build -d
+	docker compose -f compose.production.yml up --build -d

@@ -1,5 +1,5 @@
-import { useEffect, useState, type ReactNode } from 'react'
 import { API_URL } from '@/lib/api'
+import { useEffect, useState, type ReactNode } from 'react'
 import { AuthContext } from './auth-context'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -31,5 +31,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		setAuthenticated(false)
 	}
 
-	return <AuthContext.Provider value={{ authenticated, login, logout }}>{children}</AuthContext.Provider>
+	return (
+		<AuthContext.Provider value={{ authenticated, login, logout }}>
+			{children}
+		</AuthContext.Provider>
+	)
 }
