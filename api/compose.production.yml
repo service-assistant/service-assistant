@@ -20,6 +20,8 @@ services:
 
 volumes:
   attachments:
+    external: true
+    name: ${ATTACHMENTS_VOLUME_NAME}
 
 networks:
   default:
