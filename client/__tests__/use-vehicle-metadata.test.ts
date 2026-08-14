@@ -24,8 +24,8 @@ jest.mock('react', () => ({
 }));
 
 jest.mock('@/utils/api-config', () => ({
-	AUTH_URL: 'https://api.example.test',
-	AUTH_URL_CONFIG_ERROR: null,
+	API_URL: 'https://api.example.test',
+	API_URL_CONFIG_ERROR: null,
 }));
 
 jest.mock('@/utils/auth-errors', () => ({

@@ -1,6 +1,6 @@
 import { useNavigate } from '@tanstack/react-router'
 import { useEffect, useState, type FormEvent } from 'react'
-import { useAuth } from '@/auth/AuthContext'
+import { useAuth } from '@/auth/use-auth'
 
 export function LoginPage() {
 	const { authenticated, login } = useAuth()

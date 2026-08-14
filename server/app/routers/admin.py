@@ -166,7 +166,7 @@ async def post_login(
         token,
         httponly=True,
         samesite="lax",
-        domain=settings.cookie_domain,
+        secure=settings.env != "development",
     )
     return response
 
@@ -181,14 +181,22 @@ async def get_session_status(
 @router.post("/logout")
 async def post_logout(settings: Settings = Depends(get_settings)):
     response = JSONResponse({"ok": True})
-    response.delete_cookie("admin_token", domain=settings.cookie_domain)
+    response.delete_cookie(
+        "admin_token",
+        secure=settings.env != "development",
+        samesite="lax",
+    )
     return response
 
 
 @router.get("/logout")
 async def logout(settings: Settings = Depends(get_settings)):
     response = RedirectResponse(url="/admin/login", status_code=303)
-    response.delete_cookie("admin_token", domain=settings.cookie_domain)
+    response.delete_cookie(
+        "admin_token",
+        secure=settings.env != "development",
+        samesite="lax",
+    )
     return response
 
 

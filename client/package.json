@@ -15,7 +15,9 @@
 		"web": "expo start --web",
 		"postinstall": "node ./scripts/patch-react-native-pdf.js && node ./scripts/patch-react-native-css-interop.js && node ./scripts/patch-react-native-sse.js",
 		"format": "prettier --write .",
+		"format-check": "prettier --check .",
 		"lint": "expo lint",
+		"typecheck": "tsc --noEmit",
 		"test": "jest",
 		"build:web": "expo export --platform web"
 	},

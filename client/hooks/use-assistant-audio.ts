@@ -11,7 +11,7 @@ import {
 import { Platform } from 'react-native';
 
 import type { TtsStyle, TtsVoice } from '@/hooks/use-app-settings';
-import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
+import { API_URL, API_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
 	getAuthTokenOrThrow,
 	getServiceErrorFeature,
@@ -150,14 +150,14 @@ export const useAssistantAudio = ({
 
 			try {
 				setIsLoading(true);
-				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 				const authToken = getAuthTokenOrThrow();
 				requestTimeout = setTimeout(() => {
 					didRequestTimeout = true;
 					abortController.abort();
 				}, TTS_REQUEST_TIMEOUT_MS);
 
-				const response = await fetch(`${AUTH_URL}/api/tts`, {
+				const response = await fetch(`${API_URL}/api/tts`, {
 					method: 'POST',
 					headers: {
 						Accept: 'audio/wav',

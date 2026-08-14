@@ -1,6 +1,6 @@
 import { Outlet, useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
-import { useAuth } from '@/auth/AuthContext'
+import { useAuth } from '@/auth/use-auth'
 import { Sidebar } from './Sidebar'
 
 export function ProtectedLayout() {

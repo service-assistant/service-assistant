@@ -19,7 +19,7 @@ import VehicleFilters from '@/components/VehicleFilters';
 import { useAppSettings } from '@/hooks/use-app-settings';
 import { useNetworkStatus } from '@/hooks/use-network-status';
 import { useVehicleMetadata } from '@/hooks/use-vehicle-metadata';
-import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
+import { API_URL, API_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
 	getAuthTokenOrThrow,
 	getServiceErrorFeature,
@@ -122,9 +122,9 @@ export default function HistoryScreen() {
 				setIsLoadingThreads(true);
 
 				try {
-					if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+					if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 					const authToken = getAuthTokenOrThrow();
-					const threadsResponse = await fetchWithRetry(`${AUTH_URL}/api/threads`, {
+					const threadsResponse = await fetchWithRetry(`${API_URL}/api/threads`, {
 						headers: {
 							Accept: 'application/json',
 							Authorization: `Bearer ${authToken}`,

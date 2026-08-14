@@ -1,29 +1,29 @@
-import Constants from 'expo-constants';
-
-const DEFAULT_AUTH_URL = 'https://staging.asystent-serwisanta.pl';
-
 export const CONFIG_SERVICE_FEATURE = 'konfiguracja aplikacji';
 
-const createAuthUrlConfigError = (value: string) =>
-	Object.assign(new Error(`Invalid AUTH_URL: ${value}`), {
+const createApiUrlConfigError = (message: string) =>
+	Object.assign(new Error(message), {
 		serviceFeature: CONFIG_SERVICE_FEATURE,
 	});
 
-const rawAuthUrl =
-	(process.env.AUTH_URL ?? Constants.expoConfig?.extra?.authUrl)?.trim() || DEFAULT_AUTH_URL;
+const rawApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 
-let normalizedAuthUrl = rawAuthUrl.replace(/\/+$/, '');
-let authUrlConfigError: Error | null = null;
+let normalizedApiUrl = '';
+let apiUrlConfigError: Error | null = null;
 
-try {
-	const parsedUrl = new URL(normalizedAuthUrl);
-	if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-		authUrlConfigError = createAuthUrlConfigError(rawAuthUrl);
+if (!rawApiUrl) {
+	apiUrlConfigError = createApiUrlConfigError('Missing API_URL');
+} else {
+	normalizedApiUrl = rawApiUrl.replace(/\/+$/, '');
+
+	try {
+		const parsedUrl = new URL(normalizedApiUrl);
+		if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+			apiUrlConfigError = createApiUrlConfigError(`Invalid API_URL: ${rawApiUrl}`);
+		}
+	} catch {
+		apiUrlConfigError = createApiUrlConfigError(`Invalid API_URL: ${rawApiUrl}`);
 	}
-} catch {
-	authUrlConfigError = createAuthUrlConfigError(rawAuthUrl);
-	normalizedAuthUrl = DEFAULT_AUTH_URL;
 }
 
-export const AUTH_URL = normalizedAuthUrl;
-export const AUTH_URL_CONFIG_ERROR = authUrlConfigError;
+export const API_URL = normalizedApiUrl;
+export const API_URL_CONFIG_ERROR = apiUrlConfigError;

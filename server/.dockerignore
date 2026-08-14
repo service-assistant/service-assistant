@@ -88,3 +88,6 @@ docker-compose.test.yml
 docker-compose.production.yml
 tests
 Makefile
+docker-compose.db.yml
+scripts
+.env.test.windows

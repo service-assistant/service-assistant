@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, BACKEND_URL } from '@/lib/api'
+import { api, API_URL } from '@/lib/api'
 import type { Attachment, Device } from '@/lib/types'
 
 export function useAttachments() {
@@ -24,7 +24,7 @@ export function useAttachmentDevices(attachmentId: number) {
 }
 
 export function attachmentFileUrl(attachmentId: number): string {
-	return `${BACKEND_URL}/api/attachments/${attachmentId}/file`
+	return `${API_URL}/api/attachments/${attachmentId}/file`
 }
 
 export function useCreateAttachment() {

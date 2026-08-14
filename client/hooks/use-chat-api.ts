@@ -8,7 +8,7 @@ import type {
 } from '@/components/ChatMessages';
 import { stripResponseDirectivesForSpeech } from '@/components/ChatMessages';
 import { MAX_CHAT_PHOTOS } from '@/types/chat';
-import { AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
+import { API_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
 	AUTH_SERVICE_FEATURE,
 	createInvalidAuthTokenError,
@@ -122,7 +122,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 
 	const ensureThread = useCallback(
 		async (titleSource: string, signal?: AbortSignal) => {
-			if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+			if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 			const AUTH_TOKEN = authTokenOverride ?? getAuthTokenOrThrow();
 			const activeThreadId = currentThreadIdRef.current;
 

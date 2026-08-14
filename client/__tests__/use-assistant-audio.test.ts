@@ -49,15 +49,15 @@ jest.mock('expo-file-system/legacy', () => ({
 }));
 
 jest.mock('@/utils/api-config', () => ({
-	AUTH_URL: 'https://api.example.test',
-	AUTH_URL_CONFIG_ERROR: null,
+	API_URL: 'https://api.example.test',
+	API_URL_CONFIG_ERROR: null,
 }));
 
 import { AUTH_SERVICE_FEATURE } from '@/utils/auth-errors';
 import { Platform } from 'react-native';
 import { useAssistantAudio } from '../hooks/use-assistant-audio';
 
-const originalAuthToken = process.env.AUTH_TOKEN;
+const originalAuthToken = process.env.EXPO_PUBLIC_AUTH_TOKEN;
 
 const createHarness = (
 	ttsVoice: 'Algenib' | 'Leda' = 'Algenib',
@@ -99,16 +99,16 @@ describe('useAssistantAudio', () => {
 		mockAudioPlayer.replace.mockReset();
 		mockUseAudioPlayer.mockClear();
 		mockWriteAsStringAsync.mockReset();
-		process.env.AUTH_TOKEN = 'test-token';
+		process.env.EXPO_PUBLIC_AUTH_TOKEN = 'test-token';
 		global.fetch = jest.fn();
 		jest.spyOn(console, 'log').mockImplementation(() => {});
 	});
 
 	afterEach(() => {
 		if (originalAuthToken === undefined) {
-			delete process.env.AUTH_TOKEN;
+			delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
 		} else {
-			process.env.AUTH_TOKEN = originalAuthToken;
+			process.env.EXPO_PUBLIC_AUTH_TOKEN = originalAuthToken;
 		}
 		jest.restoreAllMocks();
 	});
@@ -236,7 +236,7 @@ describe('useAssistantAudio', () => {
 	});
 
 	test('reports missing auth token through the service error callback', async () => {
-		delete process.env.AUTH_TOKEN;
+		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
 		const harness = createHarness();
 
 		await harness.api.playAssistantAudio('No token');

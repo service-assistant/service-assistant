@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
+import { API_URL, API_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
 	getAuthTokenOrThrow,
 	getServiceErrorFeature,
@@ -53,9 +53,9 @@ export const useVehicleMetadata = ({
 	useEffect(() => {
 		const fetchBrands = async () => {
 			try {
-				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 				const authToken = getAuthTokenOrThrow();
-				const response = await fetchWithRetry(`${AUTH_URL}/api/brands`, {
+				const response = await fetchWithRetry(`${API_URL}/api/brands`, {
 					method: 'GET',
 					headers: {
 						Authorization: `Bearer ${authToken}`,
@@ -78,9 +78,9 @@ export const useVehicleMetadata = ({
 
 		const fetchDeviceTypes = async () => {
 			try {
-				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 				const authToken = getAuthTokenOrThrow();
-				const response = await fetchWithRetry(`${AUTH_URL}/api/device_types`, {
+				const response = await fetchWithRetry(`${API_URL}/api/device_types`, {
 					method: 'GET',
 					headers: {
 						Authorization: `Bearer ${authToken}`,
@@ -103,9 +103,9 @@ export const useVehicleMetadata = ({
 
 		const fetchDevices = async () => {
 			try {
-				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 				const authToken = getAuthTokenOrThrow();
-				const response = await fetchWithRetry(`${AUTH_URL}/api/devices`, {
+				const response = await fetchWithRetry(`${API_URL}/api/devices`, {
 					method: 'GET',
 					headers: {
 						Authorization: `Bearer ${authToken}`,

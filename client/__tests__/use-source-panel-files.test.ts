@@ -114,7 +114,7 @@ describe('useSourcePanelFiles', () => {
 
 	afterEach(() => {
 		jest.restoreAllMocks();
-		delete process.env.AUTH_TOKEN;
+		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
 	});
 
 	test('opens a message source with an authorized remote PDF source', () => {

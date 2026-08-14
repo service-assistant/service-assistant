@@ -1,4 +1,4 @@
-export const BACKEND_URL: string = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:8000'
+export const API_URL: string = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
 export class ApiError extends Error {
 	status: number
@@ -10,7 +10,7 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 	const isFormData = options.body instanceof FormData
-	const res = await fetch(`${BACKEND_URL}${path}`, {
+	const res = await fetch(`${API_URL}${path}`, {
 		...options,
 		credentials: 'include',
 		headers: {

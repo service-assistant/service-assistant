@@ -17,11 +17,6 @@ try {
             Set-Item -LiteralPath "Env:$name" -Value $value
         }
 
-    docker compose -f docker-compose.test.yml up -d --wait
-    if ($LASTEXITCODE -ne 0) {
-        exit $LASTEXITCODE
-    }
-
     & $python -c @'
 import asyncio
 import pytest

@@ -4,32 +4,54 @@ This file provides guidance to Claude Code (or any other AI assistant) when work
 
 ## Architecture
 
-Monorepo with two subdirectories:
-- `client/` — React Native / Expo mobile app (TypeScript, file-based routing via Expo Router)
+Monorepo with three subdirectories:
+- `client/` — React Native / Expo app (TypeScript, file-based routing via Expo Router), targets Android and Web
 - `server/` — FastAPI backend (Python, Poetry)
+- `admin/` — Vite/React admin dashboard (TypeScript)
+
+Each app deploys independently on the VPS via its own `docker-compose.production.yml`.
 
 ## Commands
+
+Run `make check` from the repo root to run format-check, lint, typecheck, and test across all three apps (calls each app's own `make check`).
 
 ### Server (`cd server`)
 
 ```sh
 make install       # poetry install
 make dev           # fastapi dev — hot reload on :8000
-make test          # pytest
+make test          # pytest (needs a local Postgres, see server/.env.test)
 make lint          # ruff check app tests
 make format        # ruff format app tests
 make format-check  # ruff format --check app tests
+make typecheck     # pyright
+make check         # format-check + lint + typecheck + test
 ```
 OpenAPI docs available at `http://localhost:8000/docs`.
 
 ### Client (`cd client`)
 
 ```sh
-make install   # npm install
-make android   # run on Android
-make test      # jest
-make lint      # expo lint
-make format    # prettier --write .
+make install       # npm install
+make android       # run on Android
+make test          # jest
+make lint          # expo lint
+make format        # prettier --write .
+make format-check  # prettier --check .
+make typecheck     # tsc --noEmit
+make check         # format-check + lint + typecheck + test
+make production    # docker compose -f docker-compose.production.yml up --build -d
+```
+
+### Admin (`cd admin`)
+
+```sh
+make install    # npm install
+make dev        # vite — hot reload on :5173
+make lint        # oxlint
+make typecheck   # tsc -b
+make check       # lint + typecheck (no formatter/test suite configured yet)
+make production  # docker compose -f docker-compose.production.yml up --build -d
 ```
 
 ## Code Style

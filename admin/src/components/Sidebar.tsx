@@ -1,6 +1,6 @@
 import { Link, useRouterState } from '@tanstack/react-router'
 import { BookOpen, Cog, History, LogOut, Settings, Shield, Wrench } from 'lucide-react'
-import { useAuth } from '@/auth/AuthContext'
+import { useAuth } from '@/auth/use-auth'
 
 const NAV_ITEMS = [
 	{ label: 'Baza wiedzy', to: '/', icon: BookOpen },

@@ -3,7 +3,7 @@ import { Alert, Platform } from 'react-native';
 
 import type { SourcePanelPdf } from '@/components/SourcePanel';
 import type { AvailableFile } from '@/types/chat';
-import { AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
+import { API_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
 	AUTH_SERVICE_FEATURE,
 	createInvalidAuthTokenError,
@@ -123,7 +123,7 @@ export const useSourcePanelFiles = ({
 
 			let authToken = '';
 			try {
-				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 				authToken = authTokenOverride ?? getAuthTokenOrThrow();
 			} catch (error) {
 				console.log('Handled auth token error:', error);
@@ -191,7 +191,7 @@ export const useSourcePanelFiles = ({
 			setDownloadingFileId(file.id);
 
 			try {
-				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 				const authToken = authTokenOverride ?? getAuthTokenOrThrow();
 
 				if (Platform.OS === 'web') {

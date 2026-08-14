@@ -24,9 +24,35 @@ asdf install
 
 If you are on Windows or any other OS where `asdf` is not available, you can also install dependencies from `.tool-versions` globally.
 
-Both client and server apps have `Makefile` files. They should make it easier for frontend people to run backend app and vice versa.
+Each of `server`, `client`, and `admin` has its own `Makefile`. They should make it easier for frontend people to run the backend app and vice versa.
 
 More about development in `./server/README.md` and `./client/README.md`.
+
+### Run everything in dev mode
+
+From the repository root, run:
+
+```
+make dev
+```
+
+This starts the dev database, then runs `server`, `client`, and `admin` in dev mode simultaneously (one Ctrl+C stops all of them). Once running:
+
+| App | URL |
+|---|---|
+| `server` | [http://localhost:8000](http://localhost:8000) ([docs](http://localhost:8000/docs)) |
+| `admin` | [http://localhost:5173](http://localhost:5173) |
+| `client` (web) | [http://localhost:8081](http://localhost:8081) |
+
+### Run all checks
+
+From the repository root, run:
+
+```
+make check
+```
+
+This runs format-check, lint, typecheck, and test in `server`, `client`, and `admin` (one after another, stopping at the first failure). Under the hood it just calls each app's own `make check`, so `cd server && make check` (or `client`/`admin`) runs the same checks for just that app. `server`'s tests need a local Postgres running (see `server/.env.test`). `admin` has no formatter or test suite configured yet, so its `make check` only runs lint and typecheck.
 
 ### Run all formatting and tests on Windows
 
@@ -46,8 +72,8 @@ test
 The script formats the server and client, runs lint and type checks for all
 applications, builds the admin panel, and runs all server and client tests.
 Server tests are delegated to `server/scripts/test-windows.ps1`, which
-configures the Windows-compatible asyncio event loop and starts the Docker test
-database.
+configures the Windows-compatible asyncio event loop and runs against a local
+Postgres (see `server/.env.test.windows`).
 
 ## Rules & Advices
 
@@ -74,11 +100,8 @@ To mark task as done/completed it:
 
 ## Deployment
 
-Backend is deployed in 2 stages:
+The app is deployed on a VPS as 3 independently running Docker Compose projects — `server`, `admin`, and `client` — each with its own `docker-compose.production.yml` and `make production` target. There is no shared root compose file; the VPS deployment script simply (re)starts all 3 projects.
 
-- production [https://asystent-serwisanta.pl/](https://asystent-serwisanta.pl/)
-- staging [https://staging.asystent-serwisanta.pl/](https://staging.asystent-serwisanta.pl/)
+`server` runs the FastAPI container directly. `admin` and `client` are both static-exported (Vite build / `expo export --platform web`) and served by their own Caddy container.
 
-When changes appear on the production, it means they are tested and reliable. Other intermediary changes come to the staging to allow testing in an environment similar to the production.
-
-Client application is not yet distributed automatically. For now it's needed to build `.apk` file manually or use web version with limited funtionality.
+Android is still distributed by building an `.apk` manually — see `client/README.md`.

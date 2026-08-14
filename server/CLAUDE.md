@@ -12,11 +12,7 @@ make lint          # ruff check app tests alembic
 make format        # ruff format app tests
 make typecheck     # pyright
 make check         # format-check + lint + typecheck (no tests)
-make test-db-up    # start test postgres container
-make test-db-down  # stop test postgres container
-make reset-test-db # recreate test postgres container (wipes data)
 make migrations    # list alembic history
-make reset-db      # tear down dev postgres and delete volume
 ```
 
 Run single test file:
@@ -68,7 +64,7 @@ Single bearer token in `settings.auth_token` (env var `AUTH_TOKEN`). Checked by 
 
 ## Testing
 
-Tests run against a real PostgreSQL instance (docker-compose.test.yml, env from `.env.test`). `tests/conftest.py` runs alembic migrations once per session and truncates all tables after each test via `clean_db`. `tests/routers/conftest.py` provides `client` (async `AsyncClient`) and `unauthenticated_client` fixtures; `factories.py` builds and persists ORM objects. Auth token is injected automatically in the `client` fixture — no need to set headers manually.
+Tests run against a real PostgreSQL instance on the developer's OS (`127.0.0.1:5432`, env from `.env.test`) — no Docker involved. `tests/conftest.py` runs alembic migrations once per session and truncates all tables after each test via `clean_db`. `tests/routers/conftest.py` provides `client` (async `AsyncClient`) and `unauthenticated_client` fixtures; `factories.py` builds and persists ORM objects. Auth token is injected automatically in the `client` fixture — no need to set headers manually.
 
 ## Key env vars
 

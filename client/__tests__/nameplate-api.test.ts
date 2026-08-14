@@ -1,7 +1,7 @@
 import type { NameplateDeviceCandidate } from '@/types/nameplate';
 
-const originalAuthUrl = process.env.AUTH_URL;
-const originalAuthToken = process.env.AUTH_TOKEN;
+const originalApiUrl = process.env.EXPO_PUBLIC_API_URL;
+const originalAuthToken = process.env.EXPO_PUBLIC_AUTH_TOKEN;
 
 class FormDataMock {
 	entries: Array<[string, unknown]> = [];
@@ -17,17 +17,17 @@ const loadApi = async () => {
 };
 
 beforeEach(() => {
-	process.env.AUTH_URL = 'https://api.example.test';
-	process.env.AUTH_TOKEN = 'test-token';
+	process.env.EXPO_PUBLIC_API_URL = 'https://api.example.test';
+	process.env.EXPO_PUBLIC_AUTH_TOKEN = 'test-token';
 	global.fetch = jest.fn();
 	(global as any).FormData = FormDataMock;
 });
 
 afterEach(() => {
-	if (originalAuthUrl === undefined) delete process.env.AUTH_URL;
-	else process.env.AUTH_URL = originalAuthUrl;
-	if (originalAuthToken === undefined) delete process.env.AUTH_TOKEN;
-	else process.env.AUTH_TOKEN = originalAuthToken;
+	if (originalApiUrl === undefined) delete process.env.EXPO_PUBLIC_API_URL;
+	else process.env.EXPO_PUBLIC_API_URL = originalApiUrl;
+	if (originalAuthToken === undefined) delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
+	else process.env.EXPO_PUBLIC_AUTH_TOKEN = originalAuthToken;
 	jest.resetModules();
 });
 

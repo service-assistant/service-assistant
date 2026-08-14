@@ -63,8 +63,6 @@ class Settings(BaseSettings):
     ] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://localhost:8081"]
     )
-    cookie_domain: str | None = None
-
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @model_validator(mode="after")

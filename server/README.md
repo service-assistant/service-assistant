@@ -44,31 +44,23 @@ cp .env.example .env
 
 ## Running tests
 
-Start the test database before running any tests:
+Tests run against a real PostgreSQL instance on `127.0.0.1:5432` (see `DATABASE_URL` in `.env.test`) — no Docker involved, just whatever Postgres (with the `pgvector` extension) is running on your machine. Create the `service_assistant_test` database once, then:
 
 ```sh
-make test-db-up
 make test
-```
-
-To stop the test database afterwards:
-
-```sh
-make test-db-down
 ```
 
 ### Windows
 
-Windows uses a separate test database URL with an explicit IPv4 loopback address
-and a selector event loop compatible with async psycopg. Run the complete test
-workflow from PowerShell:
+Windows uses a separate test database URL (`.env.test.windows`) with an explicit
+IPv4 loopback address and a selector event loop compatible with async psycopg.
+Run the complete test workflow from PowerShell:
 
 ```powershell
 .\scripts\test-windows.ps1
 ```
 
-The script starts the existing test database container if needed, loads
-`.env.test.windows`, and runs pytest. It does not stop or remove any containers.
+The script loads `.env.test.windows` and runs pytest against the same local Postgres instance.
 
 ## Cautions
 

@@ -1,5 +1,3 @@
-import Constants from 'expo-constants';
-
 export const AUTH_SERVICE_FEATURE = 'autoryzacja aplikacji';
 
 type ServiceFeatureError = Error & {
@@ -17,7 +15,7 @@ export const createInvalidAuthTokenError = (status: number) =>
 	});
 
 export const getAuthTokenOrThrow = () => {
-	const authToken = process.env.AUTH_TOKEN ?? Constants.expoConfig?.extra?.authToken ?? '';
+	const authToken = process.env.EXPO_PUBLIC_AUTH_TOKEN ?? '';
 	if (!authToken) throw createMissingAuthTokenError();
 	return authToken;
 };

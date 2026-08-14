@@ -4,7 +4,7 @@ import type {
 	NameplateDeviceCandidate,
 	NameplateRecognition,
 } from '@/types/nameplate';
-import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
+import { API_URL, API_URL_CONFIG_ERROR } from '@/utils/api-config';
 import { getAuthTokenOrThrow, throwIfAuthResponseError } from '@/utils/auth-errors';
 import { HttpError } from '@/utils/network';
 
@@ -98,7 +98,7 @@ export const recognizeNameplate = async (
 	photoUri: string,
 	signal?: AbortSignal,
 ): Promise<NameplateRecognition> => {
-	if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+	if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 	const authToken = getAuthTokenOrThrow();
 	const sendPhoto = () => {
 		const formData = new FormData();
@@ -109,7 +109,7 @@ export const recognizeNameplate = async (
 		} as unknown as Blob);
 
 		return fetchWithTimeout(
-			`${AUTH_URL}/api/nameplates/recognize`,
+			`${API_URL}/api/nameplates/recognize`,
 			{
 				method: 'POST',
 				headers: {
@@ -166,10 +166,10 @@ export const createNameplateThread = async ({
 	nameplateData: NameplateData;
 	signal?: AbortSignal;
 }): Promise<ChatThreadWithNameplate> => {
-	if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+	if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 	const authToken = getAuthTokenOrThrow();
 	const response = await fetchWithTimeout(
-		`${AUTH_URL}/api/threads`,
+		`${API_URL}/api/threads`,
 		{
 			method: 'POST',
 			headers: jsonHeaders(authToken),

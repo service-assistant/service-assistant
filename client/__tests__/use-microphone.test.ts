@@ -228,7 +228,7 @@ const createHarness = (
 };
 
 describe('useMicrophone', () => {
-	const originalAuthToken = process.env.AUTH_TOKEN;
+	const originalAuthToken = process.env.EXPO_PUBLIC_AUTH_TOKEN;
 
 	beforeEach(() => {
 		jest.useRealTimers();
@@ -264,7 +264,7 @@ describe('useMicrophone', () => {
 		global.WebSocket = MockWebSocket as unknown as typeof WebSocket;
 		mockRequestRecordingPermissionsAsync.mockResolvedValue({ granted: true });
 		mockRecorder.prepareToRecordAsync.mockResolvedValue(undefined);
-		process.env.AUTH_TOKEN = 'test-token';
+		process.env.EXPO_PUBLIC_AUTH_TOKEN = 'test-token';
 		global.fetch = jest.fn();
 		jest.spyOn(console, 'log').mockImplementation(() => {});
 		jest.spyOn(Date, 'now').mockReturnValue(1000);
@@ -272,9 +272,9 @@ describe('useMicrophone', () => {
 
 	afterEach(() => {
 		if (originalAuthToken === undefined) {
-			delete process.env.AUTH_TOKEN;
+			delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
 		} else {
-			process.env.AUTH_TOKEN = originalAuthToken;
+			process.env.EXPO_PUBLIC_AUTH_TOKEN = originalAuthToken;
 		}
 		jest.restoreAllMocks();
 		jest.useRealTimers();
@@ -297,7 +297,7 @@ describe('useMicrophone', () => {
 	});
 
 	test('reports auth configuration errors before requesting permissions', async () => {
-		delete process.env.AUTH_TOKEN;
+		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
 		const harness = createHarness({ authTokenOverride: null });
 
 		await harness.api.handleMicPress();

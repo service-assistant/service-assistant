@@ -42,7 +42,7 @@ import { useSourcePanelFiles } from '@/hooks/use-source-panel-files';
 import { useWakeWord } from '@/hooks/use-wake-word';
 import { type AvailableFile, MAX_CHAT_PHOTOS, type Message } from '@/types/chat';
 import type { ChatThreadWithNameplate, NameplateData } from '@/types/nameplate';
-import { AUTH_URL, AUTH_URL_CONFIG_ERROR } from '@/utils/api-config';
+import { API_URL, API_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
 	getAuthTokenOrThrow,
 	getServiceErrorFeature,
@@ -314,7 +314,7 @@ export default function ChatScreen() {
 		useSourcePanelFiles({
 			availableFiles,
 			isAvailableFilesLoading,
-			serverUrl: AUTH_URL,
+			serverUrl: API_URL,
 			onServiceError: showServiceError,
 			authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
 		});
@@ -328,7 +328,7 @@ export default function ChatScreen() {
 	}, [openFilesPanel]);
 
 	const { askAPI, ensureThread, stopChatApi } = useChatApi<ChatMessage>({
-		serverUrl: AUTH_URL,
+		serverUrl: API_URL,
 		deviceId: selectedDeviceId,
 		currentThreadId,
 		setCurrentThreadId,
@@ -362,7 +362,7 @@ export default function ChatScreen() {
 		isAudioPlaying,
 		showTextInput,
 		isSpeechInputUnavailable,
-		serverUrl: AUTH_URL,
+		serverUrl: API_URL,
 		authTokenOverride: CHAT_AUTH_TOKEN_OVERRIDE,
 		getTranscriptionThreadId: (signal) => ensureThread('Wiadomość głosowa', signal),
 		setShowTextInput,
@@ -445,11 +445,11 @@ export default function ChatScreen() {
 					setAvailableFiles([]);
 					return;
 				}
-				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 				const authToken = CHAT_AUTH_TOKEN_OVERRIDE ?? getAuthTokenOrThrow();
 
 				const response = await fetchWithRetry(
-					`${AUTH_URL}/api/devices/${selectedDeviceId}/attachments`,
+					`${API_URL}/api/devices/${selectedDeviceId}/attachments`,
 					{
 						headers: {
 							Accept: 'application/json',
@@ -477,7 +477,7 @@ export default function ChatScreen() {
 							name: attachment.original_filename || `Dokument_${attachment.id}.pdf`,
 							icon: iconOption.icon,
 							color: iconOption.color,
-							remoteUrl: `${AUTH_URL}/api/attachments/${attachment.id}/file`,
+							remoteUrl: `${API_URL}/api/attachments/${attachment.id}/file`,
 						};
 					}),
 				);
@@ -529,7 +529,7 @@ export default function ChatScreen() {
 			}
 
 			try {
-				if (AUTH_URL_CONFIG_ERROR) throw AUTH_URL_CONFIG_ERROR;
+				if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 				const authToken = CHAT_AUTH_TOKEN_OVERRIDE ?? getAuthTokenOrThrow();
 
 				const requestOptions = {
@@ -540,9 +540,9 @@ export default function ChatScreen() {
 					signal: abortController.signal,
 				};
 				const [threadResponse, messagesResponse] = await Promise.all([
-					fetchWithRetry(`${AUTH_URL}/api/threads/${parsedThreadId}`, requestOptions),
+					fetchWithRetry(`${API_URL}/api/threads/${parsedThreadId}`, requestOptions),
 					fetchWithRetry(
-						`${AUTH_URL}/api/threads/${parsedThreadId}/messages`,
+						`${API_URL}/api/threads/${parsedThreadId}/messages`,
 						requestOptions,
 					),
 				]);

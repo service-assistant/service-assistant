@@ -7,13 +7,13 @@ import {
 	throwIfAuthResponseError,
 } from '../utils/auth-errors';
 
-const originalAuthToken = process.env.AUTH_TOKEN;
+const originalAuthToken = process.env.EXPO_PUBLIC_AUTH_TOKEN;
 
 afterEach(() => {
 	if (originalAuthToken === undefined) {
-		delete process.env.AUTH_TOKEN;
+		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
 	} else {
-		process.env.AUTH_TOKEN = originalAuthToken;
+		process.env.EXPO_PUBLIC_AUTH_TOKEN = originalAuthToken;
 	}
 });
 
@@ -33,13 +33,13 @@ describe('auth error helpers', () => {
 	});
 
 	test('reads configured auth token', () => {
-		process.env.AUTH_TOKEN = 'token-123';
+		process.env.EXPO_PUBLIC_AUTH_TOKEN = 'token-123';
 
 		expect(getAuthTokenOrThrow()).toBe('token-123');
 	});
 
 	test('throws service-tagged error when auth token is missing', () => {
-		delete process.env.AUTH_TOKEN;
+		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
 
 		expect(() => getAuthTokenOrThrow()).toThrow('Missing AUTH_TOKEN');
 		try {
