@@ -3,7 +3,7 @@ FROM node:26.5-alpine3.23 AS builder
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY . .
 ARG VITE_API_URL

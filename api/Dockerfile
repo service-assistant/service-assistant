@@ -13,7 +13,7 @@ WORKDIR /app
 
 COPY pyproject.toml poetry.lock* ./
 
-RUN poetry install --no-cache --without test,dev --no-root
+RUN --mount=type=cache,target=/root/.cache/pypoetry poetry install --without test,dev --no-root
 
 COPY . .
 

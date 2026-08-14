@@ -1,0 +1,7 @@
+.env
+.env.example
+Makefile
+compose.production.yml
+.git
+.gitignore
+README.md

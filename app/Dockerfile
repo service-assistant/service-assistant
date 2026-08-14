@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY package*.json ./
 COPY scripts ./scripts
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY . .
 ARG EXPO_PUBLIC_API_URL
