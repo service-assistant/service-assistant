@@ -20,7 +20,9 @@ from app.services.ingest import (
     ingest_pdf_to_attachment,
 )
 
-BENCHMARK_CATEGORY_NAME = "BENCHMARK"
+BENCHMARK_BRAND_CATEGORY_NAME = "BENCHMARK MARKA"
+BENCHMARK_TYPE_CATEGORY_NAME = "BENCHMARK TYP"
+BENCHMARK_VARIANT_CATEGORY_NAME = "BENCHMARK WARIANT"
 BENCHMARK_DEVICE_NAME = "BENCHMARK-TEST-01"
 BENCHMARK_MODEL_SERIAL_CODE = "BENCHMARK-TEST-01"
 
@@ -31,19 +33,44 @@ async def inspect_benchmark_setup(
     session: AsyncSession,
 ) -> dict[str, Any]:
     """Verify the persisted benchmark setup using database IDs and relations."""
+    missing: list[str] = []
+    brand_category = await _find_category(
+        session, BENCHMARK_BRAND_CATEGORY_NAME, parent_id=None
+    )
+    if brand_category is None:
+        missing.append("benchmark_brand_category")
+
+    type_category = None
+    if brand_category is not None:
+        type_category = await _find_category(
+            session, BENCHMARK_TYPE_CATEGORY_NAME, parent_id=brand_category.id
+        )
+    if type_category is None:
+        missing.append("benchmark_type_category")
+
+    variant_category = None
+    if type_category is not None:
+        variant_category = await _find_category(
+            session, BENCHMARK_VARIANT_CATEGORY_NAME, parent_id=type_category.id
+        )
+    if variant_category is None:
+        missing.append("benchmark_variant_category")
+
     device = await session.scalar(
         select(Device)
         .where(Device.model_serial_code == BENCHMARK_MODEL_SERIAL_CODE)
         .order_by(Device.id)
     )
     if device is None:
-        return {"ready": False, "missing": ["benchmark_device"]}
+        missing.append("benchmark_device")
+        return {"ready": False, "missing": missing}
 
-    category = await session.get(Category, device.category_id)
-    missing: list[str] = []
-    if category is None or category.name != BENCHMARK_CATEGORY_NAME:
-        missing.append("benchmark_category")
-    if device.name != BENCHMARK_DEVICE_NAME:
+    if variant_category is None or device.category_id != variant_category.id:
+        missing.append("benchmark_device_category")
+    if (
+        device.name != BENCHMARK_DEVICE_NAME
+        or device.model_serial_code != BENCHMARK_MODEL_SERIAL_CODE
+    ):
         missing.append("benchmark_device_configuration")
 
     attachment_rows = (
@@ -88,7 +115,18 @@ async def inspect_benchmark_setup(
         "missing": missing,
         "missing_sources": missing_sources,
         "result": {
-            "category_id": category.id if category is not None else None,
+            "category_id": (
+                variant_category.id if variant_category is not None else None
+            ),
+            "brand_category_id": (
+                brand_category.id if brand_category is not None else None
+            ),
+            "type_category_id": (
+                type_category.id if type_category is not None else None
+            ),
+            "variant_category_id": (
+                variant_category.id if variant_category is not None else None
+            ),
             "device_id": device.id,
             "stable_device_key": BENCHMARK_MODEL_SERIAL_CODE,
             "attachments": len(documents),
@@ -98,21 +136,58 @@ async def inspect_benchmark_setup(
     }
 
 
-async def _get_or_create_category(
+async def _find_category(
     session: AsyncSession,
-) -> tuple[Category, bool]:
-    category = await session.scalar(
+    name: str,
+    parent_id: int | None,
+) -> Category | None:
+    parent_filter = (
+        Category.parent_id.is_(None)
+        if parent_id is None
+        else Category.parent_id == parent_id
+    )
+    return await session.scalar(
         select(Category)
-        .where(Category.name == BENCHMARK_CATEGORY_NAME)
+        .where(Category.name == name, parent_filter)
         .order_by(Category.id)
     )
+
+
+async def _get_or_create_category(
+    session: AsyncSession,
+    name: str,
+    parent_id: int | None,
+) -> tuple[Category, bool]:
+    category = await _find_category(session, name, parent_id)
     if category is not None:
         return category, False
-    category = Category(name=BENCHMARK_CATEGORY_NAME, image_url=None)
+    category = Category(name=name, image_url=None, parent_id=parent_id)
     session.add(category)
     await session.commit()
     await session.refresh(category)
     return category, True
+
+
+async def _get_or_create_category_path(
+    session: AsyncSession,
+) -> tuple[tuple[Category, Category, Category], list[Category]]:
+    created: list[Category] = []
+    brand, was_created = await _get_or_create_category(
+        session, BENCHMARK_BRAND_CATEGORY_NAME, parent_id=None
+    )
+    if was_created:
+        created.append(brand)
+    device_type, was_created = await _get_or_create_category(
+        session, BENCHMARK_TYPE_CATEGORY_NAME, parent_id=brand.id
+    )
+    if was_created:
+        created.append(device_type)
+    variant, was_created = await _get_or_create_category(
+        session, BENCHMARK_VARIANT_CATEGORY_NAME, parent_id=device_type.id
+    )
+    if was_created:
+        created.append(variant)
+    return (brand, device_type, variant), created
 
 
 async def _get_or_create_device(
@@ -243,17 +318,39 @@ async def run_benchmark_setup(
         {"downloaded": document_status.get("downloaded", [])},
     )
 
-    progress("category", "processing", "Creating or finding benchmark category…", None)
-    category, category_created = await _get_or_create_category(session)
+    progress(
+        "category",
+        "processing",
+        "Creating or finding benchmark category hierarchy…",
+        None,
+    )
+    (
+        (brand_category, type_category, variant_category),
+        created_categories,
+    ) = await _get_or_create_category_path(session)
+    category_details = [
+        {
+            "id": category.id,
+            "name": category.name,
+            "parent_id": category.parent_id,
+            "created": category in created_categories,
+        }
+        for category in (brand_category, type_category, variant_category)
+    ]
     progress(
         "category",
         "completed",
-        f"Category {'created' if category_created else 'already exists'} (ID {category.id}).",
-        {"id": category.id, "name": category.name, "created": category_created},
+        f"Benchmark category hierarchy ready ({len(created_categories)} created).",
+        {
+            "brand_category_id": brand_category.id,
+            "type_category_id": type_category.id,
+            "variant_category_id": variant_category.id,
+            "categories": category_details,
+        },
     )
 
     progress("device", "processing", "Creating or finding benchmark machine…", None)
-    device, device_created = await _get_or_create_device(session, category)
+    device, device_created = await _get_or_create_device(session, variant_category)
     progress(
         "device",
         "completed",
@@ -262,6 +359,7 @@ async def run_benchmark_setup(
             "id": device.id,
             "name": device.name,
             "stable_key": BENCHMARK_MODEL_SERIAL_CODE,
+            "variant_category_id": variant_category.id,
             "created": device_created,
         },
     )
@@ -326,29 +424,19 @@ async def run_benchmark_setup(
     )
 
     progress("verify", "processing", "Verifying database relationships…", None)
-    linked_count = int(
-        await session.scalar(
-            select(func.count(AttachmentDevice.attachment_id)).where(
-                AttachmentDevice.device_id == device.id
-            )
-        )
-        or 0
-    )
-    if linked_count < len(documents) or total_chunks <= 0:
+    inspection = await inspect_benchmark_setup(session)
+    if not inspection["ready"]:
         raise RuntimeError(
-            "Benchmark verification failed: documents or chunks are missing."
+            "Benchmark verification failed: " + ", ".join(inspection.get("missing", []))
         )
-    summary = {
-        "category_id": category.id,
-        "device_id": device.id,
-        "stable_device_key": BENCHMARK_MODEL_SERIAL_CODE,
-        "attachments": linked_count,
-        "chunks": total_chunks,
-    }
+    summary = inspection["result"]
     progress(
         "verify",
         "completed",
-        f"Setup ready: {linked_count} document(s), {total_chunks} chunk(s).",
+        (
+            f"Setup ready: {summary['attachments']} document(s), "
+            f"{summary['chunks']} chunk(s)."
+        ),
         summary,
     )
     return summary

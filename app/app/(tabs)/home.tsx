@@ -20,7 +20,11 @@ import VehicleCard, { type Vehicle } from '@/components/VehicleCard';
 import VehicleFilters from '@/components/VehicleFilters';
 import { useAppSettings } from '@/hooks/use-app-settings';
 import { useNetworkStatus } from '@/hooks/use-network-status';
-import { useVehicleMetadata } from '@/hooks/use-vehicle-metadata';
+import {
+	categoryPathStartsWith,
+	findCategoryPath,
+	useVehicleMetadata,
+} from '@/hooks/use-vehicle-metadata';
 import type { NameplateDeviceCandidate, NameplateRecognition } from '@/types/nameplate';
 import { CONFIG_SERVICE_FEATURE } from '@/utils/api-config';
 import { AUTH_SERVICE_FEATURE } from '@/utils/auth-errors';
@@ -43,8 +47,7 @@ export default function HomeScreen() {
 	const insets = useSafeAreaInsets();
 	const isWeb = Platform.OS === 'web';
 
-	const [activeBrandFilter, setActiveBrandFilter] = useState<string>('WSZYSTKIE');
-	const [activeTypeFilter, setActiveTypeFilter] = useState<string>('WSZYSTKIE');
+	const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
 	const [searchQuery] = useState<string>('');
 	const [serviceErrorFeature, setServiceErrorFeature] = useState<string | null>(null);
 	const { reconnectCount } = useNetworkStatus();
@@ -55,29 +58,35 @@ export default function HomeScreen() {
 		setServiceErrorFeature(featureName);
 	}, []);
 
-	const { brands, deviceTypes, rawDevices, isLoadingBrands, isLoadingTypes, isLoadingDevices } =
-		useVehicleMetadata({ onServiceError: showServiceError, refreshKey: reconnectCount });
+	const { categories, rawDevices, isLoadingCategories, isLoadingDevices } = useVehicleMetadata({
+		onServiceError: showServiceError,
+		refreshKey: reconnectCount,
+	});
 	const [isNameplateScannerOpen, setIsNameplateScannerOpen] = useState(false);
 
 	// --- MAP DEVICES TO UI FORMAT ---
-	const mappedVehicles: Vehicle[] = rawDevices.map((device) => {
-		const brand = brands.find((b) => b.id === device.brand_id);
-		const type = deviceTypes.find((dt) => dt.id === device.device_type_id);
+	const mappedVehicles = rawDevices.map((device) => {
+		const categoryPath = findCategoryPath(categories, device.category_id);
+		const rootCategory = categoryPath[0];
+		const leafCategory = categoryPath[categoryPath.length - 1];
 
 		return {
 			id: device.id.toString(),
 			name: device.name,
-			brand: brand ? brand.name : 'NIEZNANA MARKA',
-			type: type ? type.name : 'NIEZNANY TYP',
+			brand: rootCategory?.name || 'BEZ KATEGORII',
+			type: leafCategory?.name || 'BEZ KATEGORII',
 			imageUrl: device.image_url?.trim() ? { uri: device.image_url } : undefined,
 			imageOffsetY: 0, // Default values, API images are not manually calibrated
 			imageZoom: 1.0,
+			categoryPath,
 		};
 	});
 
 	const getRemoteBrandLogo = (brandName: string): string | null => {
-		const brand = brands.find((b) => b.name.toLowerCase() === brandName.toLowerCase());
-		return brand ? brand.logo_url : null;
+		const category = categories.find(
+			(candidate) => candidate.name.toLowerCase() === brandName.toLowerCase(),
+		);
+		return category?.image_url || null;
 	};
 
 	const openChat = (vehicle: Vehicle) => {
@@ -122,14 +131,9 @@ export default function HomeScreen() {
 	const { lightThemeEnabled } = useAppSettings();
 
 	const filteredVehicles = mappedVehicles.filter((v) => {
-		const mBrand =
-			activeBrandFilter === 'WSZYSTKIE' ||
-			v.brand.toUpperCase() === activeBrandFilter.toUpperCase();
-		const mType =
-			activeTypeFilter === 'WSZYSTKIE' ||
-			v.type.toLowerCase() === activeTypeFilter.toLowerCase();
+		const matchesCategory = categoryPathStartsWith(v.categoryPath, selectedCategoryIds);
 		const mSearch = v.name.toLowerCase().includes(searchQuery.toLowerCase());
-		return mBrand && mType && mSearch;
+		return matchesCategory && mSearch;
 	});
 
 	const paddingHorizontal = useTabletHomeRefresh ? 20 : isWeb ? 16 : 8;
@@ -277,15 +281,11 @@ export default function HomeScreen() {
 			</View>
 
 			<VehicleFilters
-				brands={brands}
-				deviceTypes={deviceTypes}
-				activeBrandFilter={activeBrandFilter}
-				activeTypeFilter={activeTypeFilter}
-				onBrandFilterChange={setActiveBrandFilter}
-				onTypeFilterChange={setActiveTypeFilter}
+				categories={categories}
+				selectedCategoryIds={selectedCategoryIds}
+				onCategoryPathChange={setSelectedCategoryIds}
 				useTabletRefresh={useTabletFilterStyle}
-				isLoadingBrands={isLoadingBrands}
-				isLoadingTypes={isLoadingTypes}
+				isLoading={isLoadingCategories}
 				primaryColor={PRIMARY_ORANGE}
 				lightMode={lightThemeEnabled}
 			/>

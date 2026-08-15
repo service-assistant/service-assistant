@@ -587,19 +587,16 @@ describe('tab screens', () => {
 		jest.mocked(global.fetch).mockImplementation((url) => {
 			const requestUrl = String(url);
 
-			if (requestUrl.endsWith('/api/brands')) {
+			if (requestUrl.endsWith('/api/categories/tree')) {
 				return Promise.resolve(
-					createJsonResponse([{ id: 1, name: 'Toyota', logo_url: 'logo.png' }]),
+					createJsonResponse([
+						{ id: 1, name: 'Toyota', image_url: 'logo.png', children: [] },
+					]),
 				);
-			}
-			if (requestUrl.endsWith('/api/device_types')) {
-				return Promise.resolve(createJsonResponse([{ id: 2, name: 'Wózek' }]));
 			}
 			if (requestUrl.endsWith('/api/devices')) {
 				return Promise.resolve(
-					createJsonResponse([
-						{ id: 3, brand_id: 1, device_type_id: 2, name: 'Toyota 8FG' },
-					]),
+					createJsonResponse([{ id: 3, category_id: 1, name: 'Toyota 8FG' }]),
 				);
 			}
 
@@ -648,17 +645,24 @@ describe('tab screens', () => {
 					updated_at: '2026-06-09T09:00:00Z',
 				},
 			],
-			'WSZYSTKIE',
-			'WSZYSTKIE',
+			[],
 			false,
 			null,
-			[{ id: 1, name: 'Toyota', logo_url: 'logo.png', created_at: '', updated_at: '' }],
-			[{ id: 2, name: 'Wózek', created_at: '', updated_at: '' }],
+			[
+				{
+					id: 1,
+					name: 'Toyota',
+					image_url: 'logo.png',
+					parent_id: null,
+					created_at: '',
+					updated_at: '',
+					children: [],
+				},
+			],
 			[
 				{
 					id: 3,
-					brand_id: 1,
-					device_type_id: 2,
+					category_id: 1,
 					name: 'Toyota 8FG',
 					model_serial_code: '',
 					image_url: '',
@@ -666,7 +670,6 @@ describe('tab screens', () => {
 					updated_at: '',
 				},
 			],
-			false,
 			false,
 			false,
 		];
@@ -709,7 +712,7 @@ describe('tab screens', () => {
 		historyButton.props.onPress();
 
 		expect(global.fetch).toHaveBeenCalledWith(
-			'https://api.example.test/api/brands',
+			'https://api.example.test/api/categories/tree',
 			expect.objectContaining({
 				method: 'GET',
 				headers: {
@@ -734,17 +737,24 @@ describe('tab screens', () => {
 		const HomeScreen = require('../app/(tabs)/home').default;
 
 		mockReactStateValues = [
-			'WSZYSTKIE',
-			'WSZYSTKIE',
+			[],
 			'',
 			null,
-			[{ id: 1, name: 'Toyota', logo_url: 'logo.png', created_at: '', updated_at: '' }],
-			[{ id: 2, name: 'WĂłzek', created_at: '', updated_at: '' }],
+			[
+				{
+					id: 1,
+					name: 'Toyota',
+					image_url: 'logo.png',
+					parent_id: null,
+					created_at: '',
+					updated_at: '',
+					children: [],
+				},
+			],
 			[
 				{
 					id: 7,
-					brand_id: 1,
-					device_type_id: 2,
+					category_id: 1,
 					name: 'Toyota 8FG',
 					model_serial_code: '',
 					image_url: '',
@@ -752,7 +762,6 @@ describe('tab screens', () => {
 					updated_at: '',
 				},
 			],
-			false,
 			false,
 			false,
 		];
@@ -781,20 +790,22 @@ describe('tab screens', () => {
 		jest.mocked(global.fetch).mockImplementation((url) => {
 			const requestUrl = String(url);
 
-			if (requestUrl.endsWith('/api/brands')) {
+			if (requestUrl.endsWith('/api/categories/tree')) {
 				return Promise.resolve(
 					createJsonResponse([
-						{ id: 1, name: 'Toyota', logo_url: null },
-						{ id: 2, name: 'Still', logo_url: null },
+						{
+							id: 1,
+							name: 'Toyota',
+							image_url: null,
+							children: [{ id: 3, name: 'Wózek', image_url: null, children: [] }],
+						},
+						{ id: 2, name: 'Still', image_url: null, children: [] },
 					]),
 				);
 			}
-			if (requestUrl.endsWith('/api/device_types')) {
-				return Promise.resolve(createJsonResponse([{ id: 2, name: 'Wózek' }]));
-			}
 
 			return Promise.resolve(
-				createJsonResponse([{ id: 3, brand_id: 1, device_type_id: 2, name: 'Toyota 8FG' }]),
+				createJsonResponse([{ id: 3, category_id: 3, name: 'Toyota 8FG' }]),
 			);
 		});
 		const HomeScreen = require('../app/(tabs)/home').default;
@@ -807,7 +818,7 @@ describe('tab screens', () => {
 		const loadedVehicleList = findByType(loadedTree, 'FlatList')[0];
 		const stillFilterButton = collectTouchableWithText(
 			loadedVehicleList.props.ListHeaderComponent,
-			'STILL',
+			'Still',
 		)[0];
 
 		stillFilterButton.props.onPress();

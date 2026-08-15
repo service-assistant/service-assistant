@@ -18,7 +18,11 @@ import ThemeAwareLogo from '@/components/ThemeAwareLogo';
 import VehicleFilters from '@/components/VehicleFilters';
 import { useAppSettings } from '@/hooks/use-app-settings';
 import { useNetworkStatus } from '@/hooks/use-network-status';
-import { useVehicleMetadata } from '@/hooks/use-vehicle-metadata';
+import {
+	categoryPathStartsWith,
+	findCategoryPath,
+	useVehicleMetadata,
+} from '@/hooks/use-vehicle-metadata';
 import { API_URL, API_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
 	getAuthTokenOrThrow,
@@ -42,6 +46,7 @@ type HistoryItem = ChatThread & {
 	brandName: string;
 	brandLogoUrl: string | null;
 	deviceTypeName: string;
+	categoryPath: ReturnType<typeof findCategoryPath>;
 };
 
 const parseApiDate = (value: string) => {
@@ -89,8 +94,7 @@ export default function HistoryScreen() {
 	const usePhonePortraitHeader = !isTablet && isPortrait;
 	const useTabletFilterStyle = useTabletHistoryRefresh || usePhonePortraitHeader;
 	const [threads, setThreads] = useState<ChatThread[]>([]);
-	const [activeBrandFilter, setActiveBrandFilter] = useState('WSZYSTKIE');
-	const [activeTypeFilter, setActiveTypeFilter] = useState('WSZYSTKIE');
+	const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
 	const [isLoadingThreads, setIsLoadingThreads] = useState(true);
 	const [serviceErrorFeature, setServiceErrorFeature] = useState<string | null>(null);
 	const { reconnectCount } = useNetworkStatus();
@@ -102,15 +106,13 @@ export default function HistoryScreen() {
 	}, []);
 
 	const {
-		brands,
-		deviceTypes,
+		categories,
 		rawDevices: devices,
-		isLoadingBrands,
-		isLoadingTypes,
+		isLoadingCategories,
 		isLoadingDevices,
 	} = useVehicleMetadata({ onServiceError: showServiceError, refreshKey: reconnectCount });
 	const { lightThemeEnabled } = useAppSettings();
-	const isLoading = isLoadingThreads || isLoadingBrands || isLoadingTypes || isLoadingDevices;
+	const isLoading = isLoadingThreads || isLoadingCategories || isLoadingDevices;
 
 	useFocusEffect(
 		useCallback(() => {
@@ -163,29 +165,22 @@ export default function HistoryScreen() {
 		.slice(0, 30)
 		.map((thread) => {
 			const device = devices.find((candidate) => candidate.id === thread.device_id);
-			const brand = brands.find((candidate) => candidate.id === device?.brand_id);
-			const deviceType = deviceTypes.find(
-				(candidate) => candidate.id === device?.device_type_id,
-			);
+			const categoryPath = findCategoryPath(categories, device?.category_id ?? null);
+			const rootCategory = categoryPath[0];
+			const leafCategory = categoryPath[categoryPath.length - 1];
 
 			return {
 				...thread,
 				deviceName: device?.name || 'Nieznany pojazd',
-				brandName: brand?.name || 'Nieznana marka',
-				brandLogoUrl: brand?.logo_url || null,
-				deviceTypeName: deviceType?.name || 'Nieznany typ',
+				brandName: rootCategory?.name || 'Bez kategorii',
+				brandLogoUrl: rootCategory?.image_url || null,
+				deviceTypeName: leafCategory?.name || 'Bez kategorii',
+				categoryPath,
 			};
 		});
 
 	const filteredHistoryItems = historyItems.filter((item) => {
-		const matchesBrand =
-			activeBrandFilter === 'WSZYSTKIE' ||
-			item.brandName.toLowerCase() === activeBrandFilter.toLowerCase();
-		const matchesType =
-			activeTypeFilter === 'WSZYSTKIE' ||
-			item.deviceTypeName.toLowerCase() === activeTypeFilter.toLowerCase();
-
-		return matchesBrand && matchesType;
+		return categoryPathStartsWith(item.categoryPath, selectedCategoryIds);
 	});
 
 	const pagePaddingHorizontal = useTabletHistoryRefresh ? 20 : 16;
@@ -253,13 +248,11 @@ export default function HistoryScreen() {
 				</View>
 
 				<VehicleFilters
-					brands={brands}
-					deviceTypes={deviceTypes}
-					activeBrandFilter={activeBrandFilter}
-					activeTypeFilter={activeTypeFilter}
-					onBrandFilterChange={setActiveBrandFilter}
-					onTypeFilterChange={setActiveTypeFilter}
+					categories={categories}
+					selectedCategoryIds={selectedCategoryIds}
+					onCategoryPathChange={setSelectedCategoryIds}
 					useTabletRefresh={useTabletFilterStyle}
+					isLoading={isLoadingCategories}
 					primaryColor={PRIMARY_ORANGE}
 					lightMode={lightThemeEnabled}
 				/>

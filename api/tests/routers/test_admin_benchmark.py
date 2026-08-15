@@ -96,12 +96,22 @@ async def test_benchmark_setup_should_mark_active_stage_as_failed(mocker):
 
 
 async def test_latest_setup_should_detect_persisted_database_state_by_ids(session):
-    category = await create_category(
-        session, name=benchmark_setup.BENCHMARK_CATEGORY_NAME
+    brand_category = await create_category(
+        session, name=benchmark_setup.BENCHMARK_BRAND_CATEGORY_NAME
+    )
+    type_category = await create_category(
+        session,
+        name=benchmark_setup.BENCHMARK_TYPE_CATEGORY_NAME,
+        parent_id=brand_category.id,
+    )
+    variant_category = await create_category(
+        session,
+        name=benchmark_setup.BENCHMARK_VARIANT_CATEGORY_NAME,
+        parent_id=type_category.id,
     )
     device = await create_device(
         session,
-        category.id,
+        variant_category.id,
         name=benchmark_setup.BENCHMARK_DEVICE_NAME,
         model_serial_code=benchmark_setup.BENCHMARK_MODEL_SERIAL_CODE,
     )
@@ -124,7 +134,10 @@ async def test_latest_setup_should_detect_persisted_database_state_by_ids(sessio
     assert result["state"] == "completed"
     assert result["id"] == "persisted-database-state"
     assert result["result"] == {
-        "category_id": category.id,
+        "category_id": variant_category.id,
+        "brand_category_id": brand_category.id,
+        "type_category_id": type_category.id,
+        "variant_category_id": variant_category.id,
         "device_id": device.id,
         "stable_device_key": benchmark_setup.BENCHMARK_MODEL_SERIAL_CODE,
         "attachments": len(documents),
@@ -140,6 +153,60 @@ async def test_latest_setup_should_detect_persisted_database_state_by_ids(sessio
         for attachment, _chunk in documents
     ]
     assert all(chunk.id is not None for _attachment, chunk in documents)
+
+
+async def test_inspection_should_reject_device_outside_benchmark_hierarchy(session):
+    brand_category = await create_category(
+        session, name=benchmark_setup.BENCHMARK_BRAND_CATEGORY_NAME
+    )
+    type_category = await create_category(
+        session,
+        name=benchmark_setup.BENCHMARK_TYPE_CATEGORY_NAME,
+        parent_id=brand_category.id,
+    )
+    await create_category(
+        session,
+        name=benchmark_setup.BENCHMARK_VARIANT_CATEGORY_NAME,
+        parent_id=type_category.id,
+    )
+    wrong_variant = await create_category(
+        session, name=benchmark_setup.BENCHMARK_VARIANT_CATEGORY_NAME
+    )
+    await create_device(
+        session,
+        wrong_variant.id,
+        name=benchmark_setup.BENCHMARK_DEVICE_NAME,
+        model_serial_code=benchmark_setup.BENCHMARK_MODEL_SERIAL_CODE,
+    )
+
+    inspection = await benchmark_setup.inspect_benchmark_setup(session)
+
+    assert inspection["ready"] is False
+    assert "benchmark_device_category" in inspection["missing"]
+
+
+async def test_category_setup_should_create_and_reuse_complete_hierarchy(session):
+    first_path, first_created = await benchmark_setup._get_or_create_category_path(
+        session
+    )
+    second_path, second_created = await benchmark_setup._get_or_create_category_path(
+        session
+    )
+
+    brand_category, type_category, variant_category = first_path
+    assert [category.name for category in first_path] == [
+        benchmark_setup.BENCHMARK_BRAND_CATEGORY_NAME,
+        benchmark_setup.BENCHMARK_TYPE_CATEGORY_NAME,
+        benchmark_setup.BENCHMARK_VARIANT_CATEGORY_NAME,
+    ]
+    assert brand_category.parent_id is None
+    assert type_category.parent_id == brand_category.id
+    assert variant_category.parent_id == type_category.id
+    assert len(first_created) == 3
+    assert [category.id for category in second_path] == [
+        category.id for category in first_path
+    ]
+    assert second_created == []
 
 
 async def test_cancel_benchmark_run_should_signal_active_processor():

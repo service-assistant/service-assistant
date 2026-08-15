@@ -120,7 +120,7 @@ _benchmark_case_cancel_events: dict[str, asyncio.Event] = {}
 
 BENCHMARK_SETUP_STEPS = [
     ("download", "Download documents from R2"),
-    ("category", "Create benchmark category"),
+    ("category", "Create benchmark category hierarchy"),
     ("device", "Create benchmark machine"),
     ("ingest", "Link and chunk documents"),
     ("verify", "Verify benchmark setup"),
@@ -513,10 +513,19 @@ async def get_latest_benchmark_setup(
             ),
             BenchmarkSetupStep(
                 key="category",
-                label="Create benchmark category",
+                label="Create benchmark category hierarchy",
                 state="completed",
-                message=f"Category verified by ID {result['category_id']}.",
-                details={"id": result["category_id"]},
+                message=(
+                    "Category hierarchy verified by IDs "
+                    f"{result['brand_category_id']} → "
+                    f"{result['type_category_id']} → "
+                    f"{result['variant_category_id']}."
+                ),
+                details={
+                    "brand_category_id": result["brand_category_id"],
+                    "type_category_id": result["type_category_id"],
+                    "variant_category_id": result["variant_category_id"],
+                },
             ),
             BenchmarkSetupStep(
                 key="device",
