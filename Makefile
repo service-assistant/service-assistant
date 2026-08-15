@@ -1,5 +1,10 @@
 .PHONY: help check dev install test lint format format-check typecheck production
 
+ifeq ($(OS),Windows_NT)
+SHELL := C:/PROGRA~1/Git/bin/bash.exe
+MAKE := make
+endif
+
 help:
 	@echo "Available commands:"
 	@echo "  make install       - Install dependencies in api, app, and admin"
@@ -18,7 +23,8 @@ install:
 	$(MAKE) -C admin install
 
 dev:
-	@trap 'kill 0' EXIT INT TERM; \
+	@cleanup() { jobs -p | xargs -r kill; }; \
+	trap cleanup EXIT INT TERM; \
 	$(MAKE) -C api dev & \
 	$(MAKE) -C app dev & \
 	$(MAKE) -C admin dev & \

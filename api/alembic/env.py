@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 from logging.config import fileConfig
 
 from alembic import context
@@ -24,6 +25,8 @@ def get_url() -> str:
     url = os.environ.get("DATABASE_URL")
     if not url:
         raise RuntimeError("DATABASE_URL is not set")
+    if sys.platform == "win32":
+        return url.replace("host.docker.internal", "127.0.0.1")
     return url
 
 
@@ -52,7 +55,8 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    loop_factory = asyncio.SelectorEventLoop if sys.platform == "win32" else None
+    asyncio.run(run_async_migrations(), loop_factory=loop_factory)
 
 
 if context.is_offline_mode():
