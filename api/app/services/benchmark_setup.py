@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.models import Attachment, AttachmentDevice, Brand, Chunk, Device, DeviceType
+from app.models import Attachment, AttachmentDevice, Category, Chunk, Device
 from app.routers.attachments import save_and_ingest_attachment
 from app.services import benchmark_documents
 from app.services.async_utils import run_blocking
@@ -20,8 +20,7 @@ from app.services.ingest import (
     ingest_pdf_to_attachment,
 )
 
-BENCHMARK_BRAND_NAME = "BENCHMARK"
-BENCHMARK_DEVICE_TYPE_NAME = "BENCHMARK DEVICE"
+BENCHMARK_CATEGORY_NAME = "BENCHMARK"
 BENCHMARK_DEVICE_NAME = "BENCHMARK-TEST-01"
 BENCHMARK_MODEL_SERIAL_CODE = "BENCHMARK-TEST-01"
 
@@ -40,13 +39,10 @@ async def inspect_benchmark_setup(
     if device is None:
         return {"ready": False, "missing": ["benchmark_device"]}
 
-    brand = await session.get(Brand, device.brand_id)
-    device_type = await session.get(DeviceType, device.device_type_id)
+    category = await session.get(Category, device.category_id)
     missing: list[str] = []
-    if brand is None or brand.name != BENCHMARK_BRAND_NAME:
-        missing.append("benchmark_brand")
-    if device_type is None or device_type.name != BENCHMARK_DEVICE_TYPE_NAME:
-        missing.append("benchmark_device_type")
+    if category is None or category.name != BENCHMARK_CATEGORY_NAME:
+        missing.append("benchmark_category")
     if device.name != BENCHMARK_DEVICE_NAME:
         missing.append("benchmark_device_configuration")
 
@@ -92,8 +88,7 @@ async def inspect_benchmark_setup(
         "missing": missing,
         "missing_sources": missing_sources,
         "result": {
-            "brand_id": brand.id if brand is not None else None,
-            "device_type_id": device_type.id if device_type is not None else None,
+            "category_id": category.id if category is not None else None,
             "device_id": device.id,
             "stable_device_key": BENCHMARK_MODEL_SERIAL_CODE,
             "attachments": len(documents),
@@ -103,42 +98,26 @@ async def inspect_benchmark_setup(
     }
 
 
-async def _get_or_create_brand(
+async def _get_or_create_category(
     session: AsyncSession,
-) -> tuple[Brand, bool]:
-    brand = await session.scalar(
-        select(Brand).where(Brand.name == BENCHMARK_BRAND_NAME).order_by(Brand.id)
+) -> tuple[Category, bool]:
+    category = await session.scalar(
+        select(Category)
+        .where(Category.name == BENCHMARK_CATEGORY_NAME)
+        .order_by(Category.id)
     )
-    if brand is not None:
-        return brand, False
-    brand = Brand(name=BENCHMARK_BRAND_NAME, logo_url=None)
-    session.add(brand)
+    if category is not None:
+        return category, False
+    category = Category(name=BENCHMARK_CATEGORY_NAME, image_url=None)
+    session.add(category)
     await session.commit()
-    await session.refresh(brand)
-    return brand, True
-
-
-async def _get_or_create_device_type(
-    session: AsyncSession,
-) -> tuple[DeviceType, bool]:
-    device_type = await session.scalar(
-        select(DeviceType)
-        .where(DeviceType.name == BENCHMARK_DEVICE_TYPE_NAME)
-        .order_by(DeviceType.id)
-    )
-    if device_type is not None:
-        return device_type, False
-    device_type = DeviceType(name=BENCHMARK_DEVICE_TYPE_NAME)
-    session.add(device_type)
-    await session.commit()
-    await session.refresh(device_type)
-    return device_type, True
+    await session.refresh(category)
+    return category, True
 
 
 async def _get_or_create_device(
     session: AsyncSession,
-    brand: Brand,
-    device_type: DeviceType,
+    category: Category,
 ) -> tuple[Device, bool]:
     device = await session.scalar(
         select(Device)
@@ -149,8 +128,7 @@ async def _get_or_create_device(
         changed = False
         expected = {
             "name": BENCHMARK_DEVICE_NAME,
-            "brand_id": brand.id,
-            "device_type_id": device_type.id,
+            "category_id": category.id,
         }
         for field, value in expected.items():
             if getattr(device, field) != value:
@@ -165,8 +143,7 @@ async def _get_or_create_device(
         name=BENCHMARK_DEVICE_NAME,
         model_serial_code=BENCHMARK_MODEL_SERIAL_CODE,
         image_url=None,
-        brand_id=brand.id,
-        device_type_id=device_type.id,
+        category_id=category.id,
     )
     session.add(device)
     await session.commit()
@@ -266,26 +243,17 @@ async def run_benchmark_setup(
         {"downloaded": document_status.get("downloaded", [])},
     )
 
-    progress("brand", "processing", "Creating or finding benchmark brand…", None)
-    brand, brand_created = await _get_or_create_brand(session)
+    progress("category", "processing", "Creating or finding benchmark category…", None)
+    category, category_created = await _get_or_create_category(session)
     progress(
-        "brand",
+        "category",
         "completed",
-        f"Brand {'created' if brand_created else 'already exists'} (ID {brand.id}).",
-        {"id": brand.id, "name": brand.name, "created": brand_created},
-    )
-
-    progress("device_type", "processing", "Creating or finding device type…", None)
-    device_type, type_created = await _get_or_create_device_type(session)
-    progress(
-        "device_type",
-        "completed",
-        f"Device type {'created' if type_created else 'already exists'} (ID {device_type.id}).",
-        {"id": device_type.id, "name": device_type.name, "created": type_created},
+        f"Category {'created' if category_created else 'already exists'} (ID {category.id}).",
+        {"id": category.id, "name": category.name, "created": category_created},
     )
 
     progress("device", "processing", "Creating or finding benchmark machine…", None)
-    device, device_created = await _get_or_create_device(session, brand, device_type)
+    device, device_created = await _get_or_create_device(session, category)
     progress(
         "device",
         "completed",
@@ -371,8 +339,7 @@ async def run_benchmark_setup(
             "Benchmark verification failed: documents or chunks are missing."
         )
     summary = {
-        "brand_id": brand.id,
-        "device_type_id": device_type.id,
+        "category_id": category.id,
         "device_id": device.id,
         "stable_device_key": BENCHMARK_MODEL_SERIAL_CODE,
         "attachments": linked_count,
