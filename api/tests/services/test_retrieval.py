@@ -14,11 +14,10 @@ from app.models import EMBEDDING_DIMENSIONS
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.routers.factories import (
+    create_category,
     create_attachment,
-    create_brand,
     create_chunk,
     create_device,
-    create_device_type,
     link_attachment_device,
 )
 
@@ -155,9 +154,8 @@ async def test_merge_hybrid_chunks_dedupes_and_preserves_order(session):
 async def test_retrieve_context_chunks_uses_original_query_for_semantic_search(
     session, settings, mocker
 ):
-    brand = await create_brand(session)
-    device_type = await create_device_type(session)
-    device = await create_device(session, brand.id, device_type.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     attachment = await create_attachment(session)
     await link_attachment_device(session, attachment.id, device.id)
 
@@ -193,9 +191,8 @@ async def test_retrieve_context_chunks_uses_original_query_for_semantic_search(
 async def test_retrieve_context_chunks_uses_translated_query_for_bm25(
     session, settings, mocker
 ):
-    brand = await create_brand(session)
-    device_type = await create_device_type(session)
-    device = await create_device(session, brand.id, device_type.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     attachment = await create_attachment(session)
     await link_attachment_device(session, attachment.id, device.id)
 
@@ -239,9 +236,8 @@ async def test_retrieve_context_chunks_uses_translated_query_for_bm25(
 async def test_retrieve_context_chunks_order_exact_then_semantic_then_bm25(
     session, settings, mocker
 ):
-    brand = await create_brand(session)
-    device_type = await create_device_type(session)
-    device = await create_device(session, brand.id, device_type.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     attachment = await create_attachment(session)
     await link_attachment_device(session, attachment.id, device.id)
 
@@ -285,9 +281,8 @@ async def test_retrieve_context_chunks_order_exact_then_semantic_then_bm25(
 async def test_retrieve_context_chunks_deduplicates_chunks_across_sources(
     session, settings, mocker
 ):
-    brand = await create_brand(session)
-    device_type = await create_device_type(session)
-    device = await create_device(session, brand.id, device_type.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     attachment = await create_attachment(session)
     await link_attachment_device(session, attachment.id, device.id)
 
@@ -313,9 +308,8 @@ async def test_retrieve_context_chunks_deduplicates_chunks_across_sources(
 
 
 async def _create_retrieval_context(session):
-    brand = await create_brand(session)
-    device_type = await create_device_type(session)
-    device = await create_device(session, brand.id, device_type.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     attachment = await create_attachment(session)
     await link_attachment_device(session, attachment.id, device.id)
     return device, attachment

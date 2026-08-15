@@ -41,6 +41,7 @@ class Category(Base):
     children: Mapped[list[Category]] = relationship(
         back_populates="parent",
         lazy="raise",
+        passive_deletes=True,
     )
 
     devices: Mapped[list[Device]] = relationship(

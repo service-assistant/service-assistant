@@ -5,11 +5,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import (
     Attachment,
     AttachmentDevice,
-    Brand,
+    Category,
     ChatThread,
     Chunk,
     Device,
-    DeviceType,
     Message,
     MessageSender,
     EMBEDDING_DIMENSIONS,
@@ -28,16 +27,17 @@ def make_attachment(path: str = "/nonexistent/manual.pdf", **kwargs) -> Attachme
     return Attachment(**defaults)
 
 
-def make_brand(**kwargs) -> Brand:
+def make_category(**kwargs) -> Category:
     defaults = dict(
         id=1,
         name="Toyota",
-        logo_url=None,
+        image_url=None,
+        parent_id=None,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
     defaults.update(kwargs)
-    return Brand(**defaults)
+    return Category(**defaults)
 
 
 def make_chunk(**kwargs) -> Chunk:
@@ -56,8 +56,7 @@ def make_chunk(**kwargs) -> Chunk:
 def make_device(**kwargs) -> Device:
     defaults = dict(
         id=1,
-        brand_id=1,
-        device_type_id=1,
+        category_id=1,
         name="Toyota 8FBE20",
         model_serial_code=None,
         image_url=None,
@@ -66,17 +65,6 @@ def make_device(**kwargs) -> Device:
     )
     defaults.update(kwargs)
     return Device(**defaults)
-
-
-def make_device_type(**kwargs) -> DeviceType:
-    defaults = dict(
-        id=1,
-        name="Counterbalance Forklift",
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
-    )
-    defaults.update(kwargs)
-    return DeviceType(**defaults)
 
 
 def make_thread(**kwargs) -> ChatThread:
@@ -104,33 +92,21 @@ def make_message(**kwargs) -> Message:
     return Message(**defaults)
 
 
-async def create_brand(session: AsyncSession, **kwargs) -> Brand:
-    brand = Brand(
+async def create_category(session: AsyncSession, **kwargs) -> Category:
+    category = Category(
         name=kwargs.get("name", "Toyota"),
-        logo_url=kwargs.get("logo_url"),
+        image_url=kwargs.get("image_url"),
+        parent_id=kwargs.get("parent_id"),
     )
-    session.add(brand)
+    session.add(category)
     await session.commit()
-    await session.refresh(brand)
-    return brand
+    await session.refresh(category)
+    return category
 
 
-async def create_device_type(session: AsyncSession, **kwargs) -> DeviceType:
-    dt = DeviceType(
-        name=kwargs.get("name", "Counterbalance Forklift"),
-    )
-    session.add(dt)
-    await session.commit()
-    await session.refresh(dt)
-    return dt
-
-
-async def create_device(
-    session: AsyncSession, brand_id: int, device_type_id: int, **kwargs
-) -> Device:
+async def create_device(session: AsyncSession, category_id: int, **kwargs) -> Device:
     device = Device(
-        brand_id=brand_id,
-        device_type_id=device_type_id,
+        category_id=category_id,
         name=kwargs.get("name", "Toyota 8FBE20"),
         model_serial_code=kwargs.get("model_serial_code"),
         image_url=kwargs.get("image_url"),

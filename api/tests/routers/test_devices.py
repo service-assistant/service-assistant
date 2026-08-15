@@ -2,23 +2,20 @@ from app.models import Device
 
 from tests.routers.factories import (
     create_attachment,
-    create_brand,
+    create_category,
     create_device,
-    create_device_type,
     create_thread,
     link_attachment_device,
 )
 
 
-async def test_should_create_device_when_brand_and_device_type_exist(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
+async def test_should_create_device_when_category_exists(client, session):
+    category = await create_category(session)
 
     response = await client.post(
         "/api/devices",
         json={
-            "brand_id": brand.id,
-            "device_type_id": dt.id,
+            "category_id": category.id,
             "name": "Toyota 8FBE20",
             "model_serial_code": "8FBE20-12345",
             "image_url": "https://example.com/images/toyota-8fbe20.jpg",
@@ -28,34 +25,19 @@ async def test_should_create_device_when_brand_and_device_type_exist(client, ses
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Toyota 8FBE20"
-    assert data["brand_id"] == brand.id
-    assert data["device_type_id"] == dt.id
+    assert data["category_id"] == category.id
     assert data["model_serial_code"] == "8FBE20-12345"
     assert data["image_url"] == "https://example.com/images/toyota-8fbe20.jpg"
 
 
-async def test_should_return_404_when_brand_not_found_on_create(client, session):
-    dt = await create_device_type(session)
-
+async def test_should_return_404_when_category_not_found_on_create(client):
     response = await client.post(
         "/api/devices",
-        json={"brand_id": 999, "device_type_id": dt.id, "name": "Toyota 8FBE20"},
+        json={"category_id": 999, "name": "Toyota 8FBE20"},
     )
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Brand not found"
-
-
-async def test_should_return_404_when_device_type_not_found_on_create(client, session):
-    brand = await create_brand(session)
-
-    response = await client.post(
-        "/api/devices",
-        json={"brand_id": brand.id, "device_type_id": 999, "name": "Toyota 8FBE20"},
-    )
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Device type not found"
+    assert response.json()["detail"] == "Category not found"
 
 
 async def test_should_return_422_when_creating_device_without_required_fields(client):
@@ -64,10 +46,9 @@ async def test_should_return_422_when_creating_device_without_required_fields(cl
 
 
 async def test_should_list_all_devices(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    await create_device(session, brand.id, dt.id, name="Toyota 8FBE20")
-    await create_device(session, brand.id, dt.id, name="Linde H30D")
+    category = await create_category(session)
+    await create_device(session, category.id, name="Toyota 8FBE20")
+    await create_device(session, category.id, name="Linde H30D")
 
     response = await client.get("/api/devices")
 
@@ -85,9 +66,8 @@ async def test_should_return_empty_list_when_no_devices_exist(client):
 
 
 async def test_should_return_device_when_id_exists(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id, name="Toyota 8FBE20")
+    category = await create_category(session)
+    device = await create_device(session, category.id, name="Toyota 8FBE20")
 
     response = await client.get(f"/api/devices/{device.id}")
 
@@ -105,9 +85,8 @@ async def test_should_return_404_when_device_id_not_found(client):
 
 
 async def test_should_update_device_name_when_patch_provided(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id, name="Toyota 8FBE20")
+    category = await create_category(session)
+    device = await create_device(session, category.id, name="Toyota 8FBE20")
 
     response = await client.patch(
         f"/api/devices/{device.id}",
@@ -126,38 +105,23 @@ async def test_should_return_404_when_updating_nonexistent_device(client):
     assert response.json()["detail"] == "Device not found"
 
 
-async def test_should_return_404_when_updating_device_with_nonexistent_brand(
+async def test_should_return_404_when_updating_device_with_nonexistent_category(
     client, session
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
-
-    response = await client.patch(f"/api/devices/{device.id}", json={"brand_id": 999})
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Brand not found"
-
-
-async def test_should_return_404_when_updating_device_with_nonexistent_device_type(
-    client, session
-):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
 
     response = await client.patch(
-        f"/api/devices/{device.id}", json={"device_type_id": 999}
+        f"/api/devices/{device.id}", json={"category_id": 999}
     )
 
     assert response.status_code == 404
-    assert response.json()["detail"] == "Device type not found"
+    assert response.json()["detail"] == "Category not found"
 
 
 async def test_should_delete_device_when_id_exists(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     device_id = device.id
 
     response = await client.delete(f"/api/devices/{device_id}")
@@ -176,9 +140,8 @@ async def test_should_return_404_when_deleting_nonexistent_device(client):
 async def test_should_return_409_when_deleting_device_referenced_by_threads(
     client, session
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     await create_thread(session, device.id)
 
     response = await client.delete(f"/api/devices/{device.id}")
@@ -188,9 +151,8 @@ async def test_should_return_409_when_deleting_device_referenced_by_threads(
 
 
 async def test_should_list_attachments_for_device(client, tmp_path, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     attachment_a = await create_attachment(
         session,
         original_filename="manual_a.pdf",
@@ -214,9 +176,8 @@ async def test_should_list_attachments_for_device(client, tmp_path, session):
 
 
 async def test_should_return_empty_list_when_device_has_no_attachments(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
 
     response = await client.get(f"/api/devices/{device.id}/attachments")
 
@@ -232,23 +193,20 @@ async def test_should_return_404_when_listing_attachments_for_nonexistent_device
     assert response.json()["detail"] == "Device not found"
 
 
-async def test_should_update_only_device_type_when_partial_patch_provided(
-    client, session
-):
-    brand = await create_brand(session)
-    dt_old = await create_device_type(session, name="Counterbalance Forklift")
-    dt_new = await create_device_type(session, name="Reach Truck")
-    device = await create_device(session, brand.id, dt_old.id, name="Toyota 8FBE20")
+async def test_should_update_only_category_when_partial_patch_provided(client, session):
+    category_old = await create_category(session, name="Counterbalance Forklift")
+    category_new = await create_category(session, name="Reach Truck")
+    device = await create_device(session, category_old.id, name="Toyota 8FBE20")
 
     response = await client.patch(
         f"/api/devices/{device.id}",
-        json={"device_type_id": dt_new.id},
+        json={"category_id": category_new.id},
     )
 
     assert response.status_code == 200
     data = response.json()
-    assert data["device_type_id"] == dt_new.id
+    assert data["category_id"] == category_new.id
     assert data["name"] == "Toyota 8FBE20"
     await session.refresh(device)
-    assert device.device_type_id == dt_new.id
+    assert device.category_id == category_new.id
     assert device.name == "Toyota 8FBE20"

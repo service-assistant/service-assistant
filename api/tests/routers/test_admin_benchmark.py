@@ -8,10 +8,9 @@ from app.services import benchmark_setup
 from app.services.benchmark_cases import load_benchmark_dataset
 from tests.routers.factories import (
     create_attachment,
-    create_brand,
+    create_category,
     create_chunk,
     create_device,
-    create_device_type,
     link_attachment_device,
 )
 
@@ -97,14 +96,12 @@ async def test_benchmark_setup_should_mark_active_stage_as_failed(mocker):
 
 
 async def test_latest_setup_should_detect_persisted_database_state_by_ids(session):
-    brand = await create_brand(session, name=benchmark_setup.BENCHMARK_BRAND_NAME)
-    device_type = await create_device_type(
-        session, name=benchmark_setup.BENCHMARK_DEVICE_TYPE_NAME
+    category = await create_category(
+        session, name=benchmark_setup.BENCHMARK_CATEGORY_NAME
     )
     device = await create_device(
         session,
-        brand.id,
-        device_type.id,
+        category.id,
         name=benchmark_setup.BENCHMARK_DEVICE_NAME,
         model_serial_code=benchmark_setup.BENCHMARK_MODEL_SERIAL_CODE,
     )
@@ -127,8 +124,7 @@ async def test_latest_setup_should_detect_persisted_database_state_by_ids(sessio
     assert result["state"] == "completed"
     assert result["id"] == "persisted-database-state"
     assert result["result"] == {
-        "brand_id": brand.id,
-        "device_type_id": device_type.id,
+        "category_id": category.id,
         "device_id": device.id,
         "stable_device_key": benchmark_setup.BENCHMARK_MODEL_SERIAL_CODE,
         "attachments": len(documents),

@@ -30,7 +30,11 @@ async def create_category(
 
     category = Category(**body.model_dump())
     session.add(category)
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(status_code=404, detail="Parent category not found")
     await session.refresh(category)
     return category
 
@@ -145,12 +149,13 @@ async def update_category(
     "/{category_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a category",
-    description="Permanently deletes a category. Fails with 409 if it has child categories or devices still reference it.",
+    description=(
+        "Permanently deletes a category. Fails with 409 if it has child categories. "
+        "Devices referencing it are detached (their category_id becomes null)."
+    ),
     responses={
         404: {"description": "Category not found"},
-        409: {
-            "description": "Category has children or is referenced by one or more devices"
-        },
+        409: {"description": "Category has one or more child categories"},
     },
 )
 async def delete_category(
@@ -166,5 +171,5 @@ async def delete_category(
         await session.rollback()
         raise HTTPException(
             status_code=409,
-            detail="Cannot delete category: it has children or is referenced by devices",
+            detail="Cannot delete category: it has one or more child categories",
         )

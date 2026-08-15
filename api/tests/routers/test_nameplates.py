@@ -4,18 +4,16 @@ from app.services.nameplate_ocr import (
     NameplateOcrTimeoutError,
 )
 
-from tests.routers.factories import create_brand, create_device, create_device_type
+from tests.routers.factories import create_category, create_device
 
 
 async def test_recognize_nameplate_requires_confirmation_for_exact_device_match(
     client, session, mocker
 ):
-    brand = await create_brand(session)
-    device_type = await create_device_type(session)
+    category = await create_category(session)
     device = await create_device(
         session,
-        brand.id,
-        device_type.id,
+        category.id,
         name="Series 1D1",
         model_serial_code="1D1",
     )
@@ -53,12 +51,10 @@ async def test_recognize_nameplate_requires_confirmation_for_exact_device_match(
 async def test_recognize_nameplate_automatically_selects_model_family_prefix(
     client, session, mocker
 ):
-    brand = await create_brand(session)
-    device_type = await create_device_type(session)
+    category = await create_category(session)
     device = await create_device(
         session,
-        brand.id,
-        device_type.id,
+        category.id,
         name="FGE family",
         model_serial_code="FGE",
     )
