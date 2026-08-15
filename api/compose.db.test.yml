@@ -1,4 +1,4 @@
-name: service-assistant-dev-db
+name: service-assistant-test-db
 
 services:
   db:
@@ -6,10 +6,10 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: service_assistant_dev
+      POSTGRES_DB: service_assistant_test
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - pgdata_dev:/var/lib/postgresql
     healthcheck:

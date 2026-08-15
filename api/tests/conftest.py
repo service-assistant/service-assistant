@@ -1,4 +1,6 @@
+import asyncio
 import os
+import sys
 
 import pytest
 from dotenv import load_dotenv
@@ -16,6 +18,14 @@ load_dotenv(
 
 TEST_DATABASE_URL = os.environ["DATABASE_URL"]
 
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+def pytest_asyncio_loop_factories(config, item):
+    if sys.platform == "win32":
+        return {"selector": asyncio.SelectorEventLoop}
+    return {"default": asyncio.new_event_loop}
 
 @pytest.fixture(scope="session", autouse=True)
 def run_migrations():
