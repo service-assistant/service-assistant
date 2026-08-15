@@ -8,28 +8,22 @@ import {
 } from '@/utils/auth-errors';
 import { fetchWithRetry, HttpError } from '@/utils/network';
 
-export type Brand = {
+export type Category = {
 	id: number;
 	name: string;
-	logo_url: string;
+	image_url: string | null;
+	parent_id: number | null;
 	created_at: string;
 	updated_at: string;
-};
-
-export type DeviceType = {
-	id: number;
-	name: string;
-	created_at: string;
-	updated_at: string;
+	children: Category[];
 };
 
 export type DeviceRaw = {
 	id: number;
-	brand_id: number;
-	device_type_id: number;
+	category_id: number | null;
 	name: string;
 	model_serial_code: string | null;
-	image_url: string;
+	image_url: string | null;
 	created_at: string;
 	updated_at: string;
 };
@@ -39,65 +33,50 @@ type UseVehicleMetadataParams = {
 	refreshKey?: number;
 };
 
+export const findCategoryPath = (
+	categories: Category[],
+	categoryId: number | null,
+): Category[] => {
+	if (categoryId === null) return [];
+	for (const category of categories) {
+		if (category.id === categoryId) return [category];
+		const childPath = findCategoryPath(category.children, categoryId);
+		if (childPath.length > 0) return [category, ...childPath];
+	}
+	return [];
+};
+
+export const categoryPathStartsWith = (path: Category[], selectedIds: number[]) =>
+	selectedIds.every((id, index) => path[index]?.id === id);
+
 export const useVehicleMetadata = ({
 	onServiceError,
 	refreshKey = 0,
 }: UseVehicleMetadataParams) => {
-	const [brands, setBrands] = useState<Brand[]>([]);
-	const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
+	const [categories, setCategories] = useState<Category[]>([]);
 	const [rawDevices, setRawDevices] = useState<DeviceRaw[]>([]);
-	const [isLoadingBrands, setIsLoadingBrands] = useState(true);
-	const [isLoadingTypes, setIsLoadingTypes] = useState(true);
+	const [isLoadingCategories, setIsLoadingCategories] = useState(true);
 	const [isLoadingDevices, setIsLoadingDevices] = useState(true);
 
 	useEffect(() => {
-		const fetchBrands = async () => {
+		const fetchCategories = async () => {
 			try {
 				if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
 				const authToken = getAuthTokenOrThrow();
-				const response = await fetchWithRetry(`${API_URL}/api/brands`, {
+				const response = await fetchWithRetry(`${API_URL}/api/categories/tree`, {
 					method: 'GET',
-					headers: {
-						Authorization: `Bearer ${authToken}`,
-						Accept: 'application/json',
-					},
+					headers: { Authorization: `Bearer ${authToken}`, Accept: 'application/json' },
 				});
 				if (!response.ok) {
 					throwIfAuthResponseError(response);
-					throw new HttpError(response.status, `Brands API error: ${response.status}`);
+					throw new HttpError(response.status, `Categories API error: ${response.status}`);
 				}
-				const data: Brand[] = await response.json();
-				setBrands(data);
+				setCategories((await response.json()) as Category[]);
 			} catch (error) {
-				console.log('Handled brands load error:', error);
-				onServiceError(getServiceErrorFeature(error, 'lista marek'), error);
+				console.log('Handled categories load error:', error);
+				onServiceError(getServiceErrorFeature(error, 'lista kategorii'), error);
 			} finally {
-				setIsLoadingBrands(false);
-			}
-		};
-
-		const fetchDeviceTypes = async () => {
-			try {
-				if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
-				const authToken = getAuthTokenOrThrow();
-				const response = await fetchWithRetry(`${API_URL}/api/device_types`, {
-					method: 'GET',
-					headers: {
-						Authorization: `Bearer ${authToken}`,
-						Accept: 'application/json',
-					},
-				});
-				if (!response.ok) {
-					throwIfAuthResponseError(response);
-					throw new HttpError(response.status, `Types API error: ${response.status}`);
-				}
-				const data: DeviceType[] = await response.json();
-				setDeviceTypes(data);
-			} catch (error) {
-				console.log('Handled device types load error:', error);
-				onServiceError(getServiceErrorFeature(error, 'lista typów urządzeń'), error);
-			} finally {
-				setIsLoadingTypes(false);
+				setIsLoadingCategories(false);
 			}
 		};
 
@@ -107,17 +86,13 @@ export const useVehicleMetadata = ({
 				const authToken = getAuthTokenOrThrow();
 				const response = await fetchWithRetry(`${API_URL}/api/devices`, {
 					method: 'GET',
-					headers: {
-						Authorization: `Bearer ${authToken}`,
-						Accept: 'application/json',
-					},
+					headers: { Authorization: `Bearer ${authToken}`, Accept: 'application/json' },
 				});
 				if (!response.ok) {
 					throwIfAuthResponseError(response);
 					throw new HttpError(response.status, `Devices API error: ${response.status}`);
 				}
-				const data: DeviceRaw[] = await response.json();
-				setRawDevices(data);
+				setRawDevices((await response.json()) as DeviceRaw[]);
 			} catch (error) {
 				console.log('Handled devices load error:', error);
 				onServiceError(getServiceErrorFeature(error, 'lista maszyn'), error);
@@ -126,17 +101,9 @@ export const useVehicleMetadata = ({
 			}
 		};
 
-		fetchBrands();
-		fetchDeviceTypes();
-		fetchDevices();
+		void fetchCategories();
+		void fetchDevices();
 	}, [onServiceError, refreshKey]);
 
-	return {
-		brands,
-		deviceTypes,
-		rawDevices,
-		isLoadingBrands,
-		isLoadingTypes,
-		isLoadingDevices,
-	};
+	return { categories, rawDevices, isLoadingCategories, isLoadingDevices };
 };

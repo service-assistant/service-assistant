@@ -1,131 +1,60 @@
 import React from 'react';
-
 import VehicleFilters from '../components/VehicleFilters';
+import type { Category } from '../hooks/use-vehicle-metadata';
 import { findByType, getTextContent } from '../test-utils/react-tree';
 
 jest.mock('react', () => {
 	const actualReact = jest.requireActual('react');
-
+	return { ...actualReact, useState: (initialValue: unknown) => [initialValue, jest.fn()] };
+});
+jest.mock('react-native', () => {
+	const React = require('react');
+	const host = (name: string) =>
+		function Host({ children, ...props }: Record<string, unknown>) {
+			return React.createElement(name, props, children);
+		};
 	return {
-		...actualReact,
-		useState: (initialValue: unknown) => [initialValue, jest.fn()],
+		ActivityIndicator: host('ActivityIndicator'), Image: host('Image'), Platform: { OS: 'ios' },
+		ScrollView: host('ScrollView'), Text: host('Text'), TouchableOpacity: host('TouchableOpacity'), View: host('View'),
 	};
 });
 
-jest.mock('react-native', () => {
-	const React = require('react');
-	const createHost = (name: string) =>
-		function HostComponent({ children, ...props }: Record<string, unknown>) {
-			return React.createElement(name, props, children);
-		};
-
-	return {
-		ActivityIndicator: createHost('ActivityIndicator'),
-		Image: createHost('Image'),
-		Platform: {
-			OS: 'ios',
-		},
-		ScrollView: createHost('ScrollView'),
-		Text: createHost('Text'),
-		TouchableOpacity: createHost('TouchableOpacity'),
-		View: createHost('View'),
-	};
+const category = (id: number, name: string, children: Category[] = [], parentId: number | null = null): Category => ({
+	id, name, image_url: null, parent_id: parentId, created_at: '', updated_at: '', children,
 });
 
 describe('VehicleFilters', () => {
-	test('renders brand and type options', () => {
-		const tree = (
-			<VehicleFilters
-				brands={[
-					{ name: 'Toyota', logo_url: null },
-					{ name: 'Still', logo_url: null },
-				]}
-				deviceTypes={[{ name: 'Wózek' }]}
-				activeBrandFilter='WSZYSTKIE'
-				activeTypeFilter='WSZYSTKIE'
-				onBrandFilterChange={jest.fn()}
-				onTypeFilterChange={jest.fn()}
-				useTabletRefresh={false}
-			/>
-		);
-
+	test('renders root categories and the selected branch children', () => {
+		const tree = <VehicleFilters categories={[category(1, 'Toyota', [category(3, 'Wózek', [], 1)]), category(2, 'Still')]} selectedCategoryIds={[1]} onCategoryPathChange={jest.fn()} useTabletRefresh={false} />;
 		const text = getTextContent(tree);
-
 		expect(text).toContain('Marka');
-		expect(text).toContain('Toyota'.toUpperCase());
-		expect(text).toContain('Still'.toUpperCase());
-		expect(text).toContain('Typ');
+		expect(text).toContain('Toyota');
+		expect(text).toContain('Still');
+		expect(text).toContain('Typ maszyny');
 		expect(text).toContain('Wózek');
 	});
 
-	test('notifies when brand and type filters change', () => {
-		const onBrandFilterChange = jest.fn();
-		const onTypeFilterChange = jest.fn();
-		const tree = (
-			<VehicleFilters
-				brands={[{ name: 'Toyota', logo_url: null }]}
-				deviceTypes={[{ name: 'Wózek' }]}
-				activeBrandFilter='WSZYSTKIE'
-				activeTypeFilter='WSZYSTKIE'
-				onBrandFilterChange={onBrandFilterChange}
-				onTypeFilterChange={onTypeFilterChange}
-				useTabletRefresh={false}
-			/>
-		);
+	test('builds and truncates the selected category path', () => {
+		const onChange = jest.fn();
+		const tree = <VehicleFilters categories={[category(1, 'Toyota', [category(3, 'Wózek', [], 1)])]} selectedCategoryIds={[1]} onCategoryPathChange={onChange} useTabletRefresh={false} />;
 		const buttons = findByType(tree, 'TouchableOpacity');
-
-		buttons[1].props.onPress();
 		buttons[3].props.onPress();
-
-		expect(onBrandFilterChange).toHaveBeenCalledWith('Toyota');
-		expect(onTypeFilterChange).toHaveBeenCalledWith('Wózek');
+		expect(onChange).toHaveBeenCalledWith([1, 3]);
+		buttons[2].props.onPress();
+		expect(onChange).toHaveBeenCalledWith([1]);
 	});
 
-	test('shows loading indicators for loading sections', () => {
-		const tree = (
-			<VehicleFilters
-				brands={[]}
-				deviceTypes={[]}
-				activeBrandFilter='WSZYSTKIE'
-				activeTypeFilter='WSZYSTKIE'
-				onBrandFilterChange={jest.fn()}
-				onTypeFilterChange={jest.fn()}
-				useTabletRefresh={false}
-				isLoadingBrands
-				isLoadingTypes
-			/>
-		);
-
-		expect(findByType(tree, 'ActivityIndicator')).toHaveLength(2);
+	test('shows one loading indicator for the category tree', () => {
+		const tree = <VehicleFilters categories={[]} selectedCategoryIds={[]} onCategoryPathChange={jest.fn()} useTabletRefresh={false} isLoading />;
+		expect(findByType(tree, 'ActivityIndicator')).toHaveLength(1);
 	});
 
-	test('keeps long type buttons at their full width in the horizontal list', () => {
-		const longTypeName = 'Wózki paletowe niskiego składowania';
-		const tree = (
-			<VehicleFilters
-				brands={[]}
-				deviceTypes={[{ name: longTypeName }]}
-				activeBrandFilter='WSZYSTKIE'
-				activeTypeFilter='WSZYSTKIE'
-				onBrandFilterChange={jest.fn()}
-				onTypeFilterChange={jest.fn()}
-				useTabletRefresh={false}
-			/>
-		);
-		const typeScrollView = findByType(tree, 'ScrollView')[1];
-		const longTypeButton = findByType(typeScrollView, 'TouchableOpacity').find((button) =>
-			getTextContent(button).includes(longTypeName),
-		);
-		expect(longTypeButton).toBeDefined();
-		const longTypeText = findByType(longTypeButton!, 'Text')[0];
-
-		expect(typeScrollView.props.contentContainerStyle).toEqual({ paddingRight: 16 });
-		expect(longTypeButton!.props.style).toEqual(
-			expect.arrayContaining([expect.objectContaining({ flexShrink: 0 })]),
-		);
-		expect(longTypeText.props.style).toEqual(
-			expect.arrayContaining([expect.objectContaining({ flexShrink: 0 })]),
-		);
-		expect(longTypeText.props.numberOfLines).toBe(1);
+	test('keeps long category buttons at their full width', () => {
+		const tree = <VehicleFilters categories={[category(1, 'Wózki paletowe niskiego składowania')]} selectedCategoryIds={[]} onCategoryPathChange={jest.fn()} useTabletRefresh={false} />;
+		const longButton = findByType(tree, 'TouchableOpacity')[1];
+		const longText = findByType(longButton, 'Text')[0];
+		expect(longButton.props.style).toEqual(expect.arrayContaining([expect.objectContaining({ flexShrink: 0 })]));
+		expect(longText.props.style).toEqual(expect.arrayContaining([expect.objectContaining({ flexShrink: 0 })]));
+		expect(longText.props.numberOfLines).toBe(1);
 	});
 });
