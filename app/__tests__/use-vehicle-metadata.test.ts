@@ -7,12 +7,16 @@ jest.mock('react', () => ({
 		const index = mockReactStateIndex++;
 		if (mockReactStateValues.length <= index) mockReactStateValues[index] = initialValue;
 		const setState = (value: unknown) => {
-			mockReactStateValues[index] = typeof value === 'function' ? value(mockReactStateValues[index]) : value;
+			mockReactStateValues[index] =
+				typeof value === 'function' ? value(mockReactStateValues[index]) : value;
 		};
 		return [mockReactStateValues[index], setState];
 	},
 }));
-jest.mock('@/utils/api-config', () => ({ API_URL: 'https://api.example.test', API_URL_CONFIG_ERROR: null }));
+jest.mock('@/utils/api-config', () => ({
+	API_URL: 'https://api.example.test',
+	API_URL_CONFIG_ERROR: null,
+}));
 jest.mock('@/utils/auth-errors', () => ({
 	getAuthTokenOrThrow: jest.fn(() => 'test-token'),
 	getServiceErrorFeature: jest.fn((_error, fallback) => fallback),
@@ -40,19 +44,28 @@ describe('useVehicleMetadata', () => {
 
 	test('loads the category tree and devices with auth headers', async () => {
 		jest.mocked(global.fetch).mockImplementation((url) =>
-			Promise.resolve(String(url).endsWith('/api/categories/tree')
-				? response([{ id: 1, name: 'Toyota', children: [] }])
-				: response([{ id: 3, category_id: 1, name: 'Toyota 8FG' }])),
+			Promise.resolve(
+				String(url).endsWith('/api/categories/tree')
+					? response([{ id: 1, name: 'Toyota', children: [] }])
+					: response([{ id: 3, category_id: 1, name: 'Toyota 8FG' }]),
+			),
 		);
 		const { result, onServiceError } = renderHook();
 		await flush();
 		await flush();
 
 		expect(result.categories).toEqual([]);
-		expect(global.fetch).toHaveBeenCalledWith('https://api.example.test/api/categories/tree', expect.objectContaining({
-			method: 'GET', headers: { Authorization: 'Bearer test-token', Accept: 'application/json' },
-		}));
-		expect(global.fetch).toHaveBeenCalledWith('https://api.example.test/api/devices', expect.objectContaining({ method: 'GET' }));
+		expect(global.fetch).toHaveBeenCalledWith(
+			'https://api.example.test/api/categories/tree',
+			expect.objectContaining({
+				method: 'GET',
+				headers: { Authorization: 'Bearer test-token', Accept: 'application/json' },
+			}),
+		);
+		expect(global.fetch).toHaveBeenCalledWith(
+			'https://api.example.test/api/devices',
+			expect.objectContaining({ method: 'GET' }),
+		);
 		expect(mockReactStateValues[0]).toEqual([{ id: 1, name: 'Toyota', children: [] }]);
 		expect(mockReactStateValues[1]).toEqual([{ id: 3, category_id: 1, name: 'Toyota 8FG' }]);
 		expect(mockReactStateValues.slice(2, 4)).toEqual([false, false]);
@@ -61,7 +74,9 @@ describe('useVehicleMetadata', () => {
 
 	test('reports device loading errors with the device list feature name', async () => {
 		jest.mocked(global.fetch).mockImplementation((url) =>
-			String(url).endsWith('/api/devices') ? Promise.reject(new Error('network down')) : Promise.resolve(response([])),
+			String(url).endsWith('/api/devices')
+				? Promise.reject(new Error('network down'))
+				: Promise.resolve(response([])),
 		);
 		const { onServiceError } = renderHook();
 		await flush();

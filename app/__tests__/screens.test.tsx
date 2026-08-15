@@ -596,9 +596,7 @@ describe('tab screens', () => {
 			}
 			if (requestUrl.endsWith('/api/devices')) {
 				return Promise.resolve(
-					createJsonResponse([
-						{ id: 3, category_id: 1, name: 'Toyota 8FG' },
-					]),
+					createJsonResponse([{ id: 3, category_id: 1, name: 'Toyota 8FG' }]),
 				);
 			}
 

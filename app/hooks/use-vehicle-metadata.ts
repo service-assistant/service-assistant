@@ -33,10 +33,7 @@ type UseVehicleMetadataParams = {
 	refreshKey?: number;
 };
 
-export const findCategoryPath = (
-	categories: Category[],
-	categoryId: number | null,
-): Category[] => {
+export const findCategoryPath = (categories: Category[], categoryId: number | null): Category[] => {
 	if (categoryId === null) return [];
 	for (const category of categories) {
 		if (category.id === categoryId) return [category];
@@ -69,7 +66,10 @@ export const useVehicleMetadata = ({
 				});
 				if (!response.ok) {
 					throwIfAuthResponseError(response);
-					throw new HttpError(response.status, `Categories API error: ${response.status}`);
+					throw new HttpError(
+						response.status,
+						`Categories API error: ${response.status}`,
+					);
 				}
 				setCategories((await response.json()) as Category[]);
 			} catch (error) {

@@ -172,8 +172,13 @@ export default function VehicleFilters({
 							showsHorizontalScrollIndicator={false}
 							contentContainerStyle={{ paddingRight: useTabletRefresh ? 12 : 16 }}>
 							<TouchableOpacity
-								onPress={() => onCategoryPathChange(selectedCategoryIds.slice(0, level))}
-								style={[getFilterChipStyle(activeId === undefined), { flexShrink: 0 }]}
+								onPress={() =>
+									onCategoryPathChange(selectedCategoryIds.slice(0, level))
+								}
+								style={[
+									getFilterChipStyle(activeId === undefined),
+									{ flexShrink: 0 },
+								]}
 								className={chipClassName}>
 								<Text
 									className={optionTextClassName(activeId === undefined)}
