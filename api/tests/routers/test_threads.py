@@ -19,11 +19,10 @@ from app.services.stt import SttError
 from app.services.voice_query_selector import VoiceDecision, VoiceQuerySelection
 
 from tests.routers.factories import (
+    create_category,
     create_attachment,
-    create_brand,
     create_chunk,
     create_device,
-    create_device_type,
     create_message,
     create_thread,
     link_attachment_device,
@@ -128,9 +127,8 @@ def _diagnostic_plan(problem: str) -> DiagnosticPlan:
 
 
 async def test_should_create_thread_when_valid_data_provided(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
 
     response = await client.post(
         "/api/threads",
@@ -144,9 +142,8 @@ async def test_should_create_thread_when_valid_data_provided(client, session):
 
 
 async def test_should_store_nameplate_data_on_thread(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     nameplate_data = {
         "model": "XXX1D1XXX",
         "attributes": [
@@ -186,9 +183,8 @@ async def test_should_return_404_when_creating_thread_with_nonexistent_device(cl
 
 
 async def test_should_list_all_threads(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     await create_thread(session, device.id, title="Thread 1")
     await create_thread(session, device.id, title="Thread 2")
 
@@ -208,9 +204,8 @@ async def test_should_return_empty_list_when_no_threads_exist(client):
 
 
 async def test_should_return_thread_when_id_exists(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id, title="Mast won't lift")
 
     response = await client.get(f"/api/threads/{thread.id}")
@@ -229,9 +224,8 @@ async def test_should_return_404_when_getting_nonexistent_thread(client):
 
 
 async def test_should_delete_thread_when_id_exists(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     thread_id = thread.id
 
@@ -251,9 +245,8 @@ async def test_should_return_404_when_deleting_nonexistent_thread(client):
 async def test_should_send_message_and_return_assistant_reply(
     client, session, mock_azure_embeddings, mock_openai_llm
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
 
     response = await client.post(
@@ -278,9 +271,8 @@ async def test_should_send_message_and_return_assistant_reply(
 async def test_should_skip_diagnostic_mode_when_client_disables_it(
     client, session, mock_azure_embeddings, mock_openai_llm, mocker
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     build_diagnostic_plan = mocker.patch(
         "app.routers.threads.next_best_step.build_diagnostic_plan",
@@ -300,9 +292,8 @@ async def test_should_skip_diagnostic_mode_when_client_disables_it(
 async def test_photo_context_augments_retrieval_and_keeps_original_user_message(
     client, session, mock_openai_llm, mocker
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     retrieve = mocker.patch(
         "app.routers.threads.retrieval.retrieve_context_chunks",
@@ -346,9 +337,8 @@ async def test_photo_context_augments_retrieval_and_keeps_original_user_message(
 async def test_standard_mode_should_not_use_diagnostic_flow_for_exhausted_continuation(
     client, session, mock_openai_llm, mocker
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     attachment = await create_attachment(session)
     chunk = await create_chunk(
@@ -397,9 +387,8 @@ async def test_standard_mode_should_not_use_diagnostic_flow_for_exhausted_contin
 async def test_should_start_diagnostic_for_any_error_when_mode_is_enabled(
     client, session, mock_azure_embeddings, mock_openai_llm, mocker
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     build_diagnostic_plan = mocker.patch(
         "app.routers.threads.next_best_step.build_diagnostic_plan",
@@ -426,9 +415,8 @@ async def test_should_start_diagnostic_for_any_error_when_mode_is_enabled(
 async def test_should_emit_pipeline_trace_when_debug_is_requested(
     client, session, mock_openai_llm, mocker
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     mocker.patch(
         "app.routers.threads.retrieval.retrieve_context_chunks",
@@ -474,9 +462,8 @@ async def test_should_emit_pipeline_trace_when_debug_is_requested(
 async def test_should_send_side_question_through_standard_rag_during_diagnostic(
     client, session, mock_azure_embeddings, mock_openai_llm, mocker
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     attachment = await create_attachment(session)
     chunk = await create_chunk(session, attachment.id, content="Procedura 2:002")
@@ -535,9 +522,8 @@ async def test_should_send_side_question_through_standard_rag_during_diagnostic(
 async def test_should_reconstruct_diagnostic_from_history_for_any_problem(
     client, session, mock_openai_llm, mocker
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     attachment = await create_attachment(session)
     chunk = await create_chunk(session, attachment.id, content="Procedura błędu E-23")
@@ -603,9 +589,8 @@ async def test_should_reconstruct_diagnostic_from_history_for_any_problem(
 async def test_should_store_user_message_before_reply(
     client, session, mock_azure_embeddings, mock_openai_llm
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
 
     await client.post(
@@ -626,9 +611,8 @@ async def test_should_store_user_message_before_reply(
 async def test_should_chunk_events_concatenate_to_full_message_content(
     client, session, mock_azure_embeddings, mock_openai_llm
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
 
     response = await client.post(
@@ -663,9 +647,8 @@ async def test_should_return_404_when_thread_not_found_on_send_message(client):
 
 
 async def test_should_list_messages_in_thread_chronologically(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     await create_message(
         session, thread.id, content="User question", sender=MessageSender.user
@@ -689,9 +672,8 @@ async def test_should_list_messages_in_thread_chronologically(client, session):
 async def test_should_return_continuation_flag_for_assistant_reply(
     client, session, mock_azure_embeddings, mock_openai_llm, mocker
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
 
     async def stream_with_next_marker():
@@ -725,9 +707,8 @@ async def test_should_return_continuation_flag_for_assistant_reply(
 async def test_should_continue_from_previous_next_section(
     client, session, mock_azure_embeddings, mock_openai_llm
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     await create_message(
         session,
@@ -758,9 +739,8 @@ async def test_should_continue_from_previous_next_section(
 
 
 async def test_should_return_empty_list_when_thread_has_no_messages(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
 
     response = await client.get(f"/api/threads/{thread.id}/messages")
@@ -777,9 +757,8 @@ async def test_should_return_404_when_listing_messages_for_nonexistent_thread(cl
 
 
 async def test_should_transcribe_audio_when_thread_exists(client, session, mocker):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
 
     mock_response = mocker.MagicMock(status_code=200)
@@ -834,9 +813,8 @@ async def test_should_return_404_when_transcribing_for_nonexistent_thread(client
 
 
 async def test_should_return_502_when_stt_service_fails(client, session, mocker):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
 
     mock_response = mocker.MagicMock(status_code=503, text="service unavailable")
@@ -855,9 +833,8 @@ async def test_should_return_502_when_stt_service_fails(client, session, mocker)
 
 
 async def test_should_return_422_when_audio_is_empty(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
 
     response = await client.post(
@@ -871,9 +848,8 @@ async def test_should_return_422_when_audio_is_empty(client, session):
 async def test_should_not_leave_orphaned_user_message_when_retrieval_fails(
     client, session, mocker
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
 
     mock_client = mocker.MagicMock()
@@ -976,9 +952,8 @@ def test_should_send_error_when_stt_service_fails_during_stream(ws_client, mocke
 async def test_should_return_completion_without_retrieval_when_no_next_was_promised(
     client, session, mock_openai_llm, mocker
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     await create_message(
         session,
@@ -1012,9 +987,8 @@ async def test_should_return_completion_without_retrieval_when_no_next_was_promi
 async def test_should_use_fresh_chunks_when_short_message_is_not_classified_as_continuation(
     client, session, mock_azure_embeddings, mock_openai_llm, mocker
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     attachment = await create_attachment(session)
     await link_attachment_device(session, attachment.id, device.id)
@@ -1068,9 +1042,8 @@ async def test_should_persist_five_sources_matching_llm_context_on_successful_re
     reranker_enabled_settings,
     mocker,
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     attachment = await create_attachment(session)
     await link_attachment_device(session, attachment.id, device.id)
@@ -1110,9 +1083,8 @@ async def test_should_persist_wider_sources_matching_llm_context_on_rerank_fallb
     reranker_enabled_settings,
     mocker,
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     attachment = await create_attachment(session)
     await link_attachment_device(session, attachment.id, device.id)
@@ -1155,9 +1127,8 @@ async def test_should_persist_wider_sources_matching_llm_context_on_diagnostic_b
     reranker_enabled_settings,
     mocker,
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     attachment = await create_attachment(session)
     await link_attachment_device(session, attachment.id, device.id)

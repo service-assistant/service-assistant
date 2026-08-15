@@ -1,8 +1,8 @@
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
 import { useAttachments, useLinkDevice, useUnlinkDevice } from '@/hooks/useAttachments'
-import { useBrands } from '@/hooks/useBrands'
+import { useCategoryTree } from '@/hooks/useCategories'
 import { useDeleteDevice, useDevice, useDeviceAttachments } from '@/hooks/useDevices'
-import { useDeviceTypes } from '@/hooks/useDeviceTypes'
+import { categoryPath, flattenCategoryTree } from '@/lib/categoryTree'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { useState } from 'react'
 
@@ -12,8 +12,7 @@ export function MachineDetailPage() {
 	const navigate = useNavigate()
 
 	const { data: device, isLoading } = useDevice(id)
-	const { data: brands } = useBrands()
-	const { data: deviceTypes } = useDeviceTypes()
+	const { data: tree } = useCategoryTree()
 	const { data: linkedAttachments } = useDeviceAttachments(id)
 	const { data: allAttachments } = useAttachments()
 	const deleteDevice = useDeleteDevice()
@@ -24,8 +23,7 @@ export function MachineDetailPage() {
 	const [showAssignPanel, setShowAssignPanel] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
-	const brand = brands?.find((b) => b.id === device?.brand_id)
-	const deviceType = deviceTypes?.find((t) => t.id === device?.device_type_id)
+	const flat = flattenCategoryTree(tree ?? [])
 	const linkedIds = new Set(linkedAttachments?.map((a) => a.id))
 
 	async function handleDelete() {
@@ -68,7 +66,7 @@ export function MachineDetailPage() {
 				<div>
 					<h1 className='text-2xl font-semibold text-cream'>{device.name}</h1>
 					<p className='text-sm text-cream/50'>
-						{brand?.name ?? '?'} · {deviceType?.name ?? '?'}
+						{categoryPath(device.category_id, flat)}
 					</p>
 				</div>
 				<Link

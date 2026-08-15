@@ -65,8 +65,7 @@ async def clean_db(engine):
                     chat_threads, 
                     attachments, 
                     devices, 
-                    brands, 
-                    device_types 
+                    categories
                 RESTART IDENTITY CASCADE
                 """
             )

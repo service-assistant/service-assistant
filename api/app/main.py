@@ -8,9 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.routers import (
     admin,
     attachments,
-    brands,
+    categories,
     chunks,
-    device_types,
     devices,
     images,
     messages,
@@ -87,10 +86,7 @@ app.add_middleware(
 )
 
 
-app.include_router(brands.router, prefix="/api/brands", tags=["Brands"])
-app.include_router(
-    device_types.router, prefix="/api/device_types", tags=["Device Types"]
-)
+app.include_router(categories.router, prefix="/api/categories", tags=["Categories"])
 app.include_router(devices.router, prefix="/api/devices", tags=["Devices"])
 app.include_router(attachments.router, prefix="/api/attachments", tags=["Attachments"])
 app.include_router(threads.router, prefix="/api/threads", tags=["Chat Threads"])

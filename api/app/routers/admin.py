@@ -30,17 +30,14 @@ from app.database import get_engine, get_session
 from app.models import (
     Attachment,
     AttachmentDevice,
-    Brand,
+    Category,
     ChatThread,
     Chunk,
     ChunkMessage,
     Device,
-    DeviceType,
     Message,
 )
 from app.routers.attachments import list_attachments, save_and_ingest_attachment
-from app.routers.brands import list_brands
-from app.routers.device_types import list_device_types
 from app.routers.devices import list_devices
 from app.routers.threads import list_threads
 from app.services.async_utils import run_blocking
@@ -123,8 +120,7 @@ _benchmark_case_cancel_events: dict[str, asyncio.Event] = {}
 
 BENCHMARK_SETUP_STEPS = [
     ("download", "Download documents from R2"),
-    ("brand", "Create benchmark brand"),
-    ("device_type", "Create benchmark device type"),
+    ("category", "Create benchmark category"),
     ("device", "Create benchmark machine"),
     ("ingest", "Link and chunk documents"),
     ("verify", "Verify benchmark setup"),
@@ -516,18 +512,11 @@ async def get_latest_benchmark_setup(
                 message=f"{result['attachments']} document(s) present in the database.",
             ),
             BenchmarkSetupStep(
-                key="brand",
-                label="Create benchmark brand",
+                key="category",
+                label="Create benchmark category",
                 state="completed",
-                message=f"Brand verified by ID {result['brand_id']}.",
-                details={"id": result["brand_id"]},
-            ),
-            BenchmarkSetupStep(
-                key="device_type",
-                label="Create benchmark device type",
-                state="completed",
-                message=f"Device type verified by ID {result['device_type_id']}.",
-                details={"id": result["device_type_id"]},
+                message=f"Category verified by ID {result['category_id']}.",
+                details={"id": result["category_id"]},
             ),
             BenchmarkSetupStep(
                 key="device",
@@ -896,11 +885,15 @@ async def get_document_detail(
     )
 
 
+async def _list_all_categories(session: AsyncSession) -> list[Category]:
+    result = await session.execute(select(Category).order_by(Category.id))
+    return list(result.scalars().all())
+
+
 @dataclass
 class DeviceRow:
     device: Device
-    brand_name: str
-    device_type_name: str
+    category_name: str
 
 
 @router.get(
@@ -913,17 +906,14 @@ async def get_devices(
     session: AsyncSession = Depends(get_session),
 ):
     all_devices = await list_devices(session=session)
-    all_brands = await list_brands(session=session)
-    all_device_types = await list_device_types(session=session)
+    all_categories = await _list_all_categories(session)
 
-    brand_map = {b.id: b.name for b in all_brands}
-    dt_map = {dt.id: dt.name for dt in all_device_types}
+    category_map: dict[int | None, str] = {c.id: c.name for c in all_categories}
 
     rows = [
         DeviceRow(
             device=d,
-            brand_name=brand_map.get(d.brand_id, "?"),
-            device_type_name=dt_map.get(d.device_type_id, "?"),
+            category_name=category_map.get(d.category_id, "?"),
         )
         for d in all_devices
     ]
@@ -935,8 +925,7 @@ async def get_devices(
             "request": request,
             "active": "devices",
             "devices": rows,
-            "brands": all_brands,
-            "device_types": all_device_types,
+            "categories": all_categories,
         },
     )
 
@@ -962,89 +951,56 @@ async def get_edit_device(
             "request": request,
             "active": "devices",
             "device": device,
-            "brands": await list_brands(session=session),
-            "device_types": await list_device_types(session=session),
+            "categories": await _list_all_categories(session),
         },
     )
 
 
 @router.get(
-    "/brands",
+    "/categories",
     response_class=HTMLResponse,
     dependencies=[Depends(_require_auth)],
 )
-async def get_brands(
+async def get_categories(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
+    all_categories = await _list_all_categories(session)
+    category_names = {c.id: c.name for c in all_categories}
     return templates.TemplateResponse(
         request=request,
-        name="admin/brands.html",
+        name="admin/categories.html",
         context={
             "request": request,
-            "active": "brands",
-            "brands": await list_brands(session=session),
+            "active": "categories",
+            "categories": all_categories,
+            "category_names": category_names,
         },
     )
 
 
 @router.get(
-    "/brands/{brand_id}/edit",
+    "/categories/{category_id}/edit",
     response_class=HTMLResponse,
     dependencies=[Depends(_require_auth)],
 )
-async def get_edit_brand(
-    brand_id: int,
+async def get_edit_category(
+    category_id: int,
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
-    brand = await session.get(Brand, brand_id)
-    if not brand:
-        return JSONResponse({"error": "Brand not found."}, status_code=404)
+    category = await session.get(Category, category_id)
+    if not category:
+        return JSONResponse({"error": "Category not found."}, status_code=404)
     return templates.TemplateResponse(
         request=request,
-        name="admin/brand_edit.html",
-        context={"request": request, "active": "brands", "brand": brand},
-    )
-
-
-@router.get(
-    "/device_types",
-    response_class=HTMLResponse,
-    dependencies=[Depends(_require_auth)],
-)
-async def get_device_types(
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-):
-    return templates.TemplateResponse(
-        request=request,
-        name="admin/device_types.html",
+        name="admin/category_edit.html",
         context={
             "request": request,
-            "active": "device_types",
-            "device_types": await list_device_types(session=session),
+            "active": "categories",
+            "category": category,
+            "categories": await _list_all_categories(session),
         },
-    )
-
-
-@router.get(
-    "/device_types/{device_type_id}/edit",
-    response_class=HTMLResponse,
-    dependencies=[Depends(_require_auth)],
-)
-async def get_edit_device_type(
-    device_type_id: int,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-):
-    dt = await session.get(DeviceType, device_type_id)
-    if not dt:
-        return JSONResponse({"error": "Device type not found."}, status_code=404)
-    return templates.TemplateResponse(
-        request=request,
-        name="admin/device_type_edit.html",
-        context={"request": request, "active": "device_types", "device_type": dt},
     )
 
 

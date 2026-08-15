@@ -5,10 +5,9 @@ from sqlalchemy import select
 from app.models import Attachment, AttachmentDevice
 
 from tests.routers.factories import (
+    create_category,
     create_attachment,
-    create_brand,
     create_device,
-    create_device_type,
     link_attachment_device,
 )
 
@@ -40,10 +39,9 @@ async def test_should_return_empty_list_when_no_attachments(client):
 async def test_should_upload_attachment_and_return_metadata(
     client, tmp_path, session, mock_ingest_fitz
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device1 = await create_device(session, brand.id, dt.id, name="Device 1")
-    device2 = await create_device(session, brand.id, dt.id, name="Device 2")
+    category = await create_category(session)
+    device1 = await create_device(session, category.id, name="Device 1")
+    device2 = await create_device(session, category.id, name="Device 2")
 
     response = await client.post(
         "/api/attachments",
@@ -62,9 +60,8 @@ async def test_should_handle_filename_collision_on_upload(
     client, tmp_path, session, mock_ingest_fitz
 ):
     (tmp_path / "manual.pdf").write_bytes(b"existing file")
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
 
     response = await client.post(
         "/api/attachments",
@@ -263,10 +260,9 @@ async def test_should_return_404_when_reingesting_nonexistent_attachment(client)
 
 
 async def test_should_list_devices_for_attachment(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device1 = await create_device(session, brand.id, dt.id, name="Device 1")
-    device2 = await create_device(session, brand.id, dt.id, name="Device 2")
+    category = await create_category(session)
+    device1 = await create_device(session, category.id, name="Device 1")
+    device2 = await create_device(session, category.id, name="Device 2")
     attachment = await create_attachment(session)
     await link_attachment_device(session, attachment.id, device1.id)
     await link_attachment_device(session, attachment.id, device2.id)
@@ -297,9 +293,8 @@ async def test_should_return_404_when_listing_devices_for_nonexistent_attachment
 
 
 async def test_should_link_device_to_attachment(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     attachment = await create_attachment(session)
 
     response = await client.post(
@@ -310,9 +305,8 @@ async def test_should_link_device_to_attachment(client, session):
 
 
 async def test_should_be_idempotent_when_linking_already_linked_device(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     attachment = await create_attachment(session)
     await link_attachment_device(session, attachment.id, device.id)
 
@@ -326,9 +320,8 @@ async def test_should_be_idempotent_when_linking_already_linked_device(client, s
 async def test_should_return_404_when_linking_device_to_nonexistent_attachment(
     client, session
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
 
     response = await client.post(f"/api/attachments/999/devices/{device.id}")
 
@@ -346,9 +339,8 @@ async def test_should_return_404_when_linking_nonexistent_device(client, session
 
 
 async def test_should_unlink_device_from_attachment(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     attachment = await create_attachment(session)
     await link_attachment_device(session, attachment.id, device.id)
 
@@ -360,9 +352,8 @@ async def test_should_unlink_device_from_attachment(client, session):
 
 
 async def test_should_return_404_when_unlinking_device_not_linked(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     attachment = await create_attachment(session)
 
     response = await client.delete(
@@ -374,9 +365,8 @@ async def test_should_return_404_when_unlinking_device_not_linked(client, sessio
 
 
 async def test_should_be_idempotent_on_concurrent_link_device(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     attachment = await create_attachment(session)
 
     results = await asyncio.gather(
@@ -401,9 +391,8 @@ async def test_should_be_idempotent_on_concurrent_link_device(client, session):
 async def test_should_save_unique_filenames_on_concurrent_upload(
     client, tmp_path, session, mock_ingest_fitz
 ):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
 
     async with asyncio.TaskGroup() as tg:
         t1 = tg.create_task(

@@ -1,17 +1,15 @@
 from app.schemas import PhotoObservation
 
 from tests.routers.factories import (
-    create_brand,
+    create_category,
     create_device,
-    create_device_type,
     create_thread,
 )
 
 
 async def test_extracts_photo_context_for_existing_thread(client, session, mocker):
-    brand = await create_brand(session)
-    device_type = await create_device_type(session)
-    device = await create_device(session, brand.id, device_type.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     analyze = mocker.patch(
         "app.routers.threads.photo_context.analyze_photos",
@@ -49,9 +47,8 @@ async def test_extracts_photo_context_for_existing_thread(client, session, mocke
 
 
 async def test_rejects_more_than_five_photos(client, session):
-    brand = await create_brand(session)
-    device_type = await create_device_type(session)
-    device = await create_device(session, brand.id, device_type.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
 
     response = await client.post(

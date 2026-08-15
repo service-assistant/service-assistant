@@ -8,14 +8,14 @@ async def test_should_return_healthy_when_database_is_reachable(client):
 
 
 async def test_should_return_401_when_no_auth_header_provided(unauthenticated_client):
-    response = await unauthenticated_client.get("/api/brands")
+    response = await unauthenticated_client.get("/api/categories")
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
 
 
 async def test_should_allow_cors_preflight_from_expo_web(unauthenticated_client):
     response = await unauthenticated_client.options(
-        "/api/brands",
+        "/api/categories",
         headers={
             "Origin": "http://localhost:8081",
             "Access-Control-Request-Method": "GET",

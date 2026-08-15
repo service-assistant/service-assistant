@@ -1,6 +1,7 @@
 import { useCreateAttachment } from '@/hooks/useAttachments'
-import { useBrands } from '@/hooks/useBrands'
+import { useCategoryTree } from '@/hooks/useCategories'
 import { useDevices } from '@/hooks/useDevices'
+import { categoryPath, flattenCategoryTree } from '@/lib/categoryTree'
 import { machineCountLabel } from '@/lib/pluralize'
 import { useNavigate } from '@tanstack/react-router'
 import { Check, FileText, Search, Upload } from 'lucide-react'
@@ -49,7 +50,7 @@ function Stepper({ current }: { current: Step }) {
 export function AddDocumentPage() {
 	const navigate = useNavigate()
 	const { data: devices } = useDevices()
-	const { data: brands } = useBrands()
+	const { data: tree } = useCategoryTree()
 	const createAttachment = useCreateAttachment()
 
 	const [step, setStep] = useState<Step>(1)
@@ -58,7 +59,7 @@ export function AddDocumentPage() {
 	const [search, setSearch] = useState('')
 	const [error, setError] = useState<string | null>(null)
 
-	const brandMap = new Map(brands?.map((b) => [b.id, b.name]))
+	const flat = flattenCategoryTree(tree ?? [])
 	const filteredDevices = useMemo(
 		() => devices?.filter((d) => d.name.toLowerCase().includes(search.toLowerCase())) ?? [],
 		[devices, search],
@@ -185,11 +186,10 @@ export function AddDocumentPage() {
 					</div>
 
 					<div className='rounded-lg border border-line bg-panel'>
-						<div className='grid grid-cols-[auto_2fr_1fr_1fr_1fr] items-center gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
+						<div className='grid grid-cols-[auto_2fr_1fr_1fr] items-center gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
 							<span />
 							<span>Model</span>
-							<span>Marka</span>
-							<span>Typ</span>
+							<span>Kategoria</span>
 							<span>Dokumenty</span>
 						</div>
 						{filteredDevices.map((device) => {
@@ -197,15 +197,14 @@ export function AddDocumentPage() {
 							return (
 								<label
 									key={device.id}
-									className={`grid grid-cols-[auto_2fr_1fr_1fr_1fr] cursor-pointer items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 last:border-b-0 hover:bg-panel-soft ${checked ? 'bg-panel-soft' : ''}`}>
+									className={`grid grid-cols-[auto_2fr_1fr_1fr] cursor-pointer items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 last:border-b-0 hover:bg-panel-soft ${checked ? 'bg-panel-soft' : ''}`}>
 									<input
 										type='checkbox'
 										checked={checked}
 										onChange={() => toggleDevice(device.id)}
 									/>
 									<span className='text-cream'>{device.name}</span>
-									<span>{brandMap.get(device.brand_id) ?? '?'}</span>
-									<span>—</span>
+									<span>{categoryPath(device.category_id, flat)}</span>
 									<span className='text-xs text-cream/50'>Brak</span>
 								</label>
 							)
@@ -267,15 +266,14 @@ export function AddDocumentPage() {
 
 					<h2 className='mb-2 text-sm font-semibold text-cream'>Wybrane maszyny</h2>
 					<div className='mb-6 rounded-lg border border-line bg-panel'>
-						<div className='grid grid-cols-[2fr_1fr_1fr] gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
+						<div className='grid grid-cols-[2fr_1fr] gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
 							<span>Model</span>
-							<span>Marka</span>
-							<span>Typ</span>
+							<span>Kategoria</span>
 						</div>
 						{selectedDevices.map((device) => (
 							<div
 								key={device.id}
-								className='grid grid-cols-[2fr_1fr_1fr] items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 last:border-b-0'>
+								className='grid grid-cols-[2fr_1fr] items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 last:border-b-0'>
 								<span>
 									<div className='text-cream'>{device.name}</div>
 									{device.model_serial_code && (
@@ -284,8 +282,7 @@ export function AddDocumentPage() {
 										</div>
 									)}
 								</span>
-								<span>{brandMap.get(device.brand_id) ?? '?'}</span>
-								<span>—</span>
+								<span>{categoryPath(device.category_id, flat)}</span>
 							</div>
 						))}
 					</div>

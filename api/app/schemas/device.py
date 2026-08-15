@@ -4,11 +4,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class DeviceCreate(BaseModel):
-    brand_id: int = Field(
-        description="ID of the brand this device belongs to.", examples=[1]
-    )
-    device_type_id: int = Field(
-        description="ID of the device type category.", examples=[2]
+    category_id: int | None = Field(
+        default=None,
+        description="ID of the category this device belongs to, or `null` for none.",
+        examples=[2],
     )
     name: str = Field(
         description="Human-readable device name.", examples=["Toyota 8FBE20"]
@@ -26,11 +25,8 @@ class DeviceCreate(BaseModel):
 
 
 class DeviceUpdate(BaseModel):
-    brand_id: int | None = Field(
-        default=None, description="New brand ID.", examples=[1]
-    )
-    device_type_id: int | None = Field(
-        default=None, description="New device type ID.", examples=[2]
+    category_id: int | None = Field(
+        default=None, description="New category ID.", examples=[2]
     )
     name: str | None = Field(
         default=None, description="New device name.", examples=["Toyota 8FBE20"]
@@ -62,11 +58,8 @@ class DeviceRead(BaseModel):
         description="Publicly accessible URL of the device image.",
         examples=["https://example.com/images/toyota-8fbe20.jpg"],
     )
-    brand_id: int = Field(
-        description="ID of the brand this device belongs to.", examples=[1]
-    )
-    device_type_id: int = Field(
-        description="ID of the device type category.", examples=[2]
+    category_id: int | None = Field(
+        description="ID of the category this device belongs to.", examples=[2]
     )
     created_at: datetime = Field(description="Timestamp when the device was created.")
     updated_at: datetime = Field(description="Timestamp of the last update.")

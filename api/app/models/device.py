@@ -11,9 +11,8 @@ from .associations import AttachmentDevice
 
 if TYPE_CHECKING:
     from .attachment import Attachment
-    from .brand import Brand
+    from .category import Category
     from .chat_thread import ChatThread
-    from .device_type import DeviceType
 
 
 class Device(Base):
@@ -24,30 +23,22 @@ class Device(Base):
     model_serial_code: Mapped[str | None]
     image_url: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow
+        DateTime(timezone=True),
+        default=utcnow,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
     )
 
-    brand_id: Mapped[int] = mapped_column(
+    category_id: Mapped[int | None] = mapped_column(
         ForeignKey(
-            "brands.id",
-            ondelete="RESTRICT",
+            "categories.id",
+            ondelete="SET NULL",
         )
     )
-    brand: Mapped[Brand] = relationship(
-        back_populates="devices",
-        lazy="raise",
-    )
-
-    device_type_id: Mapped[int] = mapped_column(
-        ForeignKey(
-            "device_types.id",
-            ondelete="RESTRICT",
-        )
-    )
-    device_type: Mapped[DeviceType] = relationship(
+    category: Mapped[Category | None] = relationship(
         back_populates="devices",
         lazy="raise",
     )

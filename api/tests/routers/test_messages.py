@@ -1,9 +1,8 @@
 from tests.routers.factories import (
+    create_category,
     create_attachment,
-    create_brand,
     create_chunk,
     create_device,
-    create_device_type,
     create_message,
     create_thread,
 )
@@ -11,9 +10,8 @@ from app.models import ChunkMessage, MessageSender
 
 
 async def test_should_return_chunks_for_assistant_message(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     message = await create_message(session, thread.id, sender=MessageSender.assistant)
     attachment = await create_attachment(session)
@@ -44,9 +42,8 @@ async def test_should_return_chunks_for_assistant_message(client, session):
 
 
 async def test_should_return_empty_list_when_message_has_no_chunks(client, session):
-    brand = await create_brand(session)
-    dt = await create_device_type(session)
-    device = await create_device(session, brand.id, dt.id)
+    category = await create_category(session)
+    device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     message = await create_message(session, thread.id)
 

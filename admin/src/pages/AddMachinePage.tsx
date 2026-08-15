@@ -1,23 +1,23 @@
 import { useAttachments, useLinkDevice } from '@/hooks/useAttachments'
-import { useBrands } from '@/hooks/useBrands'
+import { useCategoryTree } from '@/hooks/useCategories'
 import { useCreateDevice } from '@/hooks/useDevices'
-import { useDeviceTypes } from '@/hooks/useDeviceTypes'
+import { flattenCategoryTree } from '@/lib/categoryTree'
 import { selectedLabel } from '@/lib/pluralize'
 import { useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 
 export function AddMachinePage() {
 	const navigate = useNavigate()
-	const { data: brands } = useBrands()
-	const { data: deviceTypes } = useDeviceTypes()
+	const { data: tree } = useCategoryTree()
 	const { data: attachments } = useAttachments()
 	const createDevice = useCreateDevice()
 	const linkDevice = useLinkDevice()
 
+	const flat = flattenCategoryTree(tree ?? [])
+
 	const [name, setName] = useState('')
 	const [modelSerialCode, setModelSerialCode] = useState('')
-	const [brandId, setBrandId] = useState<number | null>(null)
-	const [deviceTypeId, setDeviceTypeId] = useState<number | null>(null)
+	const [categoryId, setCategoryId] = useState<number | null>(null)
 	const [imageUrl, setImageUrl] = useState('')
 	const [selectedAttachmentIds, setSelectedAttachmentIds] = useState<number[]>([])
 	const [error, setError] = useState<string | null>(null)
@@ -29,16 +29,15 @@ export function AddMachinePage() {
 	}
 
 	async function handleSubmit() {
-		if (!name || !brandId || !deviceTypeId) {
-			setError('Nazwa, marka i typ maszyny są wymagane.')
+		if (!name) {
+			setError('Nazwa maszyny jest wymagana.')
 			return
 		}
 		setError(null)
 		try {
 			const device = await createDevice.mutateAsync({
 				name,
-				brand_id: brandId,
-				device_type_id: deviceTypeId,
+				category_id: categoryId,
 				model_serial_code: modelSerialCode || null,
 				image_url: imageUrl || null,
 			})
@@ -78,34 +77,20 @@ export function AddMachinePage() {
 				</div>
 				<div>
 					<label className='mb-1 block text-xs uppercase tracking-wide text-cream/50'>
-						Marka
+						Kategoria (opcjonalnie)
 					</label>
 					<select
-						value={brandId ?? ''}
-						onChange={(e) => setBrandId(e.target.value ? Number(e.target.value) : null)}
-						className='w-full rounded-md border border-line bg-panel-soft px-3 py-2 text-sm text-cream'>
-						<option value=''>Wybierz markę</option>
-						{brands?.map((b) => (
-							<option key={b.id} value={b.id}>
-								{b.name}
-							</option>
-						))}
-					</select>
-				</div>
-				<div>
-					<label className='mb-1 block text-xs uppercase tracking-wide text-cream/50'>
-						Typ maszyny
-					</label>
-					<select
-						value={deviceTypeId ?? ''}
+						value={categoryId ?? ''}
 						onChange={(e) =>
-							setDeviceTypeId(e.target.value ? Number(e.target.value) : null)
+							setCategoryId(e.target.value ? Number(e.target.value) : null)
 						}
 						className='w-full rounded-md border border-line bg-panel-soft px-3 py-2 text-sm text-cream'>
-						<option value=''>Wybierz typ</option>
-						{deviceTypes?.map((t) => (
-							<option key={t.id} value={t.id}>
-								{t.name}
+						<option value=''>— brak kategorii —</option>
+						{flat.map((c) => (
+							<option key={c.id} value={c.id}>
+								{'  '.repeat(c.depth)}
+								{c.depth > 0 ? '↳ ' : ''}
+								{c.name}
 							</option>
 						))}
 					</select>

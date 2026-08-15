@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_session
-from app.models import Attachment, AttachmentDevice, Brand, Device, DeviceType
+from app.models import Attachment, AttachmentDevice, Category, Device
 from app.schemas import AttachmentRead, DeviceCreate, DeviceRead, DeviceUpdate
 
 router = APIRouter()
@@ -17,17 +17,15 @@ router = APIRouter()
     status_code=status.HTTP_201_CREATED,
     response_model=DeviceRead,
     summary="Create a device",
-    description="Creates a new device and associates it with a brand and device type.",
+    description="Creates a new device and associates it with a category.",
 )
 async def create_device(
     body: DeviceCreate, session: AsyncSession = Depends(get_session)
 ):
-    brand = await session.get(Brand, body.brand_id)
-    if not brand:
-        raise HTTPException(status_code=404, detail="Brand not found")
-    device_type = await session.get(DeviceType, body.device_type_id)
-    if not device_type:
-        raise HTTPException(status_code=404, detail="Device type not found")
+    if body.category_id is not None:
+        category = await session.get(Category, body.category_id)
+        if not category:
+            raise HTTPException(status_code=404, detail="Category not found")
 
     device = Device(**body.model_dump())
     session.add(device)
@@ -35,9 +33,7 @@ async def create_device(
         await session.commit()
     except IntegrityError:
         await session.rollback()
-        raise HTTPException(
-            status_code=409, detail="Brand or device type no longer exists"
-        )
+        raise HTTPException(status_code=409, detail="Category no longer exists")
     await session.refresh(device)
     return device
 
@@ -110,14 +106,10 @@ async def update_device(
     device = await session.get(Device, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-    if "brand_id" in updates:
-        brand = await session.get(Brand, updates["brand_id"])
-        if not brand:
-            raise HTTPException(status_code=404, detail="Brand not found")
-    if "device_type_id" in updates:
-        device_type = await session.get(DeviceType, updates["device_type_id"])
-        if not device_type:
-            raise HTTPException(status_code=404, detail="Device type not found")
+    if updates.get("category_id") is not None:
+        category = await session.get(Category, updates["category_id"])
+        if not category:
+            raise HTTPException(status_code=404, detail="Category not found")
     for field, value in updates.items():
         setattr(device, field, value)
     device.updated_at = datetime.now(timezone.utc)
