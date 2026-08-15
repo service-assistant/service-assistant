@@ -21,8 +21,7 @@ export function useDeviceAttachments(deviceId: number) {
 }
 
 export interface DeviceCreateBody {
-	brand_id: number
-	device_type_id: number
+	category_id?: number | null
 	name: string
 	model_serial_code?: string | null
 	image_url?: string | null

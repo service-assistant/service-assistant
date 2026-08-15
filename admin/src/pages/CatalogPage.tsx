@@ -1,14 +1,14 @@
 import { PageHeader } from '@/components/PageHeader'
 import { StatTile } from '@/components/StatTile'
-import { useBrands } from '@/hooks/useBrands'
-import { useDeviceTypes } from '@/hooks/useDeviceTypes'
+import { useCategoryChildren, useCategoryTree, useRootCategories } from '@/hooks/useCategories'
 import { useDeviceAttachments, useDevices } from '@/hooks/useDevices'
-import type { Device } from '@/lib/types'
+import { categoryPath, flattenCategoryTree } from '@/lib/categoryTree'
+import type { Category, Device } from '@/lib/types'
 import { Link, useNavigate, useSearch } from '@tanstack/react-router'
-import { Layers, Plus, Search, ShieldAlert, Wrench } from 'lucide-react'
+import { ChevronDown, ChevronRight, Layers, Plus, Search, ShieldAlert, Wrench } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
-type Tab = 'models' | 'brands' | 'types'
+type Tab = 'models' | 'categories'
 
 function TabButton({
 	label,
@@ -28,15 +28,7 @@ function TabButton({
 	)
 }
 
-function ModelRow({
-	device,
-	brandName,
-	typeName,
-}: {
-	device: Device
-	brandName: string
-	typeName: string
-}) {
+function ModelRow({ device, categoryLabel }: { device: Device; categoryLabel: string }) {
 	const { data: attachments } = useDeviceAttachments(device.id)
 	const assigned = (attachments?.length ?? 0) > 0
 
@@ -44,7 +36,7 @@ function ModelRow({
 		<Link
 			to='/machines/$deviceId'
 			params={{ deviceId: String(device.id) }}
-			className='grid grid-cols-[2fr_1fr_1fr_1fr_1fr] items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 last:border-b-0 hover:bg-panel-soft'>
+			className='grid grid-cols-[2fr_1fr_1fr_1fr] items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 last:border-b-0 hover:bg-panel-soft'>
 			<span className='flex items-center gap-3 text-cream'>
 				{device.image_url ? (
 					<img
@@ -64,8 +56,7 @@ function ModelRow({
 					)}
 				</span>
 			</span>
-			<span>{brandName}</span>
-			<span>{typeName}</span>
+			<span>{categoryLabel}</span>
 			<span className='text-xs text-cream/60'>
 				{attachments === undefined
 					? '…'
@@ -87,12 +78,10 @@ function ModelRow({
 
 function ModelsTab() {
 	const { data: devices, isLoading } = useDevices()
-	const { data: brands } = useBrands()
-	const { data: deviceTypes } = useDeviceTypes()
+	const { data: tree } = useCategoryTree()
 	const [search, setSearch] = useState('')
 
-	const brandMap = new Map(brands?.map((b) => [b.id, b.name]))
-	const typeMap = new Map(deviceTypes?.map((t) => [t.id, t.name]))
+	const flat = flattenCategoryTree(tree ?? [])
 
 	const filtered = useMemo(
 		() => devices?.filter((d) => d.name.toLowerCase().includes(search.toLowerCase())) ?? [],
@@ -111,10 +100,9 @@ function ModelsTab() {
 				/>
 			</div>
 			<div className='rounded-lg border border-line bg-panel'>
-				<div className='grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
+				<div className='grid grid-cols-[2fr_1fr_1fr_1fr] gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
 					<span>Model</span>
-					<span>Marka</span>
-					<span>Typ</span>
+					<span>Kategoria</span>
 					<span>Dokumenty</span>
 					<span>Status</span>
 				</div>
@@ -123,8 +111,7 @@ function ModelsTab() {
 					<ModelRow
 						key={device.id}
 						device={device}
-						brandName={brandMap.get(device.brand_id) ?? '?'}
-						typeName={typeMap.get(device.device_type_id) ?? '?'}
+						categoryLabel={categoryPath(device.category_id, flat)}
 					/>
 				))}
 			</div>
@@ -132,65 +119,77 @@ function ModelsTab() {
 	)
 }
 
-function BrandsTab() {
-	const { data: brands, isLoading } = useBrands()
-	const { data: devices } = useDevices()
-	const [search, setSearch] = useState('')
-
-	const filtered = useMemo(
-		() => brands?.filter((b) => b.name.toLowerCase().includes(search.toLowerCase())) ?? [],
-		[brands, search],
-	)
+function CategoryRow({
+	category,
+	devices,
+	depth,
+}: {
+	category: Category
+	devices: Device[] | undefined
+	depth: number
+}) {
+	const [expanded, setExpanded] = useState(false)
+	const { data: children, isLoading } = useCategoryChildren(category.id, expanded)
+	const deviceCount = devices?.filter((d) => d.category_id === category.id).length ?? 0
 
 	return (
-		<div>
-			<div className='mb-4 flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-2'>
-				<Search size={16} className='text-cream/40' />
-				<input
-					value={search}
-					onChange={(e) => setSearch(e.target.value)}
-					placeholder='Szukaj marki…'
-					className='w-full bg-transparent text-sm text-cream outline-none placeholder:text-cream/40'
-				/>
-			</div>
-			<div className='rounded-lg border border-line bg-panel'>
-				<div className='grid grid-cols-[2fr_1fr] gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
-					<span>Marka</span>
-					<span>Liczba modeli</span>
-				</div>
-				{isLoading && <div className='px-4 py-6 text-sm text-cream/50'>Ładowanie…</div>}
-				{filtered.map((brand) => (
+		<>
+			<div
+				className='grid grid-cols-[2fr_1fr] items-center gap-4 border-b border-line py-3 pr-4 text-sm text-cream/80 hover:bg-panel-soft'
+				style={{ paddingLeft: `${1 + depth * 1.5}rem` }}>
+				<span className='flex items-center gap-2'>
+					<button
+						onClick={() => setExpanded((v) => !v)}
+						aria-label={expanded ? 'Zwiń' : 'Rozwiń'}
+						className='flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-cream/40 hover:bg-panel-soft hover:text-cream'>
+						{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+					</button>
 					<Link
-						key={brand.id}
-						to='/brands/$brandId'
-						params={{ brandId: String(brand.id) }}
-						className='grid grid-cols-[2fr_1fr] items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 hover:bg-panel-soft'>
-						<span className='flex items-center gap-2 text-cream'>
-							{brand.logo_url && (
-								<img
-									src={brand.logo_url}
-									alt=''
-									className='size-6 rounded object-contain'
-								/>
-							)}
-							{brand.name}
-						</span>
-						<span>{devices?.filter((d) => d.brand_id === brand.id).length ?? 0}</span>
+						to='/categories/$categoryId'
+						params={{ categoryId: String(category.id) }}
+						className='text-cream hover:underline'>
+						{category.name}
 					</Link>
-				))}
+				</span>
+				<span>{deviceCount}</span>
 			</div>
-		</div>
+			{expanded && isLoading && (
+				<div
+					className='border-b border-line py-2 text-xs text-cream/40'
+					style={{ paddingLeft: `${2.5 + depth * 1.5}rem` }}>
+					Ładowanie…
+				</div>
+			)}
+			{expanded && !isLoading && children?.length === 0 && (
+				<div
+					className='border-b border-line py-2 text-xs text-cream/40'
+					style={{ paddingLeft: `${2.5 + depth * 1.5}rem` }}>
+					Brak podkategorii.
+				</div>
+			)}
+			{expanded &&
+				children?.map((child) => (
+					<CategoryRow
+						key={child.id}
+						category={child}
+						devices={devices}
+						depth={depth + 1}
+					/>
+				))}
+		</>
 	)
 }
 
-function TypesTab() {
-	const { data: deviceTypes, isLoading } = useDeviceTypes()
+function CategoriesTab() {
+	const { data: rootCategories, isLoading } = useRootCategories()
 	const { data: devices } = useDevices()
 	const [search, setSearch] = useState('')
 
 	const filtered = useMemo(
-		() => deviceTypes?.filter((t) => t.name.toLowerCase().includes(search.toLowerCase())) ?? [],
-		[deviceTypes, search],
+		() =>
+			rootCategories?.filter((c) => c.name.toLowerCase().includes(search.toLowerCase())) ??
+			[],
+		[rootCategories, search],
 	)
 
 	return (
@@ -200,27 +199,26 @@ function TypesTab() {
 				<input
 					value={search}
 					onChange={(e) => setSearch(e.target.value)}
-					placeholder='Szukaj typu…'
+					placeholder='Szukaj kategorii głównej…'
 					className='w-full bg-transparent text-sm text-cream outline-none placeholder:text-cream/40'
 				/>
 			</div>
 			<div className='rounded-lg border border-line bg-panel'>
 				<div className='grid grid-cols-[2fr_1fr] gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
-					<span>Typ maszyny</span>
+					<span>Kategoria</span>
 					<span>Liczba modeli</span>
 				</div>
 				{isLoading && <div className='px-4 py-6 text-sm text-cream/50'>Ładowanie…</div>}
-				{filtered.map((type) => (
-					<Link
-						key={type.id}
-						to='/machine-types/$deviceTypeId'
-						params={{ deviceTypeId: String(type.id) }}
-						className='grid grid-cols-[2fr_1fr] items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 hover:bg-panel-soft'>
-						<span className='text-cream'>{type.name}</span>
-						<span>
-							{devices?.filter((d) => d.device_type_id === type.id).length ?? 0}
-						</span>
-					</Link>
+				{!isLoading && filtered.length === 0 && (
+					<div className='px-4 py-6 text-sm text-cream/50'>Brak kategorii.</div>
+				)}
+				{filtered.map((category) => (
+					<CategoryRow
+						key={category.id}
+						category={category}
+						devices={devices}
+						depth={0}
+					/>
 				))}
 			</div>
 		</div>
@@ -228,12 +226,12 @@ function TypesTab() {
 }
 
 export function CatalogPage() {
-	const { tab } = useSearch({ strict: false }) as { tab?: 'models' | 'brands' | 'types' }
+	const { tab } = useSearch({ strict: false }) as { tab?: Tab }
 	const navigate = useNavigate()
 	const activeTab: Tab = tab ?? 'models'
 	const { data: devices } = useDevices()
-	const { data: brands } = useBrands()
-	const { data: deviceTypes } = useDeviceTypes()
+	const { data: tree } = useCategoryTree()
+	const categoryCount = flattenCategoryTree(tree ?? []).length
 
 	function setTab(t: Tab) {
 		void navigate({ to: '/catalog', search: { tab: t } })
@@ -243,27 +241,19 @@ export function CatalogPage() {
 		<div>
 			<PageHeader
 				title='Katalog maszyn'
-				subtitle='Zarządzaj markami, typami i modelami maszyn używanymi w dokumentach oraz asystencie.'
+				subtitle='Zarządzaj kategoriami i modelami maszyn używanymi w dokumentach oraz asystencie.'
 				meta={
 					<>
-						{brands?.length ?? 0} marek · {deviceTypes?.length ?? 0} typów ·{' '}
-						{devices?.length ?? 0} modeli
+						{categoryCount} kategorii · {devices?.length ?? 0} modeli
 					</>
 				}
 			/>
 
-			<div className='mb-6 grid grid-cols-4 gap-4'>
+			<div className='mb-6 grid grid-cols-3 gap-4'>
 				<StatTile
-					label='Marki'
-					value={brands?.length ?? 0}
+					label='Kategorie'
+					value={categoryCount}
 					sublabel='aktywnych'
-					icon={Layers}
-					color='blue'
-				/>
-				<StatTile
-					label='Typy maszyn'
-					value={deviceTypes?.length ?? 0}
-					sublabel='kategorie'
 					icon={Layers}
 					color='blue'
 				/>
@@ -285,11 +275,7 @@ export function CatalogPage() {
 
 			<div className='mb-6 flex items-center justify-between'>
 				<h2 className='text-xl font-bold text-cream'>
-					{activeTab === 'models'
-						? 'Modele maszyn'
-						: activeTab === 'brands'
-							? 'Marki'
-							: 'Typy maszyn'}
+					{activeTab === 'models' ? 'Modele maszyn' : 'Kategorie'}
 				</h2>
 				<div className='flex gap-2'>
 					{activeTab === 'models' && (
@@ -300,20 +286,12 @@ export function CatalogPage() {
 							Dodaj maszynę
 						</Link>
 					)}
-					{activeTab === 'brands' && (
+					{activeTab === 'categories' && (
 						<Link
-							to='/brands/new'
+							to='/categories/new'
 							className='flex items-center gap-2 rounded-md bg-ember px-4 py-2 text-sm font-semibold text-ink'>
 							<Plus size={16} />
-							Dodaj markę
-						</Link>
-					)}
-					{activeTab === 'types' && (
-						<Link
-							to='/machine-types/new'
-							className='flex items-center gap-2 rounded-md bg-ember px-4 py-2 text-sm font-semibold text-ink'>
-							<Plus size={16} />
-							Dodaj typ
+							Dodaj kategorię
 						</Link>
 					)}
 				</div>
@@ -326,20 +304,14 @@ export function CatalogPage() {
 					onClick={() => setTab('models')}
 				/>
 				<TabButton
-					label='Marki'
-					active={activeTab === 'brands'}
-					onClick={() => setTab('brands')}
-				/>
-				<TabButton
-					label='Typy maszyn'
-					active={activeTab === 'types'}
-					onClick={() => setTab('types')}
+					label='Kategorie'
+					active={activeTab === 'categories'}
+					onClick={() => setTab('categories')}
 				/>
 			</div>
 
 			{activeTab === 'models' && <ModelsTab />}
-			{activeTab === 'brands' && <BrandsTab />}
-			{activeTab === 'types' && <TypesTab />}
+			{activeTab === 'categories' && <CategoriesTab />}
 		</div>
 	)
 }

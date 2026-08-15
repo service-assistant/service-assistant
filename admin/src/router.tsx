@@ -1,11 +1,9 @@
 import { ProtectedLayout } from '@/components/ProtectedLayout'
 import { AddDocumentPage } from '@/pages/AddDocumentPage'
 import { AddMachinePage } from '@/pages/AddMachinePage'
-import { BrandDetailPage } from '@/pages/BrandDetailPage'
-import { BrandNewPage } from '@/pages/BrandNewPage'
 import { CatalogPage } from '@/pages/CatalogPage'
-import { DeviceTypeDetailPage } from '@/pages/DeviceTypeDetailPage'
-import { DeviceTypeNewPage } from '@/pages/DeviceTypeNewPage'
+import { CategoryDetailPage } from '@/pages/CategoryDetailPage'
+import { CategoryNewPage } from '@/pages/CategoryNewPage'
 import { DocumentDetailPage } from '@/pages/DocumentDetailPage'
 import { DocumentsPage } from '@/pages/DocumentsPage'
 import { LoginPage } from '@/pages/LoginPage'
@@ -36,8 +34,8 @@ const documentsRoute = createRoute({
 const catalogRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
 	path: '/catalog',
-	validateSearch: (search: Record<string, unknown>): { tab?: 'models' | 'brands' | 'types' } => ({
-		tab: search.tab as 'models' | 'brands' | 'types' | undefined,
+	validateSearch: (search: Record<string, unknown>): { tab?: 'models' | 'categories' } => ({
+		tab: search.tab as 'models' | 'categories' | undefined,
 	}),
 	component: CatalogPage,
 })
@@ -60,28 +58,19 @@ const addMachineRoute = createRoute({
 	component: AddMachinePage,
 })
 
-const brandNewRoute = createRoute({
+const categoryNewRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
-	path: '/brands/new',
-	component: BrandNewPage,
+	path: '/categories/new',
+	validateSearch: (search: Record<string, unknown>): { parentId?: number } => ({
+		parentId: search.parentId as number | undefined,
+	}),
+	component: CategoryNewPage,
 })
 
-const brandDetailRoute = createRoute({
+const categoryDetailRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
-	path: '/brands/$brandId',
-	component: BrandDetailPage,
-})
-
-const deviceTypeNewRoute = createRoute({
-	getParentRoute: () => appLayoutRoute,
-	path: '/machine-types/new',
-	component: DeviceTypeNewPage,
-})
-
-const deviceTypeDetailRoute = createRoute({
-	getParentRoute: () => appLayoutRoute,
-	path: '/machine-types/$deviceTypeId',
-	component: DeviceTypeDetailPage,
+	path: '/categories/$categoryId',
+	component: CategoryDetailPage,
 })
 
 const machineDetailRoute = createRoute({
@@ -104,10 +93,8 @@ const routeTree = rootRoute.addChildren([
 		usersRoute,
 		addDocumentRoute,
 		addMachineRoute,
-		brandNewRoute,
-		brandDetailRoute,
-		deviceTypeNewRoute,
-		deviceTypeDetailRoute,
+		categoryNewRoute,
+		categoryDetailRoute,
 		machineDetailRoute,
 		documentDetailRoute,
 	]),
