@@ -22,9 +22,10 @@ router = APIRouter()
 async def create_device(
     body: DeviceCreate, session: AsyncSession = Depends(get_session)
 ):
-    category = await session.get(Category, body.category_id)
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
+    if body.category_id is not None:
+        category = await session.get(Category, body.category_id)
+        if not category:
+            raise HTTPException(status_code=404, detail="Category not found")
 
     device = Device(**body.model_dump())
     session.add(device)
@@ -105,7 +106,7 @@ async def update_device(
     device = await session.get(Device, device_id)
     if not device:
         raise HTTPException(status_code=404, detail="Device not found")
-    if "category_id" in updates:
+    if updates.get("category_id") is not None:
         category = await session.get(Category, updates["category_id"])
         if not category:
             raise HTTPException(status_code=404, detail="Category not found")

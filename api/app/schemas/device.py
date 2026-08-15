@@ -4,8 +4,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class DeviceCreate(BaseModel):
-    category_id: int = Field(
-        description="ID of the category this device belongs to.", examples=[2]
+    category_id: int | None = Field(
+        default=None,
+        description="ID of the category this device belongs to, or `null` for none.",
+        examples=[2],
     )
     name: str = Field(
         description="Human-readable device name.", examples=["Toyota 8FBE20"]

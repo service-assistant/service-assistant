@@ -38,7 +38,6 @@ from app.models import (
     Message,
 )
 from app.routers.attachments import list_attachments, save_and_ingest_attachment
-from app.routers.categories import list_categories
 from app.routers.devices import list_devices
 from app.routers.threads import list_threads
 from app.services.async_utils import run_blocking
@@ -886,6 +885,11 @@ async def get_document_detail(
     )
 
 
+async def _list_all_categories(session: AsyncSession) -> list[Category]:
+    result = await session.execute(select(Category).order_by(Category.id))
+    return list(result.scalars().all())
+
+
 @dataclass
 class DeviceRow:
     device: Device
@@ -902,7 +906,7 @@ async def get_devices(
     session: AsyncSession = Depends(get_session),
 ):
     all_devices = await list_devices(session=session)
-    all_categories = await list_categories(session=session)
+    all_categories = await _list_all_categories(session)
 
     category_map: dict[int | None, str] = {c.id: c.name for c in all_categories}
 
@@ -947,7 +951,7 @@ async def get_edit_device(
             "request": request,
             "active": "devices",
             "device": device,
-            "categories": await list_categories(session=session),
+            "categories": await _list_all_categories(session),
         },
     )
 
@@ -961,7 +965,7 @@ async def get_categories(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ):
-    all_categories = await list_categories(session=session)
+    all_categories = await _list_all_categories(session)
     category_names = {c.id: c.name for c in all_categories}
     return templates.TemplateResponse(
         request=request,
@@ -995,7 +999,7 @@ async def get_edit_category(
             "request": request,
             "active": "categories",
             "category": category,
-            "categories": await list_categories(session=session),
+            "categories": await _list_all_categories(session),
         },
     )
 

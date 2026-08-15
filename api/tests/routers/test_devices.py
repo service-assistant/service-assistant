@@ -30,6 +30,16 @@ async def test_should_create_device_when_category_exists(client, session):
     assert data["image_url"] == "https://example.com/images/toyota-8fbe20.jpg"
 
 
+async def test_should_create_device_without_category(client):
+    response = await client.post(
+        "/api/devices",
+        json={"name": "Toyota 8FBE20"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["category_id"] is None
+
+
 async def test_should_return_404_when_category_not_found_on_create(client):
     response = await client.post(
         "/api/devices",
@@ -117,6 +127,20 @@ async def test_should_return_404_when_updating_device_with_nonexistent_category(
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Category not found"
+
+
+async def test_should_clear_category_when_patch_sets_it_to_null(client, session):
+    category = await create_category(session)
+    device = await create_device(session, category.id)
+
+    response = await client.patch(
+        f"/api/devices/{device.id}", json={"category_id": None}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["category_id"] is None
+    await session.refresh(device)
+    assert device.category_id is None
 
 
 async def test_should_delete_device_when_id_exists(client, session):

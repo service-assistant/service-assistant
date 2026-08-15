@@ -104,7 +104,9 @@ async def create_category(session: AsyncSession, **kwargs) -> Category:
     return category
 
 
-async def create_device(session: AsyncSession, category_id: int, **kwargs) -> Device:
+async def create_device(
+    session: AsyncSession, category_id: int | None = None, **kwargs
+) -> Device:
     device = Device(
         category_id=category_id,
         name=kwargs.get("name", "Toyota 8FBE20"),

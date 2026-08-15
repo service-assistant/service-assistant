@@ -42,11 +42,11 @@ async def create_category(
 @router.get(
     "",
     response_model=list[CategoryRead],
-    summary="List categories",
-    description="Returns all categories, flat, ordered by insertion order.",
+    summary="List root categories",
+    description="Returns top-level categories (those without a parent). Use /{id}/children to descend.",
 )
-async def list_categories(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Category))
+async def list_root_categories(session: AsyncSession = Depends(get_session)):
+    result = await session.execute(select(Category).where(Category.parent_id.is_(None)))
     return result.scalars().all()
 
 
@@ -107,6 +107,20 @@ async def get_category(category_id: int, session: AsyncSession = Depends(get_ses
     return category
 
 
+async def _would_create_cycle(
+    session: AsyncSession, category_id: int, new_parent_id: int
+) -> bool:
+    """Walk up the ancestor chain from new_parent_id, looking for category_id."""
+    current_id: int | None = new_parent_id
+    while current_id is not None:
+        if current_id == category_id:
+            return True
+        current_id = await session.scalar(
+            select(Category.parent_id).where(Category.id == current_id)
+        )
+    return False
+
+
 @router.patch(
     "/{category_id}",
     response_model=CategoryRead,
@@ -114,7 +128,7 @@ async def get_category(category_id: int, session: AsyncSession = Depends(get_ses
     description="Partially updates a category. Only the fields provided in the request body are changed.",
     responses={
         404: {"description": "Category or parent category not found"},
-        422: {"description": "A category cannot be its own parent"},
+        422: {"description": "The new parent would create a circular reference"},
     },
 )
 async def update_category(
@@ -128,13 +142,14 @@ async def update_category(
 
     updates = body.model_dump(exclude_unset=True)
     if "parent_id" in updates and updates["parent_id"] is not None:
-        if updates["parent_id"] == category_id:
-            raise HTTPException(
-                status_code=422, detail="A category cannot be its own parent"
-            )
         parent = await session.get(Category, updates["parent_id"])
         if not parent:
             raise HTTPException(status_code=404, detail="Parent category not found")
+        if await _would_create_cycle(session, category_id, updates["parent_id"]):
+            raise HTTPException(
+                status_code=422,
+                detail="Cannot set parent: it would create a circular reference",
+            )
 
     for field, value in updates.items():
         setattr(category, field, value)
