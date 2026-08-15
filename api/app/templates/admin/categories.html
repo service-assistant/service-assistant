@@ -1,0 +1,87 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Categories{% endblock %}
+{% block heading %}Categories{% endblock %}
+
+{% block content %}
+
+<!-- Create form -->
+<section class="bg-white border border-gray-200 rounded-lg p-6 mb-8">
+    <h2 class="text-sm font-semibold text-gray-700 mb-4">Add Category</h2>
+    <form method="post" action="/api/categories" class="flex items-end gap-4">
+        <div class="flex-1">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Name</label>
+            <input type="text" name="name" required placeholder="e.g. Toyota"
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <div class="flex-1">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Parent <span class="text-gray-400">(optional)</span></label>
+            <select name="parent_id"
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="">— none (root) —</option>
+                {% for category in categories %}
+                <option value="{{ category.id }}">{{ category.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="flex-1">
+            <label class="block text-sm font-medium text-gray-700 mb-1">Image URL <span class="text-gray-400">(optional)</span></label>
+            <input type="url" name="image_url" placeholder="https://..."
+                class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </div>
+        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-md transition-colors whitespace-nowrap">
+            Add Category
+        </button>
+    </form>
+</section>
+
+<!-- Categories table -->
+<section class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">ID</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Name</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Parent</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Image URL</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Created</th>
+                <th class="px-4 py-3"></th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for category in categories %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 text-gray-500">{{ category.id }}</td>
+                <td class="px-4 py-3 font-medium">
+                    {% if category.parent_id %}<span class="text-gray-300">└</span>{% endif %}
+                    {{ category.name }}
+                </td>
+                <td class="px-4 py-3 text-gray-600">{{ category_names.get(category.parent_id, "—") }}</td>
+                <td class="px-4 py-3 text-gray-500 max-w-xs truncate">
+                    {% if category.image_url %}
+                    <a href="{{ category.image_url }}" target="_blank" class="text-blue-600 hover:underline truncate block">{{ category.image_url }}</a>
+                    {% else %}—{% endif %}
+                </td>
+                <td class="px-4 py-3 text-gray-500"><time data-utc="{{ category.created_at.isoformat() }}" data-fmt="date"></time></td>
+                <td class="px-4 py-3 text-right">
+                    <div class="flex items-center justify-end gap-4">
+                        <a href="/admin/categories/{{ category.id }}/edit" class="text-blue-600 hover:text-blue-800 text-sm">Edit</a>
+                        <form method="post" action="/api/categories/{{ category.id }}"
+                              data-method="DELETE"
+                              data-confirm="Delete this category?"
+                              data-remove-el="tr">
+                            <button type="submit" class="text-red-600 hover:text-red-800 text-sm">Delete</button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="px-4 py-8 text-center text-gray-400">No categories yet.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+{% endblock %}
