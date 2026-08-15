@@ -31,7 +31,7 @@ class Category(Base):
     )
 
     parent_id: Mapped[int | None] = mapped_column(
-        ForeignKey("categories.id", ondelete="SET NULL"),
+        ForeignKey("categories.id"),
     )
     parent: Mapped[Category | None] = relationship(
         remote_side=[id],
