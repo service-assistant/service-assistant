@@ -27,6 +27,7 @@ def pytest_asyncio_loop_factories(config, item):
         return {"selector": asyncio.SelectorEventLoop}
     return {"default": asyncio.new_event_loop}
 
+
 @pytest.fixture(scope="session", autouse=True)
 def run_migrations():
     # Remember that it leaves tests with all migrations done at the end
