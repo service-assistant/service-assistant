@@ -1,9 +1,10 @@
 import React from 'react';
 
 import type { AvailableFile } from '@/types/chat';
-import AvailableFilesList from '../components/AvailableFilesList';
-import ServiceErrorModal from '../components/ServiceErrorModal';
-import StartPromptView from '../components/StartPromptView';
+import ChatSubmitButton, { ChatMicrophoneButton } from '../components/chat/ChatSubmitButton';
+import StartPromptView from '../components/chat/StartPromptView';
+import AvailableFilesList from '../components/documents/AvailableFilesList';
+import ServiceErrorModal from '../components/feedback/ServiceErrorModal';
 
 let mockReactStateValues: unknown[] = [];
 let mockReactStateIndex = 0;
@@ -188,6 +189,15 @@ describe('ServiceErrorModal', () => {
 		expect(findByType(tree, 'Modal')[0].props.onRequestClose).toBeUndefined();
 		expect(findByType(tree, 'Pressable')).toHaveLength(0);
 	});
+
+	test('explains how to restore microphone permission', () => {
+		const tree = (
+			<ServiceErrorModal visible featureName='dostęp do mikrofonu' onClose={jest.fn()} />
+		);
+
+		expect(findByText(tree, 'Brak dostępu do mikrofonu')).toBeTruthy();
+		expect(findByText(tree, 'Zezwól tej stronie na używanie mikrofonu')).toBeTruthy();
+	});
 });
 
 describe('AvailableFilesList', () => {
@@ -305,6 +315,27 @@ describe('StartPromptView', () => {
 		expect(props.onShowTextInputChange).toHaveBeenLastCalledWith(false);
 	});
 
+	test('removes the input outline and keeps the animated placeholder uniformly gray', () => {
+		const reactNative = require('react-native') as { Platform: { OS: string } };
+		reactNative.Platform.OS = 'web';
+		const tree = <StartPromptView {...createProps()} inputText='' lightMode />;
+		const input = findByType(tree, 'TextInput')[0];
+		const placeholderParts = findByType(tree, 'Text').filter((text) =>
+			getTextContent(text).startsWith('Np.'),
+		);
+		const animatedPlaceholder = findByType(tree, 'Animated.Text')[0];
+
+		expect(input.props.style.outlineWidth).toBe(0);
+		expect(input.props.style.outlineStyle).toBe('none');
+		expect(input.props.style.borderWidth).toBe(0);
+		expect(input.props.placeholder).toBe('');
+		expect(input.props.accessibilityLabel).toBe('Np. co oznacza błąd 2:101?');
+		expect(placeholderParts[0].props.style.color).toBe('#71717A');
+		expect(animatedPlaceholder.props.style.color).toBe('#71717A');
+		expect(findByType(tree, 'Pressable')[0].props.className).toBe('cursor-text');
+		reactNative.Platform.OS = 'android';
+	});
+
 	test('selects quick prompts and hides text input', () => {
 		const props = createProps();
 		const tree = <StartPromptView {...props} />;
@@ -410,7 +441,7 @@ describe('StartPromptView', () => {
 		},
 	);
 
-	test('uses animated placeholder without focus and native placeholder with focus', () => {
+	test('keeps the same animated placeholder before and after focus', () => {
 		const props = { ...createProps(), inputText: '' };
 		const idleTree = <StartPromptView {...props} />;
 		const idleElements = collectElements(idleTree);
@@ -426,10 +457,98 @@ describe('StartPromptView', () => {
 		const focusedElements = collectElements(focusedTree);
 
 		expect(focusedElements.filter((element) => element.type === 'Animated.Text')).toHaveLength(
-			0,
+			1,
 		);
 		expect(
 			focusedElements.find((element) => element.type === 'TextInput')?.props.placeholder,
-		).toBe('Np. co oznacza błąd 2:101?');
+		).toBe('');
+	});
+});
+
+describe('ChatSubmitButton', () => {
+	test('uses the separate microphone control to start Android-equivalent speech input', () => {
+		const onMicrophonePress = jest.fn();
+		const tree = <ChatMicrophoneButton onPress={onMicrophonePress} />;
+		const button = findByType(tree, 'TouchableOpacity')[0];
+
+		button.props.onPress();
+
+		expect(button.props.testID).toBe('chat-microphone-button');
+		expect(button.props.accessibilityLabel).toBe('Rozpocznij nagrywanie');
+		expect(onMicrophonePress).toHaveBeenCalledTimes(1);
+	});
+
+	test('changes the microphone control to an X that cancels voice input', () => {
+		const onStart = jest.fn();
+		const onCancel = jest.fn();
+		const tree = <ChatMicrophoneButton onPress={onStart} onCancel={onCancel} active />;
+		const button = findByType(tree, 'TouchableOpacity')[0];
+
+		button.props.onPress();
+
+		expect(button.props.accessibilityLabel).toBe('Anuluj nagrywanie');
+		expect(findByType(tree, 'Icon')[0].props.name).toBe('close');
+		expect(onCancel).toHaveBeenCalledTimes(1);
+		expect(onStart).not.toHaveBeenCalled();
+	});
+
+	test.each([
+		{
+			name: 'starting',
+			props: { isMicStarting: true },
+			color: '#202028',
+			label: 'Uruchamianie mikrofonu',
+			showsLoader: true,
+			showsRotatingSquare: false,
+		},
+		{
+			name: 'listening',
+			props: { isListening: true },
+			color: 'rgba(8, 47, 73, 0.92)',
+			label: 'Mikrofon słucha',
+			showsLoader: false,
+			showsRotatingSquare: false,
+		},
+		{
+			name: 'processing',
+			props: { isMicProcessing: true },
+			color: 'rgba(46, 16, 101, 0.92)',
+			label: 'Zatrzymaj przetwarzanie mowy',
+			showsLoader: false,
+			showsRotatingSquare: true,
+		},
+	])(
+		'shows the $name microphone state on web',
+		({ props, color, label, showsLoader, showsRotatingSquare }) => {
+			const tree = <ChatSubmitButton onPress={jest.fn()} showMicrophoneState {...props} />;
+			const button = findByType(tree, 'TouchableOpacity')[0];
+
+			expect(button.props.style.backgroundColor).toBe(color);
+			expect(button.props.accessibilityLabel).toBe(label);
+			expect(findByType(tree, 'ActivityIndicator')).toHaveLength(showsLoader ? 1 : 0);
+			expect(
+				findByType(tree, 'View').filter(
+					(view) => view.props.testID === 'rotating-processing-icon',
+				),
+			).toHaveLength(showsRotatingSquare ? 1 : 0);
+		},
+	);
+
+	test('stops microphone processing instead of sending text', () => {
+		const onSend = jest.fn();
+		const onMicrophonePress = jest.fn();
+		const tree = (
+			<ChatSubmitButton
+				onPress={onSend}
+				onMicrophonePress={onMicrophonePress}
+				showMicrophoneState
+				isMicProcessing
+			/>
+		);
+
+		findByType(tree, 'TouchableOpacity')[0].props.onPress();
+
+		expect(onMicrophonePress).toHaveBeenCalledTimes(1);
+		expect(onSend).not.toHaveBeenCalled();
 	});
 });

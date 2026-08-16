@@ -1,23 +1,17 @@
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useState } from 'react';
-import {
-	ActivityIndicator,
-	ScrollView,
-	Text,
-	TouchableOpacity,
-	useWindowDimensions,
-	View,
-} from 'react-native';
+import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import ServiceErrorModal from '@/components/ServiceErrorModal';
-import ThemeAwareLogo from '@/components/ThemeAwareLogo';
-import VehicleFilters from '@/components/VehicleFilters';
+import ServiceErrorModal from '@/components/feedback/ServiceErrorModal';
+import ThemeAwareLogo from '@/components/ui/ThemeAwareLogo';
+import HistoryHeader from '@/components/vehicles/HistoryHeader';
 import { useAppSettings } from '@/hooks/use-app-settings';
 import { useNetworkStatus } from '@/hooks/use-network-status';
+import { type ResponsiveLayout, useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import {
 	categoryPathStartsWith,
 	findCategoryPath,
@@ -31,7 +25,24 @@ import {
 } from '@/utils/auth-errors';
 import { fetchWithRetry, HttpError, isTransientNetworkError } from '@/utils/network';
 
-const PRIMARY_ORANGE = '#FF6B00';
+const LARGE_HISTORY_LAYOUT = {
+	pagePaddingHorizontal: 20,
+	cardPaddingVertical: 14,
+	cardBorderRadius: 10,
+} as const;
+
+const COMPACT_HISTORY_LAYOUT = {
+	pagePaddingHorizontal: 16,
+	cardPaddingVertical: 16,
+	cardBorderRadius: 12,
+} as const;
+
+const HISTORY_LAYOUT_CONFIG = {
+	largePortrait: LARGE_HISTORY_LAYOUT,
+	largeLandscape: LARGE_HISTORY_LAYOUT,
+	compactPortrait: COMPACT_HISTORY_LAYOUT,
+	compactLandscape: COMPACT_HISTORY_LAYOUT,
+} as const satisfies Record<ResponsiveLayout, object>;
 
 type ChatThread = {
 	id: number;
@@ -86,13 +97,7 @@ const isTodayInPoland = (value: string) => {
 
 export default function HistoryScreen() {
 	const router = useRouter();
-	const { width, height } = useWindowDimensions();
-	const shortestScreenSide = Math.min(width, height);
-	const isTablet = shortestScreenSide >= 600;
-	const isPortrait = height > width;
-	const useTabletHistoryRefresh = isTablet;
-	const usePhonePortraitHeader = !isTablet && isPortrait;
-	const useTabletFilterStyle = useTabletHistoryRefresh || usePhonePortraitHeader;
+	const { layout } = useResponsiveLayout();
 	const [threads, setThreads] = useState<ChatThread[]>([]);
 	const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
 	const [isLoadingThreads, setIsLoadingThreads] = useState(true);
@@ -116,7 +121,6 @@ export default function HistoryScreen() {
 
 	useFocusEffect(
 		useCallback(() => {
-			// Recreate this focus effect whenever the global connection recovers.
 			void reconnectCount;
 			const abortController = new AbortController();
 
@@ -183,16 +187,8 @@ export default function HistoryScreen() {
 		return categoryPathStartsWith(item.categoryPath, selectedCategoryIds);
 	});
 
-	const pagePaddingHorizontal = useTabletHistoryRefresh ? 20 : 16;
-	const pagePaddingTop = useTabletHistoryRefresh ? 10 : usePhonePortraitHeader ? 10 : 16;
-	const headerTitleClassName = useTabletHistoryRefresh ? 'text-3xl' : 'text-2xl';
-	const headerMinHeight = useTabletHistoryRefresh ? 44 : 38;
-	const headerBottomMargin = useTabletHistoryRefresh ? 12 : usePhonePortraitHeader ? 12 : 16;
-	const headerBackButtonHeight = usePhonePortraitHeader ? 42 : 48;
-	const headerBackButtonIconOnly = usePhonePortraitHeader;
-	const historyCardPaddingVertical = useTabletHistoryRefresh ? 14 : 16;
-	const historyCardBorderRadius = useTabletHistoryRefresh ? 10 : 12;
-	const historyCardMarginBottom = useTabletHistoryRefresh ? 12 : 12;
+	const responsive = HISTORY_LAYOUT_CONFIG[layout];
+	const historyCardMarginBottom = 12;
 
 	return (
 		<SafeAreaView
@@ -205,169 +201,132 @@ export default function HistoryScreen() {
 			<ScrollView
 				className='flex-1'
 				contentContainerStyle={{
-					paddingHorizontal: pagePaddingHorizontal,
-					paddingTop: pagePaddingTop,
 					paddingBottom: 36,
 				}}
 				showsVerticalScrollIndicator={false}>
-				<View
-					className='flex-row items-center gap-3'
-					style={{ minHeight: headerMinHeight, marginBottom: headerBottomMargin }}>
-					<TouchableOpacity
-						onPress={() => router.push('/home')}
-						accessibilityRole='button'
-						accessibilityLabel='Wstecz'
-						className={`flex-row items-center justify-center border rounded-[10px] ${
-							lightThemeEnabled
-								? 'border-[#E4E4E7] bg-white'
-								: 'border-[#2A2A2A] bg-[#0D0D0D]'
-						}`}
-						style={{
-							height: headerBackButtonHeight,
-							width: headerBackButtonIconOnly ? headerBackButtonHeight : undefined,
-							marginRight: usePhonePortraitHeader ? 4 : 20,
-							paddingHorizontal: headerBackButtonIconOnly ? 0 : 18,
-						}}>
-						<Feather
-							name='arrow-left'
-							size={headerBackButtonIconOnly ? 21 : 22}
-							color='#FF7A00'
-						/>
-						{headerBackButtonIconOnly ? null : (
-							<Text className='text-[#FF7A00] ml-4 text-[13px] font-semibold tracking-wider'>
-								WSTECZ
-							</Text>
-						)}
-					</TouchableOpacity>
-					<Text
-						className={`${headerTitleClassName} ${lightThemeEnabled ? 'text-[#18181B]' : 'text-white'} font-bold flex-1`}
-						numberOfLines={1}
-						adjustsFontSizeToFit>
-						Historia czatów
-					</Text>
-				</View>
-
-				<VehicleFilters
+				<HistoryHeader
 					categories={categories}
 					selectedCategoryIds={selectedCategoryIds}
 					onCategoryPathChange={setSelectedCategoryIds}
-					useTabletRefresh={useTabletFilterStyle}
-					isLoading={isLoadingCategories}
-					primaryColor={PRIMARY_ORANGE}
+					isLoadingCategories={isLoadingCategories}
+					layout={layout}
 					lightMode={lightThemeEnabled}
+					onBack={() => router.push('/home')}
 				/>
 
-				<View className='h-4' />
+				<View style={{ paddingHorizontal: responsive.pagePaddingHorizontal }}>
+					<View className='h-4' />
 
-				{isLoading ? (
-					<ActivityIndicator size='large' color={PRIMARY_ORANGE} className='mt-12' />
-				) : filteredHistoryItems.length === 0 ? (
-					<View
-						className={`items-center justify-center border rounded-[12px] px-6 py-12 ${
-							lightThemeEnabled
-								? 'bg-white border-[#E4E4E7]'
-								: 'bg-[#18181B] border-white/5'
-						}`}>
-						<MaterialCommunityIcons name='history' size={36} color='#71717A' />
-						<Text
-							className={`${lightThemeEnabled ? 'text-[#52525B]' : 'text-gray-400'} text-center mt-3`}>
-							Brak czatów pasujących do wybranych filtrów.
-						</Text>
-					</View>
-				) : (
-					<View>
-						{filteredHistoryItems.map((item) => (
-							<TouchableOpacity
-								key={item.id}
-								onPress={() =>
-									router.push({
-										pathname: '/chat',
-										params: {
-											deviceId: item.device_id.toString(),
-											deviceName: item.deviceName,
-											threadId: item.id.toString(),
-											chatSession: `history-${item.id}`,
-											...(item.brandLogoUrl
-												? { logoUrl: item.brandLogoUrl }
-												: {}),
-										},
-									})
-								}
-								accessibilityRole='button'
-								accessibilityLabel={`Otwórz czat: ${item.title}`}
-								className={`flex-row items-center border px-4 ${
-									lightThemeEnabled
-										? 'bg-white border-[#E4E4E7]'
-										: 'bg-[#18181B] border-white/5'
-								}`}
-								style={{
-									paddingVertical: historyCardPaddingVertical,
-									borderRadius: historyCardBorderRadius,
-									marginBottom: historyCardMarginBottom,
-								}}>
-								<View
-									className='w-2 h-2 rounded-full mr-3'
-									style={
-										isTodayInPoland(item.updated_at)
-											? {
-													backgroundColor: PRIMARY_ORANGE,
-													shadowColor: PRIMARY_ORANGE,
-													shadowOffset: { width: 0, height: 0 },
-													shadowOpacity: 0.9,
-													shadowRadius: 8,
-													elevation: 8,
-												}
-											: { backgroundColor: '#52525B' }
+					{isLoading ? (
+						<ActivityIndicator size='large' color='#FF6B00' className='mt-12' />
+					) : filteredHistoryItems.length === 0 ? (
+						<View
+							className={`items-center justify-center border rounded-[12px] px-6 py-12 ${
+								lightThemeEnabled
+									? 'bg-white border-[#E4E4E7]'
+									: 'bg-[#18181B] border-white/5'
+							}`}>
+							<MaterialCommunityIcons name='history' size={36} color='#71717A' />
+							<Text
+								className={`${lightThemeEnabled ? 'text-[#52525B]' : 'text-gray-400'} text-center mt-3`}>
+								Brak czatów pasujących do wybranych filtrów.
+							</Text>
+						</View>
+					) : (
+						<View>
+							{filteredHistoryItems.map((item) => (
+								<TouchableOpacity
+									key={item.id}
+									onPress={() =>
+										router.push({
+											pathname: '/chat',
+											params: {
+												deviceId: item.device_id.toString(),
+												deviceName: item.deviceName,
+												threadId: item.id.toString(),
+												chatSession: `history-${item.id}`,
+												...(item.brandLogoUrl
+													? { logoUrl: item.brandLogoUrl }
+													: {}),
+											},
+										})
 									}
-								/>
-								<View className='flex-1 min-w-0'>
-									<Text
-										className={`${lightThemeEnabled ? 'text-[#18181B]' : 'text-white'} text-base font-bold`}
-										numberOfLines={1}>
-										{item.title}
-									</Text>
-									<View className='flex-row items-center flex-wrap mt-2'>
-										{item.brandLogoUrl ? (
-											<View style={{ marginRight: 7 }}>
-												<ThemeAwareLogo
-													source={{ uri: item.brandLogoUrl }}
-													width={66}
-													height={18}
-													lightMode={lightThemeEnabled}
-													resizeMode='contain'
-												/>
-											</View>
-										) : (
-											<Text className='text-[#FF8A4C] text-[11px] font-bold mr-2'>
-												{item.brandName.toUpperCase()}
-											</Text>
-										)}
-										<Text className='text-[#FF8A4C] text-[11px] font-semibold'>
-											{item.deviceName.toUpperCase()}
+									accessibilityRole='button'
+									accessibilityLabel={`Otwórz czat: ${item.title}`}
+									className={`flex-row items-center border px-4 ${
+										lightThemeEnabled
+											? 'bg-white border-[#E4E4E7]'
+											: 'bg-[#18181B] border-white/5'
+									}`}
+									style={{
+										paddingVertical: responsive.cardPaddingVertical,
+										borderRadius: responsive.cardBorderRadius,
+										marginBottom: historyCardMarginBottom,
+									}}>
+									<View
+										className='w-2 h-2 rounded-full mr-3'
+										style={
+											isTodayInPoland(item.updated_at)
+												? {
+														backgroundColor: '#FF6B00',
+														shadowColor: '#FF6B00',
+														shadowOffset: { width: 0, height: 0 },
+														shadowOpacity: 0.9,
+														shadowRadius: 8,
+														elevation: 8,
+													}
+												: { backgroundColor: '#52525B' }
+										}
+									/>
+									<View className='flex-1 min-w-0'>
+										<Text
+											className={`${lightThemeEnabled ? 'text-[#18181B]' : 'text-white'} text-base font-bold`}
+											numberOfLines={1}>
+											{item.title}
 										</Text>
-										<Text className='text-gray-600 mx-3'>•</Text>
+										<View className='flex-row items-center flex-wrap mt-2'>
+											{item.brandLogoUrl ? (
+												<View style={{ marginRight: 7 }}>
+													<ThemeAwareLogo
+														source={{ uri: item.brandLogoUrl }}
+														width={66}
+														height={18}
+														lightMode={lightThemeEnabled}
+														resizeMode='contain'
+													/>
+												</View>
+											) : (
+												<Text className='text-[#FF8A4C] text-[11px] font-bold mr-2'>
+													{item.brandName.toUpperCase()}
+												</Text>
+											)}
+											<Text className='text-[#FF8A4C] text-[11px] font-semibold'>
+												{item.deviceName.toUpperCase()}
+											</Text>
+											<Text className='text-gray-600 mx-3'>•</Text>
+											<MaterialCommunityIcons
+												name='clock-outline'
+												size={14}
+												color='#FF8A4C'
+											/>
+											<Text className='text-[#FF8A4C] text-[11px] ml-1'>
+												{formatDate(item.updated_at)}
+											</Text>
+										</View>
+									</View>
+									<View
+										className={`w-10 h-10 rounded-full items-center justify-center ml-3 ${lightThemeEnabled ? 'bg-[#F4F4F5]' : 'bg-[#202024]'}`}>
 										<MaterialCommunityIcons
-											name='clock-outline'
-											size={14}
+											name='chevron-right'
+											size={24}
 											color='#FF8A4C'
 										/>
-										<Text className='text-[#FF8A4C] text-[11px] ml-1'>
-											{formatDate(item.updated_at)}
-										</Text>
 									</View>
-								</View>
-								<View
-									className={`w-10 h-10 rounded-full items-center justify-center ml-3 ${lightThemeEnabled ? 'bg-[#F4F4F5]' : 'bg-[#202024]'}`}>
-									<MaterialCommunityIcons
-										name='chevron-right'
-										size={24}
-										color='#FF8A4C'
-									/>
-								</View>
-							</TouchableOpacity>
-						))}
-					</View>
-				)}
+								</TouchableOpacity>
+							))}
+						</View>
+					)}
+				</View>
 			</ScrollView>
 			<ServiceErrorModal
 				visible={Boolean(serviceErrorFeature)}

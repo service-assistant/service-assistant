@@ -1,7 +1,7 @@
 import { Link } from 'expo-router';
 
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { ThemedText } from '@/components/ui/themed-text';
+import { ThemedView } from '@/components/ui/themed-view';
 
 // Renders a basic modal screen using NativeWind for utility-first styling
 export default function ModalScreen() {

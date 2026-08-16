@@ -198,7 +198,7 @@ jest.mock('@expo/vector-icons', () => {
 	};
 });
 
-jest.mock('@/components/ChatLayouts', () => {
+jest.mock('@/components/chat/ChatLayouts', () => {
 	const React = require('react');
 	return {
 		DesktopChatLayout: ({ children, ...props }: Record<string, unknown>) =>
@@ -210,14 +210,14 @@ jest.mock('@/components/ChatLayouts', () => {
 	};
 });
 
-jest.mock('@/components/ServiceErrorModal', () => {
+jest.mock('@/components/feedback/ServiceErrorModal', () => {
 	const React = require('react');
 	return function MockServiceErrorModal({ children, ...props }: Record<string, unknown>) {
 		return React.createElement('ServiceErrorModal', props, children);
 	};
 });
 
-jest.mock('@/components/haptic-tab', () => ({
+jest.mock('@/components/ui/haptic-tab', () => ({
 	HapticTab: 'HapticTab',
 }));
 
@@ -731,6 +731,21 @@ describe('tab screens', () => {
 		expect(getTextContent(tree)).toContain('Ładowanie maszyn...');
 		expect(mockUseCameraPermissions).not.toHaveBeenCalled();
 		expect(mockRouterPush).toHaveBeenCalledWith('/history');
+	});
+
+	test('home screen hides the nameplate camera on web', () => {
+		const reactNative = require('react-native') as {
+			Platform: { OS: string };
+		};
+		reactNative.Platform.OS = 'web';
+		jest.mocked(global.fetch).mockResolvedValue(createJsonResponse([]));
+		const HomeScreen = require('../app/(tabs)/home').default;
+
+		const cameraButtons = findByType(renderScreen(HomeScreen), 'TouchableOpacity').filter(
+			(button) => button.props.accessibilityLabel === 'Zrób zdjęcie tabliczki znamionowej',
+		);
+
+		expect(cameraButtons).toHaveLength(0);
 	});
 
 	test('home screen opens chat with the selected vehicle id', () => {

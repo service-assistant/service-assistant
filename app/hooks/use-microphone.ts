@@ -99,6 +99,21 @@ const DEFAULT_RECORDING_FILE: RecordingFileMetadata = {
 	type: 'audio/m4a',
 };
 
+const WEB_RECORDING_FILE: RecordingFileMetadata = {
+	name: 'recording.webm',
+	type: 'audio/webm',
+};
+
+export const getWebAudioMeteringDb = (samples: Float32Array) => {
+	if (samples.length === 0) return -160;
+
+	let sumOfSquares = 0;
+	for (const sample of samples) sumOfSquares += sample * sample;
+	const rootMeanSquare = Math.sqrt(sumOfSquares / samples.length);
+
+	return rootMeanSquare > 0 ? Math.max(-160, 20 * Math.log10(rootMeanSquare)) : -160;
+};
+
 const appendRecordingToFormData = async (
 	formData: FormData,
 	uri: string,
@@ -147,6 +162,8 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 	});
 	const userSpeakingMessageIdRef = useRef<number>(0);
 	const meteringIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+	const webMeteringStreamRef = useRef<MediaStream | null>(null);
+	const webAudioContextRef = useRef<AudioContext | null>(null);
 	const soundLevelAnim = useRef(new Animated.Value(0.2)).current;
 	const lastLoudTime = useRef<number>(0);
 	const hasSpoken = useRef<boolean>(false);
@@ -195,6 +212,10 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 			clearInterval(meteringIntervalRef.current);
 			meteringIntervalRef.current = null;
 		}
+		webMeteringStreamRef.current?.getTracks().forEach((track) => track.stop());
+		webMeteringStreamRef.current = null;
+		if (webAudioContextRef.current) void webAudioContextRef.current.close();
+		webAudioContextRef.current = null;
 	}, []);
 
 	const removePcmStreamListeners = useCallback(() => {
@@ -648,7 +669,10 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 				setIsLoading(false);
 				setIsTranscribing(false);
 			} else if (uri) {
-				transcribeWithServer(uri);
+				transcribeWithServer(
+					uri,
+					Platform.OS === 'web' ? WEB_RECORDING_FILE : DEFAULT_RECORDING_FILE,
+				);
 			} else {
 				setMessages((prev) =>
 					prev.filter((message) => message.id !== userSpeakingMessageIdRef.current),
@@ -812,7 +836,8 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 		setMessages,
 	]);
 
-	const startMetering = useCallback(() => {
+	const startMetering = useCallback(async () => {
+		clearMetering();
 		lastLoudTime.current = Date.now();
 		hasSpoken.current = false;
 		ambientNoiseDbRef.current = null;
@@ -820,6 +845,41 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 		meteringStartedAtRef.current = Date.now();
 		speechStartedAtRef.current = null;
 		speechPeakDbRef.current = null;
+
+		if (Platform.OS === 'web') {
+			try {
+				const mediaDevices = globalThis.navigator?.mediaDevices;
+				const AudioContextConstructor =
+					globalThis.AudioContext ??
+					(globalThis as typeof globalThis & { webkitAudioContext?: typeof AudioContext })
+						.webkitAudioContext;
+				if (!mediaDevices || !AudioContextConstructor) return;
+
+				const stream = await mediaDevices.getUserMedia({ audio: true });
+				if (!audioRecorder.isRecording) {
+					stream.getTracks().forEach((track) => track.stop());
+					return;
+				}
+
+				const audioContext = new AudioContextConstructor();
+				if (audioContext.state === 'suspended') await audioContext.resume();
+				const analyser = audioContext.createAnalyser();
+				analyser.fftSize = 2048;
+				audioContext.createMediaStreamSource(stream).connect(analyser);
+				const samples = new Float32Array(analyser.fftSize);
+
+				webMeteringStreamRef.current = stream;
+				webAudioContextRef.current = audioContext;
+				meteringIntervalRef.current = setInterval(() => {
+					if (!audioRecorder.isRecording) return;
+					analyser.getFloatTimeDomainData(samples);
+					processMetering(getWebAudioMeteringDb(samples));
+				}, 100);
+			} catch (error) {
+				console.warn('Web microphone metering is unavailable:', error);
+			}
+			return;
+		}
 
 		meteringIntervalRef.current = setInterval(() => {
 			const status = audioRecorder.getStatus();
@@ -829,7 +889,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 			const metering = status.metering ?? -160;
 			processMetering(metering);
 		}, 100);
-	}, [audioRecorder, processMetering]);
+	}, [audioRecorder, clearMetering, processMetering]);
 
 	const startStreamingRecording = useCallback(async () => {
 		const abortController = new AbortController();
@@ -1095,6 +1155,10 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 			try {
 				const permission = await AudioModule.requestRecordingPermissionsAsync();
 				if (!permission.granted) {
+					onServiceError?.(
+						'dostęp do mikrofonu',
+						new Error('Microphone recording permission was not granted'),
+					);
 					setIsListening(false);
 					setMessages((prev) => prev.filter((message) => message.id !== userTempId));
 					return;
@@ -1145,7 +1209,7 @@ export const useMicrophone = <TMessage extends VoiceMessage>({
 						await stopRecordingAndSend();
 					} else {
 						setIsListening(true);
-						startMetering();
+						await startMetering();
 					}
 				}
 			} catch (error) {

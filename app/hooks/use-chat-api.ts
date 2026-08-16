@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
+import { Platform } from 'react-native';
 import EventSource, { EventSourceEvent } from 'react-native-sse';
 
 import type {
 	ChatMessageItem,
 	ChatMessageSourceReference,
 	SchemaImageSource,
-} from '@/components/ChatMessages';
-import { stripResponseDirectivesForSpeech } from '@/components/ChatMessages';
+} from '@/components/chat/ChatMessages';
+import { stripResponseDirectivesForSpeech } from '@/components/chat/ChatMessages';
 import { MAX_CHAT_PHOTOS } from '@/types/chat';
 import { API_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
@@ -25,6 +26,35 @@ import {
 import { fetchWithRetry, HttpError, isTransientNetworkError } from '@/utils/network';
 
 const MAX_SCHEMA_IMAGES = 5;
+
+export const appendChatPhotosToFormData = async (
+	formData: FormData,
+	photoUris: string[],
+	isWeb = Platform.OS === 'web',
+) => {
+	if (!isWeb) {
+		photoUris.forEach((photoUri, index) => {
+			formData.append('photos', {
+				uri: photoUri,
+				name: `technician-photo-${index + 1}.jpg`,
+				type: 'image/jpeg',
+			} as unknown as Blob);
+		});
+		return;
+	}
+
+	const photoBlobs = await Promise.all(
+		photoUris.map(async (photoUri) => {
+			const response = await fetch(photoUri);
+			if (!response.ok) throw new Error(`Photo load failed: ${response.status}`);
+			return response.blob();
+		}),
+	);
+
+	photoBlobs.forEach((photoBlob, index) => {
+		formData.append('photos', photoBlob, `technician-photo-${index + 1}.jpg`);
+	});
+};
 
 type StreamEvent = 'chunk';
 
@@ -191,13 +221,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 				if (attachedPhotoUris.length > 0) {
 					const formData = new FormData();
 					formData.append('question', question);
-					attachedPhotoUris.forEach((photoUri, index) => {
-						formData.append('photos', {
-							uri: photoUri,
-							name: `technician-photo-${index + 1}.jpg`,
-							type: 'image/jpeg',
-						} as unknown as Blob);
-					});
+					await appendChatPhotosToFormData(formData, attachedPhotoUris);
 
 					const photoResponse = await fetch(
 						`${serverUrl}/api/threads/${activeThreadId}/photo-context`,

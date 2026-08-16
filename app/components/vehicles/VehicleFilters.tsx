@@ -8,7 +8,7 @@ import {
 	View,
 } from 'react-native';
 
-import ThemeAwareLogo from '@/components/ThemeAwareLogo';
+import ThemeAwareLogo from '@/components/ui/ThemeAwareLogo';
 import type { Category } from '@/hooks/use-vehicle-metadata';
 
 export const FILTER_LOGO_SIZES: Record<string, { width: number; height: number }> = {
@@ -25,7 +25,7 @@ type VehicleFiltersProps = {
 	categories: Category[];
 	selectedCategoryIds: number[];
 	onCategoryPathChange: (categoryIds: number[]) => void;
-	useTabletRefresh: boolean;
+	useCompactLayout: boolean;
 	isLoading?: boolean;
 	primaryColor?: string;
 	lightMode?: boolean;
@@ -81,7 +81,7 @@ export default function VehicleFilters({
 	categories,
 	selectedCategoryIds,
 	onCategoryPathChange,
-	useTabletRefresh,
+	useCompactLayout,
 	isLoading = false,
 	primaryColor = '#FF6B00',
 	lightMode = false,
@@ -96,10 +96,10 @@ export default function VehicleFilters({
 	}
 
 	const labelClassName = `${lightMode ? 'text-[#52525B]' : 'text-gray-400'} font-bold uppercase tracking-widest ml-2 ${
-		useTabletRefresh ? 'text-[12px] mb-1' : 'text-sm mb-2'
+		useCompactLayout ? 'text-[12px] mb-1' : 'text-sm mb-2'
 	}`;
 	const getFilterChipStyle = (active: boolean) =>
-		useTabletRefresh
+		useCompactLayout
 			? {
 					height: 42,
 					paddingHorizontal: 20,
@@ -132,7 +132,7 @@ export default function VehicleFilters({
 						: {}),
 				};
 	const chipClassName = `rounded-full justify-center items-center flex-row ${
-		useTabletRefresh ? '' : 'px-6 py-3 mr-4 min-h-[48px]'
+		useCompactLayout ? '' : 'px-6 py-3 mr-4 min-h-[48px]'
 	}`;
 	const optionTextClassName = (active: boolean) =>
 		`text-sm font-bold ${
@@ -164,13 +164,13 @@ export default function VehicleFilters({
 						key={`category-level-${level}`}
 						style={{
 							marginBottom:
-								level === levels.length - 1 ? 0 : useTabletRefresh ? 8 : 12,
+								level === levels.length - 1 ? 0 : useCompactLayout ? 8 : 12,
 						}}>
 						<Text className={labelClassName}>{getLevelLabel(level)}</Text>
 						<ScrollView
 							horizontal
 							showsHorizontalScrollIndicator={false}
-							contentContainerStyle={{ paddingRight: useTabletRefresh ? 12 : 16 }}>
+							contentContainerStyle={{ paddingRight: useCompactLayout ? 12 : 16 }}>
 							<TouchableOpacity
 								onPress={() =>
 									onCategoryPathChange(selectedCategoryIds.slice(0, level))

@@ -134,7 +134,7 @@ jest.mock('@/modules/audio-stream', () => ({
 	stopPcmAudioStream: mockStopPcmAudioStream,
 }));
 
-import { useMicrophone } from '../hooks/use-microphone';
+import { getWebAudioMeteringDb, useMicrophone } from '../hooks/use-microphone';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -228,6 +228,14 @@ const createHarness = (
 };
 
 describe('useMicrophone', () => {
+	test('calculates web microphone metering from waveform samples', () => {
+		expect(getWebAudioMeteringDb(new Float32Array([0.5, -0.5, 0.5, -0.5]))).toBeCloseTo(
+			-6.02,
+			2,
+		);
+		expect(getWebAudioMeteringDb(new Float32Array([0, 0, 0, 0]))).toBe(-160);
+	});
+
 	const originalAuthToken = process.env.EXPO_PUBLIC_AUTH_TOKEN;
 
 	beforeEach(() => {
@@ -372,6 +380,12 @@ describe('useMicrophone', () => {
 		expect(mockRecorder.record).not.toHaveBeenCalled();
 		expect(harness.state.messages).toEqual([]);
 		expect(harness.state.isListening).toBe(false);
+		expect(harness.onServiceError).toHaveBeenCalledWith(
+			'dostęp do mikrofonu',
+			expect.objectContaining({
+				message: 'Microphone recording permission was not granted',
+			}),
+		);
 	});
 
 	test('stops an active recording, sends it to the backend STT endpoint, and applies the transcript', async () => {

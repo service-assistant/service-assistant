@@ -2,8 +2,8 @@ import { Feather } from '@expo/vector-icons';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 
-import AvailableFilesList from '@/components/AvailableFilesList';
-import PdfViewer from '@/components/PdfViewer';
+import AvailableFilesList from '@/components/documents/AvailableFilesList';
+import PdfViewer from '@/components/documents/PdfViewer';
 import type { AvailableFile } from '@/types/chat';
 
 export type SourcePanelPdf = {
@@ -17,6 +17,7 @@ export type SourcePanelPdf = {
 type SourcePanelProps = {
 	showSourcePanel: boolean;
 	sourcePanelPdf: SourcePanelPdf | null;
+	embedded?: boolean;
 	fullScreen?: boolean;
 	topInset?: number;
 	fileGridColumns?: 2 | 3;
@@ -41,6 +42,7 @@ type SourcePanelProps = {
 export default function SourcePanel({
 	showSourcePanel,
 	sourcePanelPdf,
+	embedded = false,
 	fullScreen = false,
 	topInset = 0,
 	fileGridColumns = fullScreen ? 2 : 3,
@@ -103,8 +105,10 @@ export default function SourcePanel({
 	);
 
 	return (
-		<View className='absolute inset-0 flex-row' style={{ zIndex: 50, elevation: 50 }}>
-			{fullScreen ? null : (
+		<View
+			className={embedded ? 'flex-1' : 'absolute inset-0 flex-row'}
+			style={embedded ? { minWidth: 0 } : { zIndex: 50, elevation: 50 }}>
+			{embedded || fullScreen ? null : (
 				<TouchableOpacity
 					activeOpacity={1}
 					onPress={onClose}
@@ -116,48 +120,66 @@ export default function SourcePanel({
 					lightMode ? 'bg-[#F7F7F8]' : 'bg-[#07080A]'
 				} ${fullScreen ? '' : lightMode ? 'border-l border-[#E4E4E7]' : 'border-l border-white/10'}`}
 				style={{
-					width: fullScreen ? '100%' : '60%',
+					width: embedded || fullScreen ? '100%' : '60%',
+					flex: embedded ? 1 : undefined,
 					shadowColor: '#000000',
-					shadowOpacity: 0.35,
+					shadowOpacity: embedded ? 0 : 0.35,
 					shadowRadius: 24,
 					shadowOffset: { width: -10, height: 0 },
 				}}>
-				<View
-					className={`flex-row items-center px-4 border-b ${
-						lightMode ? 'bg-white border-[#E4E4E7]' : 'bg-[#0D0D0D] border-[#1F1F1F]'
-					}`}
-					style={{
-						height: resolvedHeaderHeight,
-						paddingTop: resolvedHeaderPaddingTop,
-					}}>
+				{embedded ? (
 					<TouchableOpacity
 						onPress={onClose}
 						accessibilityRole='button'
 						accessibilityLabel='Wstecz'
-						className={`border rounded-[10px] items-center justify-center ${
+						className={`absolute top-4 right-4 rounded-full border items-center justify-center ${
 							lightMode
-								? 'border-[#E4E4E7] bg-white'
-								: 'border-[#2A2A2A] bg-[#0D0D0D]'
+								? 'border-[#E4E4E7] bg-white/95'
+								: 'border-white/15 bg-black/85'
+						}`}
+						style={{ width: 42, height: 42, zIndex: 5, elevation: 5 }}>
+						<Feather name='x' size={22} color='#FF7A00' />
+					</TouchableOpacity>
+				) : (
+					<View
+						className={`flex-row items-center px-4 border-b ${
+							lightMode
+								? 'bg-white border-[#E4E4E7]'
+								: 'bg-[#0D0D0D] border-[#1F1F1F]'
 						}`}
 						style={{
-							width: backButtonSize,
-							height: backButtonSize,
-							zIndex: 2,
-							elevation: 2,
+							height: resolvedHeaderHeight,
+							paddingTop: resolvedHeaderPaddingTop,
 						}}>
-						<Feather name='arrow-left' size={backIconSize} color='#FF7A00' />
-					</TouchableOpacity>
-					<Text
-						className={`flex-1 text-center font-bold ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
-						style={{
-							fontSize: resolvedHeaderTitleFontSize,
-							lineHeight: resolvedHeaderTitleLineHeight,
-						}}
-						numberOfLines={1}>
-						{title}
-					</Text>
-					<View style={{ width: backButtonSize, height: backButtonSize }} />
-				</View>
+						<TouchableOpacity
+							onPress={onClose}
+							accessibilityRole='button'
+							accessibilityLabel='Wstecz'
+							className={`border rounded-[10px] items-center justify-center ${
+								lightMode
+									? 'border-[#E4E4E7] bg-white'
+									: 'border-[#2A2A2A] bg-[#0D0D0D]'
+							}`}
+							style={{
+								width: backButtonSize,
+								height: backButtonSize,
+								zIndex: 2,
+								elevation: 2,
+							}}>
+							<Feather name='arrow-left' size={backIconSize} color='#FF7A00' />
+						</TouchableOpacity>
+						<Text
+							className={`flex-1 text-center font-bold ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
+							style={{
+								fontSize: resolvedHeaderTitleFontSize,
+								lineHeight: resolvedHeaderTitleLineHeight,
+							}}
+							numberOfLines={1}>
+							{title}
+						</Text>
+						<View style={{ width: backButtonSize, height: backButtonSize }} />
+					</View>
+				)}
 				{content}
 				{sourcePanelPdf ? (
 					<View

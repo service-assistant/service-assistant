@@ -2,24 +2,16 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useState } from 'react';
-import {
-	ActivityIndicator,
-	FlatList,
-	Platform,
-	Text,
-	TouchableOpacity,
-	View,
-	useWindowDimensions,
-} from 'react-native';
+import { ActivityIndicator, FlatList, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import NameplateScannerModal from '@/components/NameplateScannerModal';
-import ServiceErrorModal from '@/components/ServiceErrorModal';
-import ThemeAwareLogo from '@/components/ThemeAwareLogo';
-import VehicleCard, { type Vehicle } from '@/components/VehicleCard';
-import VehicleFilters from '@/components/VehicleFilters';
+import ServiceErrorModal from '@/components/feedback/ServiceErrorModal';
+import HomeHeader from '@/components/vehicles/HomeHeader';
+import NameplateScannerModal from '@/components/vehicles/NameplateScannerModal';
+import VehicleCard, { type Vehicle } from '@/components/vehicles/VehicleCard';
 import { useAppSettings } from '@/hooks/use-app-settings';
 import { useNetworkStatus } from '@/hooks/use-network-status';
+import { type ResponsiveLayout, useResponsiveLayout } from '@/hooks/use-responsive-layout';
 import {
 	categoryPathStartsWith,
 	findCategoryPath,
@@ -31,21 +23,51 @@ import { AUTH_SERVICE_FEATURE } from '@/utils/auth-errors';
 import { createNameplateThread } from '@/utils/nameplate-api';
 import { isTransientNetworkError } from '@/utils/network';
 
-// --- CONFIGURATION & DATA TYPES ---
+const LARGE_HOME_LAYOUT = {
+	cardMargin: 12,
+	scanButtonSize: 112,
+	scanIconSize: 50,
+	useCompactCards: true,
+	web: {
+		paddingHorizontal: 20,
+		cardHeight: 360,
+		imageHeight: 220,
+	},
+	native: {
+		paddingHorizontal: 20,
+		cardHeight: 320,
+		imageHeight: 210,
+	},
+} as const;
 
-const PRIMARY_ORANGE = '#FF6B00';
+const COMPACT_HOME_LAYOUT = {
+	cardMargin: 16,
+	scanButtonSize: 96,
+	scanIconSize: 44,
+	useCompactCards: false,
+	web: {
+		paddingHorizontal: 16,
+		cardHeight: 380,
+		imageHeight: 240,
+	},
+	native: {
+		paddingHorizontal: 8,
+		cardHeight: null,
+		imageHeight: null,
+	},
+} as const;
 
-// --- MAIN SCREEN ---
+const HOME_LAYOUT_CONFIG = {
+	largePortrait: { ...LARGE_HOME_LAYOUT, nativeColumns: 2 },
+	largeLandscape: { ...LARGE_HOME_LAYOUT, nativeColumns: 3 },
+	compactPortrait: { ...COMPACT_HOME_LAYOUT, nativeColumns: 2 },
+	compactLandscape: { ...COMPACT_HOME_LAYOUT, nativeColumns: 2 },
+} as const satisfies Record<ResponsiveLayout, object>;
 
 export default function HomeScreen() {
 	const router = useRouter();
-	const { width: CURRENT_SCREEN_WIDTH, height: CURRENT_SCREEN_HEIGHT } = useWindowDimensions();
-	const shortestScreenSide = Math.min(CURRENT_SCREEN_WIDTH, CURRENT_SCREEN_HEIGHT);
-	const isTablet = shortestScreenSide >= 600;
-	const isPortrait = CURRENT_SCREEN_HEIGHT > CURRENT_SCREEN_WIDTH;
-	const useTabletHomeRefresh = isTablet;
+	const { width, isWeb, layout } = useResponsiveLayout();
 	const insets = useSafeAreaInsets();
-	const isWeb = Platform.OS === 'web';
 
 	const [selectedCategoryIds, setSelectedCategoryIds] = useState<number[]>([]);
 	const [searchQuery] = useState<string>('');
@@ -64,7 +86,6 @@ export default function HomeScreen() {
 	});
 	const [isNameplateScannerOpen, setIsNameplateScannerOpen] = useState(false);
 
-	// --- MAP DEVICES TO UI FORMAT ---
 	const mappedVehicles = rawDevices.map((device) => {
 		const categoryPath = findCategoryPath(categories, device.category_id);
 		const rootCategory = categoryPath[0];
@@ -76,7 +97,7 @@ export default function HomeScreen() {
 			brand: rootCategory?.name || 'BEZ KATEGORII',
 			type: leafCategory?.name || 'BEZ KATEGORII',
 			imageUrl: device.image_url?.trim() ? { uri: device.image_url } : undefined,
-			imageOffsetY: 0, // Default values, API images are not manually calibrated
+			imageOffsetY: 0,
 			imageZoom: 1.0,
 			categoryPath,
 		};
@@ -136,160 +157,34 @@ export default function HomeScreen() {
 		return matchesCategory && mSearch;
 	});
 
-	const paddingHorizontal = useTabletHomeRefresh ? 20 : isWeb ? 16 : 8;
+	const responsive = HOME_LAYOUT_CONFIG[layout];
+	const platformLayout = isWeb ? responsive.web : responsive.native;
+	const paddingHorizontal = platformLayout.paddingHorizontal;
 	const containerPadding = paddingHorizontal * 2;
-	const cardMargin = useTabletHomeRefresh ? 12 : 16;
 
-	let columns = 2;
-	if (isWeb) {
-		columns = Math.max(2, Math.floor((CURRENT_SCREEN_WIDTH - containerPadding) / 320));
-	} else if (isTablet) {
-		columns = isPortrait ? 2 : 3;
-	}
+	const columns = isWeb
+		? Math.max(2, Math.floor((width - containerPadding) / 320))
+		: responsive.nativeColumns;
 
-	const cardWidth = (CURRENT_SCREEN_WIDTH - containerPadding) / columns - cardMargin;
-	const cardHeight = useTabletHomeRefresh ? (isWeb ? 360 : 320) : isWeb ? 380 : cardWidth + 90;
-	const imageHeight = useTabletHomeRefresh ? (isWeb ? 220 : 210) : isWeb ? 240 : cardWidth;
+	const cardWidth = (width - containerPadding) / columns - responsive.cardMargin;
+	const cardHeight = platformLayout.cardHeight ?? cardWidth + 90;
+	const imageHeight = platformLayout.imageHeight ?? cardWidth;
 	const vehicleImageZoom = 1.02;
 
-	const scanButtonSize = isTablet ? 112 : 96;
 	const scanButtonBottom = (insets.bottom || 0) + 16;
-	const bottomListPadding = scanButtonBottom + scanButtonSize + 50;
+	const bottomListPadding = isWeb ? 36 : scanButtonBottom + responsive.scanButtonSize + 50;
 
-	const usePhonePortraitHeader = !isTablet && isPortrait;
-	const useTabletFilterStyle = useTabletHomeRefresh || usePhonePortraitHeader;
-	const useLargeHeaderTitle = isPortrait || isTablet;
-	const headerLogoHeight = useTabletHomeRefresh
-		? 40
-		: usePhonePortraitHeader
-			? 34
-			: useLargeHeaderTitle
-				? 50
-				: 38;
-	const headerLogoWidth = useTabletHomeRefresh
-		? 68
-		: usePhonePortraitHeader
-			? 54
-			: useLargeHeaderTitle
-				? 80
-				: 60;
-	const headerTitleClassName = useTabletHomeRefresh
-		? 'text-3xl'
-		: usePhonePortraitHeader
-			? 'text-2xl'
-			: useLargeHeaderTitle
-				? 'text-4xl'
-				: 'text-2xl';
-	const headerPaddingHorizontal = useTabletHomeRefresh ? 20 : isTablet ? 24 : 16;
-	const headerPaddingVertical = useTabletHomeRefresh ? 10 : usePhonePortraitHeader ? 10 : 16;
-	const headerTopRowHeight = useTabletHomeRefresh ? 44 : undefined;
-	const titleGroupOffsetY = useTabletHomeRefresh ? 8 : 0;
-	const headerButtonOffsetY = useTabletHomeRefresh ? 8 : 0;
-	const useIconOnlyHeaderButtons = (isTablet && isPortrait) || usePhonePortraitHeader;
-	const headerButtonHeight = useTabletHomeRefresh ? 44 : usePhonePortraitHeader ? 42 : 48;
-	const headerButtonPaddingHorizontal = useIconOnlyHeaderButtons
-		? 0
-		: useTabletHomeRefresh
-			? 16
-			: 18;
 	const homeHeader = (
-		<View
-			style={{
-				paddingHorizontal: headerPaddingHorizontal,
-				paddingTop: headerPaddingVertical,
-				paddingBottom: headerPaddingVertical,
-				backgroundColor: lightThemeEnabled ? '#FFFFFF' : '#09090B',
-				borderBottomWidth: 1,
-				borderBottomColor: lightThemeEnabled ? '#E4E4E7' : '#09090B',
-			}}>
-			<View
-				className={`flex-row justify-between items-center ${
-					usePhonePortraitHeader ? 'gap-2' : 'gap-3'
-				}`}
-				style={{
-					minHeight: headerTopRowHeight,
-					marginBottom: useTabletHomeRefresh ? 12 : usePhonePortraitHeader ? 12 : 16,
-				}}>
-				<View
-					className='flex-row items-center flex-1 min-w-0'
-					style={{ transform: [{ translateY: titleGroupOffsetY }] }}>
-					<View className={usePhonePortraitHeader ? 'mr-2' : 'mr-3'}>
-						<ThemeAwareLogo
-							source={require('../../assets/images/fixo3.png')}
-							width={headerLogoWidth}
-							height={headerLogoHeight}
-							lightMode={lightThemeEnabled}
-							resizeMode='contain'
-						/>
-					</View>
-					<Text
-						className={`${headerTitleClassName} ${lightThemeEnabled ? 'text-[#18181B]' : 'text-white'} font-bold flex-1`}
-						numberOfLines={1}
-						adjustsFontSizeToFit>
-						Wybierz Pojazd
-					</Text>
-				</View>
-				<View
-					className={`flex-row items-center ${usePhonePortraitHeader ? 'gap-2' : 'gap-3'}`}>
-					<TouchableOpacity
-						onPress={() => router.push('/settings')}
-						accessibilityRole='button'
-						accessibilityLabel='Ustawienia'
-						className={`flex-row items-center justify-center border rounded-[10px] ${
-							lightThemeEnabled
-								? 'border-[#E4E4E7] bg-[#FAFAFA]'
-								: 'border-[#2A2A2A] bg-[#111111]'
-						}`}
-						style={{
-							height: headerButtonHeight,
-							width: useIconOnlyHeaderButtons ? headerButtonHeight : undefined,
-							paddingHorizontal: headerButtonPaddingHorizontal,
-							transform: [{ translateY: headerButtonOffsetY }],
-						}}>
-						<MaterialCommunityIcons name='cog-outline' size={21} color='#FF7A00' />
-						{useIconOnlyHeaderButtons ? null : (
-							<Text
-								className={`${lightThemeEnabled ? 'text-[#3F3F46]' : 'text-[#E6E6E6]'} ml-4 text-[13px] font-semibold tracking-wider`}>
-								USTAWIENIA
-							</Text>
-						)}
-					</TouchableOpacity>
-					<TouchableOpacity
-						onPress={() => router.push('/history')}
-						accessibilityRole='button'
-						accessibilityLabel='Historia czatów'
-						className={`flex-row items-center justify-center border rounded-[10px] ${
-							lightThemeEnabled
-								? 'border-[#E4E4E7] bg-[#FAFAFA]'
-								: 'border-[#2A2A2A] bg-[#111111]'
-						}`}
-						style={{
-							height: headerButtonHeight,
-							width: useIconOnlyHeaderButtons ? headerButtonHeight : undefined,
-							paddingHorizontal: headerButtonPaddingHorizontal,
-							transform: [{ translateY: headerButtonOffsetY }],
-						}}>
-						<MaterialCommunityIcons name='history' size={21} color='#FF7A00' />
-						{useIconOnlyHeaderButtons ? null : (
-							<Text
-								className={`${lightThemeEnabled ? 'text-[#3F3F46]' : 'text-[#E6E6E6]'} ml-4 text-[13px] font-semibold tracking-wider`}>
-								HISTORIA CZATÓW
-							</Text>
-						)}
-					</TouchableOpacity>
-				</View>
-			</View>
-
-			<VehicleFilters
-				categories={categories}
-				selectedCategoryIds={selectedCategoryIds}
-				onCategoryPathChange={setSelectedCategoryIds}
-				useTabletRefresh={useTabletFilterStyle}
-				isLoading={isLoadingCategories}
-				primaryColor={PRIMARY_ORANGE}
-				lightMode={lightThemeEnabled}
-			/>
-		</View>
+		<HomeHeader
+			categories={categories}
+			selectedCategoryIds={selectedCategoryIds}
+			onCategoryPathChange={setSelectedCategoryIds}
+			isLoadingCategories={isLoadingCategories}
+			layout={layout}
+			lightMode={lightThemeEnabled}
+			onOpenSettings={() => router.push('/settings')}
+			onOpenHistory={() => router.push('/history')}
+		/>
 	);
 
 	return (
@@ -305,7 +200,7 @@ export default function HomeScreen() {
 					<View className='flex-1'>
 						{homeHeader}
 						<View className='flex-1 justify-center items-center'>
-							<ActivityIndicator size='large' color={PRIMARY_ORANGE} />
+							<ActivityIndicator size='large' color='#FF6B00' />
 							<Text
 								className={`${lightThemeEnabled ? 'text-[#52525B]' : 'text-gray-400'} mt-4`}>
 								Ładowanie maszyn...
@@ -325,9 +220,8 @@ export default function HomeScreen() {
 								cardHeight={cardHeight}
 								imageHeight={imageHeight}
 								imageZoom={vehicleImageZoom}
-								isTablet={isTablet}
 								isWeb={isWeb}
-								useTabletRefresh={useTabletHomeRefresh}
+								useCompactLayout={responsive.useCompactCards}
 								onOpen={openChat}
 								getBrandLogoUrl={getRemoteBrandLogo}
 								lightMode={lightThemeEnabled}
@@ -358,38 +252,40 @@ export default function HomeScreen() {
 				)}
 			</View>
 
-			<View
-				pointerEvents='box-none'
-				className='absolute left-0 right-0 items-center px-4'
-				style={{ bottom: scanButtonBottom, zIndex: 30, elevation: 30 }}>
-				<TouchableOpacity
-					onPress={() => setIsNameplateScannerOpen(true)}
-					accessibilityRole='button'
-					accessibilityLabel='Zrób zdjęcie tabliczki znamionowej'
-					activeOpacity={0.86}
-					className='items-center'>
-					<View
-						className={`items-center justify-center border rounded-[22px] ${
-							lightThemeEnabled
-								? 'border-[#D4D4D8] bg-white'
-								: 'border-[#3F3F46] bg-[#18181B]'
-						}`}
-						style={{
-							width: scanButtonSize,
-							height: scanButtonSize,
-							shadowColor: '#000000',
-							shadowOffset: { width: 0, height: 4 },
-							shadowOpacity: lightThemeEnabled ? 0.18 : 0.45,
-							shadowRadius: 8,
-						}}>
-						<MaterialCommunityIcons
-							name='camera-outline'
-							size={isTablet ? 50 : 44}
-							color='#FF6B00'
-						/>
-					</View>
-				</TouchableOpacity>
-			</View>
+			{isWeb ? null : (
+				<View
+					pointerEvents='box-none'
+					className='absolute left-0 right-0 items-center px-4'
+					style={{ bottom: scanButtonBottom, zIndex: 30, elevation: 30 }}>
+					<TouchableOpacity
+						onPress={() => setIsNameplateScannerOpen(true)}
+						accessibilityRole='button'
+						accessibilityLabel='Zrób zdjęcie tabliczki znamionowej'
+						activeOpacity={0.86}
+						className='items-center'>
+						<View
+							className={`items-center justify-center border rounded-[22px] ${
+								lightThemeEnabled
+									? 'border-[#D4D4D8] bg-white'
+									: 'border-[#3F3F46] bg-[#18181B]'
+							}`}
+							style={{
+								width: responsive.scanButtonSize,
+								height: responsive.scanButtonSize,
+								shadowColor: '#000000',
+								shadowOffset: { width: 0, height: 4 },
+								shadowOpacity: lightThemeEnabled ? 0.18 : 0.45,
+								shadowRadius: 8,
+							}}>
+							<MaterialCommunityIcons
+								name='camera-outline'
+								size={responsive.scanIconSize}
+								color='#FF6B00'
+							/>
+						</View>
+					</TouchableOpacity>
+				</View>
+			)}
 
 			<ServiceErrorModal
 				visible={Boolean(serviceErrorFeature)}
@@ -401,7 +297,7 @@ export default function HomeScreen() {
 					serviceErrorFeature !== CONFIG_SERVICE_FEATURE
 				}
 			/>
-			{isNameplateScannerOpen ? (
+			{!isWeb && isNameplateScannerOpen ? (
 				<NameplateScannerModal
 					visible
 					lightMode={lightThemeEnabled}

@@ -16,6 +16,7 @@ import {
 	AppState,
 	BackHandler,
 	Keyboard,
+	Platform,
 	ScrollView,
 	StyleSheet,
 	TextInput,
@@ -28,11 +29,11 @@ import {
 	DesktopChatLayout,
 	FullscreenSchemaView,
 	PortraitChatLayout,
-} from '@/components/ChatLayouts';
-import type { ChatMessageSourceReference, SchemaImageSource } from '@/components/ChatMessages';
-import NameplateScannerModal from '@/components/NameplateScannerModal';
-import ServiceErrorModal from '@/components/ServiceErrorModal';
-import type { KeyboardFrame } from '@/components/StartPromptView';
+} from '@/components/chat/ChatLayouts';
+import type { ChatMessageSourceReference, SchemaImageSource } from '@/components/chat/ChatMessages';
+import type { KeyboardFrame } from '@/components/chat/StartPromptView';
+import ServiceErrorModal from '@/components/feedback/ServiceErrorModal';
+import NameplateScannerModal from '@/components/vehicles/NameplateScannerModal';
 import { useAppSettings } from '@/hooks/use-app-settings';
 import { useAssistantAudio } from '@/hooks/use-assistant-audio';
 import { useChatApi } from '@/hooks/use-chat-api';
@@ -83,6 +84,8 @@ const FILE_ICON_OPTIONS = [
 	{ icon: 'wrench-outline', color: '#3B82F6' },
 	{ icon: 'shield-check-outline', color: '#22C55E' },
 ];
+
+const WEB_SIDE_PREVIEW_MIN_WIDTH = 1100;
 
 type FullscreenSchemaOverlayHandle = {
 	prepare: (imageSource: SchemaImageSource | null) => void;
@@ -174,7 +177,9 @@ export default function ChatScreen() {
 	const { width, height } = useWindowDimensions();
 	const isPortrait = height > width;
 	const isTablet = Math.min(width, height) >= 600;
-	const sourcePanelFullScreen = isPortrait;
+	const isWeb = Platform.OS === 'web';
+	const useDesktopSidePreview = isWeb && !isPortrait && width >= WEB_SIDE_PREVIEW_MIN_WIDTH;
+	const sourcePanelFullScreen = isPortrait || (isWeb && !useDesktopSidePreview);
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
 	const {
@@ -217,6 +222,11 @@ export default function ChatScreen() {
 	const [isMachineInfoVisible, setIsMachineInfoVisible] = useState(false);
 	const [isPhotoCaptureVisible, setIsPhotoCaptureVisible] = useState(false);
 	const [pendingPhotoUris, setPendingPhotoUris] = useState<string[]>([]);
+	const [isMicrophoneActivated, setIsMicrophoneActivated] = useState(false);
+	const [desktopSchemaPreview, setDesktopSchemaPreview] = useState<{
+		imageUrl: SchemaImageSource;
+		title?: string;
+	} | null>(null);
 	const { reconnectCount } = useNetworkStatus();
 
 	const hasStartedChat = messages.length > 0;
@@ -320,10 +330,12 @@ export default function ChatScreen() {
 		});
 	const openMachineInfoPanel = useCallback(() => {
 		sourcePanelProps.onClose();
+		setDesktopSchemaPreview(null);
 		setIsMachineInfoVisible(true);
 	}, [sourcePanelProps]);
 	const openFilesPanelWithoutMachineInfo = useCallback(() => {
 		setIsMachineInfoVisible(false);
+		setDesktopSchemaPreview(null);
 		openFilesPanel();
 	}, [openFilesPanel]);
 
@@ -686,8 +698,37 @@ export default function ChatScreen() {
 			return;
 		}
 
+		setIsMicrophoneActivated(true);
 		void handleMicPress();
 	};
+
+	const handleMicrophoneCancel = () => {
+		setIsMicrophoneActivated(false);
+		handleStop();
+	};
+
+	useEffect(() => {
+		if (!isMicrophoneActivated) return;
+
+		const hasVoiceActivity =
+			isMicStarting ||
+			isListening ||
+			isTranscribing ||
+			messages.some((message) => message.isSpeaking);
+		const hasVoiceRequestActivity =
+			hasVoiceActivity || isLoading || isGenerating || isAudioPlaying;
+
+		if (!hasVoiceRequestActivity) setIsMicrophoneActivated(false);
+	}, [
+		isAudioPlaying,
+		isGenerating,
+		isListening,
+		isLoading,
+		isMicStarting,
+		isMicrophoneActivated,
+		isTranscribing,
+		messages,
+	]);
 
 	const handleWakeWordDetected = useCallback(() => {
 		void handleMicPress();
@@ -743,12 +784,31 @@ export default function ChatScreen() {
 		}
 	};
 
-	const openSchemaFullscreen = useCallback((imageSource: SchemaImageSource, title?: string) => {
-		schemaViewerRef.current?.open(imageSource, title);
-	}, []);
+	const openSchemaFullscreen = useCallback(
+		(imageSource: SchemaImageSource, title?: string) => {
+			if (isWeb && !isPortrait) {
+				sourcePanelProps.onClose();
+				setIsMachineInfoVisible(false);
+				setDesktopSchemaPreview({ imageUrl: imageSource, title });
+				return;
+			}
+
+			schemaViewerRef.current?.open(imageSource, title);
+		},
+		[isPortrait, isWeb, sourcePanelProps],
+	);
+	const openMessageSourceAlongsideChat = useCallback(
+		(source: ChatMessage | ChatMessageSourceReference) => {
+			setDesktopSchemaPreview(null);
+			setIsMachineInfoVisible(false);
+			void openMessageSource(source);
+		},
+		[openMessageSource],
+	);
 
 	const commonLayoutProps = {
 		lightMode: lightThemeEnabled,
+		hideControlPanel: isWeb,
 		currentSource,
 		logoUrl,
 		isTablet,
@@ -764,11 +824,15 @@ export default function ChatScreen() {
 		isListening,
 		isMicStarting,
 		isMicProcessing,
+		isMicrophoneActivated,
 		isMicRestartBlocked,
 		isSpeechInputUnavailable,
 		isVoiceOutputUnavailable,
 		soundLevelAnim,
 		currentImageAspectRatio: 1,
+		desktopSchemaPreview,
+		onCloseDesktopSchema: () => setDesktopSchemaPreview(null),
+		enableDesktopPreview: useDesktopSidePreview,
 		startPromptInputRef,
 		messagesScrollViewRef,
 		sourcePanelProps,
@@ -787,7 +851,7 @@ export default function ChatScreen() {
 		onShowTextInputChange: setShowTextInput,
 		onShouldFocusStartPromptInputChange: setShouldFocusStartPromptInput,
 		onOpenSchema: openSchemaFullscreen,
-		onOpenSource: openMessageSource,
+		onOpenSource: openMessageSourceAlongsideChat,
 		onRetryMessage: handleRetryMessage,
 		onContinueMessage: handleContinueMessage,
 		isRetryDisabled: isLoading || isGenerating,
@@ -796,6 +860,7 @@ export default function ChatScreen() {
 		onRemovePendingPhoto: (photoUri: string) =>
 			setPendingPhotoUris((currentUris) => currentUris.filter((uri) => uri !== photoUri)),
 		onMicPress: handleMicPressWithFeedback,
+		onMicCancel: handleMicrophoneCancel,
 		onCameraPress: handleCameraPress,
 		onWritingPress: handleWritingPress,
 	};
@@ -823,6 +888,19 @@ export default function ChatScreen() {
 					onClose={() => setServiceErrorFeature(null)}
 					lightMode={lightThemeEnabled}
 				/>
+				{isWeb && desktopSchemaPreview ? (
+					<View className='absolute inset-0' style={{ zIndex: 50, elevation: 50 }}>
+						<FullscreenSchemaView
+							lightMode={lightThemeEnabled}
+							imageUrl={desktopSchemaPreview.imageUrl}
+							title={desktopSchemaPreview.title}
+							aspectRatio={1}
+							insets={insets}
+							isTablet={isTablet}
+							onBack={() => setDesktopSchemaPreview(null)}
+						/>
+					</View>
+				) : null}
 				<FullscreenSchemaOverlay
 					ref={schemaViewerRef}
 					lightMode={lightThemeEnabled}
@@ -844,12 +922,14 @@ export default function ChatScreen() {
 				onClose={() => setServiceErrorFeature(null)}
 				lightMode={lightThemeEnabled}
 			/>
-			<FullscreenSchemaOverlay
-				ref={schemaViewerRef}
-				lightMode={lightThemeEnabled}
-				insets={insets}
-				isTablet={isTablet}
-			/>
+			{!isWeb ? (
+				<FullscreenSchemaOverlay
+					ref={schemaViewerRef}
+					lightMode={lightThemeEnabled}
+					insets={insets}
+					isTablet={isTablet}
+				/>
+			) : null}
 		</View>
 	);
 }
