@@ -80,7 +80,7 @@ jobs:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: service_assistant_test
         ports:
-          - 5433:5432
+          - 5432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -94,4 +94,5 @@ jobs:
       - name: Run tests
         run: poetry --directory ./api run pytest
         env:
-          DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5433/service_assistant_test
+          ENV: test
+          POSTGRES_PASSWORD: postgres
