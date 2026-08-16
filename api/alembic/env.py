@@ -1,13 +1,14 @@
 import asyncio
-import os
 import sys
 from logging.config import fileConfig
 
-from alembic import context
 from dotenv import load_dotenv
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
+
+from alembic import context
+from app.database import database_url_with_driver
 
 load_dotenv()
 
@@ -21,18 +22,9 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
-def get_url() -> str:
-    url = os.environ.get("DATABASE_URL")
-    if not url:
-        raise RuntimeError("DATABASE_URL is not set")
-    if sys.platform == "win32":
-        return url.replace("host.docker.internal", "127.0.0.1")
-    return url
-
-
 def run_migrations_offline() -> None:
     context.configure(
-        url=get_url(),
+        url=database_url_with_driver,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -48,7 +40,7 @@ def do_run_migrations(connection: Connection) -> None:
 
 
 async def run_async_migrations() -> None:
-    engine = create_async_engine(get_url(), poolclass=pool.NullPool)
+    engine = create_async_engine(database_url_with_driver, poolclass=pool.NullPool)
     async with engine.connect() as connection:
         await connection.run_sync(do_run_migrations)
     await engine.dispose()

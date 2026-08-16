@@ -40,7 +40,7 @@ migrate:
 production:
 	docker compose -f compose.production.yml up --build -d
 test:
-	poetry run pytest
+	ENV=test poetry run pytest
 lint:
 	poetry run ruff check app tests alembic
 format:

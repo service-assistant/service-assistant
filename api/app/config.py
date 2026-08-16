@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
@@ -14,7 +15,13 @@ def _split_comma_separated(value: object) -> object:
 
 class Settings(BaseSettings):
     env: str
-    database_url: str
+
+    postgres_host: str
+    postgres_port: int
+    postgres_db: str
+    postgres_user: str
+    postgres_password: str
+
     auth_token: str
     azure_openai_endpoint: str
     azure_openai_api_key: str
@@ -63,7 +70,11 @@ class Settings(BaseSettings):
     ] = Field(
         default_factory=lambda: ["http://localhost:5173", "http://localhost:8081"]
     )
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    model_config = SettingsConfigDict(
+        env_file=".env.test" if os.getenv("ENV") == "test" else ".env",
+        extra="ignore",
+    )
 
     @model_validator(mode="after")
     def validate_reranker_configuration(self) -> "Settings":

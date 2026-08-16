@@ -1,17 +1,14 @@
-import os
-
 import pytest
 from fastapi.testclient import TestClient
 from httpx import ASGITransport, AsyncClient
 
+from app.config import get_settings
 from app.database import get_session
 from app.main import app
 
 
 @pytest.fixture(autouse=True)
 def override_attachments_dir(tmp_path):
-    from app.config import get_settings
-
     test_settings = get_settings().model_copy(update={"attachments_dir": tmp_path})
     app.dependency_overrides[get_settings] = lambda: test_settings
     yield
@@ -50,7 +47,7 @@ async def client():
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://testserver",
-        headers={"Authorization": f"Bearer {os.getenv('AUTH_TOKEN')}"},
+        headers={"Authorization": f"Bearer {get_settings().auth_token}"},
     ) as c:
         yield c
 

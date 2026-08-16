@@ -1,10 +1,9 @@
 import re
-from pathlib import Path
 
 import httpx
 import pytest
 
-from app.config import Settings
+from app.config import get_settings
 from app.services.tts import (
     GEMINI_INTERACTIONS_URL,
     PCM_CHANNELS,
@@ -62,25 +61,10 @@ async def test_should_synthesize_long_text_in_chunks_and_join_pcm(mocker):
             return FakeResponse()
 
     mocker.patch("app.services.tts.httpx.AsyncClient", FakeAsyncClient)
-    settings = Settings(
-        env="test",
-        database_url="postgresql+psycopg://postgres:postgres@localhost/test",
-        auth_token="token",
-        azure_openai_endpoint="https://azure.example.test",
-        azure_openai_api_key="azure-key",
-        azure_openai_embeddings_deployment="embedding",
-        openai_api_key="openai-key",
-        openai_chat_model="gpt-4o-mini",
-        azure_openai_api_version="2024-01-01",
-        azure_document_intelligence_endpoint="https://document-intelligence.example",
-        azure_document_intelligence_key="document-intelligence-key",
-        attachments_dir=Path("/tmp"),
-        gemini_api_key="gemini-key",
-    )
     text = "Zdanie testowe do syntezy. " * 50
     expected_chunks = _split_tts_text(text)
 
-    pcm = await synthesize_pcm(text, settings)
+    pcm = await synthesize_pcm(text, get_settings())
 
     assert len(captured_inputs) == len(expected_chunks)
     assert set(captured_inputs) == set(expected_chunks)
@@ -168,26 +152,9 @@ async def test_should_call_gemini_interactions_api_for_tts(mocker):
             return FakeResponse()
 
     mocker.patch("app.services.tts.httpx.AsyncClient", FakeAsyncClient)
-    settings = Settings(
-        env="test",
-        database_url="postgresql+psycopg://postgres:postgres@localhost/test",
-        auth_token="token",
-        azure_openai_endpoint="https://azure.example.test",
-        azure_openai_api_key="azure-key",
-        azure_openai_embeddings_deployment="embedding",
-        openai_api_key="openai-key",
-        openai_chat_model="gpt-4o-mini",
-        azure_openai_api_version="2024-01-01",
-        azure_document_intelligence_endpoint="https://document-intelligence.example",
-        azure_document_intelligence_key="document-intelligence-key",
-        attachments_dir=Path("/tmp"),
-        gemini_api_key="gemini-key",
-        gemini_tts_model="gemini-2.5-flash-preview-tts",
-        gemini_tts_voice="Algenib",
-    )
 
     pcm = await synthesize_pcm(
-        "Dzien dobry", settings, voice="Leda", style="extreme_sensual"
+        "Dzien dobry", get_settings(), voice="Leda", style="extreme_sensual"
     )
 
     assert pcm == b"\x01\x02\x03\x04"
@@ -231,24 +198,9 @@ async def test_should_fall_back_to_safer_style_when_gemini_blocks_prompt(mocker)
             return FakeResponse(blocked=len(captured_inputs) == 1)
 
     mocker.patch("app.services.tts.httpx.AsyncClient", FakeAsyncClient)
-    settings = Settings(
-        env="test",
-        database_url="postgresql+psycopg://postgres:postgres@localhost/test",
-        auth_token="token",
-        azure_openai_endpoint="https://azure.example.test",
-        azure_openai_api_key="azure-key",
-        azure_openai_embeddings_deployment="embedding",
-        openai_api_key="openai-key",
-        openai_chat_model="gpt-4o-mini",
-        azure_openai_api_version="2024-01-01",
-        azure_document_intelligence_endpoint="https://document-intelligence.example",
-        azure_document_intelligence_key="document-intelligence-key",
-        attachments_dir=Path("/tmp"),
-        gemini_api_key="gemini-key",
-    )
 
     pcm = await synthesize_pcm(
-        "Dzien dobry", settings, voice="Leda", style="extreme_sensual"
+        "Dzien dobry", get_settings(), voice="Leda", style="extreme_sensual"
     )
 
     assert pcm == b"\x01\x02\x03\x04"
@@ -306,23 +258,6 @@ async def test_should_wrap_gemini_failures_as_tts_error(
             return FakeResponse()
 
     mocker.patch("app.services.tts.httpx.AsyncClient", FakeAsyncClient)
-    settings = Settings(
-        env="test",
-        database_url="postgresql+psycopg://postgres:postgres@localhost/test",
-        auth_token="token",
-        azure_openai_endpoint="https://azure.example.test",
-        azure_openai_api_key="azure-key",
-        azure_openai_embeddings_deployment="embedding",
-        openai_api_key="openai-key",
-        openai_chat_model="gpt-4o-mini",
-        azure_openai_api_version="2024-01-01",
-        azure_document_intelligence_endpoint="https://document-intelligence.example",
-        azure_document_intelligence_key="document-intelligence-key",
-        attachments_dir=Path("/tmp"),
-        gemini_api_key="gemini-key",
-        gemini_tts_model="gemini-2.5-flash-preview-tts",
-        gemini_tts_voice="Algenib",
-    )
 
     with pytest.raises(TtsError, match=re.escape(expected_message)):
-        await synthesize_pcm("Dzien dobry", settings)
+        await synthesize_pcm("Dzien dobry", get_settings())

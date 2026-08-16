@@ -1,23 +1,10 @@
 import pytest
 
-from app.config import Settings
+from app.config import get_settings
 
 
 @pytest.fixture
 def settings(tmp_path):
-    return Settings(
-        env="test",
-        database_url="postgresql://localhost/test",
-        azure_openai_endpoint="https://example",
-        azure_openai_api_key="key",
-        azure_openai_embeddings_deployment="dep",
-        azure_openai_api_version="2024-01-01",
-        azure_document_intelligence_endpoint="https://document-intelligence.example",
-        azure_document_intelligence_key="document-intelligence-key",
-        openai_chat_model="gpt-5.6-luna",
-        openai_api_key="test-openai-key",
-        attachments_dir=tmp_path,
-        auth_token="token",
-        reranker_enabled=False,
-        voyage_api_key=None,
-    )
+    settings = get_settings()
+    settings.attachments_dir = tmp_path
+    return settings
