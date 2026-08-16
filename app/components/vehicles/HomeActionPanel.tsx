@@ -306,7 +306,7 @@ export default function HomeActionPanel({
 									: 'rgba(255, 255, 255, 0.08)',
 							}}>
 							<Image
-								source={require('../assets/images/camera.png')}
+								source={require('../../assets/images/camera.png')}
 								style={{
 									width: bottomBar.sideIconSize,
 									height: bottomBar.sideIconSize,
@@ -355,7 +355,7 @@ export default function HomeActionPanel({
 									/>
 								) : null}
 								<Image
-									source={require('../assets/images/micro.png')}
+									source={require('../../assets/images/micro.png')}
 									style={{
 										width: bottomBar.centerIconSize,
 										height: bottomBar.centerIconSize,
@@ -400,7 +400,7 @@ export default function HomeActionPanel({
 								borderColor: 'rgba(255, 255, 255, 0.08)',
 							}}>
 							<Image
-								source={require('../assets/images/search.png')}
+								source={require('../../assets/images/search.png')}
 								style={{
 									width: bottomBar.sideIconSize,
 									height: bottomBar.sideIconSize,

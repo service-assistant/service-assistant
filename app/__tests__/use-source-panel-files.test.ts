@@ -198,7 +198,7 @@ describe('useSourcePanelFiles', () => {
 	test('downloads files on web through fetch and object URLs', async () => {
 		Platform.OS = 'web';
 		const objectUrl = 'blob:manual-pdf';
-		const createObjectURL = jest.fn(() => objectUrl);
+		const createObjectURL = jest.fn((_blob: Blob) => objectUrl);
 		const revokeObjectURL = jest.fn();
 		Object.defineProperty(global.URL, 'createObjectURL', {
 			value: createObjectURL,
@@ -222,6 +222,7 @@ describe('useSourcePanelFiles', () => {
 			headers: { Authorization: 'Bearer test-token' },
 		});
 		expect(createObjectURL).toHaveBeenCalledWith(expect.any(Blob));
+		expect(createObjectURL.mock.calls[0][0].type).toBe('application/pdf');
 		expect(harness.state.sourcePanelPdf).toEqual({
 			name: testFile.name,
 			icon: 'file-download',
@@ -230,6 +231,47 @@ describe('useSourcePanelFiles', () => {
 			page: 1,
 		});
 		expect(mockCreateDownloadResumable).not.toHaveBeenCalled();
+	});
+
+	test('opens authorized message PDFs inline on web with a PDF object URL', async () => {
+		Platform.OS = 'web';
+		const objectUrl = 'blob:message-source-pdf';
+		const createObjectURL = jest.fn((_blob: Blob) => objectUrl);
+		Object.defineProperty(global.URL, 'createObjectURL', {
+			value: createObjectURL,
+			configurable: true,
+		});
+		Object.defineProperty(global.URL, 'revokeObjectURL', {
+			value: jest.fn(),
+			configurable: true,
+		});
+		jest.mocked(global.fetch).mockResolvedValue(
+			new Response('pdf', {
+				status: 200,
+				headers: { 'content-type': 'application/octet-stream' },
+			}),
+		);
+		const harness = createHarness();
+
+		await harness.api.openMessageSource({
+			sourceAttachmentId: 77,
+			sourceAttachmentName: 'manual.pdf',
+			sourceAttachmentPage: 4,
+		});
+
+		expect(global.fetch).toHaveBeenCalledWith(
+			'https://api.example.test/api/attachments/77/file',
+			{ headers: { Authorization: 'Bearer test-token' } },
+		);
+		expect(createObjectURL.mock.calls[0][0].type).toBe('application/pdf');
+		expect(harness.state.sourcePanelPdf).toEqual({
+			name: 'manual.pdf',
+			icon: 'file-pdf-box',
+			color: '#EF4444',
+			source: objectUrl,
+			page: 5,
+		});
+		expect(harness.state.showSourcePanel).toBe(true);
 	});
 
 	test('deletes downloaded native files and updates the downloaded id set', async () => {

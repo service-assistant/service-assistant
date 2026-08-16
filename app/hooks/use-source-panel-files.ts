@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 
-import type { SourcePanelPdf } from '@/components/SourcePanel';
+import type { SourcePanelPdf } from '@/components/documents/SourcePanel';
 import type { AvailableFile } from '@/types/chat';
 import { API_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
@@ -117,8 +117,20 @@ export const useSourcePanelFiles = ({
 		setShowSourcePanel(true);
 	}, []);
 
+	const createWebPdfObjectUrl = useCallback(async (response: Response) => {
+		if (webPdfObjectUrlRef.current) {
+			URL.revokeObjectURL(webPdfObjectUrlRef.current);
+			webPdfObjectUrlRef.current = null;
+		}
+
+		const pdfBlob = new Blob([await response.arrayBuffer()], { type: 'application/pdf' });
+		const objectUrl = URL.createObjectURL(pdfBlob);
+		webPdfObjectUrlRef.current = objectUrl;
+		return objectUrl;
+	}, []);
+
 	const openMessageSource = useCallback(
-		(message: SourceMessage) => {
+		async (message: SourceMessage) => {
 			if (!message.sourceAttachmentId) return;
 
 			let authToken = '';
@@ -131,7 +143,7 @@ export const useSourcePanelFiles = ({
 				return;
 			}
 
-			openPdfInSourcePanel({
+			const pdf = {
 				name: message.sourceAttachmentName || `Dokument_${message.sourceAttachmentId}.pdf`,
 				icon: 'file-pdf-box',
 				color: '#EF4444',
@@ -142,9 +154,30 @@ export const useSourcePanelFiles = ({
 					},
 				},
 				page: (message.sourceAttachmentPage ?? 0) + 1,
-			});
+			};
+
+			if (Platform.OS !== 'web') {
+				openPdfInSourcePanel(pdf);
+				return;
+			}
+
+			try {
+				const response = await fetch(pdf.source.uri, { headers: pdf.source.headers });
+				if (!response.ok) {
+					throwIfAuthResponseError(response);
+					throw new Error(`PDF preview failed: ${response.status}`);
+				}
+
+				openPdfInSourcePanel({
+					...pdf,
+					source: await createWebPdfObjectUrl(response),
+				});
+			} catch (error) {
+				console.log('Handled PDF preview error:', error);
+				onServiceError?.(getServiceErrorFeature(error, 'podgląd pliku'), error);
+			}
 		},
-		[authTokenOverride, onServiceError, openPdfInSourcePanel, serverUrl],
+		[authTokenOverride, createWebPdfObjectUrl, onServiceError, openPdfInSourcePanel, serverUrl],
 	);
 
 	const openFilesPanel = useCallback(() => {
@@ -195,11 +228,6 @@ export const useSourcePanelFiles = ({
 				const authToken = authTokenOverride ?? getAuthTokenOrThrow();
 
 				if (Platform.OS === 'web') {
-					if (webPdfObjectUrlRef.current) {
-						URL.revokeObjectURL(webPdfObjectUrlRef.current);
-						webPdfObjectUrlRef.current = null;
-					}
-
 					const response = await fetch(file.remoteUrl, {
 						headers: { Authorization: `Bearer ${authToken}` },
 					});
@@ -209,9 +237,7 @@ export const useSourcePanelFiles = ({
 						throw new Error(`PDF download failed: ${response.status}`);
 					}
 
-					const blob = await response.blob();
-					const objectUrl = URL.createObjectURL(blob);
-					webPdfObjectUrlRef.current = objectUrl;
+					const objectUrl = await createWebPdfObjectUrl(response);
 
 					setSourcePanelPdf({
 						name: file.name,
@@ -269,7 +295,13 @@ export const useSourcePanelFiles = ({
 				downloadResumableRef.current = null;
 			}
 		},
-		[authTokenOverride, getLocalFileUri, isFileDownloading, onServiceError],
+		[
+			authTokenOverride,
+			createWebPdfObjectUrl,
+			getLocalFileUri,
+			isFileDownloading,
+			onServiceError,
+		],
 	);
 
 	const openFileInSourcePanel = useCallback(

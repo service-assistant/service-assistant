@@ -1,5 +1,9 @@
 type Listener = (event: Record<string, unknown>) => void;
 
+jest.mock('react-native', () => ({
+	Platform: { OS: 'ios' },
+}));
+
 class MockEventSource {
 	static instances: MockEventSource[] = [];
 
@@ -35,7 +39,7 @@ jest.mock('react', () => ({
 	useRef: (initialValue: unknown) => ({ current: initialValue }),
 }));
 
-jest.mock('@/components/ChatMessages', () => ({
+jest.mock('@/components/chat/ChatMessages', () => ({
 	stripResponseDirectivesForSpeech: (text: string) =>
 		text
 			.replace(/::(checklist|warning|next)\b[ \t]*/gi, '')
@@ -43,8 +47,8 @@ jest.mock('@/components/ChatMessages', () => ({
 			.trim(),
 }));
 
-import type { ChatMessageItem, SchemaImageSource } from '@/components/ChatMessages';
-import { useChatApi } from '../hooks/use-chat-api';
+import type { ChatMessageItem, SchemaImageSource } from '@/components/chat/ChatMessages';
+import { appendChatPhotosToFormData, useChatApi } from '../hooks/use-chat-api';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -137,6 +141,21 @@ const createHarness = (
 };
 
 describe('useChatApi', () => {
+	test('converts web photo URIs to browser blobs before upload', async () => {
+		const fetchMock = jest.mocked(global.fetch);
+		fetchMock.mockResolvedValue(
+			new Response('image-bytes', {
+				status: 200,
+				headers: { 'content-type': 'image/jpeg' },
+			}),
+		);
+		const formData = new FormData();
+
+		await appendChatPhotosToFormData(formData, ['blob:technician-photo'], true);
+
+		expect(fetchMock).toHaveBeenCalledWith('blob:technician-photo');
+		expect(formData.get('photos')).toEqual(expect.objectContaining({ type: 'image/jpeg' }));
+	});
 	beforeEach(() => {
 		MockEventSource.instances = [];
 		jest.spyOn(Date, 'now').mockReturnValue(1000);

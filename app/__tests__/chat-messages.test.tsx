@@ -1,12 +1,15 @@
 import React from 'react';
+import { Platform } from 'react-native';
 
-import type { ChatMessageItem } from '@/components/ChatMessages';
+import type { ChatMessageItem } from '@/components/chat/ChatMessages';
 import ChatMessages, {
 	clampSchemaTranslation,
 	getFocalSchemaTranslation,
+	getWebSchemaImageRequest,
+	InvertedSchemaPreview,
 	parseAssistantResponseBlocks,
 	stripResponseDirectivesForSpeech,
-} from '../components/ChatMessages';
+} from '../components/chat/ChatMessages';
 import { findByText, findByType, getTextContent } from '../test-utils/react-tree';
 
 jest.mock('react', () => {
@@ -112,6 +115,17 @@ jest.mock('@expo/vector-icons', () => {
 });
 
 describe('ChatMessages', () => {
+	test('preserves authorization headers for web schema image requests', () => {
+		expect(
+			getWebSchemaImageRequest({
+				uri: 'https://api.example.test/schema.png',
+				headers: { Authorization: 'Bearer test-token' },
+			}),
+		).toEqual({
+			uri: 'https://api.example.test/schema.png',
+			headers: { Authorization: 'Bearer test-token' },
+		});
+	});
 	test('keeps a zoomed schema within the viewport bounds', () => {
 		expect(clampSchemaTranslation(1000, 800, 2)).toBe(400);
 		expect(clampSchemaTranslation(-1000, 800, 2)).toBe(-400);
@@ -122,6 +136,29 @@ describe('ChatMessages', () => {
 	test('keeps the point between the fingers anchored while zooming', () => {
 		expect(getFocalSchemaTranslation(0, 150, 150, 2)).toBe(-150);
 		expect(getFocalSchemaTranslation(-100, 150, 200, 1.5)).toBe(-175);
+	});
+
+	test('web schema preview exposes mouse and touchpad zoom controls', () => {
+		Platform.OS = 'web';
+		const tree = (
+			<InvertedSchemaPreview
+				imageUrl='https://api.example.test/schema.png'
+				aspectRatio={1.6}
+				zoomable
+			/>
+		);
+
+		const zoomContainer = findByType(tree, 'div').find(
+			(element) => element.props['data-testid'] === 'web-zoomable-schema',
+		);
+
+		expect(zoomContainer).toBeDefined();
+		expect(zoomContainer?.props.onWheel).toEqual(expect.any(Function));
+		expect(zoomContainer?.props.onDoubleClick).toEqual(expect.any(Function));
+		expect(zoomContainer?.props.onPointerMove).toEqual(expect.any(Function));
+		expect(findByType(tree, 'button')).toHaveLength(3);
+
+		Platform.OS = 'ios';
 	});
 
 	const baseProps = {
@@ -577,5 +614,35 @@ describe('ChatMessages', () => {
 		expect(
 			findByType(tree, 'View').filter((view) => view.props.accessibilityElementsHidden),
 		).toHaveLength(4);
+	});
+
+	test('lets the page handle wheel scrolling above desktop web galleries', () => {
+		const reactNative = require('react-native') as { Platform: { OS: string } };
+		reactNative.Platform.OS = 'web';
+		const tree = (
+			<ChatMessages
+				{...baseProps}
+				messages={[
+					{
+						id: 1,
+						sender: 'ai',
+						text: 'Odpowiedź z materiałami.',
+						schemaImages: ['data:image/png;base64,schema'],
+						sourceReferences: [
+							{
+								sourceAttachmentId: 88,
+								sourceAttachmentName: 'manual.pdf',
+							},
+						],
+					},
+				]}
+			/>
+		);
+
+		expect(findByType(tree, 'ScrollView')).toHaveLength(0);
+		expect(findByType(tree, 'View').some((view) => view.props.style?.flexWrap === 'wrap')).toBe(
+			true,
+		);
+		reactNative.Platform.OS = 'ios';
 	});
 });

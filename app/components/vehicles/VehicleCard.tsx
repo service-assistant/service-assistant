@@ -2,8 +2,8 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Image, ImageSourcePropType, Text, TouchableOpacity, View } from 'react-native';
 
-import ThemeAwareLogo from '@/components/ThemeAwareLogo';
-import { FILTER_LOGO_SIZES } from '@/components/VehicleFilters';
+import ThemeAwareLogo from '@/components/ui/ThemeAwareLogo';
+import { FILTER_LOGO_SIZES } from '@/components/vehicles/VehicleFilters';
 
 export type Vehicle = {
 	id: string;
@@ -21,9 +21,8 @@ type VehicleCardProps = {
 	cardHeight: number;
 	imageHeight: number;
 	imageZoom: number;
-	isTablet: boolean;
 	isWeb: boolean;
-	useTabletRefresh: boolean;
+	useCompactLayout: boolean;
 	onOpen: (vehicle: Vehicle) => void;
 	getBrandLogoUrl: (brandName: string) => string | null;
 	lightMode?: boolean;
@@ -35,9 +34,8 @@ export default function VehicleCard({
 	cardHeight,
 	imageHeight,
 	imageZoom,
-	isTablet,
 	isWeb,
-	useTabletRefresh,
+	useCompactLayout,
 	onOpen,
 	getBrandLogoUrl,
 	lightMode = false,
@@ -50,7 +48,7 @@ export default function VehicleCard({
 	}, [imageSourceKey, vehicle.id]);
 
 	const logoUrl = getBrandLogoUrl(vehicle.brand);
-	const logoHeight = useTabletRefresh ? 22 : isTablet || isWeb ? 24 : 20;
+	const logoHeight = useCompactLayout ? 22 : isWeb ? 24 : 20;
 	const logoDims = FILTER_LOGO_SIZES[vehicle.brand.toUpperCase()] || FILTER_LOGO_SIZES.DEFAULT;
 	const brandToRemove = vehicle.brand.toLowerCase() + ' ';
 	const cleanName = vehicle.name.toLowerCase().startsWith(brandToRemove)
@@ -62,7 +60,7 @@ export default function VehicleCard({
 			return (
 				<View
 					className='w-full flex-row items-center justify-center px-2'
-					style={{ marginBottom: useTabletRefresh ? 10 : 16 }}>
+					style={{ marginBottom: useCompactLayout ? 10 : 16 }}>
 					{logoUrl && (
 						<View
 							style={{
@@ -78,7 +76,7 @@ export default function VehicleCard({
 						</View>
 					)}
 					<Text
-						className={`${lightMode ? 'text-[#18181B]' : 'text-white'} font-bold ${useTabletRefresh ? 'text-lg' : 'text-xl'}`}
+						className={`${lightMode ? 'text-[#18181B]' : 'text-white'} font-bold ${useCompactLayout ? 'text-lg' : 'text-xl'}`}
 						numberOfLines={1}>
 						{cleanName.toUpperCase()}
 					</Text>
@@ -89,7 +87,7 @@ export default function VehicleCard({
 		return (
 			<View
 				className='w-full items-center justify-center'
-				style={{ paddingHorizontal: useTabletRefresh ? 10 : 12, paddingVertical: 6 }}>
+				style={{ paddingHorizontal: useCompactLayout ? 10 : 12, paddingVertical: 6 }}>
 				{logoUrl && (
 					<View
 						style={{
@@ -106,12 +104,10 @@ export default function VehicleCard({
 					</View>
 				)}
 				<Text
-					className={`${lightMode ? 'text-[#18181B]' : 'text-white'} font-bold text-center ${
-						useTabletRefresh ? 'text-lg' : isTablet ? 'text-xl' : 'text-lg'
-					}`}
+					className={`${lightMode ? 'text-[#18181B]' : 'text-white'} font-bold text-center text-lg`}
 					numberOfLines={3}
 					style={{
-						lineHeight: useTabletRefresh ? 22 : isTablet ? 24 : 22,
+						lineHeight: 22,
 						maxWidth: '100%',
 					}}>
 					{cleanName.toUpperCase()}
@@ -129,8 +125,8 @@ export default function VehicleCard({
 				{
 					width: cardWidth,
 					minHeight: cardHeight,
-					margin: useTabletRefresh ? 6 : 8,
-					borderRadius: useTabletRefresh ? 16 : 24,
+					margin: useCompactLayout ? 6 : 8,
+					borderRadius: useCompactLayout ? 16 : 24,
 					...(isWeb ? { cursor: 'default' } : {}),
 				} as any
 			}>
@@ -158,7 +154,7 @@ export default function VehicleCard({
 						accessibilityLabel='Brak zdjęcia pojazdu'>
 						<MaterialCommunityIcons
 							name='forklift'
-							size={useTabletRefresh ? 60 : isTablet || isWeb ? 68 : 52}
+							size={useCompactLayout ? 60 : isWeb ? 68 : 52}
 							color={lightMode ? '#71717A' : '#A1A1AA'}
 						/>
 						<Text
@@ -172,8 +168,8 @@ export default function VehicleCard({
 			<View
 				className={`${lightMode ? 'bg-white border-[#E4E4E7]' : 'bg-[#18181b] border-[#3f3f46]'} flex-1 border-t justify-center items-center`}
 				style={{
-					paddingHorizontal: useTabletRefresh ? 12 : 16,
-					paddingVertical: useTabletRefresh ? 8 : 10,
+					paddingHorizontal: useCompactLayout ? 12 : 16,
+					paddingVertical: useCompactLayout ? 8 : 10,
 				}}>
 				{renderCardInfo()}
 
@@ -183,7 +179,7 @@ export default function VehicleCard({
 						className='w-full rounded-[14px] flex-row justify-center items-center mt-1 z-10'
 						style={{
 							backgroundColor: '#FF6B00',
-							paddingVertical: useTabletRefresh ? 12 : 16,
+							paddingVertical: useCompactLayout ? 12 : 16,
 						}}>
 						<Text className='text-white font-bold text-[15px]'>WYBIERZ</Text>
 					</TouchableOpacity>

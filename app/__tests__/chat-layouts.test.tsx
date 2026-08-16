@@ -1,11 +1,11 @@
 import React from 'react';
 
-import type { ChatMessageItem } from '@/components/ChatMessages';
+import type { ChatMessageItem } from '@/components/chat/ChatMessages';
 import {
 	DesktopChatLayout,
 	FullscreenSchemaView,
 	PortraitChatLayout,
-} from '../components/ChatLayouts';
+} from '../components/chat/ChatLayouts';
 import { findByText, findByType, getTextContent } from '../test-utils/react-tree';
 
 jest.mock('react', () => {
@@ -42,6 +42,7 @@ jest.mock('react-native', () => {
 		Image: Object.assign(createHost('Image'), {
 			getSize: jest.fn((_uri, onSuccess) => onSuccess(300, 100)),
 		}),
+		Platform: { OS: 'ios' },
 		Pressable: createHost('Pressable'),
 		ScrollView: createHost('ScrollView'),
 		StyleSheet: {
@@ -62,7 +63,7 @@ jest.mock('@expo/vector-icons', () => {
 	};
 });
 
-jest.mock('../components/ChatMessages', () => {
+jest.mock('../components/chat/ChatMessages', () => {
 	const React = require('react');
 	const ChatMessages = ({ children, ...props }: Record<string, unknown>) =>
 		React.createElement('ChatMessages', props, children);
@@ -76,28 +77,28 @@ jest.mock('../components/ChatMessages', () => {
 	};
 });
 
-jest.mock('../components/ControlPanel', () => {
+jest.mock('../components/chat/ControlPanel', () => {
 	const React = require('react');
 	return function MockControlPanel({ children, ...props }: Record<string, unknown>) {
 		return React.createElement('ControlPanel', props, children);
 	};
 });
 
-jest.mock('../components/SourcePanel', () => {
+jest.mock('../components/documents/SourcePanel', () => {
 	const React = require('react');
 	return function MockSourcePanel({ children, ...props }: Record<string, unknown>) {
 		return React.createElement('SourcePanel', props, children);
 	};
 });
 
-jest.mock('../components/MachineInfoPanel', () => {
+jest.mock('../components/chat/MachineInfoPanel', () => {
 	const React = require('react');
 	return function MockMachineInfoPanel({ children, ...props }: Record<string, unknown>) {
 		return React.createElement('MachineInfoPanel', props, children);
 	};
 });
 
-jest.mock('../components/StartPromptView', () => {
+jest.mock('../components/chat/StartPromptView', () => {
 	const React = require('react');
 	return function MockStartPromptView({ children, ...props }: Record<string, unknown>) {
 		return React.createElement('StartPromptView', props, children);
@@ -166,6 +167,7 @@ const createLayoutProps = () => ({
 	pendingPhotoUris: [],
 	onRemovePendingPhoto: jest.fn(),
 	onMicPress: jest.fn(),
+	onMicCancel: jest.fn(),
 	onCameraPress: jest.fn(),
 	onWritingPress: jest.fn(),
 });
@@ -186,7 +188,7 @@ describe('ChatLayouts', () => {
 		expect(darkTextures).toHaveLength(0);
 	});
 
-	test('DesktopChatLayout renders chat messages, controls, source panel and header actions', () => {
+	test('DesktopChatLayout renders chat messages, controls and header actions', () => {
 		const props = createLayoutProps();
 		const tree = <DesktopChatLayout {...props} />;
 		const buttons = findByType(tree, 'TouchableOpacity');
@@ -201,7 +203,7 @@ describe('ChatLayouts', () => {
 		expect(findByType(tree, 'ChatMessages')[0].props.messages).toBe(messages);
 		expect(getTextContent(tree)).toContain('O MASZYNIE');
 		expect(findByType(tree, 'ControlPanel')[0].props.orientation).toBe('vertical');
-		expect(findByType(tree, 'SourcePanel')[0].props).toMatchObject(sourcePanelProps);
+		expect(findByType(tree, 'SourcePanel')).toHaveLength(0);
 		expect(props.onBack).toHaveBeenCalled();
 		expect(props.onOpenMachineInfo).toHaveBeenCalled();
 		expect(props.onOpenFilesPanel).toHaveBeenCalled();
@@ -212,6 +214,89 @@ describe('ChatLayouts', () => {
 		expect(props.onUserMessageLayout).toHaveBeenCalledWith(messages[0], 120);
 	});
 
+	test('DesktopChatLayout renders sources and files in a panel beside the chat', () => {
+		const props = createLayoutProps();
+		const tree = (
+			<DesktopChatLayout
+				{...props}
+				sourcePanelProps={{ ...sourcePanelProps, showSourcePanel: true }}
+			/>
+		);
+		const previewPanel = findByType(tree, 'View').find(
+			(view) => view.props.testID === 'desktop-chat-preview-panel',
+		);
+
+		expect(previewPanel?.props.style).toMatchObject({
+			width: '44%',
+			minWidth: 420,
+			maxWidth: 720,
+		});
+		expect(findByType(tree, 'SourcePanel')[0].props).toMatchObject({
+			...sourcePanelProps,
+			showSourcePanel: true,
+			embedded: true,
+			fileGridColumns: 2,
+		});
+	});
+
+	test('DesktopChatLayout renders an opened schema in the panel beside the chat', () => {
+		const props = createLayoutProps();
+		const onCloseDesktopSchema = jest.fn();
+		const tree = (
+			<DesktopChatLayout
+				{...props}
+				desktopSchemaPreview={{
+					imageUrl: 'data:image/png;base64,schema',
+					title: 'SCHEMAT 1',
+				}}
+				onCloseDesktopSchema={onCloseDesktopSchema}
+			/>
+		);
+
+		expect(findByText(tree, 'SCHEMAT 1')).toBeUndefined();
+		expect(findByType(tree, 'InvertedSchemaPreview')[0].props.imageUrl).toBe(
+			'data:image/png;base64,schema',
+		);
+		expect(findByType(tree, 'SourcePanel')).toHaveLength(0);
+
+		findByType(tree, 'TouchableOpacity')
+			.find((button) => button.props.accessibilityLabel === 'Wstecz')
+			?.props.onPress();
+		expect(onCloseDesktopSchema).toHaveBeenCalled();
+	});
+
+	test('DesktopChatLayout falls back to full-screen previews when the side panel is disabled', () => {
+		const props = createLayoutProps();
+		const sourceTree = (
+			<DesktopChatLayout
+				{...props}
+				enableDesktopPreview={false}
+				sourcePanelProps={{ ...sourcePanelProps, showSourcePanel: true }}
+			/>
+		);
+		const schemaTree = (
+			<DesktopChatLayout
+				{...props}
+				enableDesktopPreview={false}
+				desktopSchemaPreview={{ imageUrl: 'data:image/png;base64,schema' }}
+			/>
+		);
+
+		expect(findByType(sourceTree, 'SourcePanel')[0].props).toMatchObject({
+			showSourcePanel: true,
+			fullScreen: true,
+		});
+		expect(
+			findByType(sourceTree, 'View').find(
+				(view) => view.props.testID === 'desktop-chat-preview-panel',
+			),
+		).toBeUndefined();
+		expect(findByText(schemaTree, 'SCHEMAT POMOCNICZY')).toBeTruthy();
+		expect(findByType(schemaTree, 'InvertedSchemaPreview')[0].props.imageUrl).toBe(
+			'data:image/png;base64,schema',
+		);
+	});
+
 	test('DesktopChatLayout renders start prompt before chat starts', () => {
 		const props = createLayoutProps();
 		const tree = <DesktopChatLayout {...props} hasStartedChat={false} />;
@@ -220,6 +305,43 @@ describe('ChatLayouts', () => {
 		expect(startPrompt.props.inputText).toBe('pytanie');
 		expect(startPrompt.props.onSend).toBe(props.onSendText);
 		expect(findByType(tree, 'ChatMessages')).toHaveLength(0);
+	});
+
+	test('web layout hides device controls and centers the start prompt', () => {
+		const props = createLayoutProps();
+		const tree = <DesktopChatLayout {...props} hasStartedChat={false} hideControlPanel />;
+
+		expect(findByType(tree, 'ControlPanel')).toHaveLength(0);
+		expect(findByType(tree, 'StartPromptView')).toHaveLength(1);
+	});
+
+	test('web layout keeps a text composer available after the chat starts', () => {
+		const props = createLayoutProps();
+		const tree = <DesktopChatLayout {...props} hideControlPanel />;
+
+		expect(findByType(tree, 'ControlPanel')).toHaveLength(0);
+		expect(findByType(tree, 'TextInput')).toHaveLength(1);
+		expect(findByType(tree, 'TextInput')[0].props.autoFocus).toBe(false);
+		expect(findByType(tree, 'ScrollView')[0].props.className).toContain('chat-scrollbar-dark');
+		expect(findByType(tree, 'ScrollView')[0].props.style).toMatchObject({
+			width: '100%',
+		});
+		expect(
+			findByType(tree, 'View').some(
+				(view) => view.props.style?.width === '100%' && view.props.style?.maxWidth === 980,
+			),
+		).toBe(true);
+		expect(findByType(tree, 'ScrollView')[0].props.contentContainerStyle.paddingBottom).toBe(
+			144,
+		);
+		expect(
+			findByType(tree, 'View').some(
+				(view) =>
+					view.props.style?.width === '100%' &&
+					view.props.style?.maxWidth === 980 &&
+					view.props.style?.alignSelf === 'center',
+			),
+		).toBe(true);
 	});
 
 	test('DesktopChatLayout renders floating input after chat starts', () => {
@@ -376,6 +498,20 @@ describe('ChatLayouts', () => {
 
 		expect(findByType(tree, 'StartPromptView')[0].props.compact).toBe(true);
 		expect(findByType(tree, 'ChatMessages')).toHaveLength(0);
+	});
+
+	test('web portrait layout removes controls and their reserved start-screen space', () => {
+		const tree = (
+			<PortraitChatLayout
+				{...createLayoutProps()}
+				hasStartedChat={false}
+				hideControlPanel
+				insets={{ top: 10, right: 0, bottom: 20, left: 0 }}
+			/>
+		);
+
+		expect(findByType(tree, 'ControlPanel')).toHaveLength(0);
+		expect(findByType(tree, 'StartPromptView')[0].props.reserveControlPanelSpace).toBe(false);
 	});
 
 	test('FullscreenSchemaView renders preview and back action', () => {

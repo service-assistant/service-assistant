@@ -1,9 +1,8 @@
-import { Feather } from '@expo/vector-icons';
 import React from 'react';
 import {
 	Animated,
 	Dimensions,
-	type LayoutChangeEvent,
+	Platform,
 	Pressable,
 	ScrollView,
 	StyleSheet,
@@ -11,11 +10,12 @@ import {
 	TextInput,
 	TouchableOpacity,
 	View,
+	type LayoutChangeEvent,
+	type TextStyle,
 } from 'react-native';
 
-import ComposerPhotoPreview from '@/components/ComposerPhotoPreview';
-
-const PRIMARY_ORANGE = '#FF7A00';
+import ChatSubmitButton, { ChatMicrophoneButton } from '@/components/chat/ChatSubmitButton';
+import ComposerPhotoPreview from '@/components/chat/ComposerPhotoPreview';
 
 const QUICK_PROMPTS = [
 	'Nie działa podnoszenie wideł',
@@ -41,6 +41,7 @@ export type KeyboardFrame = {
 
 type StartPromptViewProps = {
 	compact?: boolean;
+	reserveControlPanelSpace?: boolean;
 	height: number;
 	keyboardFrame: KeyboardFrame | null;
 	inputText: string;
@@ -49,15 +50,23 @@ type StartPromptViewProps = {
 	shouldFocusInput: boolean;
 	onChangeText: (text: string) => void;
 	onSend: () => void;
+	onMicrophonePress?: () => void;
+	onMicrophoneCancel?: () => void;
 	onShowTextInputChange: (show: boolean) => void;
 	onShouldFocusStartPromptInputChange: (shouldFocus: boolean) => void;
 	pendingPhotoUris?: string[];
 	onRemovePendingPhoto?: (photoUri: string) => void;
 	lightMode?: boolean;
+	showMicrophoneState?: boolean;
+	isListening?: boolean;
+	isMicStarting?: boolean;
+	isMicProcessing?: boolean;
+	isMicrophoneActivated?: boolean;
 };
 
 export default function StartPromptView({
 	compact = false,
+	reserveControlPanelSpace = true,
 	keyboardFrame,
 	inputText,
 	inputRef,
@@ -65,17 +74,24 @@ export default function StartPromptView({
 	shouldFocusInput,
 	onChangeText,
 	onSend,
+	onMicrophonePress,
+	onMicrophoneCancel,
 	onShowTextInputChange,
 	onShouldFocusStartPromptInputChange,
 	pendingPhotoUris = [],
 	onRemovePendingPhoto,
 	lightMode = false,
+	showMicrophoneState = false,
+	isListening = false,
+	isMicStarting = false,
+	isMicProcessing = false,
+	isMicrophoneActivated = false,
 }: StartPromptViewProps) {
 	const hasPendingPhotos = pendingPhotoUris.length > 0;
 	const promptMaxWidth = compact ? '100%' : 980;
 	const chipWidth = compact ? '100%' : '48%';
 	const [placeholderIndex, setPlaceholderIndex] = React.useState(0);
-	const [isInputFocused, setIsInputFocused] = React.useState(false);
+	const [, setIsInputFocused] = React.useState(false);
 	const [containerHeight, setContainerHeight] = React.useState(0);
 	const [contentLayout, setContentLayout] = React.useState({ y: 0, height: 0 });
 	const [inputLayout, setInputLayout] = React.useState({ y: 0, height: 0 });
@@ -85,9 +101,8 @@ export default function StartPromptView({
 	const maximumContainerHeightRef = React.useRef(0);
 	const screenHeightRef = React.useRef(Dimensions.get('screen').height);
 	const placeholderText = `Np. ${INPUT_PLACEHOLDERS[placeholderIndex]}`;
-	const shouldUseNativePlaceholder = inputText.length === 0 && isInputFocused;
-	const shouldShowAnimatedPlaceholder = inputText.length === 0 && !isInputFocused;
-	const nativePlaceholder = shouldUseNativePlaceholder ? placeholderText : '';
+	const placeholderColor = lightMode ? '#71717A' : '#A1A1AA';
+	const shouldShowAnimatedPlaceholder = inputText.length === 0;
 	const isKeyboardLayoutActive = keyboardFrame !== null;
 	const currentInputBottom = contentLayout.y + inputLayout.y + inputLayout.height;
 	const screenHeight = Dimensions.get('screen').height;
@@ -210,12 +225,9 @@ export default function StartPromptView({
 		if (!hasStartedChat) onShowTextInputChange(false);
 	};
 
-	const handleEndEditing = () => {
-		setIsInputFocused(false);
-	};
-
 	const renderInput = (onLayout?: (event: LayoutChangeEvent) => void) => (
 		<Pressable
+			className={Platform.OS === 'web' ? 'cursor-text' : undefined}
 			onLayout={onLayout}
 			onPress={() => inputRef.current?.focus()}
 			hitSlop={{ top: 12, right: 8, bottom: 12, left: 8 }}
@@ -262,15 +274,15 @@ export default function StartPromptView({
 				<TextInput
 					ref={inputRef}
 					className={`flex-1 ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
-					placeholder={nativePlaceholder}
-					placeholderTextColor={lightMode ? '#71717A' : '#A1A1AA'}
+					placeholder=''
+					accessibilityLabel={placeholderText}
+					placeholderTextColor={placeholderColor}
 					value={inputText}
 					onChangeText={onChangeText}
 					onSubmitEditing={onSend}
 					onPressIn={handlePressIn}
 					onFocus={handleFocus}
 					onBlur={handleBlur}
-					onEndEditing={handleEndEditing}
 					style={{
 						height: '100%',
 						fontSize: compact ? 16 : 20,
@@ -279,6 +291,11 @@ export default function StartPromptView({
 						paddingVertical: 0,
 						includeFontPadding: false,
 						textAlignVertical: 'center',
+						borderWidth: 0,
+						outlineWidth: 0,
+						...(Platform.OS === 'web'
+							? ({ outlineStyle: 'none' } as unknown as TextStyle)
+							: {}),
 					}}
 					autoFocus={false}
 				/>
@@ -291,17 +308,18 @@ export default function StartPromptView({
 							right: compact ? 58 : 74,
 						}}>
 						<Text
-							className='text-[#A1A1AA]'
 							style={{
+								color: placeholderColor,
 								fontSize: compact ? 16 : 20,
 								lineHeight: compact ? 22 : 27,
 							}}>
 							Np.{' '}
 						</Text>
 						<Animated.Text
-							className='text-[#A1A1AA] flex-1'
+							className='flex-1'
 							numberOfLines={1}
 							style={{
+								color: placeholderColor,
 								fontSize: compact ? 16 : 20,
 								lineHeight: compact ? 22 : 27,
 								opacity: placeholderOpacity,
@@ -311,22 +329,25 @@ export default function StartPromptView({
 						</Animated.Text>
 					</View>
 				) : null}
-				<TouchableOpacity
+				{showMicrophoneState && onMicrophonePress ? (
+					<ChatMicrophoneButton
+						compact={compact}
+						onPress={onMicrophonePress}
+						onCancel={onMicrophoneCancel}
+						lightMode={lightMode}
+						active={isMicrophoneActivated}
+					/>
+				) : null}
+				<ChatSubmitButton
 					onPress={onSend}
-					className='items-center justify-center'
-					style={{
-						width: compact ? 46 : 56,
-						height: compact ? 46 : 56,
-						borderRadius: compact ? 23 : 28,
-						backgroundColor: PRIMARY_ORANGE,
-						shadowColor: PRIMARY_ORANGE,
-						shadowOffset: { width: 0, height: 4 },
-						shadowOpacity: 0.2,
-						shadowRadius: 8,
-						elevation: 3,
-					}}>
-					<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
-				</TouchableOpacity>
+					onMicrophonePress={onMicrophonePress}
+					compact={compact}
+					lightMode={lightMode}
+					showMicrophoneState={showMicrophoneState}
+					isListening={isListening}
+					isMicStarting={isMicStarting}
+					isMicProcessing={isMicProcessing}
+				/>
 			</View>
 		</Pressable>
 	);
@@ -348,7 +369,7 @@ export default function StartPromptView({
 			}}
 			style={{
 				paddingHorizontal: compact ? 20 : 24,
-				paddingBottom: compact ? 154 : 28,
+				paddingBottom: compact && reserveControlPanelSpace ? 154 : 28,
 			}}>
 			<View
 				collapsable={false}
@@ -433,11 +454,11 @@ export default function StartPromptView({
 								borderRadius: compact ? 19 : 21,
 								borderWidth: StyleSheet.hairlineWidth,
 								borderColor: lightMode
-									? 'rgba(30, 30, 30, 0.075)'
+									? 'rgba(30, 30, 30, 0.09)'
 									: 'rgba(255, 255, 255, 0.055)',
 								backgroundColor: lightMode
-									? 'rgba(255, 255, 255, 0.94)'
-									: 'rgba(255, 255, 255, 0.07)',
+									? 'rgba(228, 226, 222, 0.9)'
+									: 'rgba(255, 255, 255, 0.045)',
 								shadowColor: '#000000',
 								shadowOffset: { width: 0, height: 1 },
 								shadowOpacity: lightMode ? 0.02 : 0.04,

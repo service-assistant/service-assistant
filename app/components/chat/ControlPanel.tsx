@@ -123,7 +123,7 @@ const MicStartingIndicator = ({
 			</View>
 			<Animated.Image
 				testID='mic-starting-icon'
-				source={require('../assets/images/micro.png')}
+				source={require('../../assets/images/micro.png')}
 				style={{
 					width: iconSize,
 					height: iconSize,
@@ -386,7 +386,7 @@ export default function ControlPanel({
 					/>
 				) : (
 					<Image
-						source={require('../assets/images/camera.png')}
+						source={require('../../assets/images/camera.png')}
 						style={{
 							width: sideIconSize,
 							height: sideIconSize,
@@ -468,7 +468,7 @@ export default function ControlPanel({
 							<MicStartingIndicator lightMode={lightMode} iconSize={centerIconSize} />
 						) : (
 							<Image
-								source={require('../assets/images/micro.png')}
+								source={require('../../assets/images/micro.png')}
 								style={{
 									width: centerIconSize,
 									height: centerIconSize,

@@ -1,4 +1,4 @@
-import NetworkStatusBanner from '@/components/NetworkStatusBanner';
+import NetworkStatusBanner from '@/components/feedback/NetworkStatusBanner';
 import { useAppSettings } from '@/hooks/use-app-settings';
 import { NetworkStatusProvider } from '@/hooks/use-network-status';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';

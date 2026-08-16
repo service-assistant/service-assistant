@@ -1,6 +1,6 @@
 import { isInlineMeasurementPointSeparator } from '@/utils/chat-stream';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
 	Animated,
 	Image,
@@ -24,6 +24,239 @@ const getSchemaImageUri = (source: SchemaImageSource) =>
 
 const getNativeSchemaImageSource = (source: SchemaImageSource) =>
 	typeof source === 'string' ? { uri: source } : source;
+
+export const getWebSchemaImageRequest = (source: SchemaImageSource) => ({
+	uri: getSchemaImageUri(source),
+	headers: typeof source === 'string' ? {} : (source.headers ?? {}),
+});
+
+const WebSchemaImage = ({
+	imageSource,
+	zoomable,
+	lightMode,
+}: {
+	imageSource: SchemaImageSource;
+	zoomable: boolean;
+	lightMode: boolean;
+}) => {
+	const { uri, headers } = getWebSchemaImageRequest(imageSource);
+	const serializedHeaders = JSON.stringify(headers);
+	const hasAuthorizedHeaders = serializedHeaders !== '{}';
+	const [resolvedUri, setResolvedUri] = useState(hasAuthorizedHeaders ? '' : uri);
+	const [webTransform, setWebTransform] = useState({ scale: 1, x: 0, y: 0 });
+	const zoomContainerRef = useRef<HTMLDivElement | null>(null);
+	const dragRef = useRef({ pointerId: -1, startX: 0, startY: 0, x: 0, y: 0 });
+
+	useEffect(() => {
+		if (!hasAuthorizedHeaders) {
+			setResolvedUri(uri);
+			return;
+		}
+
+		const controller = new AbortController();
+		let objectUrl: string | null = null;
+
+		const loadAuthorizedImage = async () => {
+			try {
+				const response = await fetch(uri, {
+					headers: JSON.parse(serializedHeaders) as Record<string, string>,
+					signal: controller.signal,
+				});
+				if (!response.ok) throw new Error(`Image load failed: ${response.status}`);
+
+				const imageBlob = await response.blob();
+				if (controller.signal.aborted) return;
+				objectUrl = URL.createObjectURL(imageBlob);
+				setResolvedUri(objectUrl);
+			} catch (error) {
+				if (!controller.signal.aborted) {
+					console.log('Handled authorized image load error:', error);
+					setResolvedUri('');
+				}
+			}
+		};
+
+		void loadAuthorizedImage();
+
+		return () => {
+			controller.abort();
+			if (objectUrl) URL.revokeObjectURL(objectUrl);
+		};
+	}, [hasAuthorizedHeaders, serializedHeaders, uri]);
+
+	if (!resolvedUri) return null;
+	const updateScale = (nextScaleValue: number, focalX = 0, focalY = 0) => {
+		const container = zoomContainerRef.current;
+		if (!container) return;
+
+		setWebTransform((current) => {
+			const nextScale = Math.min(6, Math.max(1, nextScaleValue));
+			if (nextScale === 1) return { scale: 1, x: 0, y: 0 };
+
+			const scaleRatio = nextScale / current.scale;
+			return {
+				scale: nextScale,
+				x: clampSchemaTranslation(
+					focalX - (focalX - current.x) * scaleRatio,
+					container.clientWidth,
+					nextScale,
+				),
+				y: clampSchemaTranslation(
+					focalY - (focalY - current.y) * scaleRatio,
+					container.clientHeight,
+					nextScale,
+				),
+			};
+		});
+	};
+
+	if (zoomable) {
+		const zoomButtonStyle: React.CSSProperties = {
+			width: 34,
+			height: 34,
+			border: `1px solid ${lightMode ? '#D4D4D8' : 'rgba(255,255,255,0.16)'}`,
+			background: lightMode ? 'rgba(255,255,255,0.94)' : 'rgba(8,8,8,0.88)',
+			color: '#FF7A00',
+			fontSize: 20,
+			lineHeight: '30px',
+			cursor: 'pointer',
+			userSelect: 'none',
+		};
+
+		return (
+			<div
+				ref={zoomContainerRef}
+				data-testid='web-zoomable-schema'
+				onWheel={(event) => {
+					event.preventDefault();
+					const bounds = event.currentTarget.getBoundingClientRect();
+					updateScale(
+						webTransform.scale * (event.deltaY < 0 ? 1.15 : 1 / 1.15),
+						event.clientX - bounds.left - bounds.width / 2,
+						event.clientY - bounds.top - bounds.height / 2,
+					);
+				}}
+				onDoubleClick={(event) => {
+					const bounds = event.currentTarget.getBoundingClientRect();
+					updateScale(
+						webTransform.scale > 1 ? 1 : 2,
+						event.clientX - bounds.left - bounds.width / 2,
+						event.clientY - bounds.top - bounds.height / 2,
+					);
+				}}
+				onPointerDown={(event) => {
+					if (webTransform.scale <= 1) return;
+					event.preventDefault();
+					event.currentTarget.setPointerCapture(event.pointerId);
+					dragRef.current = {
+						pointerId: event.pointerId,
+						startX: event.clientX,
+						startY: event.clientY,
+						x: webTransform.x,
+						y: webTransform.y,
+					};
+				}}
+				onPointerMove={(event) => {
+					if (dragRef.current.pointerId !== event.pointerId) return;
+					const container = event.currentTarget;
+					setWebTransform((current) => ({
+						...current,
+						x: clampSchemaTranslation(
+							dragRef.current.x + event.clientX - dragRef.current.startX,
+							container.clientWidth,
+							current.scale,
+						),
+						y: clampSchemaTranslation(
+							dragRef.current.y + event.clientY - dragRef.current.startY,
+							container.clientHeight,
+							current.scale,
+						),
+					}));
+				}}
+				onPointerUp={(event) => {
+					if (dragRef.current.pointerId === event.pointerId)
+						dragRef.current.pointerId = -1;
+				}}
+				onPointerCancel={() => {
+					dragRef.current.pointerId = -1;
+				}}
+				onDragStart={(event) => event.preventDefault()}
+				style={{
+					position: 'relative',
+					width: '100%',
+					height: '100%',
+					overflow: 'hidden',
+					touchAction: 'none',
+					cursor: webTransform.scale > 1 ? 'grab' : 'zoom-in',
+				}}>
+				<img
+					src={resolvedUri}
+					draggable={false}
+					onDragStart={(event) => event.preventDefault()}
+					style={{
+						display: 'block',
+						width: '100%',
+						height: '100%',
+						objectFit: 'contain',
+						filter: lightMode ? 'none' : 'invert(100%)',
+						transform: `translate(${webTransform.x}px, ${webTransform.y}px) scale(${webTransform.scale})`,
+						transformOrigin: 'center',
+						userSelect: 'none',
+						pointerEvents: 'none',
+					}}
+					alt='Schemat pomocniczy'
+				/>
+				<div
+					onPointerDown={(event) => event.stopPropagation()}
+					onDoubleClick={(event) => event.stopPropagation()}
+					style={{
+						position: 'absolute',
+						right: 16,
+						bottom: 16,
+						display: 'flex',
+						gap: 6,
+						userSelect: 'none',
+					}}>
+					<button
+						type='button'
+						aria-label='Pomniejsz schemat'
+						style={{ ...zoomButtonStyle, borderRadius: 10 }}
+						onClick={() => updateScale(webTransform.scale / 1.3)}>
+						−
+					</button>
+					<button
+						type='button'
+						aria-label='Przywróć rozmiar schematu'
+						style={{ ...zoomButtonStyle, borderRadius: 10, fontSize: 12 }}
+						onClick={() => setWebTransform({ scale: 1, x: 0, y: 0 })}>
+						1:1
+					</button>
+					<button
+						type='button'
+						aria-label='Powiększ schemat'
+						style={{ ...zoomButtonStyle, borderRadius: 10 }}
+						onClick={() => updateScale(webTransform.scale * 1.3)}>
+						+
+					</button>
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<img
+			src={resolvedUri}
+			style={{
+				display: 'block',
+				width: '100%',
+				height: zoomable ? '100%' : 'auto',
+				objectFit: zoomable ? 'contain' : undefined,
+				filter: lightMode ? 'none' : 'invert(100%)',
+			}}
+			alt='Schemat pomocniczy'
+		/>
+	);
+};
 
 export type ChatMessageSourceReference = {
 	sourceAttachmentId: number;
@@ -68,6 +301,72 @@ type AssistantResponseBlock =
 	| { type: 'checklist'; items: string[] }
 	| { type: 'warning'; content: string }
 	| { type: 'next'; content: string };
+
+const SchemaGallery = ({
+	compact,
+	lightMode,
+	children,
+}: {
+	compact: boolean;
+	lightMode: boolean;
+	children: React.ReactNode;
+}) => {
+	if (Platform.OS === 'web' && !compact) {
+		return <View style={{ width: '100%', flexDirection: 'row', gap: 8 }}>{children}</View>;
+	}
+
+	return (
+		<ScrollView
+			horizontal
+			className={`chat-scrollbar ${
+				lightMode ? 'chat-scrollbar-light' : 'chat-scrollbar-dark'
+			}`}
+			showsHorizontalScrollIndicator={Platform.OS === 'web'}
+			style={{ width: '100%' }}
+			contentContainerStyle={
+				compact ? { gap: 8, paddingRight: 4 } : { gap: 8, width: '100%' }
+			}>
+			{children}
+		</ScrollView>
+	);
+};
+
+const SourceGallery = ({
+	compact,
+	lightMode,
+	children,
+}: {
+	compact: boolean;
+	lightMode: boolean;
+	children: React.ReactNode;
+}) => {
+	if (Platform.OS === 'web' && !compact) {
+		return (
+			<View
+				style={{
+					width: '100%',
+					flexDirection: 'row',
+					flexWrap: 'wrap',
+					gap: 8,
+					paddingBottom: 10,
+				}}>
+				{children}
+			</View>
+		);
+	}
+
+	return (
+		<ScrollView
+			horizontal
+			showsHorizontalScrollIndicator
+			persistentScrollbar={false}
+			indicatorStyle={lightMode ? 'black' : 'white'}
+			style={{ width: '100%' }}
+			contentContainerStyle={{ gap: 8, paddingRight: 4, paddingBottom: 10 }}>
+			{children}
+		</ScrollView>
+	);
+};
 
 export const stripResponseDirectivesForSpeech = (text: string) =>
 	text
@@ -328,17 +627,7 @@ export const InvertedSchemaPreview = ({
 			overflow: 'hidden',
 		}}>
 		{Platform.OS === 'web' ? (
-			<img
-				src={getSchemaImageUri(imageUrl)}
-				style={{
-					display: 'block',
-					width: '100%',
-					height: zoomable ? '100%' : 'auto',
-					objectFit: zoomable ? 'contain' : undefined,
-					filter: lightMode ? 'none' : 'invert(100%)',
-				}}
-				alt='Schemat pomocniczy'
-			/>
+			<WebSchemaImage imageSource={imageUrl} zoomable={zoomable} lightMode={lightMode} />
 		) : zoomable ? (
 			<ZoomableSchemaImage
 				key={getSchemaImageUri(imageUrl)}
@@ -800,15 +1089,7 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 												className={`${lightMode ? 'text-[#71717A]' : 'text-[#7F858D]'} text-[12px] mb-2`}>
 												Kliknij schemat, aby otworzyć go w pełnym rozmiarze.
 											</Text>
-											<ScrollView
-												horizontal
-												showsHorizontalScrollIndicator={false}
-												style={{ width: '100%' }}
-												contentContainerStyle={
-													compact
-														? { gap: 8, paddingRight: 4 }
-														: { gap: 8, width: '100%' }
-												}>
+											<SchemaGallery compact={compact} lightMode={lightMode}>
 												{schemaImages.map((schemaImage, index) => (
 													<View
 														key={`${getSchemaImageUri(schemaImage)}-${index}`}
@@ -855,7 +1136,7 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 															),
 														)
 													: null}
-											</ScrollView>
+											</SchemaGallery>
 										</View>
 									) : null}
 									{sourceReferences.length > 0 ? (
@@ -871,17 +1152,7 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 												className={`${lightMode ? 'text-[#71717A]' : 'text-[#7F858D]'} mb-2 text-[12px]`}>
 												Kliknij źródło, aby otworzyć dokument.
 											</Text>
-											<ScrollView
-												horizontal
-												showsHorizontalScrollIndicator
-												persistentScrollbar={false}
-												indicatorStyle={lightMode ? 'black' : 'white'}
-												style={{ width: '100%' }}
-												contentContainerStyle={{
-													gap: 8,
-													paddingRight: 4,
-													paddingBottom: 10,
-												}}>
+											<SourceGallery compact={compact} lightMode={lightMode}>
 												{sourceReferences.map((source, index) => (
 													<TouchableOpacity
 														key={`${source.sourceAttachmentId}-${source.sourceAttachmentPage || 'document'}-${index}`}
@@ -921,7 +1192,7 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 														</Text>
 													</TouchableOpacity>
 												))}
-											</ScrollView>
+											</SourceGallery>
 										</View>
 									) : null}
 								</View>

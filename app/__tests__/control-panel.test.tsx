@@ -1,6 +1,6 @@
 import React from 'react';
 
-import ControlPanel from '../components/ControlPanel';
+import ControlPanel from '../components/chat/ControlPanel';
 import { findByType, getTextContent } from '../test-utils/react-tree';
 
 jest.mock('react', () => {

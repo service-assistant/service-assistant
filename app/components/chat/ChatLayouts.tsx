@@ -4,6 +4,7 @@ import {
 	Animated,
 	Dimensions,
 	Image,
+	Platform,
 	Pressable,
 	ScrollView,
 	Text,
@@ -11,22 +12,24 @@ import {
 	TouchableOpacity,
 	View,
 	type LayoutChangeEvent,
+	type TextStyle,
 } from 'react-native';
 import type { EdgeInsets } from 'react-native-safe-area-context';
 
-import { getPortraitChatHeaderMetrics } from '@/components/chat-header-metrics';
+import { getPortraitChatHeaderMetrics } from '@/components/chat/chat-header-metrics';
 import ChatMessages, {
 	InvertedSchemaPreview,
 	type ChatMessageItem,
 	type ChatMessageSourceReference,
 	type SchemaImageSource,
-} from '@/components/ChatMessages';
-import ComposerPhotoPreview from '@/components/ComposerPhotoPreview';
-import ControlPanel from '@/components/ControlPanel';
-import MachineInfoPanel from '@/components/MachineInfoPanel';
-import SourcePanel from '@/components/SourcePanel';
-import StartPromptView, { type KeyboardFrame } from '@/components/StartPromptView';
-import ThemeAwareLogo from '@/components/ThemeAwareLogo';
+} from '@/components/chat/ChatMessages';
+import ChatSubmitButton, { ChatMicrophoneButton } from '@/components/chat/ChatSubmitButton';
+import ComposerPhotoPreview from '@/components/chat/ComposerPhotoPreview';
+import ControlPanel from '@/components/chat/ControlPanel';
+import MachineInfoPanel from '@/components/chat/MachineInfoPanel';
+import StartPromptView, { type KeyboardFrame } from '@/components/chat/StartPromptView';
+import SourcePanel from '@/components/documents/SourcePanel';
+import ThemeAwareLogo from '@/components/ui/ThemeAwareLogo';
 import { MAX_CHAT_PHOTOS } from '@/types/chat';
 
 const PRIMARY_ORANGE = '#FF7A00';
@@ -38,7 +41,7 @@ function ChatBackgroundTexture({ lightMode }: { lightMode: boolean }) {
 	return (
 		<Image
 			testID='chat-background-texture'
-			source={require('../assets/images/chat-premium-grain.png')}
+			source={require('../../assets/images/chat-premium-grain.png')}
 			resizeMode='cover'
 			style={{
 				position: 'absolute',
@@ -258,19 +261,33 @@ function FloatingChatInput({
 	inputText,
 	onChangeText,
 	onSend,
+	onMicrophonePress,
+	onMicrophoneCancel,
 	autoFocus = false,
 	pendingPhotoUris = [],
 	onRemovePendingPhoto,
 	lightMode = false,
+	showMicrophoneState = false,
+	isListening = false,
+	isMicStarting = false,
+	isMicProcessing = false,
+	isMicrophoneActivated = false,
 }: {
 	compact?: boolean;
 	inputText: string;
 	onChangeText: (text: string) => void;
 	onSend: () => void;
+	onMicrophonePress?: () => void;
+	onMicrophoneCancel?: () => void;
 	autoFocus?: boolean;
 	pendingPhotoUris?: string[];
 	onRemovePendingPhoto?: (photoUri: string) => void;
 	lightMode?: boolean;
+	showMicrophoneState?: boolean;
+	isListening?: boolean;
+	isMicStarting?: boolean;
+	isMicProcessing?: boolean;
+	isMicrophoneActivated?: boolean;
 }) {
 	const inputRef = React.useRef<TextInput>(null);
 	const hasPendingPhotos = pendingPhotoUris.length > 0;
@@ -278,6 +295,7 @@ function FloatingChatInput({
 	return (
 		<View collapsable={false}>
 			<Pressable
+				className={Platform.OS === 'web' ? 'cursor-text' : undefined}
 				onPress={() => inputRef.current?.focus()}
 				hitSlop={{ top: 12, right: 8, bottom: 12, left: 8 }}
 				accessible={false}
@@ -333,25 +351,33 @@ function FloatingChatInput({
 							lineHeight: compact ? 22 : 27,
 							paddingVertical: 0,
 							textAlignVertical: 'center',
+							borderWidth: 0,
+							outlineWidth: 0,
+							...(Platform.OS === 'web'
+								? ({ outlineStyle: 'none' } as unknown as TextStyle)
+								: {}),
 						}}
 						autoFocus={autoFocus}
 					/>
-					<TouchableOpacity
+					{showMicrophoneState && onMicrophonePress ? (
+						<ChatMicrophoneButton
+							compact={compact}
+							onPress={onMicrophonePress}
+							onCancel={onMicrophoneCancel}
+							lightMode={lightMode}
+							active={isMicrophoneActivated}
+						/>
+					) : null}
+					<ChatSubmitButton
 						onPress={onSend}
-						className='items-center justify-center'
-						style={{
-							width: compact ? 46 : 56,
-							height: compact ? 46 : 56,
-							borderRadius: compact ? 23 : 28,
-							backgroundColor: PRIMARY_ORANGE,
-							shadowColor: PRIMARY_ORANGE,
-							shadowOffset: { width: 0, height: 4 },
-							shadowOpacity: 0.2,
-							shadowRadius: 8,
-							elevation: 3,
-						}}>
-						<Feather name='arrow-up-right' size={compact ? 24 : 30} color='#FFFFFF' />
-					</TouchableOpacity>
+						onMicrophonePress={onMicrophonePress}
+						compact={compact}
+						lightMode={lightMode}
+						showMicrophoneState={showMicrophoneState}
+						isListening={isListening}
+						isMicStarting={isMicStarting}
+						isMicProcessing={isMicProcessing}
+					/>
 				</View>
 			</Pressable>
 		</View>
@@ -363,8 +389,14 @@ type ScrollViewRef = React.RefObject<ScrollView | null>;
 type SourcePanelProps = React.ComponentProps<typeof SourcePanel>;
 type MachineInfoPanelProps = React.ComponentProps<typeof MachineInfoPanel>;
 
+type DesktopSchemaPreview = {
+	imageUrl: SchemaImageSource;
+	title?: string;
+};
+
 type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	lightMode?: boolean;
+	hideControlPanel?: boolean;
 	currentSource: string;
 	logoUrl?: string;
 	isTablet: boolean;
@@ -379,6 +411,7 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	isListening: boolean;
 	isMicStarting: boolean;
 	isMicProcessing: boolean;
+	isMicrophoneActivated?: boolean;
 	isMicRestartBlocked: boolean;
 	isSpeechInputUnavailable?: boolean;
 	isVoiceOutputUnavailable?: boolean;
@@ -405,8 +438,12 @@ type SharedLayoutProps<TMessage extends ChatMessageItem> = {
 	pendingPhotoUris: string[];
 	onRemovePendingPhoto: (photoUri: string) => void;
 	onMicPress: () => void;
+	onMicCancel: () => void;
 	onCameraPress: () => void;
 	onWritingPress: () => void;
+	desktopSchemaPreview?: DesktopSchemaPreview | null;
+	onCloseDesktopSchema?: () => void;
+	enableDesktopPreview?: boolean;
 };
 
 type FullscreenSchemaViewProps = {
@@ -417,6 +454,7 @@ type FullscreenSchemaViewProps = {
 	insets: EdgeInsets;
 	isTablet?: boolean;
 	onBack: () => void;
+	embedded?: boolean;
 };
 
 export function FullscreenSchemaView({
@@ -427,6 +465,7 @@ export function FullscreenSchemaView({
 	insets,
 	isTablet = false,
 	onBack,
+	embedded = false,
 }: FullscreenSchemaViewProps) {
 	const headerMetrics = getPortraitChatHeaderMetrics({
 		isTablet,
@@ -435,46 +474,66 @@ export function FullscreenSchemaView({
 
 	return (
 		<View className={`flex-1 ${lightMode ? 'bg-[#F7F7F8]' : 'bg-black'}`}>
-			<View
-				className={`flex-row items-center px-4 border-b ${
-					lightMode ? 'bg-white border-[#E4E4E7]' : 'bg-[#0D0D0D] border-[#1F1F1F]'
-				}`}
-				style={{
-					height: headerMetrics.height,
-					paddingTop: headerMetrics.paddingTop,
-				}}>
+			{embedded ? (
 				<TouchableOpacity
 					onPress={onBack}
 					accessibilityRole='button'
 					accessibilityLabel='Wstecz'
-					className={`flex-row items-center justify-center border rounded-[10px] ${
-						lightMode ? 'border-[#E4E4E7] bg-white' : 'border-[#2A2A2A] bg-[#0D0D0D]'
+					className={`absolute top-4 right-4 items-center justify-center rounded-full border ${
+						lightMode ? 'border-[#E4E4E7] bg-white/95' : 'border-white/15 bg-black/85'
+					}`}
+					style={{ width: 42, height: 42, zIndex: 5, elevation: 5 }}>
+					<Feather name='x' size={22} color={PRIMARY_ORANGE} />
+				</TouchableOpacity>
+			) : (
+				<View
+					className={`flex-row items-center px-4 border-b ${
+						lightMode ? 'bg-white border-[#E4E4E7]' : 'bg-[#0D0D0D] border-[#1F1F1F]'
 					}`}
 					style={{
-						height: headerMetrics.buttonSize,
-						width: headerMetrics.buttonSize,
+						height: headerMetrics.height,
+						paddingTop: headerMetrics.paddingTop,
 					}}>
-					<Feather
-						name='arrow-left'
-						size={headerMetrics.iconSize}
-						color={PRIMARY_ORANGE}
+					<TouchableOpacity
+						onPress={onBack}
+						accessibilityRole='button'
+						accessibilityLabel='Wstecz'
+						className={`flex-row items-center justify-center border rounded-[10px] ${
+							lightMode
+								? 'border-[#E4E4E7] bg-white'
+								: 'border-[#2A2A2A] bg-[#0D0D0D]'
+						}`}
+						style={{
+							height: headerMetrics.buttonSize,
+							width: headerMetrics.buttonSize,
+						}}>
+						<Feather
+							name='arrow-left'
+							size={headerMetrics.iconSize}
+							color={PRIMARY_ORANGE}
+						/>
+					</TouchableOpacity>
+					<Text
+						className={`flex-1 text-center font-bold ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
+						style={{
+							fontSize: headerMetrics.titleFontSize,
+							lineHeight: headerMetrics.titleFontSize + 5,
+						}}
+						numberOfLines={1}>
+						{title}
+					</Text>
+					<View
+						style={{
+							width: headerMetrics.buttonSize,
+							height: headerMetrics.buttonSize,
+						}}
 					/>
-				</TouchableOpacity>
-				<Text
-					className={`flex-1 text-center font-bold ${lightMode ? 'text-[#18181B]' : 'text-white'}`}
-					style={{
-						fontSize: headerMetrics.titleFontSize,
-						lineHeight: headerMetrics.titleFontSize + 5,
-					}}
-					numberOfLines={1}>
-					{title}
-				</Text>
-				<View
-					style={{ width: headerMetrics.buttonSize, height: headerMetrics.buttonSize }}
-				/>
-			</View>
+				</View>
+			)}
 			<View
-				className={`flex-1 mt-4 px-4 ${lightMode ? 'bg-white' : 'bg-black'}`}
+				className={`flex-1 px-4 ${embedded ? 'py-4' : 'mt-4'} ${
+					lightMode ? 'bg-white' : 'bg-black'
+				}`}
 				style={{ marginBottom: Math.max(insets.bottom, 20) }}>
 				<InvertedSchemaPreview
 					imageUrl={imageUrl}
@@ -489,6 +548,7 @@ export function FullscreenSchemaView({
 
 export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	lightMode = false,
+	hideControlPanel = false,
 	currentSource,
 	logoUrl,
 	isTablet,
@@ -503,6 +563,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	isListening,
 	isMicStarting,
 	isMicProcessing,
+	isMicrophoneActivated,
 	isMicRestartBlocked,
 	isSpeechInputUnavailable,
 	isVoiceOutputUnavailable,
@@ -529,6 +590,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 	pendingPhotoUris,
 	onRemovePendingPhoto,
 	onMicPress,
+	onMicCancel,
 	onCameraPress,
 	onWritingPress,
 	insets,
@@ -540,7 +602,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 		: insets.bottom > 0
 			? insets.bottom + 14
 			: 24;
-	const portraitControlsHeight = portraitPanelHeight;
+	const portraitControlsHeight = hideControlPanel ? 0 : portraitPanelHeight;
 	const portraitRestingInputBottom = portraitControlsBottom + portraitControlsHeight + 12;
 	const headerMetrics = getPortraitChatHeaderMetrics({
 		isTablet,
@@ -557,9 +619,10 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 		? Math.max(0, keyboardFrame.height, Dimensions.get('screen').height - keyboardFrame.screenY)
 		: 0;
 	const portraitInputBottom = keyboardFrame ? keyboardOverlap + 12 : portraitRestingInputBottom;
+	const showsTextComposer = showTextInput || hideControlPanel;
 	const portraitMessagesBottomPadding = Math.max(
 		portraitControlsHeight + 54,
-		portraitInputBottom + (showTextInput ? (pendingPhotoUris.length > 0 ? 180 : 70) : 0),
+		portraitInputBottom + (showsTextComposer ? (pendingPhotoUris.length > 0 ? 180 : 70) : 0),
 	);
 
 	return (
@@ -653,8 +716,10 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 			{hasStartedChat ? (
 				<ScrollView
 					ref={messagesScrollViewRef}
-					className='flex-1 px-4'
-					showsVerticalScrollIndicator={false}
+					className={`chat-scrollbar ${
+						lightMode ? 'chat-scrollbar-light' : 'chat-scrollbar-dark'
+					} flex-1 px-4`}
+					showsVerticalScrollIndicator={Platform.OS === 'web'}
 					contentContainerStyle={{
 						paddingTop: 16,
 						paddingBottom: reserveMessageScrollSpace
@@ -678,6 +743,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 			) : (
 				<StartPromptView
 					compact
+					reserveControlPanelSpace={!hideControlPanel}
 					height={height}
 					keyboardFrame={keyboardFrame}
 					inputText={inputText}
@@ -686,50 +752,66 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 					shouldFocusInput={shouldFocusStartPromptInput}
 					onChangeText={onChangeText}
 					onSend={onSendText}
+					onMicrophonePress={onMicPress}
+					onMicrophoneCancel={onMicCancel}
 					onShowTextInputChange={onShowTextInputChange}
 					onShouldFocusStartPromptInputChange={onShouldFocusStartPromptInputChange}
 					pendingPhotoUris={pendingPhotoUris}
 					onRemovePendingPhoto={onRemovePendingPhoto}
 					lightMode={lightMode}
+					showMicrophoneState={hideControlPanel}
+					isListening={isListening}
+					isMicStarting={isMicStarting}
+					isMicProcessing={isMicProcessing}
+					isMicrophoneActivated={isMicrophoneActivated}
 				/>
 			)}
 
-			{showTextInput && hasStartedChat ? (
+			{showsTextComposer && hasStartedChat ? (
 				<View className='absolute left-4 right-4' style={{ bottom: portraitInputBottom }}>
 					<FloatingChatInput
 						compact
 						inputText={inputText}
 						onChangeText={onChangeText}
 						onSend={onSendText}
-						autoFocus
+						onMicrophonePress={onMicPress}
+						onMicrophoneCancel={onMicCancel}
+						autoFocus={showTextInput}
 						pendingPhotoUris={pendingPhotoUris}
 						onRemovePendingPhoto={onRemovePendingPhoto}
 						lightMode={lightMode}
+						showMicrophoneState={hideControlPanel}
+						isListening={isListening}
+						isMicStarting={isMicStarting}
+						isMicProcessing={isMicProcessing}
+						isMicrophoneActivated={isMicrophoneActivated}
 					/>
 				</View>
 			) : null}
 
-			<View
-				className={`absolute left-0 right-0 ${isPhonePortrait ? '' : 'items-center'}`}
-				style={{ bottom: portraitControlsBottom }}>
-				<ControlPanel
-					orientation='horizontal'
-					edgeToEdge={isPhonePortrait}
-					isListening={isListening}
-					isMicStarting={isMicStarting}
-					isMicProcessing={isMicProcessing}
-					isMicRestartBlocked={isMicRestartBlocked}
-					isSpeechInputUnavailable={isSpeechInputUnavailable}
-					isVoiceOutputUnavailable={isVoiceOutputUnavailable}
-					isWritingActive={showTextInput}
-					attachedPhotoCount={pendingPhotoUris.length}
-					isCameraDisabled={pendingPhotoUris.length >= MAX_CHAT_PHOTOS}
-					onMicPress={onMicPress}
-					onCameraPress={onCameraPress}
-					onWritingPress={onWritingPress}
-					lightMode={lightMode}
-				/>
-			</View>
+			{!hideControlPanel ? (
+				<View
+					className={`absolute left-0 right-0 ${isPhonePortrait ? '' : 'items-center'}`}
+					style={{ bottom: portraitControlsBottom }}>
+					<ControlPanel
+						orientation='horizontal'
+						edgeToEdge={isPhonePortrait}
+						isListening={isListening}
+						isMicStarting={isMicStarting}
+						isMicProcessing={isMicProcessing}
+						isMicRestartBlocked={isMicRestartBlocked}
+						isSpeechInputUnavailable={isSpeechInputUnavailable}
+						isVoiceOutputUnavailable={isVoiceOutputUnavailable}
+						isWritingActive={showTextInput}
+						attachedPhotoCount={pendingPhotoUris.length}
+						isCameraDisabled={pendingPhotoUris.length >= MAX_CHAT_PHOTOS}
+						onMicPress={onMicPress}
+						onCameraPress={onCameraPress}
+						onWritingPress={onWritingPress}
+						lightMode={lightMode}
+					/>
+				</View>
+			) : null}
 			<SourcePanel
 				{...sourcePanelProps}
 				fullScreen={sourcePanelFullScreen}
@@ -761,6 +843,7 @@ export function PortraitChatLayout<TMessage extends ChatMessageItem>({
 
 export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	lightMode = false,
+	hideControlPanel = false,
 	currentSource,
 	logoUrl,
 	height,
@@ -774,6 +857,7 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	isListening,
 	isMicStarting,
 	isMicProcessing,
+	isMicrophoneActivated,
 	isMicRestartBlocked,
 	isSpeechInputUnavailable,
 	isVoiceOutputUnavailable,
@@ -800,8 +884,12 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	pendingPhotoUris,
 	onRemovePendingPhoto,
 	onMicPress,
+	onMicCancel,
 	onCameraPress,
 	onWritingPress,
+	desktopSchemaPreview,
+	onCloseDesktopSchema,
+	enableDesktopPreview = true,
 }: SharedLayoutProps<TMessage>) {
 	const keyboardOverlap = keyboardFrame
 		? Math.max(0, keyboardFrame.height, Dimensions.get('screen').height - keyboardFrame.screenY)
@@ -809,6 +897,9 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 	const desktopInputBottom = keyboardFrame
 		? Math.max(24, keyboardOverlap + KEYBOARD_INPUT_GAP)
 		: 24;
+	const desktopComposerReserve = pendingPhotoUris.length > 0 ? 230 : 120;
+	const showDesktopPreview =
+		enableDesktopPreview && Boolean(desktopSchemaPreview || sourcePanelProps.showSourcePanel);
 
 	return (
 		<View className={`flex-1 ${lightMode ? 'bg-[#F7F5F1]' : 'bg-[#080808]'}`}>
@@ -881,86 +972,178 @@ export function DesktopChatLayout<TMessage extends ChatMessageItem>({
 				</TouchableOpacity>
 			</View>
 
-			<View className='flex-1 flex-row px-6 pb-5'>
-				{hasStartedChat ? (
-					<ScrollView
-						ref={messagesScrollViewRef}
-						className='flex-1 pr-8'
-						contentContainerStyle={{
-							paddingTop: 20,
-							paddingBottom: reserveMessageScrollSpace ? Math.max(30, height) : 30,
-						}}>
-						<ChatMessages
-							messages={messages}
-							isListening={isListening}
-							soundLevelAnim={soundLevelAnim}
-							onOpenSchema={onOpenSchema}
-							onOpenSource={onOpenSource}
-							onRetryMessage={onRetryMessage}
-							onContinueMessage={onContinueMessage}
-							isRetryDisabled={isRetryDisabled}
-							onUserMessageLayout={onUserMessageLayout}
-							lightMode={lightMode}
-						/>
-					</ScrollView>
-				) : (
-					<StartPromptView
-						height={height}
-						keyboardFrame={keyboardFrame}
-						inputText={inputText}
-						inputRef={startPromptInputRef}
-						hasStartedChat={hasStartedChat}
-						shouldFocusInput={shouldFocusStartPromptInput}
-						onChangeText={onChangeText}
-						onSend={onSendText}
-						onShowTextInputChange={onShowTextInputChange}
-						onShouldFocusStartPromptInputChange={onShouldFocusStartPromptInputChange}
-						pendingPhotoUris={pendingPhotoUris}
-						onRemovePendingPhoto={onRemovePendingPhoto}
-						lightMode={lightMode}
-					/>
-				)}
+			<View className='flex-1 flex-row'>
+				<View style={{ flex: 1, minWidth: 0 }}>
+					<View className={`flex-1 flex-row ${hideControlPanel ? '' : 'px-6 pb-5'}`}>
+						{hasStartedChat ? (
+							<ScrollView
+								ref={messagesScrollViewRef}
+								className={`chat-scrollbar ${
+									lightMode ? 'chat-scrollbar-light' : 'chat-scrollbar-dark'
+								} flex-1 ${hideControlPanel ? '' : 'pr-8'}`}
+								style={hideControlPanel ? { width: '100%' } : undefined}
+								contentContainerStyle={{
+									paddingTop: 20,
+									paddingBottom: reserveMessageScrollSpace
+										? Math.max(30, height)
+										: hideControlPanel
+											? desktopComposerReserve + 24
+											: 30,
+								}}>
+								<View
+									style={
+										hideControlPanel
+											? {
+													width: '100%',
+													maxWidth: 980,
+													alignSelf: 'center',
+													paddingHorizontal: 24,
+												}
+											: undefined
+									}>
+									<ChatMessages
+										messages={messages}
+										isListening={isListening}
+										soundLevelAnim={soundLevelAnim}
+										onOpenSchema={onOpenSchema}
+										onOpenSource={onOpenSource}
+										onRetryMessage={onRetryMessage}
+										onContinueMessage={onContinueMessage}
+										isRetryDisabled={isRetryDisabled}
+										onUserMessageLayout={onUserMessageLayout}
+										lightMode={lightMode}
+									/>
+								</View>
+							</ScrollView>
+						) : (
+							<StartPromptView
+								height={height}
+								keyboardFrame={keyboardFrame}
+								inputText={inputText}
+								inputRef={startPromptInputRef}
+								hasStartedChat={hasStartedChat}
+								shouldFocusInput={shouldFocusStartPromptInput}
+								onChangeText={onChangeText}
+								onSend={onSendText}
+								onMicrophonePress={onMicPress}
+								onMicrophoneCancel={onMicCancel}
+								onShowTextInputChange={onShowTextInputChange}
+								onShouldFocusStartPromptInputChange={
+									onShouldFocusStartPromptInputChange
+								}
+								pendingPhotoUris={pendingPhotoUris}
+								onRemovePendingPhoto={onRemovePendingPhoto}
+								lightMode={lightMode}
+								showMicrophoneState={hideControlPanel}
+								isListening={isListening}
+								isMicStarting={isMicStarting}
+								isMicProcessing={isMicProcessing}
+								isMicrophoneActivated={isMicrophoneActivated}
+							/>
+						)}
 
-				<View className='relative self-center ml-5'>
-					<ControlPanel
-						orientation='vertical'
-						isListening={isListening}
-						isMicStarting={isMicStarting}
-						isMicProcessing={isMicProcessing}
-						isMicRestartBlocked={isMicRestartBlocked}
-						isSpeechInputUnavailable={isSpeechInputUnavailable}
-						isVoiceOutputUnavailable={isVoiceOutputUnavailable}
-						isWritingActive={showTextInput}
-						attachedPhotoCount={pendingPhotoUris.length}
-						isCameraDisabled={pendingPhotoUris.length >= MAX_CHAT_PHOTOS}
-						onMicPress={onMicPress}
-						onCameraPress={onCameraPress}
-						onWritingPress={onWritingPress}
-						lightMode={lightMode}
-					/>
+						{!hideControlPanel ? (
+							<View className='relative self-center ml-5'>
+								<ControlPanel
+									orientation='vertical'
+									isListening={isListening}
+									isMicStarting={isMicStarting}
+									isMicProcessing={isMicProcessing}
+									isMicRestartBlocked={isMicRestartBlocked}
+									isSpeechInputUnavailable={isSpeechInputUnavailable}
+									isVoiceOutputUnavailable={isVoiceOutputUnavailable}
+									isWritingActive={showTextInput}
+									attachedPhotoCount={pendingPhotoUris.length}
+									isCameraDisabled={pendingPhotoUris.length >= MAX_CHAT_PHOTOS}
+									onMicPress={onMicPress}
+									onCameraPress={onCameraPress}
+									onWritingPress={onWritingPress}
+									lightMode={lightMode}
+								/>
+							</View>
+						) : null}
+					</View>
+
+					{(showTextInput || hideControlPanel) && hasStartedChat ? (
+						<View
+							className={`absolute left-6 ${
+								hideControlPanel ? 'right-6 items-center' : 'right-[245px]'
+							}`}
+							style={{ bottom: desktopInputBottom }}>
+							<View
+								style={
+									hideControlPanel ? { width: '100%', maxWidth: 980 } : undefined
+								}>
+								<FloatingChatInput
+									inputText={inputText}
+									onChangeText={onChangeText}
+									onSend={onSendText}
+									onMicrophonePress={onMicPress}
+									onMicrophoneCancel={onMicCancel}
+									autoFocus={showTextInput}
+									pendingPhotoUris={pendingPhotoUris}
+									onRemovePendingPhoto={onRemovePendingPhoto}
+									lightMode={lightMode}
+									showMicrophoneState={hideControlPanel}
+									isListening={isListening}
+									isMicStarting={isMicStarting}
+									isMicProcessing={isMicProcessing}
+									isMicrophoneActivated={isMicrophoneActivated}
+								/>
+							</View>
+						</View>
+					) : null}
 				</View>
+
+				{showDesktopPreview ? (
+					<View
+						testID='desktop-chat-preview-panel'
+						style={{ width: '44%', minWidth: 420, maxWidth: 720 }}>
+						{desktopSchemaPreview ? (
+							<FullscreenSchemaView
+								lightMode={lightMode}
+								imageUrl={desktopSchemaPreview.imageUrl}
+								title={desktopSchemaPreview.title}
+								aspectRatio={currentImageAspectRatio}
+								insets={{ top: 0, right: 0, bottom: 0, left: 0 }}
+								isTablet
+								embedded
+								onBack={onCloseDesktopSchema ?? (() => undefined)}
+							/>
+						) : (
+							<SourcePanel
+								{...sourcePanelProps}
+								embedded
+								fileGridColumns={2}
+								lightMode={lightMode}
+							/>
+						)}
+					</View>
+				) : null}
 			</View>
 
-			{showTextInput && hasStartedChat ? (
-				<View
-					className='absolute left-6 right-[245px]'
-					style={{ bottom: desktopInputBottom }}>
-					<FloatingChatInput
-						inputText={inputText}
-						onChangeText={onChangeText}
-						onSend={onSendText}
-						autoFocus
-						pendingPhotoUris={pendingPhotoUris}
-						onRemovePendingPhoto={onRemovePendingPhoto}
+			{!enableDesktopPreview && desktopSchemaPreview ? (
+				<View className='absolute inset-0' style={{ zIndex: 50, elevation: 50 }}>
+					<FullscreenSchemaView
 						lightMode={lightMode}
+						imageUrl={desktopSchemaPreview.imageUrl}
+						title={desktopSchemaPreview.title}
+						aspectRatio={currentImageAspectRatio}
+						insets={{ top: 0, right: 0, bottom: 0, left: 0 }}
+						isTablet
+						onBack={onCloseDesktopSchema ?? (() => undefined)}
 					/>
 				</View>
 			) : null}
-			<SourcePanel
-				{...sourcePanelProps}
-				fullScreen={sourcePanelFullScreen}
-				lightMode={lightMode}
-			/>
+
+			{!enableDesktopPreview ? (
+				<SourcePanel
+					{...sourcePanelProps}
+					fullScreen
+					fileGridColumns={2}
+					lightMode={lightMode}
+				/>
+			) : null}
 			<MachineInfoPanel
 				{...machineInfoPanelProps}
 				fullScreen={sourcePanelFullScreen}

@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
 import { useWindowDimensions } from 'react-native';
 
-import { HapticTab } from '@/components/haptic-tab';
+import { HapticTab } from '@/components/ui/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
 import { getAppSettings } from '@/hooks/use-app-settings';

@@ -1,3 +1,86 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+	@keyframes chat-processing-square-turn {
+		0% {
+			transform: rotate(0deg);
+		}
+
+		11.25%,
+		25% {
+			transform: rotate(90deg);
+		}
+
+		36.25%,
+		50% {
+			transform: rotate(180deg);
+		}
+
+		61.25%,
+		75% {
+			transform: rotate(270deg);
+		}
+
+		86.25%,
+		100% {
+			transform: rotate(360deg);
+		}
+	}
+
+	.chat-processing-square {
+		animation: chat-processing-square-turn 4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+	}
+
+	.chat-scrollbar {
+		scrollbar-width: auto !important;
+		scrollbar-gutter: stable;
+		overscroll-behavior: contain;
+	}
+
+	.chat-scrollbar-dark {
+		scrollbar-color: #8f8f8f #292929 !important;
+	}
+
+	.chat-scrollbar-light {
+		scrollbar-color: #71717a #e4e4e7 !important;
+	}
+
+	.chat-scrollbar::-webkit-scrollbar {
+		width: 16px;
+		height: 12px;
+	}
+
+	.chat-scrollbar::-webkit-scrollbar-track {
+		background: #292929;
+	}
+
+	.chat-scrollbar-light::-webkit-scrollbar-track {
+		background: #e4e4e7;
+	}
+
+	.chat-scrollbar::-webkit-scrollbar-thumb {
+		min-height: 44px;
+		border: 2px solid #292929;
+		border-radius: 6px;
+		background: #8f8f8f;
+	}
+
+	.chat-scrollbar-light::-webkit-scrollbar-thumb {
+		border-color: #e4e4e7;
+		background: #71717a;
+	}
+
+	.chat-scrollbar::-webkit-scrollbar-thumb:hover {
+		background: #b3b3b3;
+	}
+
+	.chat-scrollbar-light::-webkit-scrollbar-thumb:hover {
+		background: #52525b;
+	}
+
+	.chat-scrollbar::-webkit-scrollbar-corner {
+		background: transparent;
+	}
+}

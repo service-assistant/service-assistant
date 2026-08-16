@@ -1,5 +1,5 @@
 import React from 'react';
-import VehicleFilters from '../components/VehicleFilters';
+import VehicleFilters from '../components/vehicles/VehicleFilters';
 import type { Category } from '../hooks/use-vehicle-metadata';
 import { findByType, getTextContent } from '../test-utils/react-tree';
 
@@ -49,7 +49,7 @@ describe('VehicleFilters', () => {
 				]}
 				selectedCategoryIds={[1]}
 				onCategoryPathChange={jest.fn()}
-				useTabletRefresh={false}
+				useCompactLayout={false}
 			/>
 		);
 		const text = getTextContent(tree);
@@ -67,7 +67,7 @@ describe('VehicleFilters', () => {
 				categories={[category(1, 'Toyota', [category(3, 'Wózek', [], 1)])]}
 				selectedCategoryIds={[1]}
 				onCategoryPathChange={onChange}
-				useTabletRefresh={false}
+				useCompactLayout={false}
 			/>
 		);
 		const buttons = findByType(tree, 'TouchableOpacity');
@@ -83,7 +83,7 @@ describe('VehicleFilters', () => {
 				categories={[]}
 				selectedCategoryIds={[]}
 				onCategoryPathChange={jest.fn()}
-				useTabletRefresh={false}
+				useCompactLayout={false}
 				isLoading
 			/>
 		);
@@ -96,7 +96,7 @@ describe('VehicleFilters', () => {
 				categories={[category(1, 'Wózki paletowe niskiego składowania')]}
 				selectedCategoryIds={[]}
 				onCategoryPathChange={jest.fn()}
-				useTabletRefresh={false}
+				useCompactLayout={false}
 			/>
 		);
 		const longButton = findByType(tree, 'TouchableOpacity')[1];

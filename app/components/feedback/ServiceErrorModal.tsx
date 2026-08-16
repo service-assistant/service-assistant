@@ -19,6 +19,8 @@ export default function ServiceErrorModal({
 	dismissible = true,
 	lightMode = false,
 }: ServiceErrorModalProps) {
+	const isMicrophonePermissionError = featureName === 'dostęp do mikrofonu';
+
 	return (
 		<Modal
 			transparent
@@ -45,12 +47,15 @@ export default function ServiceErrorModal({
 
 						<Text
 							className={`mt-5 text-center text-[21px] font-bold ${lightMode ? 'text-[#18181B]' : 'text-white'}`}>
-							Aplikacja natrafiła na błąd
+							{isMicrophonePermissionError
+								? 'Brak dostępu do mikrofonu'
+								: 'Aplikacja natrafiła na błąd'}
 						</Text>
 						<Text
 							className={`mt-3 text-center text-[15px] leading-6 ${lightMode ? 'text-[#52525B]' : 'text-[#D4D4D8]'}`}>
-							Funkcja „{featureName}” chwilowo nie działa. Administrator został
-							poinformowany. Przepraszamy.
+							{isMicrophonePermissionError
+								? 'Zezwól tej stronie na używanie mikrofonu w ustawieniach przeglądarki, a następnie spróbuj ponownie.'
+								: `Funkcja „${featureName}” chwilowo nie działa. Administrator został poinformowany. Przepraszamy.`}
 						</Text>
 
 						{dismissible ? (

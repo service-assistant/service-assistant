@@ -1,6 +1,6 @@
 import React from 'react';
 
-import SourcePanel from '../components/SourcePanel';
+import SourcePanel from '../components/documents/SourcePanel';
 import { collectElements, findByType, getTextContent } from '../test-utils/react-tree';
 
 jest.mock('react-native', () => {
@@ -27,14 +27,14 @@ jest.mock('@expo/vector-icons', () => {
 	};
 });
 
-jest.mock('../components/PdfViewer', () => {
+jest.mock('../components/documents/PdfViewer', () => {
 	const React = require('react');
 	return function MockPdfViewer({ children, ...props }: Record<string, unknown>) {
 		return React.createElement('PdfViewer', props, children);
 	};
 });
 
-jest.mock('../components/AvailableFilesList', () => {
+jest.mock('../components/documents/AvailableFilesList', () => {
 	const React = require('react');
 	return function MockAvailableFilesList({ children, ...props }: Record<string, unknown>) {
 		return React.createElement('AvailableFilesList', props, children);
@@ -121,5 +121,18 @@ describe('SourcePanel', () => {
 		expect(panel).toBeTruthy();
 		expect(buttons).toHaveLength(1);
 		expect(list.props.gridColumns).toBe(2);
+	});
+
+	test('embedded panel removes the title bar and keeps a floating close button', () => {
+		const onClose = jest.fn();
+		const tree = <SourcePanel {...baseProps} embedded onClose={onClose} />;
+		const closeButton = findByType(tree, 'TouchableOpacity')[0];
+
+		expect(getTextContent(tree)).not.toContain('WSZYSTKIE PLIKI');
+		expect(findByType(tree, 'TouchableOpacity')).toHaveLength(1);
+		expect(findByType(closeButton, 'Icon')[0].props.name).toBe('x');
+
+		closeButton.props.onPress();
+		expect(onClose).toHaveBeenCalled();
 	});
 });
