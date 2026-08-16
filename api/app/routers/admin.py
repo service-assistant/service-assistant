@@ -26,7 +26,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
-from app.database import get_engine, get_session
+from app.database import get_engine, get_session, database_url_with_driver
 from app.models import (
     Attachment,
     AttachmentDevice,
@@ -273,7 +273,7 @@ async def _process_benchmark_case_run(run_id: str, settings: Settings) -> None:
         if case is None:
             raise RuntimeError(f"Benchmark case not found: {run.case_id}")
         async with AsyncSession(
-            get_engine(settings.database_url),
+            get_engine(database_url_with_driver),
             expire_on_commit=False,
         ) as session:
             run.result = await benchmark_runner.run_benchmark_case(
@@ -425,7 +425,7 @@ async def _process_benchmark_setup(setup_id: str, settings: Settings) -> None:
     try:
         async with _benchmark_setup_lock:
             async with AsyncSession(
-                get_engine(settings.database_url),
+                get_engine(database_url_with_driver),
                 expire_on_commit=False,
             ) as session:
                 run.result = await benchmark_setup.run_benchmark_setup(
@@ -732,7 +732,7 @@ async def _run_upload_batch(
                 with staged_path.open("rb") as source:
                     upload = UploadFile(file=source, filename=item.filename)
                     async with AsyncSession(
-                        get_engine(settings.database_url),
+                        get_engine(database_url_with_driver),
                         expire_on_commit=False,
                     ) as session:
                         try:
