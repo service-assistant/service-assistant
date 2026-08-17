@@ -39,7 +39,8 @@ class Settings(BaseSettings):
     benchmark_r2_prefix: str = ""
     benchmark_documents_dir: Path | None = None
     benchmark_judge_model: str = "gpt-5.1"
-    benchmark_judge_reasoning_effort: str = "high"
+    benchmark_chunk_judge_model: str = "gpt-5.6-luna"
+    benchmark_judge_reasoning_effort: str = "medium"
 
     gemini_api_key: str | None = None
     gemini_tts_model: str = "gemini-2.5-flash-preview-tts"

@@ -9,6 +9,8 @@ def test_fault_2002_case_should_preserve_input_and_expected_normalization():
     assert case.canonical_fault_code == "2:002"
     assert case.expected_route == "standard_query"
     assert case.diagnostic_mode_enabled is False
+    assert len(case.required_behaviors) == 1
+    assert "nie zadaje pytania doprecyzowującego" in case.required_behaviors[0]
     assert "natychmiast wymienić A5" in case.forbidden_claims[0]
     assert case.source.filename == "LPE200 - nowy model - kody błędów.pdf"
 
@@ -22,6 +24,8 @@ def test_fault_2504_case_should_use_standard_mode_and_full_reference_criteria():
     assert case.expected_route == "standard_query"
     assert case.diagnostic_mode_enabled is False
     assert len(case.required_facts) == 8
+    assert len(case.required_behaviors) == 1
+    assert "nie zadaje pytania doprecyzowującego" in case.required_behaviors[0]
     assert any("16,0 V" in fact for fact in case.required_facts)
     assert any("+XX" in claim for claim in case.forbidden_claims)
     assert case.source.locator == "wiersz tabeli dla kodu 2:504"
@@ -65,7 +69,7 @@ def test_pre_operation_case_should_cover_checks_before_and_after_power_on():
     assert "7.1.2" in case.source.locator
 
 
-def test_forks_not_lifting_case_should_start_with_battery_level_check():
+def test_forks_not_lifting_case_should_require_clarifying_questions():
     dataset = load_benchmark_dataset()
     case = next(
         item for item in dataset.cases if item.id == "forks_not_lifting_low_battery"
@@ -76,15 +80,14 @@ def test_forks_not_lifting_case_should_start_with_battery_level_check():
     assert case.canonical_fault_code is None
     assert case.expected_route == "standard_query"
     assert case.diagnostic_mode_enabled is False
-    assert len(case.required_facts) == 5
-    assert any("0%" in fact for fact in case.required_facts)
-    assert any("punktu ładowania" in fact for fact in case.required_facts)
-    assert any("czujnik wstrząsów" in fact for fact in case.required_facts)
+    assert len(case.required_facts) == 1
+    assert "nie pozwala jeszcze wskazać jednej przyczyny" in case.required_facts[0]
+    assert len(case.required_behaviors) == 2
+    assert any("co dokładnie oznacza" in item for item in case.required_behaviors)
+    assert any("poziom naładowania" in item for item in case.required_behaviors)
     assert any("hydrauliki lub pompy" in claim for claim in case.forbidden_claims)
-    assert "2:102" in case.reference_answer
-    assert "2:180" in case.reference_answer
-    assert "2:501" in case.reference_answer
-    assert "2:504" in case.reference_answer
+    assert "widły w ogóle nie reagują" in case.reference_answer
+    assert "czy słychać pracę pompy" in case.reference_answer
     assert case.source.filename == (
         "LPE200, LPE220, LPE250 - podręcznik operatora PL.pdf"
     )

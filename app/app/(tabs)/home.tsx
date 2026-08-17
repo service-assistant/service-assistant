@@ -254,9 +254,13 @@ export default function HomeScreen() {
 
 			{isWeb ? null : (
 				<View
-					pointerEvents='box-none'
 					className='absolute left-0 right-0 items-center px-4'
-					style={{ bottom: scanButtonBottom, zIndex: 30, elevation: 30 }}>
+					style={{
+						bottom: scanButtonBottom,
+						zIndex: 30,
+						elevation: 30,
+						pointerEvents: 'box-none',
+					}}>
 					<TouchableOpacity
 						onPress={() => setIsNameplateScannerOpen(true)}
 						accessibilityRole='button'

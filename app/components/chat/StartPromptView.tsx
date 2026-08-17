@@ -301,10 +301,10 @@ export default function StartPromptView({
 				/>
 				{shouldShowAnimatedPlaceholder ? (
 					<View
-						pointerEvents='none'
 						className='absolute flex-row items-center'
 						style={{
 							left: compact ? 18 : 32,
+							pointerEvents: 'none',
 							right: compact ? 58 : 74,
 						}}>
 						<Text
@@ -432,11 +432,11 @@ export default function StartPromptView({
 
 				<View
 					className='flex-row flex-wrap justify-center'
-					pointerEvents={isKeyboardLayoutActive ? 'none' : 'auto'}
 					style={{
 						columnGap: compact ? 8 : 12,
 						rowGap: compact ? 6 : 9,
 						opacity: isKeyboardLayoutActive ? 0 : 1,
+						pointerEvents: isKeyboardLayoutActive ? 'none' : 'auto',
 					}}>
 					{QUICK_PROMPTS.map((prompt) => (
 						<TouchableOpacity

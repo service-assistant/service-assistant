@@ -267,10 +267,10 @@ export default function HomeActionPanel({
 						height: bottomBar.panelHeight,
 					}}>
 					<View
-						pointerEvents='none'
 						className='absolute inset-0 overflow-hidden'
 						style={{
 							borderRadius: 100,
+							pointerEvents: 'none',
 							borderWidth: 1,
 							borderColor: 'rgba(255, 122, 0, 0.18)',
 							shadowColor: '#000',
@@ -338,9 +338,9 @@ export default function HomeActionPanel({
 								}}>
 								{micUiState === 'listening' ? (
 									<Animated.View
-										pointerEvents='none'
 										style={{
 											position: 'absolute',
+											pointerEvents: 'none',
 											top: 0,
 											bottom: 0,
 											left: 0,

@@ -160,13 +160,13 @@ export default function ChatSubmitButton({
 			) : microphoneState === 'processing' ? (
 				<View
 					testID='rotating-processing-icon'
-					pointerEvents='none'
 					className='chat-processing-square'
 					style={{
 						width: compact ? 17 : 20,
 						height: compact ? 17 : 20,
 						borderRadius: 2,
 						backgroundColor: buttonStyle.iconColor,
+						pointerEvents: 'none',
 					}}
 				/>
 			) : microphoneState === 'starting' ? (

@@ -240,12 +240,12 @@ function SlidingHeaderIdentity({
 				</Animated.View>
 			</View>
 			<View
-				pointerEvents='none'
 				onLayout={handleContentLayout}
 				style={[
 					{
 						position: 'absolute',
 						opacity: 0,
+						pointerEvents: 'none',
 						left: -10000,
 						top: 0,
 					},

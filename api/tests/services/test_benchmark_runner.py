@@ -84,6 +84,19 @@ def test_merge_chunks_should_deduplicate_sources_from_both_messages():
     assert [chunk["id"] for chunk in merged] == [1, 2, 3]
 
 
+def test_assistant_response_time_should_use_only_generation_duration():
+    turn = {
+        "debug": [
+            {"step": "route", "duration_ms": 120},
+            {"step": "retrieval", "duration_ms": 340},
+            {"step": "generation", "duration_ms": 1567},
+            {"step": "complete", "duration_ms": 1700},
+        ]
+    }
+
+    assert benchmark_runner._assistant_response_time_ms(turn) == 1567
+
+
 async def test_cancellation_should_interrupt_active_async_operation():
     cancellation_event = asyncio.Event()
     operation_started = asyncio.Event()
@@ -117,6 +130,10 @@ async def test_judge_should_use_reasoning_model_and_validate_all_criteria(mocker
             {"index": index, "satisfied": True, "evidence": "present"}
             for index in range(len(case.required_facts))
         ],
+        "required_behaviors": [
+            {"index": index, "satisfied": True, "evidence": "behavior present"}
+            for index in range(len(case.required_behaviors))
+        ],
         "forbidden_claims": [
             {"index": index, "satisfied": False, "evidence": "absent"}
             for index in range(len(case.forbidden_claims))
@@ -141,7 +158,8 @@ async def test_judge_should_use_reasoning_model_and_validate_all_criteria(mocker
     settings = SimpleNamespace(
         openai_api_key="test",
         benchmark_judge_model="gpt-5.1",
-        benchmark_judge_reasoning_effort="high",
+        benchmark_chunk_judge_model="gpt-5.6-luna",
+        benchmark_judge_reasoning_effort="medium",
     )
 
     result = await benchmark_runner._judge_answer(
@@ -149,10 +167,11 @@ async def test_judge_should_use_reasoning_model_and_validate_all_criteria(mocker
     )
 
     assert all(item.satisfied for item in result.required_facts)
+    assert all(item.satisfied for item in result.required_behaviors)
     assert not any(item.satisfied for item in result.forbidden_claims)
     request = create.await_args.kwargs
     assert request["model"] == "gpt-5.1"
-    assert request["reasoning_effort"] == "high"
+    assert request["reasoning_effort"] == "medium"
     assert request["response_format"]["type"] == "json_schema"
     assert "nie musi powtarzać surowego zapisu" in request["messages"][0]["content"]
 
@@ -192,7 +211,8 @@ async def test_chunk_judge_should_score_each_chunk_and_fact_coverage(mocker):
     settings = SimpleNamespace(
         openai_api_key="test",
         benchmark_judge_model="gpt-5.1",
-        benchmark_judge_reasoning_effort="high",
+        benchmark_chunk_judge_model="gpt-5.6-luna",
+        benchmark_judge_reasoning_effort="medium",
     )
 
     result = await benchmark_runner._judge_chunks(
@@ -207,8 +227,8 @@ async def test_chunk_judge_should_score_each_chunk_and_fact_coverage(mocker):
     assert [item.relevance_score for item in result.chunks] == [3, 1]
     assert result.chunks[0].supported_fact_indexes == [0, 1]
     request = create.await_args.kwargs
-    assert request["model"] == "gpt-5.1"
-    assert request["reasoning_effort"] == "high"
+    assert request["model"] == "gpt-5.6-luna"
+    assert request["reasoning_effort"] == "medium"
     assert request["response_format"]["json_schema"]["strict"] is True
     assert (
         "does not need to state their equivalence" in request["messages"][0]["content"]

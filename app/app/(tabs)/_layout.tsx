@@ -30,12 +30,11 @@ export default function TabLayout() {
 			<StatusBar hidden={true} />
 
 			<Tabs
+				tabBar={() => null}
 				screenOptions={{
 					tabBarActiveTintColor: Colors[colorScheme].tint,
 					headerShown: false,
 					tabBarButton: HapticTab,
-					// Disable the bottom navigation bar to maintain a full-screen UI
-					tabBarStyle: { display: 'none' },
 				}}>
 				<Tabs.Screen
 					name='index'

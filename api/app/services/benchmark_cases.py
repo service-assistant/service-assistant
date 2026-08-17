@@ -20,6 +20,7 @@ class BenchmarkCase(BaseModel):
     canonical_fault_code: str | None = None
     reference_answer: str
     required_facts: list[str] = Field(min_length=1)
+    required_behaviors: list[str] = Field(default_factory=list)
     forbidden_claims: list[str] = Field(default_factory=list)
     source: BenchmarkSource
     evaluation_mode: Literal["llm", "source_image"] = "llm"

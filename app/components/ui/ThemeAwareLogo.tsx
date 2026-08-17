@@ -42,7 +42,7 @@ export default function ThemeAwareLogo({
 		<View style={[dimensions, containerStyle]}>
 			<Image {...imageProps} onError={onError} style={[dimensions, imageStyle]} />
 			{lightMode && (
-				<View pointerEvents='none' style={StyleSheet.absoluteFill}>
+				<View style={[StyleSheet.absoluteFill, { pointerEvents: 'none' }]}>
 					<ColorMatrix matrix={WHITE_PIXEL_MASK}>
 						<Image {...imageProps} style={[dimensions, imageStyle]} />
 					</ColorMatrix>

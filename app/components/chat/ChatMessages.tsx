@@ -1129,9 +1129,12 @@ export default function ChatMessages<TMessage extends ChatMessageItem>({
 															(_, index) => (
 																<View
 																	key={`empty-schema-slot-${index}`}
-																	pointerEvents='none'
 																	accessibilityElementsHidden
-																	style={{ flex: 1, minWidth: 0 }}
+																	style={{
+																		flex: 1,
+																		minWidth: 0,
+																		pointerEvents: 'none',
+																	}}
 																/>
 															),
 														)
