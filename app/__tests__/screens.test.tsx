@@ -393,8 +393,8 @@ describe('tab screens', () => {
 		expect(statusBar.props.hidden).toBe(true);
 		expect(tabs.props.screenOptions).toMatchObject({
 			headerShown: false,
-			tabBarStyle: { display: 'none' },
 		});
+		expect(tabs.props.tabBar()).toBeNull();
 		expect(mockOrientationUnlockAsync).toHaveBeenCalledTimes(1);
 		expect(mockOrientationLockAsync).not.toHaveBeenCalled();
 	});
