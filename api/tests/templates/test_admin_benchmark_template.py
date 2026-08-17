@@ -11,8 +11,12 @@ def test_benchmark_template_supports_running_all_cases_and_average_scores():
     assert "Promise.allSettled" in template
     assert 'id="average-required-facts"' in template
     assert 'id="average-fact-coverage"' in template
+    assert 'id="average-assistant-response-time"' in template
     assert "result.score" in template
     assert "result.chunk_fact_coverage" in template
+    assert "result.assistant_response_times_ms" in template
+    assert "result.required_behaviors_threshold_passed" in template
+    assert "result.judge.required_behaviors" in template
 
 
 def test_benchmark_template_colors_case_selectors_by_required_facts_threshold():

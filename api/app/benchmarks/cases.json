@@ -20,6 +20,9 @@
         "Pierwszym działaniem jest sprawdzenie parametrów fabrycznych i pozostałych parametrów.",
         "Wymiana A5 dotyczy ścieżki uszkodzonej pamięci i odwołuje się do rozdziału 13.1.3 „Wymiana karty logicznej”."
       ],
+      "required_behaviors": [
+        "Odpowiedź od razu wyjaśnia kod 2:002 i nie zadaje pytania doprecyzowującego o kod ani objawy, ponieważ zapis 2002 wystarcza do jednoznacznej normalizacji kodu."
+      ],
       "forbidden_claims": [
         "Należy natychmiast wymienić A5 bez sprawdzenia parametrów.",
         "Kod 2002 jest innym kodem niż 2:002.",
@@ -50,6 +53,9 @@
         "Pierwszym działaniem jest naładowanie akumulatora.",
         "Kontrola modułu T1 obejmuje bezpieczniki F50 i F1 oraz pomiary F50-B- i F1-B- porównane z rzeczywistą wartością TruckCom „Battery Voltage”.",
         "Należy również sprawdzić złącza, połączenia, rozgałęzienia, dodatkowe wyposażenie, akumulator oraz poprawność parametrów fabrycznych i pozostałych parametrów."
+      ],
+      "required_behaviors": [
+        "Odpowiedź od razu wyjaśnia kod 2:504 i nie zadaje pytania doprecyzowującego o kod ani objawy, ponieważ zapis 2504 wystarcza do jednoznacznej normalizacji kodu."
       ],
       "forbidden_claims": [
         "Należy od razu wymienić moduł T1 bez wykonania pomiarów.",
@@ -142,13 +148,13 @@
       "diagnostic_mode_enabled": false,
       "expected_route": "standard_query",
       "canonical_fault_code": null,
-      "reference_answer": "Najpierw sprawdź wyświetlacz: poziom naładowania akumulatora oraz symbol, komunikat lub kod błędu. Nie da się przypisać jednego kodu na podstawie samego objawu — jeśli kod jest wyświetlany, trzeba zastosować opis i działania przypisane dokładnie do niego. Gdy wskaźnik akumulatora osiągnie 0%, funkcja podnoszenia zostaje wyłączona; wózek może nadal poruszać się, aby dojechać do punktu ładowania — należy naładować akumulator. Miganie symbolu przy 10% jest wcześniejszym sygnałem do ładowania, a nie progiem wyłączenia podnoszenia. Jeżeli wózek ma opcjonalny czujnik wstrząsów, po silnej kolizji może on zatrzymać wózek i zablokować podnoszenie; mogą temu towarzyszyć sygnał dźwiękowy, prędkość pełzania oraz symbol, komunikat lub kod błędu. W takim przypadku zresetuj wózek metodą przewidzianą w jego konfiguracji — standardowym kodem, specjalnym kodem resetowania albo przez I_Site — a następnie wykonaj wszystkie czynności kontroli przed użyciem. Sprawdź też, czy wyłącznik awaryjny nie jest wciśnięty; podręcznik nakazuje go zresetować przed użyciem, a na wyświetlaczu jego aktywację oznacza komunikat ESO. W tabeli kodów bezpośrednią blokadę podnoszenia i opuszczania opisują między innymi 2:102 — nieprawidłowa konfiguracja parametru 1102 — oraz 2:180 — wewnętrzny błąd oprogramowania; w obu przypadkach występuje też prędkość pełzania. Kody 2:501 i 2:504 dotyczą niskiego napięcia i zatrzymują wszystkie funkcje: 2:501 oznacza napięcie akumulatora poniżej 16,8 V przez ponad 2 sekundy, a 2:504 napięcie na kondensatorach modułu T1 poniżej 16,0 V podczas próby zamknięcia stycznika głównego. Jeżeli żadna z opisanych sytuacji nie pasuje, zanotuj dokładny kod lub komunikat i kontynuuj diagnostykę zamiast zakładać z góry awarię hydrauliki lub pompy.",
+      "reference_answer": "Żeby zawęzić problem, doprecyzuj proszę, co dokładnie dzieje się po użyciu sterowania podnoszeniem: widły w ogóle nie reagują, próbują ruszyć i się zatrzymują, czy słychać pracę pompy? Podaj też poziom naładowania akumulatora oraz dokładny symbol, komunikat lub kod widoczny na wyświetlaczu. Sam objaw braku podnoszenia nie pozwala jeszcze wskazać jednej przyczyny ani właściwej procedury.",
       "required_facts": [
-        "Najpierw należy sprawdzić na wyświetlaczu poziom naładowania akumulatora oraz dokładny symbol, komunikat lub kod błędu; kod należy interpretować według przypisanego do niego wpisu zamiast zgadywać go z samego objawu.",
-        "Przy poziomie naładowania 0% funkcja podnoszenia zostaje wyłączona.",
-        "Przy 0% wózek może nadal poruszać się, aby dojechać do punktu ładowania, a akumulator należy naładować.",
-        "Opcjonalny czujnik wstrząsów może po silnej kolizji zablokować podnoszenie; mogą temu towarzyszyć sygnał dźwiękowy, prędkość pełzania i symbol, komunikat lub kod błędu.",
-        "Po zadziałaniu czujnika wstrząsów należy zresetować wózek metodą przewidzianą w konfiguracji i przeprowadzić wszystkie czynności kontroli przed użyciem; jeśli żadna z opisanych przyczyn nie pasuje, należy kontynuować diagnostykę bez przesądzania awarii hydrauliki."
+        "Sam objaw braku podnoszenia wideł nie pozwala jeszcze wskazać jednej przyczyny, kodu błędu ani właściwej procedury."
+      ],
+      "required_behaviors": [
+        "Odpowiedź zadaje pytanie doprecyzowujące, co dokładnie oznacza brak podnoszenia, na przykład czy widły w ogóle nie reagują, próbują ruszyć i się zatrzymują albo czy słychać pracę pompy.",
+        "Odpowiedź prosi o dane diagnostyczne widoczne dla technika, w szczególności poziom naładowania akumulatora oraz dokładny symbol, komunikat lub kod na wyświetlaczu, zamiast od razu przedstawiać rozbudowaną diagnozę."
       ],
       "forbidden_claims": [
         "Brak podnoszenia jednoznacznie oznacza uszkodzenie hydrauliki lub pompy.",

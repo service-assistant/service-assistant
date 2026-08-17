@@ -136,7 +136,6 @@ const FullscreenSchemaOverlay = forwardRef<
 
 	return (
 		<View
-			pointerEvents={visible ? 'auto' : 'none'}
 			accessibilityElementsHidden={!visible}
 			importantForAccessibility={visible ? 'yes' : 'no-hide-descendants'}
 			style={[
@@ -144,6 +143,7 @@ const FullscreenSchemaOverlay = forwardRef<
 				{
 					elevation: visible ? 1000 : 0,
 					opacity: visible ? 1 : 0,
+					pointerEvents: visible ? 'auto' : 'none',
 					zIndex: visible ? 1000 : -1,
 				},
 			]}>

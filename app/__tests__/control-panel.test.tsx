@@ -84,9 +84,12 @@ describe('ControlPanel', () => {
 		buttons[1].props.onPress();
 		buttons[2].props.onPress();
 
-		expect(backdrop?.props.style).toMatchObject({
-			backgroundColor: 'rgba(20, 22, 30, 0.92)',
-		});
+		expect(backdrop?.props.style).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ backgroundColor: 'rgba(20, 22, 30, 0.92)' }),
+				expect.objectContaining({ pointerEvents: 'none' }),
+			]),
+		);
 		expect(getTextContent(tree)).toContain('Naciśnij żeby mówić');
 		expect(baseProps.onCameraPress).toHaveBeenCalled();
 		expect(baseProps.onMicPress).toHaveBeenCalled();
@@ -102,10 +105,15 @@ describe('ControlPanel', () => {
 			(view) => view.props.testID === 'control-panel-frosted-haze',
 		);
 
-		expect(backdrop?.props.style).toMatchObject({
-			backgroundColor: 'rgba(12, 14, 20, 0.84)',
-			bottom: -4,
-		});
+		expect(backdrop?.props.style).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					backgroundColor: 'rgba(12, 14, 20, 0.84)',
+					bottom: -4,
+				}),
+				expect.objectContaining({ pointerEvents: 'none' }),
+			]),
+		);
 		expect(haze?.props.style).toMatchObject({
 			backgroundColor: 'rgba(40, 48, 55, 0.25)',
 		});
@@ -185,6 +193,7 @@ describe('ControlPanel', () => {
 		expect(getTextContent(tree)).toContain('Przetwarzam...');
 		expect(findByType(tree, 'Icon').some((icon) => icon.props.name === 'stop')).toBe(true);
 		expect(rotatingIcon?.props.style).toEqual({
+			pointerEvents: 'none',
 			transform: [{ rotate: 'animated-interpolation' }],
 		});
 	});

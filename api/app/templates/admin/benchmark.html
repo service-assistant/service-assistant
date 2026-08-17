@@ -84,7 +84,7 @@
         </button>
     </div>
 
-    <div id="benchmark-results-summary" class="mb-5 grid gap-4 rounded-md border border-gray-200 bg-gray-50 p-4 sm:grid-cols-3">
+    <div id="benchmark-results-summary" class="mb-5 grid gap-4 rounded-md border border-gray-200 bg-gray-50 p-4 sm:grid-cols-4">
         <div>
             <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Completed cases</div>
             <div id="completed-cases-count" class="mt-1 text-2xl font-semibold text-gray-900">0 / {{ benchmark_dataset.cases|length }}</div>
@@ -96,6 +96,10 @@
         <div>
             <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Average fact coverage</div>
             <div id="average-fact-coverage" class="mt-1 text-2xl font-semibold text-gray-400">&mdash;</div>
+        </div>
+        <div>
+            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">Average assistant response</div>
+            <div id="average-assistant-response-time" class="mt-1 text-2xl font-semibold text-gray-400">&mdash;</div>
         </div>
     </div>
 
@@ -149,6 +153,16 @@
                                 </ul>
                             </div>
                         </div>
+                        {% if case.required_behaviors %}
+                        <div>
+                            <div class="text-xs font-semibold uppercase tracking-wide text-blue-700 mb-2">Required behaviors (all mandatory)</div>
+                            <ul class="space-y-2">
+                                {% for behavior in case.required_behaviors %}
+                                <li class="flex gap-2 text-sm text-gray-700"><span class="text-blue-600">&#9679;</span><span>{{ behavior }}</span></li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
                         <p class="text-xs text-gray-500">Source: {{ case.source.filename }} · {{ case.source.locator }}{% if case.source.page %} · page {{ case.source.page }}{% endif %}</p>
                     </div>
                 </details>
@@ -177,6 +191,7 @@ const runAllCasesButton = document.getElementById('run-all-cases');
 const completedCasesCount = document.getElementById('completed-cases-count');
 const averageRequiredFacts = document.getElementById('average-required-facts');
 const averageFactCoverage = document.getElementById('average-fact-coverage');
+const averageAssistantResponseTime = document.getElementById('average-assistant-response-time');
 const benchmarkCaseDefinitions = {
     {% for case in benchmark_dataset.cases %}
     {{ case.id | tojson }}: {
@@ -188,6 +203,7 @@ const benchmarkCaseDefinitions = {
         canonicalFaultCode: {{ case.canonical_fault_code | tojson }},
         referenceAnswer: {{ case.reference_answer | tojson }},
         requiredFacts: {{ case.required_facts | tojson }},
+        requiredBehaviors: {{ case.required_behaviors | tojson }},
         forbiddenClaims: {{ case.forbidden_claims | tojson }},
         evaluationMode: {{ case.evaluation_mode | tojson }},
         minimumSourceImages: {{ case.minimum_source_images | tojson }},
@@ -227,7 +243,10 @@ function refreshCaseSelectors() {
         const selected = button.getAttribute('aria-pressed') === 'true';
         button.className = selectorClass(
             selected,
-            result ? result.required_facts_threshold_passed : null,
+            result
+                ? result.required_facts_threshold_passed
+                    && result.required_behaviors_threshold_passed
+                : null,
         );
     });
 }
@@ -240,14 +259,34 @@ function renderBenchmarkAverages() {
         averageFactCoverage.textContent = '—';
         averageRequiredFacts.className = 'mt-1 text-2xl font-semibold text-gray-400';
         averageFactCoverage.className = 'mt-1 text-2xl font-semibold text-gray-400';
+        averageAssistantResponseTime.textContent = '\u2014';
+        averageAssistantResponseTime.className = 'mt-1 text-2xl font-semibold text-gray-400';
         return;
     }
     const requiredFacts = results.reduce(function (sum, result) { return sum + result.score; }, 0) / results.length;
     const factCoverage = results.reduce(function (sum, result) { return sum + result.chunk_fact_coverage; }, 0) / results.length;
+    const assistantResponseTimes = results.flatMap(function (result) {
+        return result.assistant_response_times_ms || [];
+    });
     averageRequiredFacts.textContent = `${requiredFacts.toFixed(1)}%`;
     averageFactCoverage.textContent = `${factCoverage.toFixed(1)}%`;
+    averageAssistantResponseTime.textContent = assistantResponseTimes.length
+        ? formatDurationMs(
+            assistantResponseTimes.reduce(function (sum, duration) { return sum + duration; }, 0)
+                / assistantResponseTimes.length,
+        )
+        : '\u2014';
     averageRequiredFacts.className = 'mt-1 text-2xl font-semibold text-gray-900';
     averageFactCoverage.className = 'mt-1 text-2xl font-semibold text-gray-900';
+    averageAssistantResponseTime.className = assistantResponseTimes.length
+        ? 'mt-1 text-2xl font-semibold text-gray-900'
+        : 'mt-1 text-2xl font-semibold text-gray-400';
+}
+
+function formatDurationMs(durationMs) {
+    if (durationMs === null || durationMs === undefined) return '\u2014';
+    if (durationMs < 1000) return `${Math.round(durationMs)} ms`;
+    return `${(durationMs / 1000).toFixed(2)} s`;
 }
 
 function refreshRunAllButton() {
@@ -566,6 +605,9 @@ function buildCaseCopyText(caseDefinition, result) {
         '## Required facts',
         formatNumberedItems(caseDefinition.requiredFacts),
         '',
+        '## Required behaviors (all mandatory)',
+        formatNumberedItems(caseDefinition.requiredBehaviors),
+        '',
         '## Forbidden claims',
         formatNumberedItems(caseDefinition.forbiddenClaims),
         '',
@@ -581,6 +623,7 @@ function buildCaseCopyText(caseDefinition, result) {
         '',
         `- Result: ${result.passed ? 'PASS' : 'FAIL'}`,
         `- Required facts: ${result.score}% (${result.required_passed}/${result.required_total}), threshold ${result.required_facts_threshold}%`,
+        `- Required behaviors: ${result.required_behaviors_passed}/${result.required_behaviors_total} (${result.required_behaviors_threshold_passed ? 'passed' : 'failed'})`,
         `- Required-fact coverage: ${result.chunk_fact_coverage}%, threshold ${result.fact_coverage_threshold}%`,
         ...(result.evaluation_mode === 'source_image'
             ? [`- Displayable source images: ${result.source_image_count}/${result.minimum_source_images}`]
@@ -590,7 +633,9 @@ function buildCaseCopyText(caseDefinition, result) {
         `- Source check: ${result.source_passed ? 'passed' : 'failed'}`,
         `- Thread ID: ${result.thread_id}`,
         `- Assistant messages: ${result.message_count}`,
-        `- Judge: ${result.judge_model} (${result.judge_reasoning_effort})`,
+        `- Average assistant response: ${formatDurationMs(result.average_assistant_response_time_ms)}`,
+        `- Answer judge: ${result.judge_model} (${result.judge_reasoning_effort})`,
+        `- Chunk judge: ${result.chunk_judge_model} (${result.judge_reasoning_effort})`,
         '',
         '## Assistant messages',
     );
@@ -599,6 +644,7 @@ function buildCaseCopyText(caseDefinition, result) {
             '',
             `### Assistant message ${index + 1} · ID ${assistantMessage.id}`,
             `- Continuation: ${assistantMessage.has_continuation ? 'yes' : 'no'}`,
+            `- Response time: ${formatDurationMs(assistantMessage.response_time_ms)}`,
             '',
             assistantMessage.content,
         );
@@ -608,6 +654,12 @@ function buildCaseCopyText(caseDefinition, result) {
     result.judge.required_facts.forEach(function (criterion) {
         lines.push(
             `${criterion.satisfied ? '✓' : '×'} ${criterion.index + 1}. ${caseDefinition.requiredFacts[criterion.index]} — ${criterion.evidence}`,
+        );
+    });
+    lines.push('', '## Required-behavior judgement');
+    result.judge.required_behaviors.forEach(function (criterion) {
+        lines.push(
+            `${criterion.satisfied ? '✓' : '×'} ${criterion.index + 1}. ${caseDefinition.requiredBehaviors[criterion.index]} — ${criterion.evidence}`,
         );
     });
     lines.push('', '## Forbidden-claim judgement');
@@ -685,10 +737,10 @@ function renderCaseResult(container, run) {
         : 'text-base font-semibold text-red-900';
     heading.textContent = result.evaluation_mode === 'source_image'
         ? `${result.passed ? 'PASS' : 'FAIL'} · ${result.source_image_count}/${result.minimum_source_images} displayable source image(s)`
-        : `${result.passed ? 'PASS' : 'FAIL'} · ${result.score}% required facts · ${result.chunk_fact_coverage}% fact coverage`;
+        : `${result.passed ? 'PASS' : 'FAIL'} · ${result.score}% required facts · behaviors ${result.required_behaviors_passed}/${result.required_behaviors_total} · ${result.chunk_fact_coverage}% fact coverage`;
     const meta = document.createElement('div');
     meta.className = 'mt-1 text-xs text-gray-600';
-    meta.textContent = `Route: ${result.route} ${result.route_passed ? '✓' : '×'} · source: ${result.source_passed ? '✓' : '×'} · ${result.message_count} assistant message(s) · ${result.retrieved_chunk_count} retrieved chunks · judge: ${result.judge_model} (${result.judge_reasoning_effort})`;
+    meta.textContent = `Route: ${result.route} ${result.route_passed ? '✓' : '×'} · source: ${result.source_passed ? '✓' : '×'} · ${result.message_count} assistant message(s) · ${result.retrieved_chunk_count} retrieved chunks · answer judge: ${result.judge_model} · chunk judge: ${result.chunk_judge_model} (${result.judge_reasoning_effort})`;
     const threadLink = document.createElement('a');
     threadLink.href = `/admin/threads/${result.thread_id}`;
     threadLink.className = 'mt-2 inline-block text-xs font-medium text-blue-700 hover:underline';
@@ -834,6 +886,8 @@ function renderCaseResult(container, run) {
         messageHeader.className = 'flex items-center justify-between gap-3 border-b border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600';
         const messageLabel = document.createElement('span');
         messageLabel.className = 'font-semibold text-gray-800';
+        const responseTime = document.createElement('span');
+        responseTime.textContent = formatDurationMs(assistantMessage.response_time_ms);
         messageLabel.textContent = `Assistant message ${index + 1} · ID ${assistantMessage.id}`;
         const continuationBadge = document.createElement('span');
         continuationBadge.className = assistantMessage.has_continuation
@@ -845,7 +899,7 @@ function renderCaseResult(container, run) {
         const messageContent = document.createElement('pre');
         messageContent.className = 'whitespace-pre-wrap p-3 text-sm text-gray-800';
         messageContent.textContent = assistantMessage.content;
-        messageHeader.append(messageLabel, continuationBadge);
+        messageHeader.append(messageLabel, responseTime, continuationBadge);
         messageCard.append(messageHeader, messageContent);
         answers.appendChild(messageCard);
     });
@@ -856,6 +910,12 @@ function renderCaseResult(container, run) {
         const item = document.createElement('div');
         item.className = criterion.satisfied ? 'text-xs text-green-800' : 'text-xs text-red-800';
         item.textContent = `${criterion.satisfied ? '✓' : '×'} Required #${criterion.index + 1}: ${criterion.evidence}`;
+        criteria.appendChild(item);
+    });
+    result.judge.required_behaviors.forEach(function (criterion) {
+        const item = document.createElement('div');
+        item.className = criterion.satisfied ? 'text-xs text-green-800' : 'text-xs text-red-800';
+        item.textContent = `${criterion.satisfied ? '✓' : '×'} Required behavior #${criterion.index + 1}: ${criterion.evidence}`;
         criteria.appendChild(item);
     });
     result.judge.forbidden_claims.forEach(function (criterion) {

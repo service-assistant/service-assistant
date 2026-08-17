@@ -527,18 +527,9 @@ async def create_message(
                     },
                 },
             )
-            yield _sse(
-                "debug",
-                {
-                    "step": "generation",
-                    "label": "Generowanie odpowiedzi",
-                    "duration_ms": None,
-                    "data": {"status": "started"},
-                },
-            )
-
         yield _sse("route", diagnostic_route.value)
 
+        generation_started_at = time.perf_counter()
         if standard_completion_answer:
             answer_parts.append(standard_completion_answer)
             yield _sse("chunk", standard_completion_answer)
@@ -563,6 +554,20 @@ async def create_message(
             for visible_chunk in stream_limiter.finish():
                 answer_parts.append(visible_chunk)
                 yield _sse("chunk", visible_chunk)
+        generation_duration_ms = round(
+            (time.perf_counter() - generation_started_at) * 1000
+        )
+
+        if debug:
+            yield _sse(
+                "debug",
+                {
+                    "step": "generation",
+                    "label": "Generowanie odpowiedzi",
+                    "duration_ms": generation_duration_ms,
+                    "data": {"status": "completed"},
+                },
+            )
 
         answer = "".join(answer_parts)
         answer = llm.normalize_numbered_checklist(answer)

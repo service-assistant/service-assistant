@@ -97,9 +97,9 @@ const MicStartingIndicator = ({
 		<>
 			<View
 				testID='mic-starting-fill-clip'
-				pointerEvents='none'
 				style={{
 					position: 'absolute',
+					pointerEvents: 'none',
 					top: 0,
 					right: 0,
 					bottom: 0,
@@ -166,8 +166,7 @@ const RotatingProcessingIcon = ({ color, size }: { color: string; size: number }
 	return (
 		<Animated.View
 			testID='rotating-processing-icon'
-			pointerEvents='none'
-			style={{ transform: [{ rotate }] }}>
+			style={{ pointerEvents: 'none', transform: [{ rotate }] }}>
 			<MaterialCommunityIcons name='stop' size={size} color={color} />
 		</Animated.View>
 	);
@@ -555,9 +554,8 @@ export default function ControlPanel({
 			{useEdgeToEdge ? (
 				<View
 					testID='control-panel-frosted-backdrop'
-					pointerEvents='none'
 					className='absolute inset-0 overflow-hidden'
-					style={panelBackdropStyle}>
+					style={[panelBackdropStyle, { pointerEvents: 'none' }]}>
 					<View
 						testID='control-panel-frosted-haze'
 						className='absolute inset-0'
@@ -575,9 +573,8 @@ export default function ControlPanel({
 			) : (
 				<View
 					testID='control-panel-solid-backdrop'
-					pointerEvents='none'
 					className='absolute inset-0 overflow-hidden'
-					style={panelBackdropStyle}
+					style={[panelBackdropStyle, { pointerEvents: 'none' }]}
 				/>
 			)}
 			<View

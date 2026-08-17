@@ -68,6 +68,7 @@ class JudgeResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     required_facts: list[CriterionResult]
+    required_behaviors: list[CriterionResult]
     forbidden_claims: list[CriterionResult]
     feedback: str
 
@@ -131,6 +132,7 @@ def _source_image_judgement(
             CriterionResult(index=index, satisfied=passed, evidence=evidence)
             for index in range(len(case.required_facts))
         ],
+        required_behaviors=[],
         forbidden_claims=[],
         feedback=evidence,
     )
@@ -201,6 +203,21 @@ def _merge_chunks(*chunk_lists: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return merged
 
 
+def _assistant_response_time_ms(turn: dict[str, Any]) -> int | None:
+    generation_event = next(
+        (
+            item
+            for item in turn.get("debug", [])
+            if item.get("step") == "generation" and item.get("duration_ms") is not None
+        ),
+        None,
+    )
+    if generation_event is None:
+        return None
+    duration_ms = generation_event["duration_ms"]
+    return round(float(duration_ms))
+
+
 async def _judge_answer(
     case: BenchmarkCase,
     answer: str,
@@ -219,6 +236,7 @@ async def _judge_answer(
         "question": case.question,
         "reference_answer": case.reference_answer,
         "required_facts": list(enumerate(case.required_facts)),
+        "required_behaviors": list(enumerate(case.required_behaviors)),
         "forbidden_claims": list(enumerate(case.forbidden_claims)),
         "assistant_answer": answer,
     }
@@ -231,6 +249,8 @@ async def _judge_answer(
                     "Jesteś rygorystycznym sędzią odpowiedzi technicznych. Oceniaj "
                     "znaczenie, nie identyczność słów. Dla każdego required_facts zwróć "
                     "satisfied=true tylko gdy odpowiedź jasno przekazuje dany fakt. Dla "
+                    "każdego required_behaviors zwróć satisfied=true tylko gdy odpowiedź "
+                    "faktycznie realizuje opisane zachowanie; brak zachowania oznacza false. Dla "
                     "forbidden_claims zwróć satisfied=true, gdy odpowiedź zawiera lub "
                     "sugeruje zakazane twierdzenie. Nie uzupełniaj braków wiedzą z odpowiedzi "
                     "referencyjnej. Evidence ma być krótkim cytatem albo opisem braku. "
@@ -255,9 +275,12 @@ async def _judge_answer(
         raise RuntimeError("Judge returned an empty response.")
     result = JudgeResult.model_validate_json(content)
     required_indexes = [item.index for item in result.required_facts]
+    behavior_indexes = [item.index for item in result.required_behaviors]
     forbidden_indexes = [item.index for item in result.forbidden_claims]
     if required_indexes != list(range(len(case.required_facts))):
         raise RuntimeError("Judge returned invalid required-fact indexes.")
+    if behavior_indexes != list(range(len(case.required_behaviors))):
+        raise RuntimeError("Judge returned invalid required-behavior indexes.")
     if forbidden_indexes != list(range(len(case.forbidden_claims))):
         raise RuntimeError("Judge returned invalid forbidden-claim indexes.")
     return result
@@ -295,7 +318,7 @@ async def _judge_chunks(
         ],
     }
     request: dict[str, Any] = {
-        "model": settings.benchmark_judge_model,
+        "model": settings.benchmark_chunk_judge_model,
         "messages": [
             {
                 "role": "system",
@@ -382,6 +405,19 @@ async def run_benchmark_case(
     conversation = await _collect_benchmark_conversation(case.question, send)
     route = conversation[0]["route"]
     message_payloads = [turn["message"] for turn in conversation]
+    assistant_response_times_by_turn = [
+        _assistant_response_time_ms(turn) for turn in conversation
+    ]
+    assistant_response_times_ms = [
+        duration
+        for duration in assistant_response_times_by_turn
+        if duration is not None
+    ]
+    average_assistant_response_time_ms = (
+        round(sum(assistant_response_times_ms) / len(assistant_response_times_ms))
+        if assistant_response_times_ms
+        else None
+    )
     message_payload = message_payloads[-1]
     retrieval_data_items: list[dict[str, Any]] = []
     for turn in conversation:
@@ -490,6 +526,7 @@ async def run_benchmark_case(
             case, chunks_for_judge
         )
         judge_model = "deterministic-source-image-check"
+        chunk_judge_model = "deterministic-source-image-check"
         judge_reasoning_effort = "not applicable"
     else:
         judge, chunk_judge = await _await_with_cancellation(
@@ -500,6 +537,7 @@ async def run_benchmark_case(
             cancellation_event,
         )
         judge_model = settings.benchmark_judge_model
+        chunk_judge_model = settings.benchmark_chunk_judge_model
         judge_reasoning_effort = settings.benchmark_judge_reasoning_effort
     chunk_evaluations = [item.model_dump(mode="json") for item in chunk_judge.chunks]
     chunks_after_reranker = [
@@ -521,6 +559,11 @@ async def run_benchmark_case(
         else 1.0
     )
     required_passed = sum(item.satisfied for item in judge.required_facts)
+    required_behaviors_passed = sum(item.satisfied for item in judge.required_behaviors)
+    required_behaviors_total = len(case.required_behaviors)
+    required_behaviors_threshold_passed = (
+        required_behaviors_passed == required_behaviors_total
+    )
     forbidden_found = sum(item.satisfied for item in judge.forbidden_claims)
     required_total = len(case.required_facts)
     required_score = required_passed / required_total if required_total else 1.0
@@ -532,6 +575,7 @@ async def run_benchmark_case(
         route_passed
         and source_passed
         and required_facts_threshold_passed
+        and required_behaviors_threshold_passed
         and fact_coverage_threshold_passed
         and forbidden_found == 0
     )
@@ -543,6 +587,9 @@ async def run_benchmark_case(
         "score": round(required_score * 100),
         "required_facts_threshold": round(REQUIRED_FACTS_PASS_THRESHOLD * 100),
         "required_facts_threshold_passed": required_facts_threshold_passed,
+        "required_behaviors_passed": required_behaviors_passed,
+        "required_behaviors_total": required_behaviors_total,
+        "required_behaviors_threshold_passed": required_behaviors_threshold_passed,
         "thread_id": thread.id,
         "message_id": message_payload["id"],
         "message_ids": [payload["id"] for payload in message_payloads],
@@ -553,9 +600,12 @@ async def run_benchmark_case(
                 "id": payload["id"],
                 "content": str(payload["content"]),
                 "has_continuation": bool(payload.get("has_continuation", False)),
+                "response_time_ms": assistant_response_times_by_turn[index],
             }
-            for payload in message_payloads
+            for index, payload in enumerate(message_payloads)
         ],
+        "assistant_response_times_ms": assistant_response_times_ms,
+        "average_assistant_response_time_ms": average_assistant_response_time_ms,
         "question": case.question,
         "answer": answer,
         "route": route,
@@ -584,6 +634,7 @@ async def run_benchmark_case(
         "required_total": required_total,
         "forbidden_found": forbidden_found,
         "judge_model": judge_model,
+        "chunk_judge_model": chunk_judge_model,
         "judge_reasoning_effort": judge_reasoning_effort,
         "judge": judge.model_dump(mode="json"),
     }

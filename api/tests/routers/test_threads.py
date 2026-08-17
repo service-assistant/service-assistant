@@ -456,6 +456,8 @@ async def test_should_emit_pipeline_trace_when_debug_is_requested(
         "technician_response": "",
         "completed_action_id": None,
     }
+    assert debug_payloads[3]["duration_ms"] >= 0
+    assert debug_payloads[3]["data"] == {"status": "completed"}
     assert debug_payloads[-1]["data"]["answer_characters"] == len("Test response")
 
 
