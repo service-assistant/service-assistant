@@ -233,7 +233,7 @@ async def _ingest_pdf_to_attachment_unlocked(
         for page_num, page in enumerate(pages):
             page_label = page_num + 1
             page_images = []
-            
+
             if native_text_by_page[page_num]:
                 _report(
                     report,
