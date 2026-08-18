@@ -33,6 +33,7 @@ _ingest_lock = asyncio.Lock()
 @dataclass
 class IngestReport:
     total_pages: int = 0
+    pages_processed: int = 0
     native_text_pages: int = 0
     ocr_pages_attempted: int = 0
     ocr_pages_succeeded: int = 0
@@ -279,6 +280,7 @@ async def _ingest_pdf_to_attachment_unlocked(
                     raise
                 except Exception as exc:
                     report.ocr_pages_skipped += 1
+                    report.pages_processed += 1
                     _report(
                         report,
                         (
@@ -291,6 +293,7 @@ async def _ingest_pdf_to_attachment_unlocked(
 
             chunks = await run_blocking(chunk_page, markdown_text)
             if not chunks:
+                report.pages_processed += 1
                 _report(
                     report,
                     f"Page {page_label}: no indexable text found; page skipped.",
@@ -311,6 +314,8 @@ async def _ingest_pdf_to_attachment_unlocked(
                 pending.append((chunk, page_num, page_images))
                 if len(pending) >= batch_size:
                     await embed_pending()
+
+            report.pages_processed += 1
 
         while pending:
             await embed_pending()

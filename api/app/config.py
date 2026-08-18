@@ -23,9 +23,12 @@ class Settings(BaseSettings):
     postgres_password: str
 
     auth_token: str
+
     azure_openai_endpoint: str
     azure_openai_api_key: str
     azure_openai_embeddings_deployment: str
+    azure_openai_api_version: str
+
     openai_api_key: str
     openai_chat_model: str = "gpt-5.6-luna"
     openai_stt_model: str = "gpt-transcribe"
@@ -35,8 +38,9 @@ class Settings(BaseSettings):
         "dosłownie. Zachowaj dokładnie usłyszane kody błędów, oznaczenia, "
         "liczby, symbole i jednostki. Nie zgaduj brakujących informacji."
     )
-    azure_openai_api_version: str
+
     attachments_dir: Path
+
     deepgram_api_key: str | None = None
 
     benchmark_r2_endpoint: str | None = None

@@ -1,6 +1,7 @@
 import { useAuth } from '@/auth/use-auth'
 import { Outlet, useNavigate } from '@tanstack/react-router'
 import { useEffect } from 'react'
+import { IngestionQueue } from './IngestionQueue'
 import { Sidebar } from './Sidebar'
 
 export function ProtectedLayout() {
@@ -25,6 +26,7 @@ export function ProtectedLayout() {
 			<main className='flex-1 overflow-x-auto p-8'>
 				<Outlet />
 			</main>
+			<IngestionQueue />
 		</div>
 	)
 }

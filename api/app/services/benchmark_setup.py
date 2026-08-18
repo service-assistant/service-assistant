@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.models import Attachment, AttachmentDevice, Category, Chunk, Device
-from app.routers.attachments import save_and_ingest_attachment
+from app.services.attachments import save_attachment
 from app.services import benchmark_documents
 from app.services.async_utils import run_blocking
 from app.services.benchmark_cases import load_benchmark_dataset
@@ -288,15 +288,23 @@ async def _ingest_document(
         await session.delete(attachment)
         await session.commit()
 
+    # The benchmark measures ingestion, so it runs the pipeline inline rather
+    # than deferring it to the worker like the upload endpoint does.
     with local_path.open("rb") as source:
         upload = UploadFile(file=source, filename=filename)
-        attachment = await save_and_ingest_attachment(
+        attachment = await save_attachment(
             settings=settings,
             session=session,
             file=upload,
             device_ids=[device.id],
-            progress_callback=progress_callback,
         )
+    await ingest_pdf_to_attachment(
+        session=session,
+        pdf_path=attachment.file_global_path,
+        attachment_id=attachment.id,
+        settings=settings,
+        progress_callback=progress_callback,
+    )
     return attachment, await _chunk_count(session, attachment.id), True
 
 

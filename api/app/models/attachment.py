@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from enum import Enum
 from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base, utcnow
@@ -14,6 +16,14 @@ if TYPE_CHECKING:
     from .device import Device
 
 
+class IngestionStatus(str, Enum):
+    ready = "ready"  # uploaded but not ingested yet / waiting to be ingested
+    queued = "queued"
+    running = "running"
+    succeeded = "succeeded"
+    failed = "failed"
+
+
 class Attachment(Base):
     __tablename__ = "attachments"
 
@@ -21,11 +31,35 @@ class Attachment(Base):
     file_global_path: Mapped[str]
     original_filename: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow
+        DateTime(timezone=True),
+        default=utcnow,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+        DateTime(timezone=True),
+        default=utcnow,
+        onupdate=utcnow,
     )
+
+    # Deliberate architecture decision to not create a separate table for these
+    # as we will probably still load them all together in 90% of cases and
+    ingest_status: Mapped[IngestionStatus] = mapped_column(
+        SAEnum(IngestionStatus, native_enum=False),
+        default=IngestionStatus.ready,
+    )
+    ingest_job_id: Mapped[int | None]
+    ingest_pages_total: Mapped[int] = mapped_column(default=0)
+    ingest_pages_done: Mapped[int] = mapped_column(default=0)
+    ingest_chunks_indexed: Mapped[int] = mapped_column(default=0)
+    ingest_last_event: Mapped[str | None]
+    ingest_error: Mapped[str | None]
+    ingest_native_text_pages: Mapped[int] = mapped_column(default=0)
+    ingest_ocr_pages_attempted: Mapped[int] = mapped_column(default=0)
+    ingest_ocr_pages_succeeded: Mapped[int] = mapped_column(default=0)
+    ingest_ocr_pages_skipped: Mapped[int] = mapped_column(default=0)
+    ingest_queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ingest_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ingest_finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ingest_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     chunks: Mapped[list[Chunk]] = relationship(
         back_populates="attachment",

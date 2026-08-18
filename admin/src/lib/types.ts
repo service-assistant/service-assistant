@@ -21,10 +21,24 @@ export interface Device {
 	updated_at: string
 }
 
+export type IngestionStatus = 'ready' | 'queued' | 'running' | 'succeeded' | 'failed'
+
 export interface Attachment {
 	id: number
 	file_global_path: string
 	original_filename: string
 	created_at: string
 	updated_at: string
+
+	ingest_status: IngestionStatus
+	ingest_job_id: number | null
+	ingest_pages_total: number
+	ingest_pages_done: number
+	ingest_chunks_indexed: number
+	ingest_last_event: string | null
+	ingest_error: string | null
+	ingest_queued_at: string | null
+	ingest_started_at: string | null
+	ingest_finished_at: string | null
+	ingest_updated_at: string | null
 }

@@ -23,5 +23,19 @@ services:
     extra_hosts:
       - "host.docker.internal:${DOCKER_GATEWAY}"
 
+  worker:
+    build: .
+    env_file: .env
+    environment:
+      ENV: development
+      PYTHONPATH: .
+    command: sh -c "/app/.venv/bin/procrastinate --app=app.procrastinate_app.app worker"
+    volumes:
+      - ./app:/app/app
+      - attachments:/attachments
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:${DOCKER_GATEWAY}"
+
 volumes:
   attachments:
