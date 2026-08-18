@@ -132,16 +132,14 @@ async def create_thread(session: AsyncSession, device_id: int, **kwargs) -> Chat
 
 async def create_attachment(session: AsyncSession, **kwargs) -> Attachment:
     # Tests that access the file on disk must pass file_global_path=str(tmp_path / "...")
-    attachment = Attachment(
-        file_global_path=kwargs.get(
-            "file_global_path",
-            "/nonexistent/manual.pdf",
-        ),
-        original_filename=kwargs.get(
-            "original_filename",
-            "manual.pdf",
-        ),
+    # Any `ingest_*` field (e.g. ingest_status=IngestionStatus.failed) can be
+    # passed through to seed a particular ingestion state.
+    defaults = dict(
+        file_global_path="/nonexistent/manual.pdf",
+        original_filename="manual.pdf",
     )
+    defaults.update(kwargs)
+    attachment = Attachment(**defaults)
     session.add(attachment)
     await session.commit()
     await session.refresh(attachment)

@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import Depends, FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
@@ -20,8 +22,19 @@ from app.routers import (
 
 from .config import get_settings
 from .database import get_session
+from .procrastinate_app import app as procrastinate_app
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # Opening the Procrastinate app connects its connector, which is what lets
+    # request handlers defer background jobs. The worker process opens its own.
+    async with procrastinate_app.open_async():
+        yield
+
 
 app = FastAPI(
+    lifespan=lifespan,
     title="Service Assistant API",
     version="1.0.0",
     description=(

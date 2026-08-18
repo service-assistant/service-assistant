@@ -15,6 +15,10 @@ export function documentCountLabel(count: number): string {
 	return `${count} ${pluralizePl(count, 'dokument', 'dokumenty', 'dokumentów')}`
 }
 
+export function pageCountLabel(count: number): string {
+	return `${count} ${pluralizePl(count, 'strona', 'strony', 'stron')}`
+}
+
 export function selectedLabel(count: number): string {
 	return `Wybrano: ${count} ${pluralizePl(count, 'pozycja', 'pozycje', 'pozycji')}`
 }

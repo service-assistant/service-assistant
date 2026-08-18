@@ -1,0 +1,113 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Jobs{% endblock %}
+{% block heading %}Jobs{% endblock %}
+
+{% macro pagination() %}
+{% if total_pages > 1 %}
+<div class="flex items-center justify-between text-sm text-gray-600">
+    <span>{{ total }} jobs &mdash; page {{ page }} of {{ total_pages }}</span>
+    <div class="flex items-center gap-1">
+        {% if page > 1 %}
+        <a href="?page={{ page - 1 }}"
+           class="px-3 py-1.5 rounded-md border border-gray-300 bg-white hover:bg-gray-50 text-gray-700">
+            &larr; Prev
+        </a>
+        {% else %}
+        <span class="px-3 py-1.5 rounded-md border border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed">&larr; Prev</span>
+        {% endif %}
+
+        {% for p in range(1, total_pages + 1) %}
+            {% if p == page %}
+            <span class="px-3 py-1.5 rounded-md bg-blue-600 text-white font-medium">{{ p }}</span>
+            {% elif p == 1 or p == total_pages or (p >= page - 2 and p <= page + 2) %}
+            <a href="?page={{ p }}"
+               class="px-3 py-1.5 rounded-md border border-gray-300 bg-white hover:bg-gray-50 text-gray-700">{{ p }}</a>
+            {% elif p == page - 3 or p == page + 3 %}
+            <span class="px-1 text-gray-400">&hellip;</span>
+            {% endif %}
+        {% endfor %}
+
+        {% if page < total_pages %}
+        <a href="?page={{ page + 1 }}"
+           class="px-3 py-1.5 rounded-md border border-gray-300 bg-white hover:bg-gray-50 text-gray-700">
+            Next &rarr;
+        </a>
+        {% else %}
+        <span class="px-3 py-1.5 rounded-md border border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed">Next &rarr;</span>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+{% set status_badge_classes = {
+    'doing': 'bg-blue-50 text-blue-700',
+    'todo': 'bg-gray-100 text-gray-600',
+    'failed': 'bg-red-50 text-red-700',
+    'aborted': 'bg-orange-50 text-orange-700',
+    'cancelled': 'bg-gray-100 text-gray-500',
+    'succeeded': 'bg-green-50 text-green-700',
+} %}
+
+{% block content %}
+
+<p class="mb-4 text-sm text-gray-500">
+    Every Procrastinate job, including old completed ones. Sorted running &rarr; queued &rarr;
+    needs-attention &rarr; done.
+</p>
+
+<!-- Pagination (top) -->
+<div class="mb-6">{{ pagination() }}</div>
+
+<section class="bg-white border border-gray-200 rounded-lg overflow-hidden">
+    <table class="w-full text-sm">
+        <thead class="bg-gray-50 border-b border-gray-200">
+            <tr>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">ID</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Status</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Task</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Queue</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Args</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Lock</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Attempts</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Abort req.</th>
+                <th class="text-left px-4 py-3 font-medium text-gray-600">Scheduled at</th>
+            </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-100">
+            {% for row in rows %}
+            <tr class="hover:bg-gray-50">
+                <td class="px-4 py-3 text-gray-500 font-mono text-xs">#{{ row.id }}</td>
+                <td class="px-4 py-3">
+                    <span class="px-2 py-0.5 rounded text-xs font-medium {{ status_badge_classes.get(row.status, 'bg-gray-100 text-gray-600') }}">
+                        {{ row.status }}
+                    </span>
+                </td>
+                <td class="px-4 py-3 font-medium">{{ row.task_name }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ row.queue_name }}</td>
+                <td class="px-4 py-3 text-gray-500 font-mono text-xs">{{ row.args }}</td>
+                <td class="px-4 py-3 text-gray-500 font-mono text-xs">{{ row.lock or "—" }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ row.attempts }}</td>
+                <td class="px-4 py-3 text-gray-600">{{ "yes" if row.abort_requested else "—" }}</td>
+                <td class="px-4 py-3 text-gray-500">
+                    {% if row.scheduled_at %}
+                    <time data-utc="{{ row.scheduled_at.isoformat() }}"></time>
+                    {% else %}
+                    —
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="9" class="px-4 py-8 text-center text-gray-400">No jobs yet.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<!-- Pagination (bottom) -->
+<div class="mt-6">{{ pagination() }}</div>
+
+{% endblock %}

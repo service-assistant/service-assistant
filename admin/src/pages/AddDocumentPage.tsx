@@ -2,7 +2,7 @@ import { useCreateAttachment } from '@/hooks/useAttachments'
 import { useCategoryTree } from '@/hooks/useCategories'
 import { useDevices } from '@/hooks/useDevices'
 import { categoryPath, flattenCategoryTree } from '@/lib/categoryTree'
-import { machineCountLabel } from '@/lib/pluralize'
+import { documentCountLabel, machineCountLabel } from '@/lib/pluralize'
 import { useNavigate } from '@tanstack/react-router'
 import { Check, FileText, Search, Upload } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -54,7 +54,7 @@ export function AddDocumentPage() {
 	const createAttachment = useCreateAttachment()
 
 	const [step, setStep] = useState<Step>(1)
-	const [file, setFile] = useState<File | null>(null)
+	const [files, setFiles] = useState<File[]>([])
 	const [selectedDeviceIds, setSelectedDeviceIds] = useState<number[]>([])
 	const [search, setSearch] = useState('')
 	const [error, setError] = useState<string | null>(null)
@@ -72,17 +72,21 @@ export function AddDocumentPage() {
 		)
 	}
 
-	function handleFileChange(f: File | null) {
-		if (f && f.type !== 'application/pdf' && !f.name.toLowerCase().endsWith('.pdf')) {
-			setError('Plik musi być w formacie PDF.')
+	function isPdf(f: File) {
+		return f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
+	}
+
+	function handleFileChange(selected: File[]) {
+		if (selected.some((f) => !isPdf(f))) {
+			setError('Wszystkie pliki muszą być w formacie PDF.')
 			return
 		}
 		setError(null)
-		setFile(f)
+		setFiles(selected)
 	}
 
 	function goToStep2() {
-		if (!file) {
+		if (files.length === 0) {
 			setError('Wybierz plik PDF.')
 			return
 		}
@@ -91,9 +95,9 @@ export function AddDocumentPage() {
 	}
 
 	async function handleSubmit() {
-		if (!file) return
+		if (files.length === 0) return
 		try {
-			await createAttachment.mutateAsync({ file, deviceIds: selectedDeviceIds })
+			await createAttachment.mutateAsync({ files, deviceIds: selectedDeviceIds })
 			void navigate({ to: '/' })
 		} catch (err) {
 			setError(err instanceof Error ? err.message : 'Nie udało się dodać dokumentu.')
@@ -114,14 +118,19 @@ export function AddDocumentPage() {
 						<input
 							type='file'
 							accept='application/pdf'
+							multiple
 							className='hidden'
-							onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+							onChange={(e) => handleFileChange(Array.from(e.target.files ?? []))}
 						/>
 						<span className='flex size-12 items-center justify-center rounded-full bg-panel-soft text-ember'>
 							<Upload size={20} />
 						</span>
 						<span className='text-sm font-medium text-cream'>
-							{file ? file.name : 'Przeciągnij plik tutaj lub wybierz go z dysku'}
+							{files.length === 1
+								? files[0].name
+								: files.length > 1
+									? `Wybrano ${documentCountLabel(files.length)}`
+									: 'Przeciągnij pliki tutaj lub wybierz je z dysku'}
 						</span>
 						<span className='rounded-md bg-panel-soft px-4 py-2 text-sm font-medium text-cream'>
 							Wybierz z dysku
@@ -241,7 +250,7 @@ export function AddDocumentPage() {
 						Sprawdź dokument i wybrane maszyny przed dodaniem.
 					</p>
 
-					<div className='mb-6 flex items-center gap-2 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-300'>
+					<div className='mb-3 flex items-center gap-2 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-300'>
 						<Check size={16} />
 						Dokument zostanie przypisany do{' '}
 						<span className='font-semibold'>
@@ -249,19 +258,30 @@ export function AddDocumentPage() {
 						</span>
 						.
 					</div>
+					<div className='mb-6 rounded-md border border-line bg-panel px-4 py-3 text-sm text-cream/60'>
+						Plik nie zostanie od razu przetworzony — pojawi się na liście dokumentów
+						jako oczekujący. Przetwarzanie uruchamiasz osobno i możesz w tym czasie
+						zamknąć kartę przeglądarki.
+					</div>
 
 					<h2 className='mb-2 text-sm font-semibold text-cream'>Dane dokumentu</h2>
-					<div className='mb-6 flex items-center gap-3 rounded-lg border border-line bg-panel px-4 py-3'>
-						<span className='flex size-10 items-center justify-center rounded-md bg-rose-400/15 text-rose-300'>
-							<FileText size={18} />
-						</span>
-						<div>
-							<div className='text-sm font-medium text-cream'>{file?.name}</div>
-							<div className='text-xs text-cream/50'>
-								PDF · {file ? (file.size / 1024 / 1024).toFixed(1) : 0} MB · Gotowy
-								do dodania
+					<div className='mb-6 rounded-lg border border-line bg-panel'>
+						{files.map((f) => (
+							<div
+								key={f.name}
+								className='flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0'>
+								<span className='flex size-10 items-center justify-center rounded-md bg-rose-400/15 text-rose-300'>
+									<FileText size={18} />
+								</span>
+								<div>
+									<div className='text-sm font-medium text-cream'>{f.name}</div>
+									<div className='text-xs text-cream/50'>
+										PDF · {(f.size / 1024 / 1024).toFixed(1)} MB · Gotowy do
+										dodania
+									</div>
+								</div>
 							</div>
-						</div>
+						))}
 					</div>
 
 					<h2 className='mb-2 text-sm font-semibold text-cream'>Wybrane maszyny</h2>

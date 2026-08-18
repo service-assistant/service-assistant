@@ -1,32 +1,13 @@
 import asyncio
 import logging
 import mimetypes
-import shutil
-import traceback
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import BinaryIO
 from uuid import uuid4
 
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Depends,
-    File,
-    Form,
-    HTTPException,
-    Request,
-    UploadFile,
-    status,
-)
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
-from fastapi.templating import Jinja2Templates
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.config import Settings, get_settings
-from app.database import get_engine, get_session, database_url_with_driver
+from app.database import database_url_with_driver, get_engine, get_session
 from app.models import (
     Attachment,
     AttachmentDevice,
@@ -37,45 +18,32 @@ from app.models import (
     Device,
     Message,
 )
-from app.routers.attachments import list_attachments, save_and_ingest_attachment
+from app.routers.attachments import list_attachments
 from app.routers.devices import list_devices
 from app.routers.threads import list_threads
-from app.services.async_utils import run_blocking
 from app.services import (
     benchmark_cases,
     benchmark_documents,
     benchmark_runner,
     benchmark_setup,
 )
-from app.services.ingest import ImageOnlyPdfError, IngestReport
+from app.services.async_utils import run_blocking
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Form,
+    HTTPException,
+    Request,
+    status,
+)
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-UPLOAD_BATCH_TERMINAL_STATES = {"succeeded", "skipped", "failed"}
-
-
-@dataclass
-class UploadBatchItem:
-    filename: str
-    state: str = "queued"
-    attachment_id: int | None = None
-    error: str | None = None
-    events: list[str] = field(default_factory=list)
-    total_pages: int = 0
-    native_text_pages: int = 0
-    ocr_pages_attempted: int = 0
-    ocr_pages_succeeded: int = 0
-    ocr_pages_skipped: int = 0
-    chunks_indexed: int = 0
-
-
-@dataclass
-class UploadBatch:
-    id: str
-    items: list[UploadBatchItem]
-    created_at: str
-    finished_at: str | None = None
 
 
 @dataclass
@@ -110,8 +78,6 @@ class BenchmarkCaseRun:
     cancel_requested: bool = False
 
 
-_upload_batches: dict[str, UploadBatch] = {}
-_upload_batch_lock = asyncio.Lock()
 _benchmark_download_lock = asyncio.Lock()
 _benchmark_setup_lock = asyncio.Lock()
 _benchmark_setup_runs: dict[str, BenchmarkSetupRun] = {}
@@ -639,215 +605,8 @@ async def get_documents(
             "request": request,
             "active": "documents",
             "attachments": rows,
-            "devices": all_devices,
         },
     )
-
-
-@router.post(
-    "/documents/upload",
-    dependencies=[Depends(_require_auth)],
-)
-async def upload_document(
-    settings: Settings = Depends(get_settings),
-    session: AsyncSession = Depends(get_session),
-    file: UploadFile = File(...),
-    device_ids: list[int] = Form(default=[]),
-):
-    try:
-        attachment = await save_and_ingest_attachment(
-            settings=settings,
-            session=session,
-            file=file,
-            device_ids=device_ids,
-        )
-        return {
-            "id": attachment.id,
-            "original_filename": attachment.original_filename,
-        }
-    except HTTPException:
-        raise
-    except Exception:
-        error = traceback.format_exc()
-        logger.exception("Admin upload failed for %s", file.filename)
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={"detail": error},
-        )
-
-
-def _serialize_upload_batch(batch: UploadBatch) -> dict:
-    succeeded = sum(item.state == "succeeded" for item in batch.items)
-    skipped = sum(item.state == "skipped" for item in batch.items)
-    failed = sum(item.state == "failed" for item in batch.items)
-    completed = succeeded + skipped + failed
-
-    return {
-        "id": batch.id,
-        "state": "completed" if completed == len(batch.items) else "processing",
-        "total": len(batch.items),
-        "completed": completed,
-        "succeeded": succeeded,
-        "skipped": skipped,
-        "failed": failed,
-        "created_at": batch.created_at,
-        "finished_at": batch.finished_at,
-        "items": [asdict(item) for item in batch.items],
-    }
-
-
-def _copy_staged_upload(source: BinaryIO, destination_path: Path) -> None:
-    with destination_path.open("wb") as destination:
-        shutil.copyfileobj(source, destination)
-
-
-async def _run_upload_batch(
-    batch_id: str,
-    staged_files: list[Path | None],
-    device_ids: list[int],
-    settings: Settings,
-) -> None:
-    batch = _upload_batches[batch_id]
-    staging_dir = settings.attachments_dir / ".upload_batches" / batch_id
-
-    try:
-        for item, staged_path in zip(batch.items, staged_files, strict=True):
-            if staged_path is None:
-                continue
-
-            item.state = "processing"
-            worker_started_event = "Server worker started processing the file."
-            item.events.append(worker_started_event)
-
-            def update_progress(report: IngestReport) -> None:
-                item.events = [worker_started_event, *report.events]
-                item.total_pages = report.total_pages
-                item.native_text_pages = report.native_text_pages
-                item.ocr_pages_attempted = report.ocr_pages_attempted
-                item.ocr_pages_succeeded = report.ocr_pages_succeeded
-                item.ocr_pages_skipped = report.ocr_pages_skipped
-                item.chunks_indexed = report.chunks_indexed
-
-            try:
-                with staged_path.open("rb") as source:
-                    upload = UploadFile(file=source, filename=item.filename)
-                    async with AsyncSession(
-                        get_engine(database_url_with_driver),
-                        expire_on_commit=False,
-                    ) as session:
-                        try:
-                            attachment = await save_and_ingest_attachment(
-                                settings=settings,
-                                session=session,
-                                file=upload,
-                                device_ids=device_ids,
-                                progress_callback=update_progress,
-                            )
-                        except TimeoutError:
-                            item.events.append(
-                                "File processing exceeded the total timeout and was aborted."
-                            )
-                            raise
-                item.attachment_id = attachment.id
-                item.state = "succeeded"
-                item.events.append("File saved and ingestion finished successfully.")
-            except ImageOnlyPdfError as exc:
-                update_progress(exc.report)
-                item.state = "skipped"
-                item.error = str(exc)
-                item.events.append(
-                    "Image-only file was deleted because OCR recovered no text."
-                )
-            except Exception:
-                item.state = "failed"
-                item.error = traceback.format_exc()
-                item.events.append(
-                    "File ingestion failed; its database record and uploaded file were deleted."
-                )
-                logger.exception("Admin batch upload failed for %s", item.filename)
-            finally:
-                staged_path.unlink(missing_ok=True)
-    finally:
-        for item in batch.items:
-            if item.state not in UPLOAD_BATCH_TERMINAL_STATES:
-                item.state = "failed"
-                item.error = (
-                    item.error or "Batch worker stopped before processing finished."
-                )
-        batch.finished_at = datetime.now(timezone.utc).isoformat()
-        shutil.rmtree(staging_dir, ignore_errors=True)
-
-
-async def _process_upload_batch(
-    batch_id: str,
-    staged_files: list[Path | None],
-    device_ids: list[int],
-    settings: Settings,
-) -> None:
-    async with _upload_batch_lock:
-        await _run_upload_batch(batch_id, staged_files, device_ids, settings)
-
-
-@router.post(
-    "/documents/upload-batches",
-    status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(_require_auth)],
-)
-async def create_upload_batch(
-    background_tasks: BackgroundTasks,
-    settings: Settings = Depends(get_settings),
-    files: list[UploadFile] = File(...),
-    device_ids: list[int] = Form(default=[]),
-):
-    batch_id = str(uuid4())
-    staging_dir = settings.attachments_dir / ".upload_batches" / batch_id
-    staging_dir.mkdir(parents=True, exist_ok=False)
-
-    items: list[UploadBatchItem] = []
-    staged_files: list[Path | None] = []
-
-    for index, file in enumerate(files):
-        filename = Path(str(file.filename)).name
-        item = UploadBatchItem(filename=filename)
-        staged_path = staging_dir / f"{index:04d}.upload"
-        try:
-            await run_blocking(_copy_staged_upload, file.file, staged_path)
-            staged_files.append(staged_path)
-        except Exception:
-            item.state = "failed"
-            item.error = traceback.format_exc()
-            staged_files.append(None)
-            staged_path.unlink(missing_ok=True)
-            logger.exception("Could not stage admin upload %s", filename)
-        finally:
-            file.file.close()
-        items.append(item)
-
-    batch = UploadBatch(
-        id=batch_id,
-        items=items,
-        created_at=datetime.now(timezone.utc).isoformat(),
-    )
-    _upload_batches[batch_id] = batch
-    background_tasks.add_task(
-        _process_upload_batch,
-        batch_id,
-        staged_files,
-        list(device_ids),
-        settings,
-    )
-    return _serialize_upload_batch(batch)
-
-
-@router.get(
-    "/documents/upload-batches/{batch_id}",
-    dependencies=[Depends(_require_auth)],
-)
-async def get_upload_batch(batch_id: str):
-    batch = _upload_batches.get(batch_id)
-    if batch is None:
-        raise HTTPException(status_code=404, detail="Upload batch not found")
-    return _serialize_upload_batch(batch)
 
 
 @router.get(
@@ -1196,6 +955,68 @@ async def get_chunks(
             "rows": rows,
             "attachments": attachments,
             "selected_attachment_id": attachment_id,
+            "page": page,
+            "total_pages": total_pages,
+            "total": total,
+        },
+    )
+
+
+_JOBS_PAGE_SIZE = 25
+
+# Not the enum's declaration order: surfaces what needs attention first
+# (running, then queued, then failed), and buries the routine terminal
+# states (aborted/cancelled/succeeded) at the bottom.
+_JOB_STATUS_ORDER = ["doing", "todo", "failed", "aborted", "cancelled", "succeeded"]
+_JOB_STATUS_ORDER_SQL = " ".join(
+    f"WHEN '{jstatus}' THEN {rank}" for rank, jstatus in enumerate(_JOB_STATUS_ORDER)
+)
+
+
+@router.get(
+    "/jobs",
+    response_class=HTMLResponse,
+    dependencies=[Depends(_require_auth)],
+)
+async def get_jobs(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    page: int = 1,
+):
+    page = max(page, 1)
+
+    total = (
+        await session.execute(text("SELECT count(*) FROM procrastinate_jobs"))
+    ).scalar_one()
+    total_pages = max((total + _JOBS_PAGE_SIZE - 1) // _JOBS_PAGE_SIZE, 1)
+    page = min(page, total_pages)
+
+    rows = (
+        (
+            await session.execute(
+                text(
+                    f"""
+                SELECT id, queue_name, task_name, lock, args, status,
+                       scheduled_at, attempts, abort_requested
+                FROM procrastinate_jobs
+                ORDER BY CASE status {_JOB_STATUS_ORDER_SQL} ELSE 99 END, id DESC
+                LIMIT :limit OFFSET :offset
+                """
+                ),
+                {"limit": _JOBS_PAGE_SIZE, "offset": (page - 1) * _JOBS_PAGE_SIZE},
+            )
+        )
+        .mappings()
+        .all()
+    )
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin/jobs.html",
+        context={
+            "request": request,
+            "active": "jobs",
+            "rows": rows,
             "page": page,
             "total_pages": total_pages,
             "total": total,

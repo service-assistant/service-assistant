@@ -1,178 +1,99 @@
-import asyncio
-import logging
 import mimetypes
-import shutil
 from pathlib import Path
-from typing import Annotated, BinaryIO
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.config import Settings, get_settings
-from app.database import get_session
+from app.dependencies.attachments import AttachmentDependency
+from app.dependencies.database import DbSessionDependency
+from app.dependencies.devices import DeviceDependency
+from app.dependencies.settings import SettingsDependency
 from app.models import Attachment, AttachmentDevice, Device
 from app.schemas import AttachmentRead, DeviceRead
-from app.services.async_utils import run_blocking
-from app.services.ingest import (
-    ProgressCallback,
-    delete_attachment_chunks,
-    ingest_pdf_to_attachment,
+from app.services.attachments import save_attachment
+from app.services.ingestion_queue import cancel_ingestion, enqueue_ingestion, is_active
+from fastapi import (
+    APIRouter,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
 )
+from fastapi.responses import FileResponse
+from sqlalchemy import select
 
 router = APIRouter()
-logger = logging.getLogger(__name__)
-
-
-def _copy_upload_to_unique_path(source: BinaryIO, base_path: Path) -> Path:
-    stem = base_path.stem
-    suffix = base_path.suffix
-    parent = base_path.parent
-    counter = 0
-
-    while True:
-        destination_path = (
-            base_path if counter == 0 else parent / f"{stem}__{counter}{suffix}"
-        )
-        try:
-            with destination_path.open("xb") as destination:
-                shutil.copyfileobj(source, destination)
-            return destination_path
-        except FileExistsError:
-            counter += 1
-        except Exception:
-            destination_path.unlink(missing_ok=True)
-            raise
 
 
 @router.get(
     "",
     response_model=list[AttachmentRead],
     summary="List attachments",
-    description="Returns all attachments.",
+    description=(
+        "Returns all attachments. Each row includes both the document's own "
+        "metadata and its current background-ingestion state, in the `ingest_*` "
+        "fields — there is no separate 'job' resource to join against.\n\n"
+        "`ingest_status` is one of `ready | queued | running | succeeded | "
+        "failed`. See `POST /{attachment_id}/ingest` and "
+        "`POST /{attachment_id}/cancel` for how a job moves between these "
+        "states."
+    ),
 )
-async def list_attachments(session: AsyncSession = Depends(get_session)):
+async def list_attachments(session: DbSessionDependency):
     result = await session.scalars(select(Attachment))
     return result.all()
-
-
-async def save_and_ingest_attachment(
-    settings: Settings,
-    session: AsyncSession,
-    file: UploadFile,
-    device_ids: list[int],
-    progress_callback: ProgressCallback | None = None,
-) -> Attachment:
-    for device_id in device_ids:
-        if not await session.get(Device, device_id):
-            raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
-
-    original_name = Path(str(file.filename)).name
-    base_path = settings.attachments_dir / original_name
-    saved_path: Path | None = None
-    attachment: Attachment | None = None
-
-    try:
-        saved_path = await run_blocking(
-            _copy_upload_to_unique_path, file.file, base_path
-        )
-
-        attachment = Attachment(
-            file_global_path=str(saved_path), original_filename=original_name
-        )
-        session.add(attachment)
-        await session.commit()
-        await session.refresh(attachment)
-
-        for device_id in device_ids:
-            session.add(
-                AttachmentDevice(device_id=device_id, attachment_id=attachment.id)
-            )
-        await session.commit()
-
-        await ingest_pdf_to_attachment(
-            session=session,
-            pdf_path=str(saved_path),
-            attachment_id=attachment.id,
-            settings=settings,
-            progress_callback=progress_callback,
-        )
-    except (Exception, asyncio.CancelledError):
-        await session.rollback()
-        if attachment is not None and attachment.id is not None:
-            try:
-                stored_attachment = await session.get(Attachment, attachment.id)
-                if stored_attachment is not None:
-                    await session.delete(stored_attachment)
-                    await session.commit()
-            except Exception:
-                await session.rollback()
-                logger.exception(
-                    "Could not remove attachment %s after its ingestion failed",
-                    attachment.id,
-                )
-
-        if saved_path is not None:
-            try:
-                saved_path.unlink(missing_ok=True)
-            except OSError:
-                logger.exception(
-                    "Could not remove uploaded file %s after its ingestion failed",
-                    saved_path,
-                )
-        raise
-    finally:
-        file.file.close()
-
-    await session.refresh(attachment)
-
-    return attachment
 
 
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
-    response_model=AttachmentRead,
-    summary="Upload an attachment",
+    response_model=list[AttachmentRead],
+    summary="Upload attachments",
     description=(
-        "Uploads a PDF file and associates it with one or more devices. "
-        "After saving the file, the PDF is automatically chunked and ingested "
-        "into the vector store so it can be retrieved during RAG queries."
+        "Uploads one or more PDF files and associates them with one or more devices. "
+        "Files are only stored and linked here — nothing is ingested yet. This is a "
+        "deliberate two-step design: upload is instant and never blocks on the PDF "
+        "pipeline, ingestion happens separately as a background job. Each attachment "
+        "lands with `ingest_status = ready`; queue it for indexing with "
+        "`POST /{attachment_id}/ingest`."
     ),
     responses={404: {"description": "One or more device IDs not found"}},
 )
 async def create_attachment(
-    settings: Annotated[Settings, Depends(get_settings)],
-    session: AsyncSession = Depends(get_session),
-    file: UploadFile = File(..., description="PDF file to upload."),
+    settings: SettingsDependency,
+    session: DbSessionDependency,
+    files: list[UploadFile] = File(
+        default=[], description="PDF file(s) to upload (repeatable form field)."
+    ),
     device_ids: list[int] = Form(
-        default=[], description="List of device IDs this attachment belongs to."
+        default=[], description="List of device IDs these attachments belong to."
     ),
 ):
-    return await save_and_ingest_attachment(
-        settings=settings,
-        session=session,
-        file=file,
-        device_ids=device_ids,
-    )
+    if not files:
+        raise HTTPException(status_code=422, detail="No files provided")
+
+    return [
+        await save_attachment(
+            settings=settings,
+            session=session,
+            file=upload,
+            device_ids=device_ids,
+        )
+        for upload in files
+    ]
 
 
 @router.get(
     "/{attachment_id}",
     response_model=AttachmentRead,
     summary="Get an attachment",
-    description="Returns attachment metadata by ID. Does not return the file content — use the `/file` sub-resource for that.",
+    description=(
+        "Returns attachment metadata by ID, including its current `ingest_*` job "
+        "state (status, page/chunk progress, timestamps, last error). Does not "
+        "return the file content — use the `/file` sub-resource for that. Poll "
+        "this endpoint to watch a queued or running ingestion progress."
+    ),
     responses={404: {"description": "Attachment not found"}},
 )
-async def get_attachment(
-    attachment_id: int,
-    session: AsyncSession = Depends(get_session),
-):
-    attachment = await session.get(Attachment, attachment_id)
-    if not attachment:
-        raise HTTPException(status_code=404, detail="Attachment not found")
+async def get_attachment(attachment: AttachmentDependency):
     return attachment
 
 
@@ -189,14 +110,7 @@ async def get_attachment(
         404: {"description": "Attachment record or file on disk not found."},
     },
 )
-async def get_attachment_file(
-    attachment_id: int,
-    session: AsyncSession = Depends(get_session),
-):
-    attachment = await session.get(Attachment, attachment_id)
-    if not attachment:
-        raise HTTPException(status_code=404, detail="Attachment not found")
-
+async def get_attachment_file(attachment: AttachmentDependency):
     file_path = Path(attachment.file_global_path)
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk")
@@ -213,16 +127,25 @@ async def get_attachment_file(
     "/{attachment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an attachment",
-    description="Deletes the attachment record, its chunks, and the file on disk.",
+    description=(
+        "Deletes the attachment record and the file on disk. Chunks are not "
+        "deleted by this endpoint's code — `chunks.attachment_id` has "
+        "`ON DELETE CASCADE`, so Postgres removes them automatically when the "
+        "attachment row goes away. If a job is currently queued or running for "
+        "this attachment, it is cancelled/aborted first (same mechanics as "
+        "`POST /{attachment_id}/cancel`) so the worker never operates on a "
+        "vanished attachment."
+    ),
     responses={404: {"description": "Attachment not found"}},
 )
 async def delete_attachment(
-    attachment_id: int,
-    session: AsyncSession = Depends(get_session),
+    attachment: AttachmentDependency,
+    session: DbSessionDependency,
 ):
-    attachment = await session.get(Attachment, attachment_id)
-    if not attachment:
-        raise HTTPException(status_code=404, detail="Attachment not found")
+    # Stop any in-flight ingestion first, so the worker is not left operating on
+    # an attachment that no longer exists.
+    if is_active(attachment):
+        await cancel_ingestion(session, attachment)
     file_path = Path(attachment.file_global_path)
     await session.delete(attachment)
     await session.commit()
@@ -231,30 +154,98 @@ async def delete_attachment(
 
 
 @router.post(
-    "/{attachment_id}/reingest",
+    "/{attachment_id}/ingest",
+    status_code=status.HTTP_202_ACCEPTED,
     response_model=AttachmentRead,
-    summary="Re-ingest an attachment",
-    description="Deletes existing chunks for the attachment and re-runs the PDF ingestion pipeline.",
-    responses={404: {"description": "Attachment not found"}},
+    summary="Queue an attachment for ingestion",
+    description=(
+        "Queues a background job (via [Procrastinate]"
+        "(https://procrastinate.readthedocs.io/), Postgres-backed) that runs the "
+        "PDF pipeline for this attachment: extracts native text page by page, "
+        "falls back to Azure Document Intelligence OCR for image-only pages, "
+        "embeds the resulting chunks (Azure OpenAI), and writes them as `Chunk` "
+        "rows. The actual task lives in `app/tasks/ingest.py`; this endpoint only "
+        "sets `ingest_status = queued`, records `ingest_queued_at`, and defers "
+        "the job — it returns immediately, well before the job itself starts.\n\n"
+        "**One job runs at a time**, globally, across all attachments — the "
+        'Procrastinate task is deferred with `lock="ingest"`, so jobs execute '
+        "strictly in the order they were queued rather than in parallel. "
+        "Queueing several attachments in a row is expected and safe; they simply "
+        "wait their turn.\n\n"
+        "**Valid from** `ready`, `succeeded`, or `failed` — this one endpoint "
+        "covers the first run, a manual reprocess of an already-succeeded "
+        "document, and a retry after failure alike. Whichever the case, any "
+        "chunks from a previous attempt are deleted by the worker before it "
+        "re-runs the pipeline, and the response's progress/error fields are "
+        "reset to zero/null. Returns 409 if already `queued` or `running` — "
+        "cancel it first (`POST /{attachment_id}/cancel`) if you want to "
+        "restart immediately.\n\n"
+        "**To watch progress**: poll `GET /{attachment_id}` (or the list "
+        "endpoint). While `running`, the worker flushes `ingest_pages_done`, "
+        "`ingest_chunks_indexed`, and `ingest_last_event` roughly every 2 "
+        "seconds. `ingest_native_text_pages` / `ingest_ocr_pages_*` give a "
+        "breakdown of native-text vs. OCR pages, useful for diagnosing a scan "
+        "that came out mostly blank."
+    ),
+    responses={
+        404: {"description": "Attachment not found"},
+        409: {"description": "Already queued or running"},
+    },
 )
-async def reingest_attachment(
-    attachment_id: int,
-    settings: Annotated[Settings, Depends(get_settings)],
-    session: AsyncSession = Depends(get_session),
+async def ingest_attachment(
+    attachment: AttachmentDependency,
+    session: DbSessionDependency,
 ):
-    attachment = await session.get(Attachment, attachment_id)
-    if not attachment:
-        raise HTTPException(status_code=404, detail="Attachment not found")
-    pdf_path = attachment.file_global_path
-    await delete_attachment_chunks(session, attachment_id)
-    await ingest_pdf_to_attachment(
-        session=session,
-        pdf_path=pdf_path,
-        attachment_id=attachment_id,
-        settings=settings,
-    )
-    await session.refresh(attachment)
-    return attachment
+    if is_active(attachment):
+        raise HTTPException(
+            status_code=409,
+            detail="An ingestion for this attachment is already queued or running",
+        )
+
+    return await enqueue_ingestion(session, attachment)
+
+
+@router.post(
+    "/{attachment_id}/cancel",
+    response_model=AttachmentRead,
+    summary="Cancel an ingestion",
+    description=(
+        "Stops a job and returns the attachment to `ready` — there is no "
+        "terminal 'cancelled' status in this system; cancelling always resets "
+        "the attachment to look like a fresh upload (progress counters and "
+        "timestamps cleared), ready to be queued again.\n\n"
+        "Behavior differs by the current state, because a `queued` job hasn't "
+        "started running Python code yet while a `running` one has:\n"
+        "- **`queued`**: the Procrastinate job is cancelled outright "
+        "(`cancel_job_by_id_async(abort=True)`) and this request resets the row "
+        "to `ready` immediately — the job never runs at all.\n"
+        "- **`running`**: this request only *asks* the job to stop, by setting "
+        "Procrastinate's `abort_requested` flag. The worker task polls "
+        "`context.should_abort()` between pages and honors it at the next page "
+        "boundary — so the response you get back from this call may still show "
+        "`ingest_status: running`. Poll `GET /{attachment_id}` afterwards; once "
+        "the worker notices the abort, it resets the row to `ready` itself "
+        "(same field-clearing as the `queued` case). A page mid-OCR-call can "
+        "take a few seconds to actually stop.\n\n"
+        "Returns 409 if the attachment isn't currently `queued` or `running` "
+        "(nothing to cancel)."
+    ),
+    responses={
+        404: {"description": "Attachment not found"},
+        409: {"description": "Not currently queued or running"},
+    },
+)
+async def cancel_attachment_ingestion(
+    attachment: AttachmentDependency,
+    session: DbSessionDependency,
+):
+    if not is_active(attachment):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Not currently queued or running ({attachment.ingest_status.value})",
+        )
+
+    return await cancel_ingestion(session, attachment)
 
 
 @router.get(
@@ -265,15 +256,15 @@ async def reingest_attachment(
     responses={404: {"description": "Attachment not found"}},
 )
 async def list_attachment_devices(
-    attachment_id: int,
-    session: AsyncSession = Depends(get_session),
+    attachment: AttachmentDependency,
+    session: DbSessionDependency,
 ):
-    attachment = await session.get(
-        Attachment, attachment_id, options=[selectinload(Attachment.devices)]
+    result = await session.execute(
+        select(Device)
+        .join(AttachmentDevice)
+        .where(AttachmentDevice.attachment_id == attachment.id)
     )
-    if not attachment:
-        raise HTTPException(status_code=404, detail="Attachment not found")
-    return attachment.devices
+    return result.scalars().all()
 
 
 @router.post(
@@ -284,22 +275,18 @@ async def list_attachment_devices(
     responses={404: {"description": "Attachment or device not found"}},
 )
 async def link_device(
-    attachment_id: int,
-    device_id: int,
-    session: AsyncSession = Depends(get_session),
+    attachment: AttachmentDependency,
+    device: DeviceDependency,
+    session: DbSessionDependency,
 ):
-    if not await session.get(Attachment, attachment_id):
-        raise HTTPException(status_code=404, detail="Attachment not found")
-    if not await session.get(Device, device_id):
-        raise HTTPException(status_code=404, detail="Device not found")
     existing = await session.execute(
         select(AttachmentDevice).where(
-            AttachmentDevice.attachment_id == attachment_id,
-            AttachmentDevice.device_id == device_id,
+            AttachmentDevice.attachment_id == attachment.id,
+            AttachmentDevice.device_id == device.id,
         )
     )
     if not existing.scalars().first():
-        session.add(AttachmentDevice(attachment_id=attachment_id, device_id=device_id))
+        session.add(AttachmentDevice(attachment_id=attachment.id, device_id=device.id))
         await session.commit()
 
 
@@ -307,22 +294,21 @@ async def link_device(
     "/{attachment_id}/devices/{device_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Unlink a device from an attachment",
-    description="Removes the association between a device and an attachment. Fails with 404 if the link does not exist.",
-    responses={404: {"description": "Link not found"}},
+    description="Removes the association between a device and an attachment. Idempotent — no error if the link doesn't exist.",
+    responses={404: {"description": "Attachment or device not found"}},
 )
 async def unlink_device(
-    attachment_id: int,
-    device_id: int,
-    session: AsyncSession = Depends(get_session),
+    attachment: AttachmentDependency,
+    device: DeviceDependency,
+    session: DbSessionDependency,
 ):
     result = await session.execute(
         select(AttachmentDevice).where(
-            AttachmentDevice.attachment_id == attachment_id,
-            AttachmentDevice.device_id == device_id,
+            AttachmentDevice.attachment_id == attachment.id,
+            AttachmentDevice.device_id == device.id,
         )
     )
     link = result.scalars().first()
-    if not link:
-        raise HTTPException(status_code=404, detail="Link not found")
-    await session.delete(link)
-    await session.commit()
+    if link:
+        await session.delete(link)
+        await session.commit()

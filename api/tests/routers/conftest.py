@@ -89,15 +89,42 @@ def mock_openai_llm(mocker):
     return mock_client
 
 
+@pytest.fixture(autouse=True)
+def procrastinate_connector():
+    """The in-memory Procrastinate connector, reset between tests.
+
+    Uploads defer a job rather than ingesting inline, so tests assert on the
+    jobs recorded here (`connector.jobs`) instead of on pipeline side effects.
+    `app/procrastinate_app.py` selects this connector whenever `ENV=test`.
+    """
+    from procrastinate.testing import InMemoryConnector
+
+    from app.procrastinate_app import app as procrastinate_app
+
+    connector = procrastinate_app.connector
+    assert isinstance(connector, InMemoryConnector), "ENV=test is required"
+    connector.reset()
+    yield connector
+    connector.reset()
+
+
 @pytest.fixture
-def mock_ingest_fitz(mocker):
-    """Skip the ingestion pipeline in attachment endpoint tests."""
+def mock_ingest_pipeline(mocker):
+    """Skip the real PDF pipeline when running the ingest task directly."""
     from app.services.ingest import IngestReport
 
     return mocker.patch(
-        "app.routers.attachments.ingest_pdf_to_attachment",
+        "app.tasks.ingest.ingest_pdf_to_attachment",
         new_callable=mocker.AsyncMock,
-        return_value=IngestReport(),
+        return_value=IngestReport(
+            total_pages=3,
+            pages_processed=3,
+            chunks_indexed=7,
+            native_text_pages=1,
+            ocr_pages_attempted=2,
+            ocr_pages_succeeded=1,
+            ocr_pages_skipped=1,
+        ),
     )
 
 

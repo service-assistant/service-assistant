@@ -1,4 +1,4 @@
-.PHONY: help check dev install test lint format format-check typecheck production
+.PHONY: help check dev devb install test lint format format-check typecheck production
 
 ifeq ($(OS),Windows_NT)
 SHELL := C:/PROGRA~1/Git/bin/bash.exe
@@ -9,6 +9,7 @@ help:
 	@echo "Available commands:"
 	@echo "  make install       - Install dependencies in api, app, and admin"
 	@echo "  make dev           - Run api, app, admin, and landing in dev mode simultaneously"
+	@echo "  make devb          - Same as dev, but rebuilds the api containers first (use after dependency changes)"
 	@echo "  make test          - Run tests in api, app, and admin"
 	@echo "  make lint          - Check code style in api, app, and admin"
 	@echo "  make format        - Format code in api, app, and admin"
@@ -26,6 +27,16 @@ dev:
 	@cleanup() { jobs -p | xargs -r kill; }; \
 	trap cleanup EXIT INT TERM; \
 	$(MAKE) -C api dev & \
+	$(MAKE) -C app dev & \
+	$(MAKE) -C admin dev & \
+	$(MAKE) -C landing dev & \
+	wait
+
+# Only api runs in containers, so it is the only app with a rebuild variant.
+devb:
+	@cleanup() { jobs -p | xargs -r kill; }; \
+	trap cleanup EXIT INT TERM; \
+	$(MAKE) -C api devb & \
 	$(MAKE) -C app dev & \
 	$(MAKE) -C admin dev & \
 	$(MAKE) -C landing dev & \

@@ -1,4 +1,5 @@
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
+import { ConfirmModal } from '@/components/ConfirmModal'
 import {
 	attachmentFileUrl,
 	useAttachment,
@@ -8,9 +9,17 @@ import {
 	useUnlinkDevice,
 } from '@/hooks/useAttachments'
 import { useDevices } from '@/hooks/useDevices'
+import { useStartIngestion } from '@/hooks/useIngestions'
 import { getDocumentCategory } from '@/lib/documentCategory'
+import {
+	INGESTION_STATUS_BADGE_CLASSES,
+	INGESTION_STATUS_LABELS,
+	canProcess,
+	canRetry,
+	statusDetail,
+} from '@/lib/ingestion'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink, Play, RotateCcw } from 'lucide-react'
 import { useState } from 'react'
 
 export function DocumentDetailPage() {
@@ -24,8 +33,10 @@ export function DocumentDetailPage() {
 	const deleteAttachment = useDeleteAttachment()
 	const linkDevice = useLinkDevice()
 	const unlinkDevice = useUnlinkDevice()
+	const startIngestion = useStartIngestion()
 
 	const [showDeleteModal, setShowDeleteModal] = useState(false)
+	const [showRetryModal, setShowRetryModal] = useState(false)
 	const [showAssignPanel, setShowAssignPanel] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
@@ -82,7 +93,38 @@ export function DocumentDetailPage() {
 					<dd className='text-cream/80'>
 						{new Date(attachment.created_at).toLocaleDateString('pl-PL')}
 					</dd>
+					<dt className='text-cream/50'>Stan importu</dt>
+					<dd className='flex items-center gap-2'>
+						<span
+							className={`rounded-full px-2 py-0.5 text-xs ${INGESTION_STATUS_BADGE_CLASSES[attachment.ingest_status]}`}>
+							{INGESTION_STATUS_LABELS[attachment.ingest_status]}
+						</span>
+						{statusDetail(attachment) && (
+							<span className='text-xs text-cream/50'>
+								{statusDetail(attachment)}
+							</span>
+						)}
+					</dd>
 				</dl>
+
+				{canProcess(attachment.ingest_status) && (
+					<button
+						disabled={startIngestion.isPending}
+						onClick={() => startIngestion.mutate(id)}
+						className='mt-4 flex items-center gap-2 rounded-md border border-line px-3 py-2 text-sm text-cream hover:border-ember disabled:cursor-not-allowed disabled:opacity-40'>
+						<Play size={14} />
+						{startIngestion.isPending ? 'Uruchamianie…' : 'Przetwórz'}
+					</button>
+				)}
+				{canRetry(attachment.ingest_status) && (
+					<button
+						disabled={startIngestion.isPending}
+						onClick={() => setShowRetryModal(true)}
+						className='mt-4 flex items-center gap-2 rounded-md border border-line px-3 py-2 text-sm text-cream hover:border-ember disabled:cursor-not-allowed disabled:opacity-40'>
+						<RotateCcw size={14} />
+						{startIngestion.isPending ? 'Ponawianie…' : 'Ponów import'}
+					</button>
+				)}
 			</div>
 
 			<div className='mb-6 rounded-lg border border-line bg-panel p-6'>
@@ -156,6 +198,21 @@ export function DocumentDetailPage() {
 					pending={deleteAttachment.isPending}
 					onConfirm={handleDelete}
 					onClose={() => setShowDeleteModal(false)}
+				/>
+			)}
+
+			{showRetryModal && (
+				<ConfirmModal
+					title='Ponów przetwarzanie'
+					description={`Dokument "${attachment.original_filename}" zostanie przetworzony ponownie. Obecnie zaindeksowane fragmenty zostaną usunięte i zastąpione nowymi.`}
+					confirmLabel='Ponów'
+					pendingLabel='Uruchamianie…'
+					pending={startIngestion.isPending}
+					onConfirm={() => {
+						startIngestion.mutate(id)
+						setShowRetryModal(false)
+					}}
+					onClose={() => setShowRetryModal(false)}
 				/>
 			)}
 		</div>

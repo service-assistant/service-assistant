@@ -6,7 +6,7 @@ GREEN  := \033[32m
 YELLOW := \033[33m
 GRAY   := \033[90m
 
-.PHONY: help dev dev-db production docs test lint format format-check typecheck check migrations migrate
+.PHONY: help dev devb dev-db worker production docs test lint format format-check typecheck check migrations migrate
 
 help:
 	@echo ""
@@ -16,6 +16,7 @@ help:
 	@echo "  $(GREEN)install$(RESET)           $(GRAY)-$(RESET) Install needed dependencies"
 	@echo "  $(GREEN)dev$(RESET)               $(GRAY)-$(RESET) Run api with hot reloading $(GRAY)(port 8000, run $(RESET)make dev-db$(GRAY) first)$(RESET)"
 	@echo "  $(GREEN)dev-db$(RESET)            $(GRAY)-$(RESET) Run only the dev database $(GRAY)(port 5432)$(RESET)"
+	@echo "  $(GREEN)worker$(RESET)            $(GRAY)-$(RESET) Run the Procrastinate worker $(GRAY)(processes PDF ingestion)$(RESET)"
 	@echo "  $(GREEN)migrate$(RESET)           $(GRAY)-$(RESET) Run Alembic migrations against the running dev container"
 	@echo "  $(GREEN)production$(RESET)        $(GRAY)-$(RESET) Run production environment $(GRAY)(port 8000)$(RESET)"
 	@echo "  $(GREEN)test$(RESET)              $(GRAY)-$(RESET) Run tests $(GRAY)(needs a local Postgres, see .env.test)$(RESET)"
@@ -35,8 +36,10 @@ dev-db:
 	docker compose -f compose.db.yml up -d --wait
 dev:
 	docker compose -f compose.dev.yml up
-migrate:
-	docker compose -f compose.dev.yml exec app alembic upgrade head
+devb:
+	docker compose -f compose.dev.yml up --build
+worker:
+	POSTGRES_HOST=localhost PYTHONPATH=. poetry run procrastinate --app=app.procrastinate_app.app worker
 production:
 	docker compose -f compose.production.yml up --build -d
 test:
@@ -54,5 +57,7 @@ check:
 	$(MAKE) lint
 	$(MAKE) typecheck
 	$(MAKE) test
+migrate:
+	POSTGRES_HOST=localhost poetry run alembic upgrade head
 migrations:
 	poetry run alembic history --verbose
