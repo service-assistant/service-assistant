@@ -89,7 +89,6 @@ def test_save_drawing_region_saves_png(mocker, tmp_path: Path):
     result = save_drawing_region(
         page=page,
         output_dir=tmp_path,
-        min_drawings=50,
     )
 
     assert result is not None
@@ -109,7 +108,6 @@ def test_save_drawing_region_returns_none_for_small_amount(mocker, tmp_path: Pat
     result = save_drawing_region(
         page=page,
         output_dir=tmp_path,
-        min_drawings=50,
     )
 
     assert result is None
