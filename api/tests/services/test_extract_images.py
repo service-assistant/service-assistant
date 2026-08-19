@@ -26,11 +26,13 @@ def test_extract_page_images(mocker, tmp_path: Path):
     mock_pix_instance = mocker.Mock()
     mock_pix_instance.n = 3
     mock_pix_instance.alpha = 0
+    mock_pix_instance.width = 100
+    mock_pix_instance.height = 100
     mock_pix_instance.colorspace.name = "DeviceRGB"
 
     mock_pixmap.return_value = mock_pix_instance
 
-    mock_save_drawing_region.return_value = "vector.png"
+    mock_save_drawing_region.return_value = ["vector.png"]
 
     result = extract_page_images(
         doc=mock_doc,
@@ -72,7 +74,10 @@ def test_normalize_for_png_skips_standalone_mask(mocker):
 
 
 def test_save_drawing_region_saves_png(mocker, tmp_path: Path):
-    rects = [{"rect": fitz.Rect(0, 0, 100, 100)} for _ in range(60)]
+    rects = [
+        {"rect": fitz.Rect(0, 0, 100, 100), "items": [{}, {}]},
+        {"rect": fitz.Rect(10, 10, 90, 90), "items": [{}, {}]},
+    ]
 
     mock_pixmap = mocker.Mock()
 
@@ -91,7 +96,7 @@ def test_save_drawing_region_saves_png(mocker, tmp_path: Path):
         output_dir=tmp_path,
     )
 
-    assert result is not None
+    assert len(result) == 1
 
     mock_pixmap.save.assert_called_once()
 
@@ -110,4 +115,4 @@ def test_save_drawing_region_returns_none_for_small_amount(mocker, tmp_path: Pat
         output_dir=tmp_path,
     )
 
-    assert result is None
+    assert result == []
