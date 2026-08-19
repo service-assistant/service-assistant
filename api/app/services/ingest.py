@@ -1,8 +1,10 @@
 import asyncio
 import logging
 import math
+import uuid
 from dataclasses import dataclass, field
 from io import BytesIO
+from pathlib import Path
 from typing import Callable
 
 import fitz  # pymupdf
@@ -102,6 +104,20 @@ def render_page_for_ocr(
         scale *= min(0.9, math.sqrt(max_bytes / len(image)) * 0.9)
 
     raise ValueError("Could not render the page within Azure OCR input limits")
+
+
+def save_ocr_rendered_image(
+    image_bytes: bytes,
+    output_dir: Path,
+) -> list[str]:
+    """Save OCR-rendered image and return list of image paths."""
+    filename = f"{uuid.uuid4()}.jpg"
+    image_path = output_dir / filename
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    image_path.write_bytes(image_bytes)
+
+    return [str(image_path)]
 
 
 async def ingest_pdf_to_attachment(
@@ -217,6 +233,8 @@ async def _ingest_pdf_to_attachment_unlocked(
 
         for page_num, page in enumerate(pages):
             page_label = page_num + 1
+            page_images = []
+
             if native_text_by_page[page_num]:
                 _report(
                     report,
@@ -232,6 +250,12 @@ async def _ingest_pdf_to_attachment_unlocked(
                         footer=False,
                         use_ocr=False,
                     )
+                )
+                page_images = await run_blocking(
+                    extract_page_images,
+                    doc,
+                    page,
+                    settings.attachments_dir / "images",
                 )
             else:
                 report.ocr_pages_attempted += 1
@@ -276,6 +300,11 @@ async def _ingest_pdf_to_attachment_unlocked(
                         f"Page {page_label}: Azure OCR completed.",
                         progress_callback,
                     )
+                    page_images = await run_blocking(
+                        save_ocr_rendered_image,
+                        image,
+                        settings.attachments_dir / "images",
+                    )
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
@@ -301,12 +330,6 @@ async def _ingest_pdf_to_attachment_unlocked(
                 )
                 continue
 
-            page_images = await run_blocking(
-                extract_page_images,
-                doc,
-                page,
-                settings.attachments_dir / "images",
-            )
             for chunk in chunks:
                 if chunk in seen_chunks:
                     continue
