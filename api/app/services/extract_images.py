@@ -7,7 +7,7 @@ from pymupdf import Pixmap, csRGB
 
 PNG_COLORSPACES = {"DeviceGray", "DeviceRGB"}
 REGION_CONTAINMENT_TOLERANCE = 5.0
-REGION_MINIMAL_ITEMS = 4
+REGION_MINIMAL_ITEMS = 2
 
 
 def normalize_for_png(pix: Pixmap) -> Pixmap | None:
