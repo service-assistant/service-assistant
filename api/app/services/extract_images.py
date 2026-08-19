@@ -6,6 +6,7 @@ from pymupdf import Pixmap, csRGB
 
 
 PNG_COLORSPACES = {"DeviceGray", "DeviceRGB"}
+REGION_CONTAINMENT_TOLERANCE = 5.0
 
 
 def normalize_for_png(pix: Pixmap) -> Pixmap | None:
@@ -36,7 +37,7 @@ def select_maximal_regions(
     def approximately_contains(
         outer: fitz.Rect,
         inner: fitz.Rect,
-        tolerance: float = 2.0,
+        tolerance: float = REGION_CONTAINMENT_TOLERANCE,
     ) -> bool:
         return (
             outer.x0 <= inner.x0 + tolerance
@@ -158,7 +159,7 @@ def select_maximal_regions(
 def save_drawing_region(
     page: fitz.Page,
     output_dir: Path,
-    padding: float = 10,
+    padding: float = 10.0,
 ) -> list[str]:
     """
     Save the maximal drawing regions of a page as images in the specified output directory.
@@ -173,7 +174,7 @@ def save_drawing_region(
         # skip icons and small drawings
         if (region["rect"].width < 50 or
             region["rect"].height < 50 or
-            region["rect"].width < 100 and region["rect"].height < 100):
+            (region["rect"].width < 100 and region["rect"].height < 100)):
             continue
 
         region_rect = fitz.Rect(region["rect"])
