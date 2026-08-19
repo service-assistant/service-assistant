@@ -35,6 +35,7 @@ _ingest_lock = asyncio.Lock()
 @dataclass
 class IngestReport:
     total_pages: int = 0
+    pages_processed: int = 0
     native_text_pages: int = 0
     ocr_pages_attempted: int = 0
     ocr_pages_succeeded: int = 0
@@ -109,7 +110,7 @@ def save_ocr_rendered_image(
     image_bytes: bytes,
     output_dir: Path,
 ) -> list[str]:
-    """Save OCR-rendered image to disk and return list of image paths."""
+    """Save OCR-rendered image and return list of image paths."""
     filename = f"{uuid.uuid4()}.jpg"
     image_path = output_dir / filename
 
@@ -250,7 +251,6 @@ async def _ingest_pdf_to_attachment_unlocked(
                         use_ocr=False,
                     )
                 )
-                # Extract page images for native text pages
                 page_images = await run_blocking(
                     extract_page_images,
                     doc,
@@ -300,7 +300,6 @@ async def _ingest_pdf_to_attachment_unlocked(
                         f"Page {page_label}: Azure OCR completed.",
                         progress_callback,
                     )
-                    # Save the OCR-rendered image for OCR pages
                     page_images = await run_blocking(
                         save_ocr_rendered_image,
                         image,
@@ -310,6 +309,7 @@ async def _ingest_pdf_to_attachment_unlocked(
                     raise
                 except Exception as exc:
                     report.ocr_pages_skipped += 1
+                    report.pages_processed += 1
                     _report(
                         report,
                         (
@@ -322,6 +322,7 @@ async def _ingest_pdf_to_attachment_unlocked(
 
             chunks = await run_blocking(chunk_page, markdown_text)
             if not chunks:
+                report.pages_processed += 1
                 _report(
                     report,
                     f"Page {page_label}: no indexable text found; page skipped.",
@@ -336,6 +337,8 @@ async def _ingest_pdf_to_attachment_unlocked(
                 pending.append((chunk, page_num, page_images))
                 if len(pending) >= batch_size:
                     await embed_pending()
+
+            report.pages_processed += 1
 
         while pending:
             await embed_pending()
