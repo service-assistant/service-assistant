@@ -7,6 +7,7 @@ from pymupdf import Pixmap, csRGB
 
 PNG_COLORSPACES = {"DeviceGray", "DeviceRGB"}
 REGION_CONTAINMENT_TOLERANCE = 5.0
+REGION_MINIMAL_ITEMS = 4
 
 
 def normalize_for_png(pix: Pixmap) -> Pixmap | None:
@@ -55,14 +56,14 @@ def select_maximal_regions(
         for index, drawing in enumerate(drawings)
         if any(
             index != other_index
-            and len(other.get("items", [])) > 1
+            and len(other.get("items", [])) >= REGION_MINIMAL_ITEMS
             and strictly_contains(drawing["rect"], other["rect"])
             for other_index, other in enumerate(drawings)
         )
     ]
 
     # Remove candidates contained by another candidate, except when both
-    # drawings contain exactly one item.
+    # drawings contain less than REGION_MINIMAL_ITEMS.
     result = [
         drawing
         for index, drawing in candidates
@@ -70,7 +71,8 @@ def select_maximal_regions(
             index != other_index
             and approximately_contains(other["rect"], drawing["rect"])
             and not (
-                len(drawing.get("items", [])) == 1 and len(other.get("items", [])) == 1
+                len(drawing.get("items", [])) < REGION_MINIMAL_ITEMS
+                and len(other.get("items", [])) < REGION_MINIMAL_ITEMS
             )
             for other_index, other in candidates
         )
@@ -214,6 +216,13 @@ def extract_page_images(
 
         pix = normalize_for_png(Pixmap(doc, xref))
         if pix is None:
+            continue
+
+        if (
+            pix.width <= 50
+            or pix.height <= 50
+            or (pix.width < 100 and pix.height < 100)
+        ):
             continue
 
         output_dir.mkdir(parents=True, exist_ok=True)
