@@ -58,6 +58,10 @@ Before sharing a real APK, run the manual release checklist: [Manual E2E Release
 
 Vite/React admin dashboard (TypeScript). See `admin/Makefile` (`make help`) for all commands.
 
+### Debug (`debug/`)
+
+Vite/React/TanStack Router/Mantine debug tools SPA (TypeScript) — low-level developer tooling: RAG chunk browser, chat threads viewer, background job queue viewer, benchmark runner, and Next Best Step visualization. Auth and everything else it doesn't cover (documents, devices, categories, users) lives in `admin/`. See `debug/Makefile` (`make help`) for all commands.
+
 ### Landing (`landing/`)
 
 Static HTML/CSS marketing page, no build tooling or dependencies. Served by Caddy in both dev and production (see `landing/Makefile`). Reads the app's URL from `APP_URL` at Docker build time via `envsubst`.
@@ -80,7 +84,7 @@ asdf install
 
 If you are on Windows or any other OS where `asdf` is not available, you can also install dependencies from `.tool-versions` globally.
 
-Each of `api`, `app`, `admin`, and `landing` has its own `Makefile`. They should make it easier for frontend people to run the backend app and vice versa.
+Each of `api`, `app`, `admin`, `debug`, and `landing` has its own `Makefile`. They should make it easier for frontend people to run the backend app and vice versa.
 
 ### Run everything in dev mode
 
@@ -90,12 +94,13 @@ From the repository root, run:
 make dev
 ```
 
-This runs `api`, `app`, `admin`, and `landing` in dev mode simultaneously (one Ctrl+C stops all of them). If you don't have Postgres installed on your OS, run `cd api && make dev-db` first. Once running:
+This runs `api`, `app`, `admin`, `debug`, and `landing` in dev mode simultaneously (one Ctrl+C stops all of them). If you don't have Postgres installed on your OS, run `cd api && make dev-db` first. Once running:
 
 | App | URL |
 |---|---|
 | `api` | [http://localhost:8000](http://localhost:8000) ([docs](http://localhost:8000/docs)) |
 | `admin` | [http://localhost:5173](http://localhost:5173) |
+| `debug` | [http://localhost:5174](http://localhost:5174) |
 | `app` (web) | [http://localhost:8081](http://localhost:8081) |
 | `landing` | [http://localhost:8053](http://localhost:8053) |
 
@@ -107,7 +112,7 @@ From the repository root, run:
 make check
 ```
 
-This runs format-check, lint, typecheck, and test in `api`, `app`, and `admin` (one after another, stopping at the first failure). Under the hood it just calls each app's own `make check`, so `cd api && make check` (or `app`/`admin`) runs the same checks for just that app. `api`'s tests need a local Postgres running (see `api/.env.test`). `landing` is static HTML/CSS with no tooling, so it has no `check` target.
+This runs format-check, lint, typecheck, and test in `api`, `app`, `admin`, and `debug` (one after another, stopping at the first failure). Under the hood it just calls each app's own `make check`, so `cd api && make check` (or `app`/`admin`/`debug`) runs the same checks for just that app. `api`'s tests need a local Postgres running (see `api/.env.test`). `landing` is static HTML/CSS with no tooling, so it has no `check` target.
 
 The same fan-out pattern works for any shared target — `make install`, `make test`, `make lint`, `make format`, `make format-check`, `make typecheck`, and `make production` all run across every app that defines them.
 
@@ -167,9 +172,9 @@ To mark task as done/completed it:
 
 ## Deployment
 
-The app is deployed on a VPS as 4 independently running Docker Compose projects — `api`, `admin`, `app`, and `landing` — each with its own `compose.production.yml` and `make production` target. There is no shared root compose file; the VPS deployment script simply (re)starts all 4 projects.
+The app is deployed on a VPS as 5 independently running Docker Compose projects — `api`, `admin`, `app`, `debug`, and `landing` — each with its own `compose.production.yml` and `make production` target. There is no shared root compose file; the VPS deployment script simply (re)starts all 5 projects.
 
-`api` runs the FastAPI container directly. `admin` and `app` are both static-exported (Vite build / `expo export --platform web`) and served by their own Caddy container. `landing` is plain static HTML/CSS served by Caddy directly, no build step.
+`api` runs the FastAPI container directly. `admin`, `app`, and `debug` are all static-exported (Vite build / `expo export --platform web`) and served by their own Caddy container. `landing` is plain static HTML/CSS served by Caddy directly, no build step.
 
 Android is still distributed by building an `.apk` manually.
 
@@ -194,6 +199,9 @@ docker compose -f ./app/compose.production.yml --project-directory ./app up -d -
 
 echo "Building and restarting admin app..."
 docker compose -f ./admin/compose.production.yml --project-directory ./admin up -d --build
+
+echo "Building and restarting debug app..."
+docker compose -f ./debug/compose.production.yml --project-directory ./debug up -d --build
 
 echo "Building and restarting landing page..."
 docker compose -f ./landing/compose.production.yml --project-directory ./landing up -d --build

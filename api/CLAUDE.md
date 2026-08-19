@@ -56,7 +56,7 @@ FastAPI async app backed by PostgreSQL + pgvector. Three core layers:
 
 ### Auth
 
-Single bearer token in `settings.auth_token` (env var `AUTH_TOKEN`). Checked by HTTP middleware in `main.py`. Open paths: `/health`, `/docs`, `/redoc`, `/openapi.json`, `/admin`. Dev token is `abcd`.
+Single bearer token in `settings.auth_token` (env var `AUTH_TOKEN`). Checked by HTTP middleware in `main.py`. Open paths: `/health`, `/docs`, `/redoc`, `/openapi.json`, `/auth`. Dev token is `abcd`. `/auth` (login/session/logout) accepts the token via form field or the `admin_token` cookie it sets; every other endpoint accepts either the bearer header or that same cookie.
 
 ### DB session
 

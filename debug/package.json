@@ -1,0 +1,43 @@
+{
+	"name": "fixo-debug",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"dev": "vite",
+		"build": "tsc -b && vite build",
+		"lint": "biome check .",
+		"typecheck": "tsc -b",
+		"preview": "vite preview",
+		"test": "vitest run",
+		"format": "biome format --write .",
+		"format-check": "biome format ."
+	},
+	"dependencies": {
+		"@mantine/code-highlight": "^9.5.1",
+		"@mantine/core": "^9.5.1",
+		"@mantine/hooks": "^9.5.1",
+		"@mantine/modals": "^9.5.1",
+		"@tabler/icons-react": "^3.46.0",
+		"@tanstack/react-query": "^5.101.4",
+		"@tanstack/react-router": "^1.170.30",
+		"highlight.js": "^11.12.0",
+		"react": "^19.2.7",
+		"react-dom": "^19.2.7"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.9",
+		"@tailwindcss/vite": "^4.3.3",
+		"@types/node": "^24.13.2",
+		"@types/react": "^19.2.17",
+		"@types/react-dom": "^19.2.3",
+		"@vitejs/plugin-react": "^6.0.3",
+		"postcss": "^8.5.0",
+		"postcss-preset-mantine": "^1.18.0",
+		"postcss-simple-vars": "^7.0.1",
+		"tailwindcss": "^4.3.3",
+		"typescript": "~6.0.2",
+		"vite": "^8.1.1",
+		"vitest": "^4.1.10"
+	}
+}

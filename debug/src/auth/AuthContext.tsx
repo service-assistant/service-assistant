@@ -1,5 +1,5 @@
+import { type ReactNode, useEffect, useState } from 'react'
 import { API_URL } from '@/lib/api'
-import { useEffect, useState, type ReactNode } from 'react'
 import { AuthContext } from './auth-context'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
