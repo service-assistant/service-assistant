@@ -26,6 +26,7 @@ def select_maximal_regions(
     """
     Select maximal regions from a list of drawings.
     """
+
     def strictly_contains(outer: fitz.Rect, inner: fitz.Rect) -> bool:
         return (
             outer.x0 <= inner.x0
@@ -34,6 +35,7 @@ def select_maximal_regions(
             and outer.y1 >= inner.y1
             and outer != inner
         )
+
     def approximately_contains(
         outer: fitz.Rect,
         inner: fitz.Rect,
@@ -68,14 +70,13 @@ def select_maximal_regions(
             index != other_index
             and approximately_contains(other["rect"], drawing["rect"])
             and not (
-                len(drawing.get("items", [])) == 1
-                and len(other.get("items", [])) == 1
+                len(drawing.get("items", [])) == 1 and len(other.get("items", [])) == 1
             )
             for other_index, other in candidates
         )
     ]
 
-    #remove duplicates
+    # remove duplicates
     result = list({d["rect"]: d for d in result}.values())
 
     # Remove regions that contain another region from the remaining result.
@@ -83,8 +84,7 @@ def select_maximal_regions(
         drawing
         for drawing in result
         if not any(
-            drawing != other
-            and strictly_contains(drawing["rect"], other["rect"])
+            drawing != other and strictly_contains(drawing["rect"], other["rect"])
             for other in result
         )
     ]
@@ -98,12 +98,7 @@ def select_maximal_regions(
         regions = [dict(region) for region in regions]
 
         def overlaps(a: fitz.Rect, b: fitz.Rect) -> bool:
-            return (
-                a.x0 < b.x1
-                and a.x1 > b.x0
-                and a.y0 < b.y1
-                and a.y1 > b.y0
-            )
+            return a.x0 < b.x1 and a.x1 > b.x0 and a.y0 < b.y1 and a.y1 > b.y0
 
         changed = True
 
@@ -170,11 +165,12 @@ def save_drawing_region(
     image_paths = []
 
     for region in maximal_regions:
-
         # skip icons and small drawings
-        if (region["rect"].width < 50 or
-            region["rect"].height < 50 or
-            (region["rect"].width < 100 and region["rect"].height < 100)):
+        if (
+            region["rect"].width < 50
+            or region["rect"].height < 50
+            or (region["rect"].width < 100 and region["rect"].height < 100)
+        ):
             continue
 
         region_rect = fitz.Rect(region["rect"])
