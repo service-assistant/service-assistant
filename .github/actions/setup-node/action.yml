@@ -1,5 +1,10 @@
 name: "Setup Node.js"
 description: "Install Node.js and cache"
+inputs:
+  working-directory:
+    description: "Directory containing package.json / package-lock.json"
+    required: false
+    default: "./app"
 runs:
   using: "composite"
   steps:
@@ -8,7 +13,7 @@ runs:
       with:
         node-version: "24.14.0"
         cache: "npm"
-        cache-dependency-path: "./app/package-lock.json"
+        cache-dependency-path: "${{ inputs.working-directory }}/package-lock.json"
     - name: Install dependencies
       shell: bash
-      run: npm ci --prefix ./app
+      run: npm ci --prefix ${{ inputs.working-directory }}
