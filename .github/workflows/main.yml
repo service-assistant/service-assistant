@@ -36,6 +36,103 @@ jobs:
       - name: Run tests
         run: npm --prefix ./app test
 
+  app-typecheck:
+    name: Type check (app)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+      - name: Run type check
+        run: npm --prefix ./app run typecheck
+
+  admin-lint:
+    name: Lint (admin)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+        with:
+          working-directory: ./admin
+      - name: Run lint check
+        run: npm --prefix ./admin run lint
+
+  admin-format-check:
+    name: Check formatting (admin)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+        with:
+          working-directory: ./admin
+      - name: Run format check
+        run: npm --prefix ./admin run format-check
+
+  admin-typecheck:
+    name: Type check (admin)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+        with:
+          working-directory: ./admin
+      - name: Run type check
+        run: npm --prefix ./admin run typecheck
+
+  admin-test:
+    name: Run tests (admin)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+        with:
+          working-directory: ./admin
+      - name: Run tests
+        run: npm --prefix ./admin test
+
+  debug-lint:
+    name: Lint (debug)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+        with:
+          working-directory: ./debug
+      - name: Run lint check
+        run: npm --prefix ./debug run lint
+
+  debug-format-check:
+    name: Check formatting (debug)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+        with:
+          working-directory: ./debug
+      - name: Run format check
+        run: npm --prefix ./debug run format-check
+
+  debug-typecheck:
+    name: Type check (debug)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+        with:
+          working-directory: ./debug
+      - name: Run type check
+        run: npm --prefix ./debug run typecheck
+
+  debug-test:
+    name: Run tests (debug)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-node
+        with:
+          working-directory: ./debug
+      - name: Run tests
+        run: npm --prefix ./debug test
+
   api-lint:
     name: Lint (api)
     runs-on: ubuntu-24.04

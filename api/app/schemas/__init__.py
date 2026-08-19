@@ -7,6 +7,7 @@ from .category import CategoryCreate, CategoryRead, CategoryTreeRead, CategoryUp
 from .chat_thread import ChatThreadRead, ThreadCreate
 from .chunk import ChunkRead
 from .device import DeviceCreate, DeviceRead, DeviceUpdate
+from .job import JobListRead, JobRead
 from .message import MessageCreate, MessageRead, TranscriptDecision, TranscriptResponse
 from .nameplate import (
     NameplateAttribute,
@@ -28,6 +29,8 @@ __all__ = [
     "DeviceCreate",
     "DeviceRead",
     "DeviceUpdate",
+    "JobListRead",
+    "JobRead",
     "MessageCreate",
     "MessageRead",
     "NameplateAttribute",

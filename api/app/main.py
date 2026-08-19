@@ -8,12 +8,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.routers import (
-    admin,
     attachments,
+    auth,
+    benchmark,
     categories,
     chunks,
     devices,
     images,
+    jobs,
     messages,
     nameplates,
     threads,
@@ -40,7 +42,7 @@ app = FastAPI(
     description=(
         "REST API for the Service Assistant — a RAG-powered support tool that lets forklift mechanics "
         "upload service manuals (PDFs) and ask technical questions about specific forklifts in a chat interface. "
-        "All endpoints except `/health`, `/docs`, `/redoc`, and `/openapi.json` require a Bearer token."
+        "All endpoints except `/health`, `/docs`, `/redoc`, `/openapi.json`, and `/auth` require a Bearer token."
     ),
 )
 
@@ -61,7 +63,7 @@ def custom_openapi():
 
 app.openapi = custom_openapi
 
-OPEN_PATHS = {"/docs", "/redoc", "/openapi.json", "/health", "/admin"}
+OPEN_PATHS = {"/docs", "/redoc", "/openapi.json", "/health", "/auth"}
 
 
 @app.middleware("http")
@@ -108,7 +110,9 @@ app.include_router(nameplates.router, prefix="/api/nameplates", tags=["Nameplate
 app.include_router(chunks.router, prefix="/api/chunks", tags=["Chunks"])
 app.include_router(images.router, prefix="/api/images", tags=["Images"])
 app.include_router(tts.router, prefix="/api/tts", tags=["Text-to-Speech"])
-app.include_router(admin.router, prefix="/admin", tags=["Admin"])
+app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
+app.include_router(benchmark.router, prefix="/api/benchmark", tags=["Benchmark"])
+app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 
 
 @app.get("/health", include_in_schema=False)

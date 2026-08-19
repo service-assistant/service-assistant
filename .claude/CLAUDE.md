@@ -4,10 +4,11 @@ This file provides guidance to Claude Code (or any other AI assistant) when work
 
 ## Architecture
 
-Monorepo with four subdirectories:
+Monorepo with five subdirectories:
 - `app/` — React Native / Expo app (TypeScript, file-based routing via Expo Router), targets Android and Web
 - `api/` — FastAPI backend (Python, Poetry)
 - `admin/` — Vite/React admin dashboard (TypeScript)
+- `debug/` — Vite/React/TanStack Router/Mantine debug tools SPA (TypeScript) — chunks, threads, background jobs, benchmark, next-best-step
 - `landing/` — static HTML/CSS marketing page
 
 Each app deploys independently on the VPS via its own `compose.production.yml`.
@@ -17,15 +18,15 @@ Each app deploys independently on the VPS via its own `compose.production.yml`.
 From the repo root, `make <target>` fans out to every app that defines that target (calls each app's own `make <target>`):
 
 ```sh
-make install       # api, app, admin
-make dev           # api, app, admin, landing — dev mode simultaneously
-make test          # api, app, admin
-make lint          # api, app, admin
-make format        # api, app, admin
-make format-check  # api, app, admin
-make typecheck     # api, app, admin
-make check         # api, app, admin — format-check + lint + typecheck + test
-make production    # api, app, admin, landing
+make install       # api, app, admin, debug
+make dev           # api, app, admin, debug, landing — dev mode simultaneously
+make test          # api, app, admin, debug
+make lint          # api, app, admin, debug
+make format        # api, app, admin, debug
+make format-check  # api, app, admin, debug
+make typecheck     # api, app, admin, debug
+make check         # api, app, admin, debug — format-check + lint + typecheck + test
+make production    # api, app, admin, debug, landing
 ```
 
 ### API (`cd api`)
@@ -72,6 +73,20 @@ make check          # format-check + lint + typecheck + test
 make production     # docker compose -f compose.production.yml up --build -d
 ```
 
+### Debug (`cd debug`)
+
+```sh
+make install        # npm install
+make dev            # vite — hot reload on :5174
+make test           # vitest run
+make lint           # biome check .
+make format         # biome format --write .
+make format-check   # biome format .
+make typecheck      # tsc -b
+make check          # format-check + lint + typecheck + test
+make production     # docker compose -f compose.production.yml up --build -d
+```
+
 ### Landing (`cd landing`)
 
 ```sh
@@ -85,6 +100,10 @@ make production  # docker compose -f compose.production.yml up --build -d
 - Prettier: 100-char print width, tabs, 4-space indent, single quotes (see `app/.prettierrc`)
 - TypeScript strict mode; use `@/` path alias for imports
 - Use `npm`, not any of `bun`, `pnpm` or `yarn`
+
+### Debug
+- Biome for both linting and formatting (no other formatters); Mantine UI is primary, Tailwind utility classes only for custom cases Mantine doesn't cover
+- Use `@/` path alias for imports, same convention as `app`/`admin`
 
 ### API
 - Ruff for both linting and formatting (no other formatters)
