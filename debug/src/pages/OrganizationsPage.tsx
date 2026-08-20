@@ -15,6 +15,7 @@ import {
 import { useDisclosure } from '@mantine/hooks'
 import { IconPencil, IconTrash } from '@tabler/icons-react'
 import { type FormEvent, useEffect, useState } from 'react'
+import { useAuth } from '@/auth/use-auth'
 import {
 	useCreateOrganization,
 	useDeleteOrganization,
@@ -289,6 +290,7 @@ function DeleteOrganizationModal({
 }
 
 export function OrganizationsPage() {
+	const { user } = useAuth()
 	const { data, isLoading } = useOrganizations()
 	const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false)
 	const [organizationToEdit, setOrganizationToEdit] = useState<OrganizationRead | null>(null)
@@ -331,13 +333,21 @@ export function OrganizationsPage() {
 											onClick={() => setOrganizationToEdit(organization)}>
 											<IconPencil size={16} />
 										</ActionIcon>
-										<ActionIcon
-											variant='subtle'
-											color='red'
-											aria-label='Usuń organizację'
-											onClick={() => setOrganizationToDelete(organization)}>
-											<IconTrash size={16} />
-										</ActionIcon>
+										{organization.id === user?.organizationId ? (
+											<Text size='xs' c='dimmed'>
+												Bieżąca organizacja
+											</Text>
+										) : (
+											<ActionIcon
+												variant='subtle'
+												color='red'
+												aria-label='Usuń organizację'
+												onClick={() =>
+													setOrganizationToDelete(organization)
+												}>
+												<IconTrash size={16} />
+											</ActionIcon>
+										)}
 									</Group>
 								</Table.Td>
 							</Table.Tr>
