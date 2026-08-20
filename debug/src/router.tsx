@@ -1,12 +1,10 @@
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { ProtectedLayout } from '@/components/ProtectedLayout'
 import { BenchmarkPage } from '@/pages/BenchmarkPage'
-import { ChunksPage } from '@/pages/ChunksPage'
 import { JobsPage } from '@/pages/JobsPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { NextBestStepPage } from '@/pages/NextBestStepPage'
-import { ThreadDetailPage } from '@/pages/ThreadDetailPage'
-import { ThreadsPage } from '@/pages/ThreadsPage'
+import { OrganizationsPage } from '@/pages/OrganizationsPage'
 
 const rootRoute = createRootRoute()
 
@@ -26,26 +24,8 @@ const indexRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
 	path: '/',
 	beforeLoad: () => {
-		throw redirect({ to: '/chunks' })
+		throw redirect({ to: '/benchmark' })
 	},
-})
-
-const chunksRoute = createRoute({
-	getParentRoute: () => appLayoutRoute,
-	path: '/chunks',
-	component: ChunksPage,
-})
-
-const threadsRoute = createRoute({
-	getParentRoute: () => appLayoutRoute,
-	path: '/threads',
-	component: ThreadsPage,
-})
-
-const threadDetailRoute = createRoute({
-	getParentRoute: () => appLayoutRoute,
-	path: '/threads/$threadId',
-	component: ThreadDetailPage,
 })
 
 const jobsRoute = createRoute({
@@ -66,16 +46,20 @@ const nextBestStepRoute = createRoute({
 	component: NextBestStepPage,
 })
 
+const organizationsRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/organizations',
+	component: OrganizationsPage,
+})
+
 const routeTree = rootRoute.addChildren([
 	loginRoute,
 	appLayoutRoute.addChildren([
 		indexRoute,
-		chunksRoute,
-		threadsRoute,
-		threadDetailRoute,
 		jobsRoute,
 		benchmarkRoute,
 		nextBestStepRoute,
+		organizationsRoute,
 	]),
 ])
 

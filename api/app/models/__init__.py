@@ -10,6 +10,9 @@ from .chat_thread import ChatThread
 from .chunk import EMBEDDING_DIMENSIONS, Chunk
 from .device import Device
 from .message import Message, MessageSender
+from .organization import Organization
+from .user import AppRole, OrgRole, User
+from .user_session import UserSession
 
 __all__ = [
     "AttachmentDevice",
@@ -22,5 +25,10 @@ __all__ = [
     "Device",
     "Message",
     "MessageSender",
+    "Organization",
+    "User",
+    "AppRole",
+    "OrgRole",
+    "UserSession",
     "EMBEDDING_DIMENSIONS",
 ]

@@ -4,21 +4,21 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from fastapi import UploadFile
-from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.config import Settings
 from app.models import Attachment, AttachmentDevice, Category, Chunk, Device
-from app.services.attachments import save_attachment
 from app.services import benchmark_documents
 from app.services.async_utils import run_blocking
+from app.services.attachments import save_attachment
 from app.services.benchmark_cases import load_benchmark_dataset
 from app.services.ingest import (
     IngestReport,
     delete_attachment_chunks,
     ingest_pdf_to_attachment,
 )
+from app.services.organizations import get_system_organization_id
+from fastapi import UploadFile
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 BENCHMARK_BRAND_CATEGORY_NAME = "BENCHMARK MARKA"
 BENCHMARK_TYPE_CATEGORY_NAME = "BENCHMARK TYP"
@@ -161,7 +161,15 @@ async def _get_or_create_category(
     category = await _find_category(session, name, parent_id)
     if category is not None:
         return category, False
-    category = Category(name=name, image_url=None, parent_id=parent_id)
+    if parent_id is not None:
+        parent = await session.get(Category, parent_id)
+        assert parent is not None
+        organization_id = parent.organization_id
+    else:
+        organization_id = await get_system_organization_id(session)
+    category = Category(
+        organization_id=organization_id, name=name, image_url=None, parent_id=parent_id
+    )
     session.add(category)
     await session.commit()
     await session.refresh(category)
@@ -258,6 +266,7 @@ async def _ingest_document(
     settings: Settings,
     session: AsyncSession,
     device: Device,
+    organization_id: int,
     local_path: Path,
     progress_callback: Callable[[IngestReport], None],
 ) -> tuple[Attachment, int, bool]:
@@ -297,6 +306,7 @@ async def _ingest_document(
             session=session,
             file=upload,
             device_ids=[device.id],
+            organization_id=organization_id,
         )
     await ingest_pdf_to_attachment(
         session=session,
@@ -403,7 +413,12 @@ async def run_benchmark_setup(
             )
 
         attachment, chunks, processed = await _ingest_document(
-            settings, session, device, local_path, update_ingest
+            settings,
+            session,
+            device,
+            variant_category.organization_id,
+            local_path,
+            update_ingest,
         )
         result = {
             "filename": local_path.name,

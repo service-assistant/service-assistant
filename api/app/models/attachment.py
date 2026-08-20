@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, ForeignKey, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,6 +14,7 @@ from .associations import AttachmentDevice
 if TYPE_CHECKING:
     from .chunk import Chunk
     from .device import Device
+    from .organization import Organization
 
 
 class IngestionStatus(str, Enum):
@@ -28,14 +29,27 @@ class Attachment(Base):
     __tablename__ = "attachments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "organizations.id",
+            ondelete="CASCADE",
+        ),
+        index=True,
+    )
+    organization: Mapped[Organization] = relationship(
+        back_populates="attachments",
+        lazy="raise",
+    )
     file_global_path: Mapped[str]
     original_filename: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        server_default=func.now(),
         default=utcnow,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        server_default=func.now(),
         default=utcnow,
         onupdate=utcnow,
     )

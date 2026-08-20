@@ -1,5 +1,4 @@
 from app.models import Chunk
-
 from tests.routers.factories import create_attachment, create_chunk
 
 
@@ -95,6 +94,18 @@ async def test_should_paginate_chunks_to_second_page(client, session):
         await create_chunk(session, attachment.id, content=f"Chunk {i}")
 
     response = await client.get("/api/chunks?page=2")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+
+async def test_should_list_chunks_in_app_admins_own_organization(
+    app_admin_client, session
+):
+    attachment = await create_attachment(session)
+    await create_chunk(session, attachment.id)
+
+    response = await app_admin_client.get("/api/chunks")
 
     assert response.status_code == 200
     assert len(response.json()) == 1

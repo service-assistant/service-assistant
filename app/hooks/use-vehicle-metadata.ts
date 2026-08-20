@@ -1,12 +1,8 @@
 import { useEffect, useState } from 'react';
 
-import { API_URL, API_URL_CONFIG_ERROR } from '@/utils/api-config';
-import {
-	getAuthTokenOrThrow,
-	getServiceErrorFeature,
-	throwIfAuthResponseError,
-} from '@/utils/auth-errors';
-import { fetchWithRetry, HttpError } from '@/utils/network';
+import { apiGetJson } from '@/lib/api-client';
+import { API_URL_CONFIG_ERROR } from '@/utils/api-config';
+import { getServiceErrorFeature } from '@/utils/auth-errors';
 
 export type Category = {
 	id: number;
@@ -59,19 +55,7 @@ export const useVehicleMetadata = ({
 		const fetchCategories = async () => {
 			try {
 				if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
-				const authToken = getAuthTokenOrThrow();
-				const response = await fetchWithRetry(`${API_URL}/api/categories/tree`, {
-					method: 'GET',
-					headers: { Authorization: `Bearer ${authToken}`, Accept: 'application/json' },
-				});
-				if (!response.ok) {
-					throwIfAuthResponseError(response);
-					throw new HttpError(
-						response.status,
-						`Categories API error: ${response.status}`,
-					);
-				}
-				setCategories((await response.json()) as Category[]);
+				setCategories(await apiGetJson<Category[]>('/api/categories/tree'));
 			} catch (error) {
 				console.log('Handled categories load error:', error);
 				onServiceError(getServiceErrorFeature(error, 'lista kategorii'), error);
@@ -83,16 +67,7 @@ export const useVehicleMetadata = ({
 		const fetchDevices = async () => {
 			try {
 				if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
-				const authToken = getAuthTokenOrThrow();
-				const response = await fetchWithRetry(`${API_URL}/api/devices`, {
-					method: 'GET',
-					headers: { Authorization: `Bearer ${authToken}`, Accept: 'application/json' },
-				});
-				if (!response.ok) {
-					throwIfAuthResponseError(response);
-					throw new HttpError(response.status, `Devices API error: ${response.status}`);
-				}
-				setRawDevices((await response.json()) as DeviceRaw[]);
+				setRawDevices(await apiGetJson<DeviceRaw[]>('/api/devices'));
 			} catch (error) {
 				console.log('Handled devices load error:', error);
 				onServiceError(getServiceErrorFeature(error, 'lista maszyn'), error);

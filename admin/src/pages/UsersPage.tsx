@@ -1,30 +1,31 @@
-const MOCK_TECHNICIANS = [
-	{ name: 'Marek Kowalski', role: 'Serwisant', online: true, lastActive: 'teraz' },
-	{ name: 'Anna Nowak', role: 'Serwisant', online: false, lastActive: '2 godz. temu' },
-	{ name: 'Piotr Wiśniewski', role: 'Kierownik serwisu', online: true, lastActive: 'teraz' },
-]
+import { useUsers } from '@/hooks/useUsers'
+
+const ORG_ROLE_LABELS: Record<string, string> = {
+	admin: 'Administrator organizacji',
+	member: 'Członek organizacji',
+}
 
 export function UsersPage() {
+	const { data: users, isLoading } = useUsers()
+
 	return (
 		<div>
 			<h1 className='mb-6 text-2xl font-semibold text-cream'>Użytkownicy</h1>
 			<div className='rounded-lg border border-line bg-panel'>
-				<div className='grid grid-cols-[2fr_1fr_1fr_1fr] gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
-					<span>Serwisant</span>
+				<div className='grid grid-cols-[2fr_2fr] gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
+					<span>Login</span>
 					<span>Rola</span>
-					<span>Status</span>
-					<span>Ostatnia aktywność</span>
 				</div>
-				{MOCK_TECHNICIANS.map((tech) => (
+				{isLoading && <div className='px-4 py-3 text-sm text-cream/50'>Ładowanie…</div>}
+				{!isLoading && (users ?? []).length === 0 && (
+					<div className='px-4 py-3 text-sm text-cream/50'>Brak użytkowników.</div>
+				)}
+				{(users ?? []).map((user) => (
 					<div
-						key={tech.name}
-						className='grid grid-cols-[2fr_1fr_1fr_1fr] items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80'>
-						<span className='text-cream'>{tech.name}</span>
-						<span>{tech.role}</span>
-						<span className={tech.online ? 'text-emerald-300' : 'text-cream/50'}>
-							{tech.online ? 'Online' : 'Offline'}
-						</span>
-						<span className='text-xs text-cream/50'>{tech.lastActive}</span>
+						key={user.id}
+						className='grid grid-cols-[2fr_2fr] items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 last:border-b-0'>
+						<span className='text-cream'>{user.username}</span>
+						<span>{ORG_ROLE_LABELS[user.org_role] ?? user.org_role}</span>
 					</div>
 				))}
 			</div>

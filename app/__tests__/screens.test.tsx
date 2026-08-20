@@ -370,14 +370,12 @@ describe('tab screens', () => {
 		);
 		mockSearchParams = {};
 		mockWindowDimensions = { width: 900, height: 700 };
-		process.env.EXPO_PUBLIC_AUTH_TOKEN = 'test-token';
 		global.fetch = jest.fn();
 		jest.spyOn(console, 'log').mockImplementation(() => {});
 	});
 
 	afterEach(() => {
 		jest.restoreAllMocks();
-		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
 	});
 
 	test('tab layout hides the tab bar and status bar', () => {

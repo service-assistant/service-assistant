@@ -42,3 +42,12 @@ export interface Attachment {
 	ingest_finished_at: string | null
 	ingest_updated_at: string | null
 }
+
+export interface User {
+	id: number
+	organization_id: number
+	organization_slug: string
+	username: string
+	app_role: string
+	org_role: string
+}

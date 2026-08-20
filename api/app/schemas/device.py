@@ -4,9 +4,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class DeviceCreate(BaseModel):
-    category_id: int | None = Field(
-        default=None,
-        description="ID of the category this device belongs to, or `null` for none.",
+    category_id: int = Field(
+        description="ID of the category this device belongs to.",
         examples=[2],
     )
     name: str = Field(
@@ -26,7 +25,9 @@ class DeviceCreate(BaseModel):
 
 class DeviceUpdate(BaseModel):
     category_id: int | None = Field(
-        default=None, description="New category ID.", examples=[2]
+        default=None,
+        description="New category ID. Devices must always belong to a category.",
+        examples=[2],
     )
     name: str | None = Field(
         default=None, description="New device name.", examples=["Toyota 8FBE20"]
@@ -58,7 +59,7 @@ class DeviceRead(BaseModel):
         description="Publicly accessible URL of the device image.",
         examples=["https://example.com/images/toyota-8fbe20.jpg"],
     )
-    category_id: int | None = Field(
+    category_id: int = Field(
         description="ID of the category this device belongs to.", examples=[2]
     )
     created_at: datetime = Field(description="Timestamp when the device was created.")

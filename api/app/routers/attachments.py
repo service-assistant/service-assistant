@@ -3,11 +3,11 @@ import mimetypes
 from pathlib import Path
 
 import fitz
-from app.dependencies.attachments import AttachmentDependency
+from app.dependencies.auth import CurrentOrganizationDependency
 from app.dependencies.database import DbSessionDependency
-from app.dependencies.devices import DeviceDependency
+from app.dependencies.entities import AttachmentDependency, DeviceDependency
 from app.dependencies.settings import SettingsDependency
-from app.models import Attachment, AttachmentDevice, Device
+from app.repositories import AttachmentRepository
 from app.schemas import AttachmentRead, DeviceRead
 from app.services.attachments import save_attachment
 from app.services.ingestion_queue import cancel_ingestion, enqueue_ingestion, is_active
@@ -22,7 +22,6 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse
-from sqlalchemy import select
 
 router = APIRouter()
 
@@ -41,9 +40,10 @@ router = APIRouter()
         "states."
     ),
 )
-async def list_attachments(session: DbSessionDependency):
-    result = await session.scalars(select(Attachment))
-    return result.all()
+async def list_attachments(
+    session: DbSessionDependency, organization_id: CurrentOrganizationDependency
+):
+    return await AttachmentRepository(session, organization_id).list()
 
 
 @router.post(
@@ -64,6 +64,7 @@ async def list_attachments(session: DbSessionDependency):
 async def create_attachment(
     settings: SettingsDependency,
     session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
     files: list[UploadFile] = File(
         default=[], description="PDF file(s) to upload (repeatable form field)."
     ),
@@ -80,6 +81,7 @@ async def create_attachment(
             session=session,
             file=upload,
             device_ids=device_ids,
+            organization_id=organization_id,
         )
         for upload in files
     ]
@@ -320,13 +322,11 @@ async def cancel_attachment_ingestion(
 async def list_attachment_devices(
     attachment: AttachmentDependency,
     session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    result = await session.execute(
-        select(Device)
-        .join(AttachmentDevice)
-        .where(AttachmentDevice.attachment_id == attachment.id)
+    return await AttachmentRepository(session, organization_id).list_devices(
+        attachment.id
     )
-    return result.scalars().all()
 
 
 @router.post(
@@ -340,16 +340,11 @@ async def link_device(
     attachment: AttachmentDependency,
     device: DeviceDependency,
     session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    existing = await session.execute(
-        select(AttachmentDevice).where(
-            AttachmentDevice.attachment_id == attachment.id,
-            AttachmentDevice.device_id == device.id,
-        )
+    await AttachmentRepository(session, organization_id).link_device(
+        attachment.id, device.id
     )
-    if not existing.scalars().first():
-        session.add(AttachmentDevice(attachment_id=attachment.id, device_id=device.id))
-        await session.commit()
 
 
 @router.delete(
@@ -363,14 +358,8 @@ async def unlink_device(
     attachment: AttachmentDependency,
     device: DeviceDependency,
     session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    result = await session.execute(
-        select(AttachmentDevice).where(
-            AttachmentDevice.attachment_id == attachment.id,
-            AttachmentDevice.device_id == device.id,
-        )
+    await AttachmentRepository(session, organization_id).unlink_device(
+        attachment.id, device.id
     )
-    link = result.scalars().first()
-    if link:
-        await session.delete(link)
-        await session.commit()

@@ -126,3 +126,32 @@ export interface BenchmarkDocumentStatus {
 	missing: string[]
 	[key: string]: unknown
 }
+
+export interface OrganizationRead {
+	id: number
+	name: string
+	slug: string
+	created_at: string
+	updated_at: string
+}
+
+export interface OrganizationCreate {
+	name: string
+	slug: string
+	admin_username: string
+	admin_password: string
+}
+
+export interface UserRead {
+	id: number
+	organization_id: number
+	organization_slug: string
+	username: string
+	app_role: string
+	org_role: string
+}
+
+export interface OrganizationCreateResponse {
+	organization: OrganizationRead
+	admin_user: UserRead
+}

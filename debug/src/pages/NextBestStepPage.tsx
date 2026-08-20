@@ -18,7 +18,7 @@ import {
 } from '@mantine/core'
 import { useMemo, useState } from 'react'
 import { useDevices } from '@/hooks/useDevices'
-import { useCreateThread } from '@/hooks/useThreads'
+import { useCreateThread } from '@/hooks/useNextBestStep'
 import { API_URL } from '@/lib/api'
 import {
 	computeNbsScore,
@@ -288,12 +288,15 @@ function DebugChatPanel({ deviceId }: { deviceId: number | null }) {
 		setRouteDecision(null)
 
 		try {
-			const response = await fetch(`${API_URL}/api/threads/${threadId}/messages?debug=true`, {
-				method: 'POST',
-				credentials: 'include',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ content: question, diagnostic_mode_enabled: true }),
-			})
+			const response = await fetch(
+				`${API_URL}/api/admin/next-best-step/threads/${threadId}/messages`,
+				{
+					method: 'POST',
+					credentials: 'include',
+					headers: { 'Content-Type': 'application/json', 'X-Auth-Scope': 'admin' },
+					body: JSON.stringify({ content: question, diagnostic_mode_enabled: true }),
+				},
+			)
 
 			if (!response.ok || !response.body) {
 				throw new Error(`Błąd serwera: ${response.status}`)
@@ -413,6 +416,11 @@ export function NextBestStepPage() {
 	return (
 		<Stack gap='md'>
 			<Title order={2}>Next Best Step</Title>
+
+			<Alert color='blue' variant='light'>
+				Działa wyłącznie na danych organizacji „system" — nie na danych rzeczywistych
+				klientów.
+			</Alert>
 
 			<Select
 				label='Urządzenie'

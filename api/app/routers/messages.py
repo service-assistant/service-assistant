@@ -1,9 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.database import get_session
+from app.dependencies.auth import CurrentOrganizationDependency
+from app.dependencies.database import DbSessionDependency
+from app.dependencies.entities import MessageDependency
+from app.repositories import MessageRepository
 from app.schemas import ChunkRead
+from fastapi import APIRouter
 
 router = APIRouter()
 
@@ -20,34 +20,8 @@ router = APIRouter()
     responses={404: {"description": "Message not found"}},
 )
 async def get_message_chunks(
-    message_id: int,
-    session: AsyncSession = Depends(get_session),
+    message: MessageDependency,
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    exists = await session.execute(
-        text("SELECT 1 FROM messages WHERE id = :id"),
-        {"id": message_id},
-    )
-    if not exists.fetchone():
-        raise HTTPException(status_code=404, detail="Message not found")
-
-    result = await session.execute(
-        text("""
-            SELECT c.id, c.attachment_id, c.content, c.metadata, c.created_at, c.updated_at
-            FROM chunks c
-            JOIN chunks_messages cm ON c.id = cm.chunk_id
-            WHERE cm.message_id = :message_id
-        """),
-        {"message_id": message_id},
-    )
-    rows = result.fetchall()
-    return [
-        ChunkRead(
-            id=row[0],
-            attachment_id=row[1],
-            content=row[2],
-            metadata=row[3],
-            created_at=row[4],
-            updated_at=row[5],
-        )
-        for row in rows
-    ]
+    return await MessageRepository(session, organization_id).list_chunks(message.id)

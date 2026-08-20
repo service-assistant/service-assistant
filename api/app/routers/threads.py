@@ -1,31 +1,20 @@
 import asyncio
 import json
-import time
-from typing import Annotated, Any
-
-from fastapi import (
-    APIRouter,
-    Depends,
-    File,
-    Form,
-    HTTPException,
-    Query,
-    UploadFile,
-    status,
-)
-from fastapi.responses import StreamingResponse
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from contextlib import suppress
+from typing import Annotated
 
 from app.config import Settings, get_settings
 from app.database import get_session
-from app.models import (
-    ChatThread,
-    ChunkMessage,
-    Device,
-    Message,
-    MessageSender,
+from app.dependencies.auth import CurrentOrganizationDependency
+from app.dependencies.database import DbSessionDependency
+from app.dependencies.entities import ThreadDependency
+from app.models import ChatThread
+from app.repositories import (
+    DeviceRepository,
+    MessageRepository,
+    SessionRepository,
+    ThreadRepository,
+    UserRepository,
 )
 from app.schemas import (
     ChatThreadRead,
@@ -36,20 +25,30 @@ from app.schemas import (
     TranscriptDecision,
     TranscriptResponse,
 )
-from app.services import (
-    llm,
-    message_router,
-    next_best_step,
-    photo_context,
-    retrieval,
-    streaming,
-    stt,
-    voice_query_selector,
+from app.services import chat, photo_context, stt, voice_query_selector
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
 )
-from fastapi import WebSocket, WebSocketDisconnect
-from contextlib import suppress
+from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
+# WebSocket handshakes carry no cookies/Authorization header, so this route
+# can't use the cookie/header-based auth dependency chain (get_current_user
+# reads from `Request`) — it authenticates via a `token` query param instead
+# and does its own role check. Kept on a separate router so the REST router
+# above can carry a single router-level `Depends(require_org_admin)` in
+# main.py without applying it here.
+websocket_router = APIRouter()
 
 _ALLOWED_PHOTO_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 _MAX_PHOTO_BYTES = 10 * 1024 * 1024
@@ -65,16 +64,13 @@ _MAX_PHOTO_BYTES = 10 * 1024 * 1024
 )
 async def create_thread(
     body: ThreadCreate,
-    session: AsyncSession = Depends(get_session),
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    device = await session.get(Device, body.device_id)
-    if not device:
+    if not await DeviceRepository(session, organization_id).get(body.device_id):
         raise HTTPException(status_code=404, detail="Device not found")
     thread = ChatThread(**body.model_dump())
-    session.add(thread)
-    await session.commit()
-    await session.refresh(thread)
-    return thread
+    return await ThreadRepository(session, organization_id).add(thread)
 
 
 @router.post(
@@ -87,14 +83,11 @@ async def create_thread(
     ),
 )
 async def create_photo_context(
-    thread_id: int,
+    thread: ThreadDependency,
     settings: Annotated[Settings, Depends(get_settings)],
     question: str = Form(default=""),
     photos: list[UploadFile] = File(...),
-    session: AsyncSession = Depends(get_session),
 ):
-    if not await session.get(ChatThread, thread_id):
-        raise HTTPException(status_code=404, detail="Thread not found")
     if not photos or len(photos) > photo_context.MAX_CHAT_PHOTOS:
         raise HTTPException(
             status_code=400,
@@ -138,9 +131,11 @@ async def create_photo_context(
     summary="List chat threads",
     description="Returns all chat threads across all devices.",
 )
-async def list_threads(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(ChatThread))
-    return result.scalars().all()
+async def list_threads(
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
+):
+    return await ThreadRepository(session, organization_id).list()
 
 
 @router.get(
@@ -150,10 +145,7 @@ async def list_threads(session: AsyncSession = Depends(get_session)):
     description="Returns a single chat thread by its ID.",
     responses={404: {"description": "Thread not found"}},
 )
-async def get_thread(thread_id: int, session: AsyncSession = Depends(get_session)):
-    thread = await session.get(ChatThread, thread_id)
-    if not thread:
-        raise HTTPException(status_code=404, detail="Thread not found")
+async def get_thread(thread: ThreadDependency):
     return thread
 
 
@@ -164,39 +156,12 @@ async def get_thread(thread_id: int, session: AsyncSession = Depends(get_session
     description="Permanently deletes a thread and all its messages (cascade).",
     responses={404: {"description": "Thread not found"}},
 )
-async def delete_thread(thread_id: int, session: AsyncSession = Depends(get_session)):
-    thread = await session.get(ChatThread, thread_id)
-    if not thread:
-        raise HTTPException(status_code=404, detail="Thread not found")
-    await session.delete(thread)
-    await session.commit()
-
-
-def _sse(event: str, payload: object) -> str:
-    if isinstance(payload, str):
-        data = payload
-    else:
-        data = json.dumps(payload, ensure_ascii=False)
-    normalized_data = data.replace("\r\n", "\n").replace("\r", "\n")
-    data_lines = "\n".join(f"data: {line}" for line in normalized_data.split("\n"))
-    return f"event: {event}\n{data_lines}\n\n"
-
-
-_CONTINUATION_HINTS = {"kontynuuj", "dalej", "rozwiń", "więcej", "ciągnij"}
-
-
-def _looks_like_continuation(content: str) -> bool:
-    lower = content.lower().strip()
-    return len(lower.split()) <= 4 or any(hint in lower for hint in _CONTINUATION_HINTS)
-
-
-def _is_explicit_continuation(content: str) -> bool:
-    normalized = content.lower().strip().rstrip(".!?")
-    return normalized in {"co dalej", "dalej", "kontynuuj"}
-
-
-def _diagnostic_plan_cache_key(message: Message) -> str:
-    return f"{message.thread_id}:{message.id}"
+async def delete_thread(
+    thread: ThreadDependency,
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
+):
+    await ThreadRepository(session, organization_id).delete(thread)
 
 
 @router.post(
@@ -216,425 +181,18 @@ def _diagnostic_plan_cache_key(message: Message) -> str:
     },
 )
 async def create_message(
-    thread_id: int,
+    thread: ThreadDependency,
     body: MessageCreate,
     settings: Annotated[Settings, Depends(get_settings)],
-    session: AsyncSession = Depends(get_session),
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
     debug: bool = Query(
         default=False,
         description="Emit diagnostic pipeline details as `debug` SSE events.",
     ),
 ):
-    started_at = time.perf_counter()
-    thread = await session.get(ChatThread, thread_id)
-    if not thread:
-        raise HTTPException(status_code=404, detail="Thread not found")
-
-    device_id = thread.device_id
-    rag_question = photo_context.build_augmented_rag_query(
-        body.content, body.photo_context
-    )
-    rag_photo_context = photo_context.build_rag_photo_context(body.photo_context)
-
-    recent_messages = list(
-        (
-            await session.scalars(
-                select(Message)
-                .where(Message.thread_id == thread.id)
-                .order_by(Message.created_at.desc())
-                .limit(20)
-                .options(selectinload(Message.chunks))
-            )
-        ).all()
-    )
-    latest_system_message = next(
-        (
-            message
-            for message in recent_messages
-            if message.sender == MessageSender.assistant
-        ),
-        None,
-    )
-    routing_history: list[message_router.RoutingHistoryMessage] = [
-        {
-            "id": message.id,
-            "sender": message.sender.value,
-            "content": message.content[-3000:],
-            "has_chunks": bool(message.chunks),
-        }
-        for message in reversed(recent_messages)
-    ]
-
-    route_decision = message_router.RouteDecision(
-        route=message_router.MessageRoute.standard_query,
-        confidence=1,
-        recognized_problem=None,
-        diagnostic_message_id=None,
-    )
-    if body.diagnostic_mode_enabled:
-        route_decision = await message_router.route_message(
-            body.content,
-            settings,
-            recent_messages=routing_history,
-        )
-        if next_best_step.requests_next_action(body.content):
-            cached_message_and_plan = next(
-                (
-                    (message, plan)
-                    for message in recent_messages
-                    if message.sender == MessageSender.assistant and message.chunks
-                    if (
-                        plan := next_best_step.get_cached_diagnostic_plan(
-                            _diagnostic_plan_cache_key(message)
-                        )
-                    )
-                ),
-                None,
-            )
-            if cached_message_and_plan:
-                cached_message, cached_plan = cached_message_and_plan
-                route_decision = message_router.RouteDecision(
-                    route=message_router.MessageRoute.diagnostic_followup,
-                    confidence=1,
-                    recognized_problem=cached_plan.problem,
-                    diagnostic_message_id=cached_message.id,
-                )
-    routed_at = time.perf_counter()
-    diagnostic_route = route_decision.route
-    diagnostic_message = next(
-        (
-            message
-            for message in recent_messages
-            if message.id == route_decision.diagnostic_message_id
-            and message.sender == MessageSender.assistant
-            and message.chunks
-        ),
-        None,
-    )
-    current_diagnostic_plan: next_best_step.DiagnosticPlan | None = None
-    if diagnostic_message:
-        current_diagnostic_plan = next_best_step.get_cached_diagnostic_plan(
-            _diagnostic_plan_cache_key(diagnostic_message)
-        )
-    if (
-        diagnostic_route == message_router.MessageRoute.diagnostic_followup
-        and current_diagnostic_plan is None
-    ):
-        diagnostic_route = message_router.MessageRoute.standard_query
-
-    might_continue = (
-        not body.photo_context
-        and latest_system_message is not None
-        and _looks_like_continuation(body.content)
-    )
-    has_promised_continuation = bool(
-        latest_system_message
-        and (
-            latest_system_message.has_continuation
-            or llm.has_continuation_marker(latest_system_message.content)
-        )
-    )
-    standard_completion_answer = (
-        llm.DOCUMENTATION_EXHAUSTED_ANSWER
-        if not body.diagnostic_mode_enabled
-        and not body.photo_context
-        and latest_system_message
-        and _is_explicit_continuation(body.content)
-        and not has_promised_continuation
-        else None
-    )
-    retrieval_trace: dict[str, Any] = {}
-
-    if standard_completion_answer:
-        is_continuation = False
-        fresh_chunks = []
-    elif current_diagnostic_plan and diagnostic_message:
-        is_continuation = False
-        fresh_chunks = [
-            {
-                "id": chunk.id,
-                "content": chunk.content,
-                "attachment_id": chunk.attachment_id,
-                "extra_metadata": chunk.extra_metadata,
-            }
-            for chunk in diagnostic_message.chunks
-        ]
-    elif might_continue and not _is_explicit_continuation(body.content):
-        is_continuation, fresh_chunks = await asyncio.gather(
-            llm.is_message_continuation_request(body.content, settings),
-            retrieval.retrieve_context_chunks(
-                session,
-                rag_question,
-                device_id=device_id,
-                settings=settings,
-                diagnostic_mode_2002=body.diagnostic_mode_enabled,
-                retrieval_trace=retrieval_trace,
-            ),
-        )
-    else:
-        is_continuation = might_continue
-        fresh_chunks = await retrieval.retrieve_context_chunks(
-            session,
-            rag_question,
-            device_id=device_id,
-            settings=settings,
-            diagnostic_mode_2002=body.diagnostic_mode_enabled,
-            retrieval_trace=retrieval_trace,
-        )
-
-    if is_continuation and latest_system_message and latest_system_message.chunks:
-        retrieved_chunks = [
-            {
-                "id": c.id,
-                "content": c.content,
-                "attachment_id": c.attachment_id,
-                "extra_metadata": c.extra_metadata,
-            }
-            for c in latest_system_message.chunks
-        ]
-    else:
-        retrieved_chunks = fresh_chunks
-    retrieved_at = time.perf_counter()
-
-    if not retrieval_trace:
-        retrieval_trace = {
-            "reranker_enabled": False,
-            "reranker_status": "not_run",
-            "before_reranker": fresh_chunks,
-            "after_reranker": retrieved_chunks,
-        }
-
-    context_chunks = [chunk["content"] for chunk in retrieved_chunks]
-
-    diagnostic_plan: next_best_step.DiagnosticPlan | None = None
-    if diagnostic_route == message_router.MessageRoute.start_diagnostic:
-        diagnostic_problem = route_decision.recognized_problem or body.content
-        diagnostic_plan = await next_best_step.build_diagnostic_plan(
-            context_chunks, diagnostic_problem, settings
-        )
-    elif (
-        diagnostic_route == message_router.MessageRoute.diagnostic_followup
-        and diagnostic_message
-        and current_diagnostic_plan
-    ):
-        (
-            is_diagnostic_result,
-            followup_plan,
-        ) = await next_best_step.build_followup_plan(
-            current_diagnostic_plan,
-            diagnostic_message.content,
-            body.content,
-            settings,
-        )
-        if is_diagnostic_result:
-            diagnostic_plan = followup_plan
-    planned_at = time.perf_counter()
-    response_plan = diagnostic_plan.current_action_only() if diagnostic_plan else None
-
-    user_message = Message(
-        content=body.content,
-        thread_id=thread_id,
-        sender=MessageSender.user,
-    )
-    session.add(user_message)
-    await session.commit()
-
-    continuation_hint = (
-        llm.continuation_target(latest_system_message.content)
-        if is_continuation and latest_system_message
-        else ""
-    )
-
-    async def event_stream():
-        answer_parts: list[str] = []
-
-        if debug:
-            yield _sse(
-                "debug",
-                {
-                    "step": "route",
-                    "label": "Router wiadomości",
-                    "duration_ms": round((routed_at - started_at) * 1000),
-                    "data": {
-                        **route_decision.model_dump(mode="json"),
-                        "effective_route": diagnostic_route.value,
-                        "history_messages": len(routing_history),
-                    },
-                },
-            )
-            yield _sse(
-                "debug",
-                {
-                    "step": "retrieval",
-                    "label": "Retrieval dokumentacji",
-                    "duration_ms": round((retrieved_at - routed_at) * 1000),
-                    "data": {
-                        "device_id": device_id,
-                        "photo_context": [
-                            observation.model_dump(mode="json")
-                            for observation in body.photo_context
-                        ],
-                        "continuation": is_continuation,
-                        "reranker_enabled": retrieval_trace.get(
-                            "reranker_enabled", False
-                        ),
-                        "reranker_status": retrieval_trace.get(
-                            "reranker_status", "not_run"
-                        ),
-                        "before_reranker": [
-                            {
-                                "id": chunk["id"],
-                                "attachment_id": chunk["attachment_id"],
-                                "preview": chunk["content"][:1000],
-                                "metadata": chunk.get("extra_metadata") or {},
-                            }
-                            for chunk in retrieval_trace.get("before_reranker", [])
-                        ],
-                        "after_reranker": [
-                            {
-                                "id": chunk["id"],
-                                "attachment_id": chunk["attachment_id"],
-                                "preview": chunk["content"][:1000],
-                                "metadata": chunk.get("extra_metadata") or {},
-                            }
-                            for chunk in retrieval_trace.get("after_reranker", [])
-                        ],
-                        "chunks": [
-                            {
-                                "id": chunk["id"],
-                                "attachment_id": chunk["attachment_id"],
-                                "preview": chunk["content"][:500],
-                                "metadata": chunk.get("extra_metadata") or {},
-                            }
-                            for chunk in retrieved_chunks
-                        ],
-                    },
-                },
-            )
-            yield _sse(
-                "debug",
-                {
-                    "step": "plan",
-                    "label": "Next Best Step",
-                    "duration_ms": round((planned_at - retrieved_at) * 1000),
-                    "data": {
-                        "active": diagnostic_plan is not None,
-                        **(
-                            diagnostic_plan.model_dump(mode="json")
-                            if diagnostic_plan
-                            else {}
-                        ),
-                    },
-                },
-            )
-        yield _sse("route", diagnostic_route.value)
-
-        generation_started_at = time.perf_counter()
-        if standard_completion_answer:
-            answer_parts.append(standard_completion_answer)
-            yield _sse("chunk", standard_completion_answer)
-        else:
-            stream_limiter = streaming.ChecklistStreamLimiter()
-            async for chunk in llm.stream_query(
-                session,
-                thread_id,
-                body.content,
-                context_chunks,
-                settings,
-                exclude_message_id=user_message.id,
-                diagnostic_plan=response_plan,
-                continuation_requested=is_continuation,
-                continuation_hint=continuation_hint,
-                photo_context=rag_photo_context,
-            ):
-                for visible_chunk in stream_limiter.feed(chunk):
-                    answer_parts.append(visible_chunk)
-                    yield _sse("chunk", visible_chunk)
-
-            for visible_chunk in stream_limiter.finish():
-                answer_parts.append(visible_chunk)
-                yield _sse("chunk", visible_chunk)
-        generation_duration_ms = round(
-            (time.perf_counter() - generation_started_at) * 1000
-        )
-
-        if debug:
-            yield _sse(
-                "debug",
-                {
-                    "step": "generation",
-                    "label": "Generowanie odpowiedzi",
-                    "duration_ms": generation_duration_ms,
-                    "data": {"status": "completed"},
-                },
-            )
-
-        answer = "".join(answer_parts)
-        answer = llm.normalize_numbered_checklist(answer)
-        answer = llm.promote_bare_checklist(answer)
-        answer = llm.limit_checklist_items(answer)
-        if is_continuation:
-            answer = llm.ensure_continuation_intro(answer)
-        answer = llm.clean_completion_notice(answer)
-        answer = llm.normalize_warning_lists(answer)
-        answer = llm.order_warnings_before_checklist(answer)
-        has_continuation = llm.has_continuation_marker(answer) or bool(
-            body.diagnostic_mode_enabled
-            and diagnostic_plan
-            and diagnostic_plan.has_next_action()
-        )
-
-        assistant_message = Message(
-            content=answer,
-            thread_id=thread_id,
-            sender=MessageSender.assistant,
-            has_continuation=has_continuation,
-            router_decision=diagnostic_route.value,
-        )
-        session.add(assistant_message)
-        await session.flush()
-
-        if diagnostic_plan:
-            next_best_step.cache_diagnostic_plan(
-                _diagnostic_plan_cache_key(assistant_message), diagnostic_plan
-            )
-
-        if not llm.is_no_source_answer(answer) and not llm.is_completion_only_answer(
-            answer
-        ):
-            for chunk in retrieved_chunks:
-                session.add(
-                    ChunkMessage(message_id=assistant_message.id, chunk_id=chunk["id"])
-                )
-
-        await session.commit()
-
-        if debug:
-            yield _sse(
-                "debug",
-                {
-                    "step": "complete",
-                    "label": "Odpowiedź zapisana",
-                    "duration_ms": round((time.perf_counter() - planned_at) * 1000),
-                    "data": {
-                        "message_id": assistant_message.id,
-                        "answer_characters": len(answer),
-                        "source_count": len(retrieved_chunks),
-                    },
-                },
-            )
-
-        yield _sse(
-            "message", MessageRead.model_validate(assistant_message).model_dump_json()
-        )
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "X-Accel-Buffering": "no",
-        },
+    return await chat.stream_chat_message(
+        thread, body, settings, session, organization_id, debug
     )
 
 
@@ -653,15 +211,10 @@ async def create_message(
     },
 )
 async def transcribe_message(
-    thread_id: int,
+    thread: ThreadDependency,
     audio: UploadFile = File(..., description="Recorded audio (e.g. m4a)."),
     settings: Annotated[Settings, Depends(get_settings)] = None,  # type: ignore
-    session: AsyncSession = Depends(get_session),
 ):
-    thread = await session.get(ChatThread, thread_id)
-    if not thread:
-        raise HTTPException(status_code=404, detail="Thread not found")
-
     audio_bytes = await audio.read()
     content_type = audio.content_type or "audio/m4a"
 
@@ -695,7 +248,7 @@ async def transcribe_message(
     )
 
 
-@router.websocket("/{thread_id}/messages/transcribe-stream")
+@websocket_router.websocket("/{thread_id}/messages/transcribe-stream")
 async def transcribe_stream(
     thread_id: int,
     websocket: WebSocket,
@@ -705,13 +258,23 @@ async def transcribe_stream(
     encoding: str = "linear16",
     sample_rate: int = 16000,
 ):
-    if token != settings.auth_token:
+    # No cookies/Authorization header for a raw WebSocket handshake from the
+    # Expo app, so the session token travels as a query param instead — same
+    # spot the old shared AUTH_TOKEN used to go.
+    user_session = await SessionRepository(session).get_active_session_by_token(token)
+    user = (
+        await UserRepository(session).get_by_id(user_session.user_id)
+        if user_session
+        else None
+    )
+    if user is None:
         await websocket.close(code=1008, reason="Unauthorized")
         return
+    target_organization_id = user.organization_id
 
     await websocket.accept()
 
-    thread = await session.get(ChatThread, thread_id)
+    thread = await ThreadRepository(session, target_organization_id).get(thread_id)
     if not thread:
         await websocket.send_json({"type": "error", "message": "Thread not found"})
         await websocket.close()
@@ -762,14 +325,9 @@ async def transcribe_stream(
     description="Returns all messages in a thread ordered chronologically (oldest first).",
     responses={404: {"description": "Thread not found"}},
 )
-async def list_messages(thread_id: int, session: AsyncSession = Depends(get_session)):
-    thread = await session.get(ChatThread, thread_id)
-    if not thread:
-        raise HTTPException(status_code=404, detail="Thread not found")
-    return (
-        await session.scalars(
-            select(Message)
-            .where(Message.thread_id == thread_id)
-            .order_by(Message.created_at)
-        )
-    ).all()
+async def list_messages(
+    thread: ThreadDependency,
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
+):
+    return await MessageRepository(session, organization_id).list_for_thread(thread.id)

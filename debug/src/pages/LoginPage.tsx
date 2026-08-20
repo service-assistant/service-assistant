@@ -1,4 +1,14 @@
-import { Alert, Button, Center, Paper, PasswordInput, Stack, Text, Title } from '@mantine/core'
+import {
+	Alert,
+	Button,
+	Center,
+	Paper,
+	PasswordInput,
+	Stack,
+	Text,
+	TextInput,
+	Title,
+} from '@mantine/core'
 import { useNavigate } from '@tanstack/react-router'
 import { type FormEvent, useEffect, useState } from 'react'
 import { useAuth } from '@/auth/use-auth'
@@ -6,7 +16,8 @@ import { useAuth } from '@/auth/use-auth'
 export function LoginPage() {
 	const { authenticated, login } = useAuth()
 	const navigate = useNavigate()
-	const [token, setToken] = useState('')
+	const [username, setUsername] = useState('')
+	const [password, setPassword] = useState('')
 	const [error, setError] = useState<string | null>(null)
 	const [pending, setPending] = useState(false)
 
@@ -19,7 +30,7 @@ export function LoginPage() {
 		setPending(true)
 		setError(null)
 		try {
-			await login(token)
+			await login(username, password)
 			void navigate({ to: '/' })
 		} catch (err) {
 			setError(err instanceof Error ? err.message : 'Błąd logowania.')
@@ -35,21 +46,31 @@ export function LoginPage() {
 					<div>
 						<Title order={3}>Asystent Serwisanta — Debug</Title>
 						<Text c='dimmed' size='sm'>
-							Zaloguj się tokenem dostępu, aby zobaczyć narzędzia deweloperskie.
+							Zaloguj się jako administrator aplikacji, aby zobaczyć narzędzia
+							deweloperskie.
 						</Text>
 					</div>
-					<PasswordInput
+					<TextInput
 						autoFocus
-						label='Token dostępu'
-						value={token}
-						onChange={(e) => setToken(e.currentTarget.value)}
+						label='Login'
+						value={username}
+						onChange={(e) => setUsername(e.currentTarget.value)}
+					/>
+					<PasswordInput
+						label='Hasło'
+						value={password}
+						onChange={(e) => setPassword(e.currentTarget.value)}
 					/>
 					{error && (
 						<Alert color='red' variant='light'>
 							{error}
 						</Alert>
 					)}
-					<Button type='submit' loading={pending} disabled={!token} fullWidth>
+					<Button
+						type='submit'
+						loading={pending}
+						disabled={!username || !password}
+						fullWidth>
 						Zaloguj
 					</Button>
 				</Stack>

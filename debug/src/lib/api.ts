@@ -13,6 +13,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 		...options,
 		credentials: 'include',
 		headers: {
+			'X-Auth-Scope': 'admin',
 			...(options.body ? { 'Content-Type': 'application/json' } : {}),
 			...options.headers,
 		},

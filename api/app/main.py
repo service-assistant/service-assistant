@@ -1,29 +1,29 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.openapi.utils import get_openapi
-from fastapi.responses import JSONResponse
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.routers import (
     attachments,
     auth,
-    benchmark,
     categories,
     chunks,
     devices,
     images,
-    jobs,
     messages,
     nameplates,
     threads,
     tts,
+    users,
 )
+from app.routers.admin import auth as admin_auth
+from app.routers.admin import benchmark, jobs, next_best_step, organizations
+from fastapi import Depends, FastAPI, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
 from .database import get_session
+from .dependencies.auth import require_app_admin, require_org_admin
 from .procrastinate_app import app as procrastinate_app
 
 
@@ -42,56 +42,14 @@ app = FastAPI(
     description=(
         "REST API for the Service Assistant — a RAG-powered support tool that lets forklift mechanics "
         "upload service manuals (PDFs) and ask technical questions about specific forklifts in a chat interface. "
-        "All endpoints except `/health`, `/docs`, `/redoc`, `/openapi.json`, and `/auth` require a Bearer token."
+        "All endpoints except `/health`, `/docs`, `/redoc`, `/openapi.json`, and `/auth` require a valid session "
+        "(cookie or `Authorization: Bearer <session_token>`), obtained via `POST /auth/login`."
     ),
 )
 
 settings = get_settings()
 
 
-def custom_openapi():
-    if app.openapi_schema:
-        return app.openapi_schema
-    schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
-    schema.setdefault("components", {})["securitySchemes"] = {
-        "BearerAuth": {"type": "http", "scheme": "bearer"}
-    }
-    schema["security"] = [{"BearerAuth": []}]
-    app.openapi_schema = schema
-    return schema
-
-
-app.openapi = custom_openapi
-
-OPEN_PATHS = {"/docs", "/redoc", "/openapi.json", "/health", "/auth"}
-
-
-@app.middleware("http")
-async def bearer_auth_middleware(request: Request, call_next):
-    path = request.url.path
-
-    if any(path == prefix or path.startswith(f"{prefix}/") for prefix in OPEN_PATHS):
-        return await call_next(request)
-
-    auth_header = request.headers.get("Authorization")
-    expected = f"Bearer {settings.auth_token}"
-
-    if (
-        auth_header != expected
-        and request.cookies.get("admin_token") != settings.auth_token
-    ):
-        return JSONResponse(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            content={"detail": "Unauthorized"},
-        )
-
-    return await call_next(request)
-
-
-# Keep CORS outside the authentication middleware so browser preflight requests
-# are answered before bearer-token validation. Credentials are enabled (and
-# origins restricted to a known list) because the admin SPA authenticates via
-# the `admin_token` cookie rather than a bundled bearer token.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -102,18 +60,114 @@ app.add_middleware(
 )
 
 
-app.include_router(categories.router, prefix="/api/categories", tags=["Categories"])
-app.include_router(devices.router, prefix="/api/devices", tags=["Devices"])
-app.include_router(attachments.router, prefix="/api/attachments", tags=["Attachments"])
-app.include_router(threads.router, prefix="/api/threads", tags=["Chat Threads"])
-app.include_router(messages.router, prefix="/api/messages", tags=["Messages"])
-app.include_router(nameplates.router, prefix="/api/nameplates", tags=["Nameplates"])
-app.include_router(chunks.router, prefix="/api/chunks", tags=["Chunks"])
-app.include_router(images.router, prefix="/api/images", tags=["Images"])
-app.include_router(tts.router, prefix="/api/tts", tags=["Text-to-Speech"])
-app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
-app.include_router(benchmark.router, prefix="/api/benchmark", tags=["Benchmark"])
-app.include_router(auth.router, prefix="/auth", tags=["Auth"])
+# Public routers
+app.include_router(
+    auth.router,
+    prefix="/auth",
+    tags=["Auth"],
+)
+app.include_router(
+    admin_auth.router,
+    prefix="/admin/auth",
+    tags=["Auth"],
+)
+
+# Org-admin only routers
+app.include_router(
+    users.router,
+    prefix="/api/users",
+    tags=["Users"],
+    dependencies=[Depends(require_org_admin)],
+)
+app.include_router(
+    categories.router,
+    prefix="/api/categories",
+    tags=["Categories"],
+    dependencies=[Depends(require_org_admin)],
+)
+app.include_router(
+    devices.router,
+    prefix="/api/devices",
+    tags=["Devices"],
+    dependencies=[Depends(require_org_admin)],
+)
+app.include_router(
+    attachments.router,
+    prefix="/api/attachments",
+    tags=["Attachments"],
+    dependencies=[Depends(require_org_admin)],
+)
+app.include_router(
+    threads.router,
+    prefix="/api/threads",
+    tags=["Chat Threads"],
+    dependencies=[Depends(require_org_admin)],
+)
+# threads.websocket_router carries the transcribe-stream websocket route,
+# which can't use the cookie/header-based auth dependency chain (no
+# cookies/Authorization header on a raw WS handshake) — it does its own
+# token-query-param auth instead, so it's excluded from the gate above.
+app.include_router(
+    threads.websocket_router,
+    prefix="/api/threads",
+    tags=["Chat Threads"],
+)
+app.include_router(
+    messages.router,
+    prefix="/api/messages",
+    tags=["Messages"],
+    dependencies=[Depends(require_org_admin)],
+)
+app.include_router(
+    nameplates.router,
+    prefix="/api/nameplates",
+    tags=["Nameplates"],
+    dependencies=[Depends(require_org_admin)],
+)
+app.include_router(
+    chunks.router,
+    prefix="/api/chunks",
+    tags=["Chunks"],
+    dependencies=[Depends(require_org_admin)],
+)
+app.include_router(
+    images.router,
+    prefix="/api/images",
+    tags=["Images"],
+    dependencies=[Depends(require_org_admin)],
+)
+app.include_router(
+    tts.router,
+    prefix="/api/tts",
+    tags=["Text-to-Speech"],
+    dependencies=[Depends(require_org_admin)],
+)
+app.include_router(
+    organizations.router,
+    prefix="/api/admin/organizations",
+    tags=["Organizations"],
+    dependencies=[Depends(require_app_admin)],
+)
+
+# App-admin only routers
+app.include_router(
+    jobs.router,
+    prefix="/api/admin/jobs",
+    tags=["Jobs"],
+    dependencies=[Depends(require_app_admin)],
+)
+app.include_router(
+    benchmark.router,
+    prefix="/api/admin/benchmark",
+    tags=["Benchmark"],
+    dependencies=[Depends(require_app_admin)],
+)
+app.include_router(
+    next_best_step.router,
+    prefix="/api/admin/next-best-step",
+    tags=["Next Best Step"],
+    dependencies=[Depends(require_app_admin)],
+)
 
 
 @app.get("/health", include_in_schema=False)

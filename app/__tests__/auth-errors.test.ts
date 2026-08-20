@@ -6,15 +6,10 @@ import {
 	getServiceErrorFeature,
 	throwIfAuthResponseError,
 } from '../utils/auth-errors';
-
-const originalAuthToken = process.env.EXPO_PUBLIC_AUTH_TOKEN;
+import { __setCachedTokenForTests } from '../utils/token-store';
 
 afterEach(() => {
-	if (originalAuthToken === undefined) {
-		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
-	} else {
-		process.env.EXPO_PUBLIC_AUTH_TOKEN = originalAuthToken;
-	}
+	__setCachedTokenForTests(null);
 });
 
 describe('auth error helpers', () => {
@@ -32,14 +27,14 @@ describe('auth error helpers', () => {
 		expect(error.serviceFeature).toBe(AUTH_SERVICE_FEATURE);
 	});
 
-	test('reads configured auth token', () => {
-		process.env.EXPO_PUBLIC_AUTH_TOKEN = 'token-123';
+	test('reads the cached session token', () => {
+		__setCachedTokenForTests('token-123');
 
 		expect(getAuthTokenOrThrow()).toBe('token-123');
 	});
 
-	test('throws service-tagged error when auth token is missing', () => {
-		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
+	test('throws service-tagged error when no session token is cached', () => {
+		__setCachedTokenForTests(null);
 
 		expect(() => getAuthTokenOrThrow()).toThrow('Missing AUTH_TOKEN');
 		try {

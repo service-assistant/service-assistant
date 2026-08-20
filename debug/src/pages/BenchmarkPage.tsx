@@ -229,6 +229,10 @@ export function BenchmarkPage() {
 	return (
 		<Stack gap='md'>
 			<Title order={2}>Benchmark</Title>
+			<Alert color='blue' variant='light'>
+				Działa wyłącznie na danych organizacji „system" — nie na danych rzeczywistych
+				klientów.
+			</Alert>
 			<SetupSection />
 			<DocumentsSection />
 			<CasesSection />

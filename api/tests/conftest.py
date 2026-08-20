@@ -2,11 +2,10 @@ import asyncio
 import sys
 
 import pytest
+from app.database import database_url_with_driver  # noqa: E402
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
-
-from app.database import database_url_with_driver  # noqa: E402
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -33,9 +32,8 @@ def run_migrations():
     # and it doesn't roll them back. If you encounter error because
     # of manually rolling back some migrations, maybe it's worth
     # resetting test db state (make reset-test-db)
-    from alembic.config import Config
-
     from alembic import command
+    from alembic.config import Config
 
     cfg = Config("alembic.ini")
     command.upgrade(cfg, "head")
@@ -57,18 +55,28 @@ async def clean_db(engine):
         await conn.execute(
             text(
                 """
-                TRUNCATE TABLE 
-                    chunks_messages, 
+                TRUNCATE TABLE
+                    chunks_messages,
                     chunks,
-                    attachments_devices, 
-                    messages, 
-                    chat_threads, 
-                    attachments, 
-                    devices, 
-                    categories
+                    attachments_devices,
+                    messages,
+                    chat_threads,
+                    attachments,
+                    devices,
+                    categories,
+                    user_sessions,
+                    users
                 RESTART IDENTITY CASCADE
                 """
             )
+        )
+        # Not part of the TRUNCATE list above: the seeded system/default
+        # organizations (ids 1/2, relied on by DEFAULT_ORGANIZATION_ID and
+        # other tests) must survive the whole session — only delete
+        # test-created ones. Every referencing table is already truncated
+        # above, so this is FK-safe.
+        await conn.execute(
+            text("DELETE FROM organizations WHERE slug NOT IN ('system', 'default')")
         )
 
 
