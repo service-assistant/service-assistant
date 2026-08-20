@@ -2,6 +2,11 @@ from app.models import Chunk
 from tests.routers.factories import create_attachment, create_chunk
 
 
+async def test_member_cannot_list_chunks(member_client):
+    response = await member_client.get("/api/chunks")
+    assert response.status_code == 403
+
+
 async def test_should_list_chunks(client, session):
     attachment = await create_attachment(session)
     await create_chunk(

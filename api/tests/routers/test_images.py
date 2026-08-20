@@ -1,3 +1,14 @@
+async def test_member_can_get_image(member_client, tmp_path):
+    images_dir = tmp_path / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+    img_file = images_dir / "diagram.png"
+    img_file.write_bytes(b"\x89PNG\r\n\x1a\nfake png data")
+
+    response = await member_client.get(f"/api/images/{img_file}")
+
+    assert response.status_code == 200
+
+
 async def test_should_return_image_file_when_path_exists(client, tmp_path):
     images_dir = tmp_path / "images"
     images_dir.mkdir(parents=True, exist_ok=True)

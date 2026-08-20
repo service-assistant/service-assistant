@@ -4,6 +4,28 @@ from app.models import Category
 from tests.routers.factories import create_category, create_device
 
 
+class TestOrgMemberPermissions:
+    async def test_member_can_read_category_tree(self, member_client):
+        response = await member_client.get("/api/categories/tree")
+        assert response.status_code == 200
+
+    async def test_member_cannot_create_category(self, member_client):
+        response = await member_client.post("/api/categories", json={"name": "Linde"})
+        assert response.status_code == 403
+
+    async def test_member_cannot_update_category(self, member_client, session):
+        category = await create_category(session, name="Toyota")
+        response = await member_client.patch(
+            f"/api/categories/{category.id}", json={"name": "Renamed"}
+        )
+        assert response.status_code == 403
+
+    async def test_member_cannot_delete_category(self, member_client, session):
+        category = await create_category(session, name="Toyota")
+        response = await member_client.delete(f"/api/categories/{category.id}")
+        assert response.status_code == 403
+
+
 class TestCreateCategory:
     async def test_should_create_category_when_valid_data_provided(self, client):
         response = await client.post(

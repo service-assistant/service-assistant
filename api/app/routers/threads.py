@@ -5,7 +5,7 @@ from typing import Annotated
 
 from app.config import Settings, get_settings
 from app.database import get_session
-from app.dependencies.auth import CurrentOrganizationDependency
+from app.dependencies.auth import CurrentOrganizationDependency, require_org_member
 from app.dependencies.database import DbSessionDependency
 from app.dependencies.entities import ThreadDependency
 from app.models import ChatThread
@@ -269,6 +269,11 @@ async def transcribe_stream(
     )
     if user is None:
         await websocket.close(code=1008, reason="Unauthorized")
+        return
+    try:
+        require_org_member(user)
+    except HTTPException:
+        await websocket.close(code=1008, reason="Forbidden")
         return
     target_organization_id = user.organization_id
 

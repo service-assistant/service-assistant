@@ -1,12 +1,12 @@
 from datetime import datetime, timezone
 
-from app.dependencies.auth import CurrentOrganizationDependency
+from app.dependencies.auth import CurrentOrganizationDependency, require_org_admin
 from app.dependencies.database import DbSessionDependency
 from app.dependencies.entities import DeviceDependency
 from app.models import Device
 from app.repositories import CategoryRepository, DeviceRepository
 from app.schemas import AttachmentRead, DeviceCreate, DeviceRead, DeviceUpdate
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
 router = APIRouter()
@@ -18,6 +18,7 @@ router = APIRouter()
     response_model=DeviceRead,
     summary="Create a device",
     description="Creates a new device and associates it with a category.",
+    dependencies=[Depends(require_org_admin)],
 )
 async def create_device(
     body: DeviceCreate,
@@ -83,6 +84,7 @@ async def get_device(device: DeviceDependency):
         404: {"description": "Device not found"},
         422: {"description": "category_id cannot be cleared"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
 async def update_device(
     device: DeviceDependency,
@@ -114,6 +116,7 @@ async def update_device(
         404: {"description": "Device not found"},
         409: {"description": "Device is referenced by one or more chat threads"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
 async def delete_device(
     device: DeviceDependency,

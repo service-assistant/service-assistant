@@ -65,6 +65,82 @@ class TestLogin:
         assert response.status_code == 401
 
 
+class TestOrgAdminLogin:
+    async def test_should_authenticate_org_admin_when_credentials_are_correct(
+        self, unauthenticated_client, session
+    ):
+        org = await create_organization(session)
+        await create_user(
+            session,
+            organization_id=org.id,
+            username="alice",
+            password="s3cret-pw",
+            org_role=OrgRole.admin,
+        )
+
+        response = await unauthenticated_client.post(
+            "/auth/admin-login",
+            json={
+                "organization_slug": org.slug,
+                "username": "alice",
+                "password": "s3cret-pw",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["user"]["username"] == "alice"
+        assert body["user"]["org_role"] == "admin"
+        assert response.cookies.get("session_token") == body["token"]
+
+    async def test_should_reject_login_when_user_is_org_member(
+        self, unauthenticated_client, session
+    ):
+        org = await create_organization(session)
+        await create_user(
+            session,
+            organization_id=org.id,
+            username="bob",
+            password="s3cret-pw",
+            org_role=OrgRole.member,
+        )
+
+        response = await unauthenticated_client.post(
+            "/auth/admin-login",
+            json={
+                "organization_slug": org.slug,
+                "username": "bob",
+                "password": "s3cret-pw",
+            },
+        )
+
+        assert response.status_code == 403
+        assert "session_token" not in response.cookies
+
+    async def test_should_reject_login_when_password_is_wrong(
+        self, unauthenticated_client, session
+    ):
+        org = await create_organization(session)
+        await create_user(
+            session,
+            organization_id=org.id,
+            username="alice",
+            password="s3cret-pw",
+            org_role=OrgRole.admin,
+        )
+
+        response = await unauthenticated_client.post(
+            "/auth/admin-login",
+            json={
+                "organization_slug": org.slug,
+                "username": "alice",
+                "password": "wrong-password",
+            },
+        )
+
+        assert response.status_code == 401
+
+
 class TestAdminLogin:
     async def test_should_authenticate_app_admin_when_credentials_are_correct(
         self, unauthenticated_client, session

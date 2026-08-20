@@ -1,12 +1,12 @@
 from datetime import datetime, timezone
 
-from app.dependencies.auth import CurrentOrganizationDependency
+from app.dependencies.auth import CurrentOrganizationDependency, require_org_admin
 from app.dependencies.database import DbSessionDependency
 from app.dependencies.entities import CategoryDependency
 from app.models import Category
 from app.repositories import CategoryRepository
 from app.schemas import CategoryCreate, CategoryRead, CategoryTreeRead, CategoryUpdate
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError, InvalidRequestError
 
 router = APIRouter()
@@ -19,6 +19,7 @@ router = APIRouter()
     summary="Create a category",
     description="Creates a new category, optionally nested under a parent category.",
     responses={404: {"description": "Parent category not found"}},
+    dependencies=[Depends(require_org_admin)],
 )
 async def create_category(
     body: CategoryCreate,
@@ -128,6 +129,7 @@ async def _would_create_cycle(
         404: {"description": "Category or parent category not found"},
         422: {"description": "The new parent would create a circular reference"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
 async def update_category(
     category: CategoryDependency,
@@ -164,6 +166,7 @@ async def update_category(
         404: {"description": "Category not found"},
         409: {"description": "Devices still reference this category or a descendant"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
 async def delete_category(
     category: CategoryDependency,

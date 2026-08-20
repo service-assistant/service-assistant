@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .config import get_settings
 from .database import get_session
-from .dependencies.auth import require_app_admin, require_org_admin
+from .dependencies.auth import require_app_admin, require_org_admin, require_org_member
 from .procrastinate_app import app as procrastinate_app
 
 
@@ -83,25 +83,25 @@ app.include_router(
     categories.router,
     prefix="/api/categories",
     tags=["Categories"],
-    dependencies=[Depends(require_org_admin)],
+    dependencies=[Depends(require_org_member)],
 )
 app.include_router(
     devices.router,
     prefix="/api/devices",
     tags=["Devices"],
-    dependencies=[Depends(require_org_admin)],
+    dependencies=[Depends(require_org_member)],
 )
 app.include_router(
     attachments.router,
     prefix="/api/attachments",
     tags=["Attachments"],
-    dependencies=[Depends(require_org_admin)],
+    dependencies=[Depends(require_org_member)],
 )
 app.include_router(
     threads.router,
     prefix="/api/threads",
     tags=["Chat Threads"],
-    dependencies=[Depends(require_org_admin)],
+    dependencies=[Depends(require_org_member)],
 )
 # threads.websocket_router carries the transcribe-stream websocket route,
 # which can't use the cookie/header-based auth dependency chain (no
@@ -116,13 +116,13 @@ app.include_router(
     messages.router,
     prefix="/api/messages",
     tags=["Messages"],
-    dependencies=[Depends(require_org_admin)],
+    dependencies=[Depends(require_org_member)],
 )
 app.include_router(
     nameplates.router,
     prefix="/api/nameplates",
     tags=["Nameplates"],
-    dependencies=[Depends(require_org_admin)],
+    dependencies=[Depends(require_org_member)],
 )
 app.include_router(
     chunks.router,
@@ -134,13 +134,13 @@ app.include_router(
     images.router,
     prefix="/api/images",
     tags=["Images"],
-    dependencies=[Depends(require_org_admin)],
+    dependencies=[Depends(require_org_member)],
 )
 app.include_router(
     tts.router,
     prefix="/api/tts",
     tags=["Text-to-Speech"],
-    dependencies=[Depends(require_org_admin)],
+    dependencies=[Depends(require_org_member)],
 )
 app.include_router(
     organizations.router,

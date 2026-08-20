@@ -107,3 +107,15 @@ def require_org_admin(current_user: CurrentUserDependency) -> User:
 
 
 OrgAdminDependency = Annotated[User, Depends(require_org_admin)]
+
+
+def require_org_member(current_user: CurrentUserDependency) -> User:
+    # Any authenticated org user — member or admin. org_role has only these
+    # two values today, so this is currently a no-op check beyond auth, but
+    # it documents intent and stays correct if roles are ever added.
+    if current_user.org_role not in (OrgRole.member, OrgRole.admin):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    return current_user
+
+
+OrgMemberDependency = Annotated[User, Depends(require_org_member)]

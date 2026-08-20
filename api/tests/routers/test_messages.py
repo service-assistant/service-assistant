@@ -9,6 +9,17 @@ from tests.routers.factories import (
 from app.models import ChunkMessage, MessageSender
 
 
+async def test_member_can_get_message_chunks(member_client, session):
+    category = await create_category(session)
+    device = await create_device(session, category.id)
+    thread = await create_thread(session, device.id)
+    message = await create_message(session, thread.id)
+
+    response = await member_client.get(f"/api/messages/{message.id}/chunks")
+
+    assert response.status_code == 200
+
+
 async def test_should_return_chunks_for_assistant_message(client, session):
     category = await create_category(session)
     device = await create_device(session, category.id)

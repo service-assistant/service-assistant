@@ -172,6 +172,21 @@ async def test_should_store_nameplate_data_on_thread(client, session):
     assert response.json()["nameplate_data"] == nameplate_data
 
 
+async def test_member_can_create_and_list_threads(member_client, session):
+    category = await create_category(session)
+    device = await create_device(session, category.id)
+
+    create_response = await member_client.post(
+        "/api/threads",
+        json={"device_id": device.id, "title": "Mast won't lift"},
+    )
+    assert create_response.status_code == 201
+
+    list_response = await member_client.get("/api/threads")
+    assert list_response.status_code == 200
+    assert len(list_response.json()) == 1
+
+
 async def test_should_return_404_when_creating_thread_with_nonexistent_device(client):
     response = await client.post(
         "/api/threads",

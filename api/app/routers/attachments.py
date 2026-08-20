@@ -3,7 +3,7 @@ import mimetypes
 from pathlib import Path
 
 import fitz
-from app.dependencies.auth import CurrentOrganizationDependency
+from app.dependencies.auth import CurrentOrganizationDependency, require_org_admin
 from app.dependencies.database import DbSessionDependency
 from app.dependencies.entities import AttachmentDependency, DeviceDependency
 from app.dependencies.settings import SettingsDependency
@@ -13,6 +13,7 @@ from app.services.attachments import save_attachment
 from app.services.ingestion_queue import cancel_ingestion, enqueue_ingestion, is_active
 from fastapi import (
     APIRouter,
+    Depends,
     File,
     Form,
     HTTPException,
@@ -39,6 +40,7 @@ router = APIRouter()
         "`POST /{attachment_id}/cancel` for how a job moves between these "
         "states."
     ),
+    dependencies=[Depends(require_org_admin)],
 )
 async def list_attachments(
     session: DbSessionDependency, organization_id: CurrentOrganizationDependency
@@ -60,6 +62,7 @@ async def list_attachments(
         "`POST /{attachment_id}/ingest`."
     ),
     responses={404: {"description": "One or more device IDs not found"}},
+    dependencies=[Depends(require_org_admin)],
 )
 async def create_attachment(
     settings: SettingsDependency,
@@ -151,6 +154,7 @@ def _render_pdf_page(file_path: Path, page_number: int, zoom: float):
         404: {"description": "Attachment, file, or page not found"},
         422: {"description": "Invalid page number or zoom"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
 async def preview_attachment_page(
     attachment: AttachmentDependency,
@@ -201,6 +205,7 @@ async def preview_attachment_page(
         "vanished attachment."
     ),
     responses={404: {"description": "Attachment not found"}},
+    dependencies=[Depends(require_org_admin)],
 )
 async def delete_attachment(
     attachment: AttachmentDependency,
@@ -255,6 +260,7 @@ async def delete_attachment(
         404: {"description": "Attachment not found"},
         409: {"description": "Already queued or running"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
 async def ingest_attachment(
     attachment: AttachmentDependency,
@@ -298,6 +304,7 @@ async def ingest_attachment(
         404: {"description": "Attachment not found"},
         409: {"description": "Not currently queued or running"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
 async def cancel_attachment_ingestion(
     attachment: AttachmentDependency,
@@ -318,6 +325,7 @@ async def cancel_attachment_ingestion(
     summary="List devices linked to an attachment",
     description="Returns all devices associated with the given attachment.",
     responses={404: {"description": "Attachment not found"}},
+    dependencies=[Depends(require_org_admin)],
 )
 async def list_attachment_devices(
     attachment: AttachmentDependency,
@@ -335,6 +343,7 @@ async def list_attachment_devices(
     summary="Link a device to an attachment",
     description="Associates a device with an attachment. Idempotent — no error if the link already exists.",
     responses={404: {"description": "Attachment or device not found"}},
+    dependencies=[Depends(require_org_admin)],
 )
 async def link_device(
     attachment: AttachmentDependency,
@@ -353,6 +362,7 @@ async def link_device(
     summary="Unlink a device from an attachment",
     description="Removes the association between a device and an attachment. Idempotent — no error if the link doesn't exist.",
     responses={404: {"description": "Attachment or device not found"}},
+    dependencies=[Depends(require_org_admin)],
 )
 async def unlink_device(
     attachment: AttachmentDependency,

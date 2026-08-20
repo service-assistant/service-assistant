@@ -244,3 +244,33 @@ async def test_should_list_devices_in_app_admins_own_organization(
 
     assert response.status_code == 200
     assert len(response.json()) == 1
+
+
+async def test_member_can_list_devices(member_client, session):
+    category = await create_category(session)
+    await create_device(session, category.id, name="Toyota 8FBE20")
+
+    response = await member_client.get("/api/devices")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+
+async def test_member_cannot_create_device(member_client, session):
+    category = await create_category(session)
+
+    response = await member_client.post(
+        "/api/devices",
+        json={"category_id": category.id, "name": "Toyota 8FBE20"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_member_cannot_delete_device(member_client, session):
+    category = await create_category(session)
+    device = await create_device(session, category.id, name="Toyota 8FBE20")
+
+    response = await member_client.delete(f"/api/devices/{device.id}")
+
+    assert response.status_code == 403

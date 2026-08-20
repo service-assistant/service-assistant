@@ -11,6 +11,12 @@ from tests.routers.factories import (
 )
 
 
+class TestOrgMemberPermissions:
+    async def test_member_cannot_list_users(self, member_client):
+        response = await member_client.get("/api/users")
+        assert response.status_code == 403
+
+
 class TestListUsers:
     async def test_should_list_users_in_callers_organization(self, client, session):
         await create_user(

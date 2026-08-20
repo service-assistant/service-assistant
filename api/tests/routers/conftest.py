@@ -77,6 +77,19 @@ async def client(session):
 
 
 @pytest.fixture
+async def member_client(session):
+    # Same org as `client`, but org_role=member — a technician using the
+    # mobile app rather than an org admin.
+    async with await _authenticated_client(
+        session,
+        organization_id=DEFAULT_ORGANIZATION_ID,
+        app_role=AppRole.user,
+        org_role=OrgRole.member,
+    ) as c:
+        yield c
+
+
+@pytest.fixture
 async def app_admin_client(session):
     # app_admin's organization_id is arbitrary (the system org in real usage)
     # — the app_role check, not org membership, is what gates app_admin-only
