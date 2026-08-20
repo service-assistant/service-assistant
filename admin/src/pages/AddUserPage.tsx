@@ -1,3 +1,4 @@
+import { useAuth } from '@/auth/use-auth'
 import { useCreateUser } from '@/hooks/useUsers'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
@@ -10,6 +11,9 @@ const ORG_ROLE_LABELS: Record<string, string> = {
 export function AddUserPage() {
 	const navigate = useNavigate()
 	const createUser = useCreateUser()
+	const { user: currentUser } = useAuth()
+	const isSystemAppAdmin =
+		currentUser?.appRole === 'admin' && currentUser.organizationSlug === 'system'
 
 	const [username, setUsername] = useState('')
 	const [password, setPassword] = useState('')
@@ -86,6 +90,13 @@ export function AddUserPage() {
 						))}
 					</select>
 				</div>
+
+				{isSystemAppAdmin && (
+					<p className='mb-4 text-sm text-cream/60'>
+						Ten użytkownik zostanie automatycznie administratorem aplikacji (app_admin),
+						ponieważ jest tworzony w organizacji systemowej.
+					</p>
+				)}
 
 				{error && <p className='mb-4 text-sm text-red-400'>{error}</p>}
 

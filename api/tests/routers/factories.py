@@ -20,7 +20,8 @@ from app.security import hash_password
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Seeded once by the `seed_system_and_default_org` migration and never
-# truncated by `clean_db`, so this id is stable across the whole test session.
+# truncated by `clean_db`, so these ids are stable across the whole test session.
+SYSTEM_ORGANIZATION_ID = 1
 DEFAULT_ORGANIZATION_ID = 2
 
 

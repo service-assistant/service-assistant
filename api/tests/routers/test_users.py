@@ -6,6 +6,7 @@ from httpx import ASGITransport, AsyncClient
 from tests.routers.conftest import _authenticated_client
 from tests.routers.factories import (
     DEFAULT_ORGANIZATION_ID,
+    SYSTEM_ORGANIZATION_ID,
     create_organization,
     create_user,
 )
@@ -112,6 +113,51 @@ class TestCreateUser:
             )
 
         assert response.status_code == 403
+
+    async def test_should_promote_to_app_admin_when_app_admin_creates_user_in_system_org(
+        self, session
+    ):
+        async with await _authenticated_client(
+            session,
+            organization_id=SYSTEM_ORGANIZATION_ID,
+            app_role=AppRole.admin,
+            org_role=OrgRole.admin,
+        ) as system_app_admin_client:
+            response = await system_app_admin_client.post(
+                "/api/users",
+                json={"username": "newadmin", "password": "correct-horse-battery"},
+            )
+
+        assert response.status_code == 201
+        assert response.json()["app_role"] == "admin"
+
+    async def test_should_not_promote_when_org_admin_creates_user_in_default_org(
+        self, client, session
+    ):
+        response = await client.post(
+            "/api/users",
+            json={"username": "newbie", "password": "correct-horse-battery"},
+        )
+
+        assert response.status_code == 201
+        assert response.json()["app_role"] == "user"
+
+    async def test_should_not_promote_when_non_app_admin_creates_user_in_system_org(
+        self, session
+    ):
+        async with await _authenticated_client(
+            session,
+            organization_id=SYSTEM_ORGANIZATION_ID,
+            app_role=AppRole.user,
+            org_role=OrgRole.admin,
+        ) as system_org_admin_client:
+            response = await system_org_admin_client.post(
+                "/api/users",
+                json={"username": "notpromoted", "password": "correct-horse-battery"},
+            )
+
+        assert response.status_code == 201
+        assert response.json()["app_role"] == "user"
 
 
 class TestUpdateUser:

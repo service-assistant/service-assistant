@@ -5,6 +5,7 @@ from app.models import AppRole, Organization, User
 from app.repositories import UserRepository
 from app.schemas import UserCreate, UserRead, UserUpdate
 from app.security import hash_password
+from app.services.organizations import get_system_organization_id
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 
@@ -50,15 +51,22 @@ async def create_user(
     body: UserCreate,
     session: DbSessionDependency,
     organization_id: CurrentOrganizationDependency,
+    current_user: OrgAdminDependency,
 ):
     organization = await session.get(Organization, organization_id)
     assert organization is not None
+
+    system_organization_id = await get_system_organization_id(session)
+    is_app_admin_promotion = (
+        organization_id == system_organization_id
+        and current_user.app_role == AppRole.admin
+    )
 
     user = User(
         organization_id=organization_id,
         username=body.username,
         password_hash=hash_password(body.password),
-        app_role=AppRole.user,
+        app_role=AppRole.admin if is_app_admin_promotion else AppRole.user,
         org_role=body.org_role,
     )
 
