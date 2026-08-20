@@ -1,4 +1,4 @@
-from app.dependencies.auth import CurrentOrganizationDependency
+from app.dependencies.auth import CurrentOrganizationDependency, OrgAdminDependency
 from app.dependencies.database import DbSessionDependency
 from app.models import AppRole, Organization, User
 from app.repositories import UserRepository
@@ -79,3 +79,32 @@ async def create_user(
         app_role=user.app_role.value,
         org_role=user.org_role.value,
     )
+
+
+@router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a user",
+    description="Permanently deletes a user from the caller's organization.",
+    responses={
+        404: {"description": "User not found"},
+        409: {"description": "Cannot delete your own account"},
+    },
+)
+async def delete_user(
+    user_id: int,
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
+    current_user: OrgAdminDependency,
+):
+    user = await UserRepository(session).get_by_id(user_id)
+    if user is None or user.organization_id != organization_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete your own account",
+        )
+    await UserRepository(session).delete(user)

@@ -19,3 +19,11 @@ export function useCreateUser() {
 		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
 	})
 }
+
+export function useDeleteUser() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (id: number) => api.delete<void>(`/api/users/${id}`),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+	})
+}
