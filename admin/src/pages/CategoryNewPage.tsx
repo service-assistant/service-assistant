@@ -1,7 +1,9 @@
 import { useCategoryTree, useCreateCategory } from '@/hooks/useCategories'
 import { flattenCategoryTree } from '@/lib/categoryTree'
-import { useNavigate, useSearch } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
+import { ArrowLeft, FolderPlus, ImageIcon, Plus } from 'lucide-react'
 import { useState } from 'react'
+import './CategoryNewPage.css'
 
 export function CategoryNewPage() {
 	const navigate = useNavigate()
@@ -13,82 +15,150 @@ export function CategoryNewPage() {
 	const [imageUrl, setImageUrl] = useState('')
 	const [selectedParentId, setSelectedParentId] = useState<number | null>(parentId ?? null)
 	const [error, setError] = useState<string | null>(null)
+	const [previewFailed, setPreviewFailed] = useState(false)
 
 	const flat = flattenCategoryTree(tree ?? [])
+	const trimmedName = name.trim()
+	const trimmedImageUrl = imageUrl.trim()
+	const previewLetter = trimmedName.charAt(0).toUpperCase() || '?'
 
 	async function handleSubmit() {
-		if (!name) {
-			setError('Nazwa kategorii jest wymagana.')
+		if (!trimmedName) {
+			setError('Nazwa katalogu jest wymagana.')
 			return
 		}
 		setError(null)
 		try {
 			await createCategory.mutateAsync({
-				name,
-				image_url: imageUrl || null,
+				name: trimmedName,
+				image_url: trimmedImageUrl || null,
 				parent_id: selectedParentId,
 			})
 			void navigate({ to: '/catalog', search: { tab: 'categories' } })
 		} catch (err) {
-			setError(err instanceof Error ? err.message : 'Nie udało się dodać kategorii.')
+			setError(err instanceof Error ? err.message : 'Nie udało się dodać katalogu.')
 		}
 	}
 
+	function handleImageUrlChange(value: string) {
+		setImageUrl(value)
+		setPreviewFailed(false)
+	}
+
 	return (
-		<div className='mx-auto max-w-lg'>
-			<h1 className='mb-6 text-2xl font-semibold text-cream'>Dodaj kategorię</h1>
-			<div className='mb-6 space-y-4 rounded-lg border border-line bg-panel p-6'>
-				<div>
-					<label className='mb-1 block text-xs uppercase tracking-wide text-cream/50'>
-						Nazwa
-					</label>
-					<input
-						value={name}
-						onChange={(e) => setName(e.target.value)}
-						className='w-full rounded-md border border-line bg-panel-soft px-3 py-2 text-sm text-cream outline-none focus:border-ember'
-					/>
-				</div>
-				<div>
-					<label className='mb-1 block text-xs uppercase tracking-wide text-cream/50'>
-						Kategoria nadrzędna (opcjonalnie)
-					</label>
-					<select
-						value={selectedParentId ?? ''}
-						onChange={(e) =>
-							setSelectedParentId(e.target.value ? Number(e.target.value) : null)
-						}
-						className='w-full rounded-md border border-line bg-panel-soft px-3 py-2 text-sm text-cream'>
-						<option value=''>— brak (kategoria główna) —</option>
-						{flat.map((c) => (
-							<option key={c.id} value={c.id}>
-								{'  '.repeat(c.depth)}
-								{c.depth > 0 ? '↳ ' : ''}
-								{c.name}
-							</option>
-						))}
-					</select>
-				</div>
-				<div>
-					<label className='mb-1 block text-xs uppercase tracking-wide text-cream/50'>
-						URL zdjęcia (opcjonalnie)
-					</label>
-					<input
-						value={imageUrl}
-						onChange={(e) => setImageUrl(e.target.value)}
-						className='w-full rounded-md border border-line bg-panel-soft px-3 py-2 text-sm text-cream outline-none focus:border-ember'
-					/>
-					{imageUrl && (
-						<img src={imageUrl} alt='' className='mt-2 h-16 rounded object-contain' />
-					)}
+		<div className='category-new-page'>
+			<div className='category-new-content'>
+				<Link to='/catalog' search={{ tab: 'categories' }} className='category-new-back'>
+					<ArrowLeft size={17} strokeWidth={2.5} />
+					Wróć do katalogu
+				</Link>
+
+				<header className='category-new-heading'>
+					<h1>Dodaj katalog</h1>
+					<p>Utwórz katalog dostępny później przy porządkowaniu maszyn i dokumentów.</p>
+				</header>
+
+				<div className='category-new-layout'>
+					<section className='category-new-card category-new-form-card'>
+						<header>
+							<FolderPlus size={21} strokeWidth={2.2} />
+							<h2>Dane katalogu</h2>
+						</header>
+
+						<div className='category-new-field'>
+							<label htmlFor='category-name'>Nazwa katalogu</label>
+							<input
+								id='category-name'
+								value={name}
+								onChange={(event) => setName(event.target.value)}
+								placeholder='np. Wózki widłowe'
+								autoFocus
+							/>
+						</div>
+
+						<div className='category-new-field'>
+							<label htmlFor='category-parent'>Katalog nadrzędny (opcjonalnie)</label>
+							<select
+								id='category-parent'
+								value={selectedParentId ?? ''}
+								onChange={(event) =>
+									setSelectedParentId(
+										event.target.value ? Number(event.target.value) : null,
+									)
+								}>
+								<option value=''>Brak — katalog główny</option>
+								{flat.map((category) => (
+									<option key={category.id} value={category.id}>
+										{'\u00a0\u00a0'.repeat(category.depth)}
+										{category.depth > 0 ? '↳ ' : ''}
+										{category.name}
+									</option>
+								))}
+							</select>
+						</div>
+
+						<div className='category-new-field'>
+							<label htmlFor='category-image'>URL zdjęcia (opcjonalnie)</label>
+							<input
+								id='category-image'
+								type='url'
+								value={imageUrl}
+								onChange={(event) => handleImageUrlChange(event.target.value)}
+								placeholder='https://...'
+							/>
+							<p className='category-new-hint'>
+								W bazie zostanie zapisany wyłącznie adres URL.
+							</p>
+						</div>
+
+						{error && <p className='category-new-error'>{error}</p>}
+
+						<footer>
+							<Link
+								to='/catalog'
+								search={{ tab: 'categories' }}
+								className='category-new-cancel'>
+								Anuluj
+							</Link>
+							<button
+								type='button'
+								onClick={() => void handleSubmit()}
+								disabled={createCategory.isPending}>
+								<Plus size={16} strokeWidth={2.5} />
+								{createCategory.isPending ? 'Dodawanie…' : 'Dodaj katalog'}
+							</button>
+						</footer>
+					</section>
+
+					<aside className='category-new-card category-new-preview-card'>
+						<h2>Podgląd zdjęcia</h2>
+						<div className='category-new-preview'>
+							{trimmedImageUrl && !previewFailed ? (
+								<img
+									src={trimmedImageUrl}
+									alt={`Podgląd katalogu ${trimmedName || 'bez nazwy'}`}
+									onError={() => setPreviewFailed(true)}
+								/>
+							) : (
+								<div
+									className='category-new-placeholder'
+									aria-label='Brak zdjęcia katalogu'>
+									{trimmedName ? (
+										<span>{previewLetter}</span>
+									) : (
+										<ImageIcon size={29} strokeWidth={1.8} />
+									)}
+								</div>
+							)}
+						</div>
+						{previewFailed && (
+							<p className='category-new-preview-error'>
+								Nie udało się wczytać zdjęcia z tego URL.
+							</p>
+						)}
+					</aside>
 				</div>
 			</div>
-			{error && <p className='mb-4 text-sm text-red-400'>{error}</p>}
-			<button
-				onClick={handleSubmit}
-				disabled={createCategory.isPending}
-				className='w-full rounded-md bg-ember px-4 py-2 text-sm font-medium text-ink disabled:opacity-40'>
-				{createCategory.isPending ? 'Zapisywanie…' : 'Dodaj kategorię'}
-			</button>
 		</div>
 	)
 }

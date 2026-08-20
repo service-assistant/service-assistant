@@ -1,6 +1,8 @@
+import asyncio
 import mimetypes
 from pathlib import Path
 
+import fitz
 from app.dependencies.attachments import AttachmentDependency
 from app.dependencies.database import DbSessionDependency
 from app.dependencies.devices import DeviceDependency
@@ -14,6 +16,8 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Query,
+    Response,
     UploadFile,
     status,
 )
@@ -120,6 +124,64 @@ async def get_attachment_file(attachment: AttachmentDependency):
         path=file_path,
         filename=file_path.name,
         media_type=media_type or "application/octet-stream",
+    )
+
+
+def _render_pdf_page(file_path: Path, page_number: int, zoom: float):
+    with fitz.open(file_path) as document:
+        if page_number > document.page_count:
+            return None, document.page_count
+
+        page = document.load_page(page_number - 1)
+        pixmap = page.get_pixmap(
+            matrix=fitz.Matrix(1.2 * zoom, 1.2 * zoom), alpha=False
+        )
+        return pixmap.tobytes("png"), document.page_count
+
+
+@router.get(
+    "/{attachment_id}/preview/{page_number}",
+    response_class=Response,
+    summary="Render an attachment PDF page",
+    description="Renders one PDF page as PNG for the admin document preview.",
+    responses={
+        200: {"content": {"image/png": {}}},
+        404: {"description": "Attachment, file, or page not found"},
+        422: {"description": "Invalid page number or zoom"},
+    },
+)
+async def preview_attachment_page(
+    attachment: AttachmentDependency,
+    page_number: int,
+    zoom: float = Query(default=1.0, ge=0.75, le=2.0),
+):
+    if page_number < 1:
+        raise HTTPException(status_code=422, detail="Page number must be at least 1")
+
+    file_path = Path(attachment.file_global_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found on disk")
+
+    try:
+        image, page_count = await asyncio.to_thread(
+            _render_pdf_page, file_path, page_number, zoom
+        )
+    except (fitz.FileDataError, RuntimeError, ValueError) as error:
+        raise HTTPException(
+            status_code=422, detail="File is not a valid PDF"
+        ) from error
+
+    if image is None:
+        raise HTTPException(status_code=404, detail="PDF page not found")
+
+    return Response(
+        content=image,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "X-File-Size": str(file_path.stat().st_size),
+            "X-PDF-Page-Count": str(page_count),
+        },
     )
 
 

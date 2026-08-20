@@ -2,48 +2,409 @@ import { useCreateAttachment } from '@/hooks/useAttachments'
 import { useCategoryTree } from '@/hooks/useCategories'
 import { useDevices } from '@/hooks/useDevices'
 import { categoryPath, flattenCategoryTree } from '@/lib/categoryTree'
+import { fileSelectionError, mergeUploadFiles } from '@/lib/documentUpload'
 import { documentCountLabel, machineCountLabel } from '@/lib/pluralize'
+import type { Device } from '@/lib/types'
 import { useNavigate } from '@tanstack/react-router'
-import { Check, FileText, Search, Upload } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { ArrowRight, Check, FileText, Search, Trash2, Upload, Wrench } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
+import './AddDocumentPage.css'
 
 type Step = 1 | 2 | 3
-
 const STEPS: { step: Step; label: string }[] = [
 	{ step: 1, label: 'Plik dokumentu' },
 	{ step: 2, label: 'Wybór maszyn' },
 	{ step: 3, label: 'Podsumowanie' },
 ]
 
+function formatBytes(size: number) {
+	if (size < 1024 * 1024) return `${Math.max(1, Math.round(size / 1024))} KB`
+	return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
 function Stepper({ current }: { current: Step }) {
 	return (
-		<div className='mb-8 flex border-b border-line'>
+		<div className='document-stepper' aria-label={`Krok ${current} z 3`}>
 			{STEPS.map(({ step, label }) => {
-				const done = step < current
-				const active = step === current
+				const active = step <= current
 				return (
 					<div
 						key={step}
-						className={`flex flex-1 items-center gap-2 border-b-2 px-1 pb-3 text-sm font-medium ${
-							active || done
-								? 'border-ember text-ember'
-								: 'border-transparent text-cream/40'
-						}`}>
-						<span
-							className={`flex size-6 shrink-0 items-center justify-center rounded-full text-xs ${
-								done
-									? 'bg-ember text-ink'
-									: active
-										? 'border border-ember text-ember'
-										: 'border border-line text-cream/40'
-							}`}>
-							{done ? <Check size={14} /> : step}
+						className={`document-step ${active ? 'document-step--active' : ''}`}>
+						<span className='document-step-number'>
+							{step < current ? <Check size={14} strokeWidth={3} /> : step}
 						</span>
-						<span className='uppercase tracking-wide'>{label}</span>
+						<span>{label}</span>
 					</div>
 				)
 			})}
 		</div>
+	)
+}
+
+function PageHeading({ subtitle, title }: { subtitle?: string; title: string }) {
+	return (
+		<header className='document-heading'>
+			<h1>{title}</h1>
+			{subtitle && <p>{subtitle}</p>}
+		</header>
+	)
+}
+
+function InfoCard({ label, value }: { label: string; value: string }) {
+	return (
+		<div className='document-info-card'>
+			<span>{label}</span>
+			<strong>{value}</strong>
+		</div>
+	)
+}
+
+function MachineCheckbox({
+	checked,
+	label,
+	mixed = false,
+	onChange,
+}: {
+	checked: boolean
+	label: string
+	mixed?: boolean
+	onChange: () => void
+}) {
+	const inputRef = useRef<HTMLInputElement>(null)
+
+	useEffect(() => {
+		if (inputRef.current) inputRef.current.indeterminate = mixed
+	}, [mixed])
+
+	return (
+		<>
+			<input
+				ref={inputRef}
+				type='checkbox'
+				className='document-checkbox-input'
+				aria-label={label}
+				checked={checked}
+				onChange={onChange}
+			/>
+			<span className='document-checkbox-box' aria-hidden='true'>
+				{mixed ? (
+					<span className='document-checkbox-minus' />
+				) : (
+					<Check size={13} strokeWidth={4} />
+				)}
+			</span>
+		</>
+	)
+}
+
+function FileRows({ files, onRemove }: { files: File[]; onRemove?: (file: File) => void }) {
+	return (
+		<div className='document-file-list'>
+			{files.map((file, index) => (
+				<div className='document-file-row' key={`${file.name}-${file.size}-${index}`}>
+					<div className='document-pdf-icon'>
+						<FileText size={25} strokeWidth={2.4} />
+						<small>PDF</small>
+					</div>
+					<div className='document-file-copy'>
+						<strong title={file.name}>{file.name}</strong>
+						<p>
+							PDF <span>·</span> {formatBytes(file.size)} <span>·</span> <i /> Gotowy
+							do dodania
+						</p>
+					</div>
+					{onRemove && (
+						<button
+							type='button'
+							className='document-remove-file'
+							onClick={() => onRemove(file)}>
+							<Trash2 size={16} /> Usuń
+						</button>
+					)}
+				</div>
+			))}
+		</div>
+	)
+}
+
+function UploadStep({
+	error,
+	files,
+	onError,
+	onFiles,
+}: {
+	error: string | null
+	files: File[]
+	onError: (message: string | null) => void
+	onFiles: (files: File[]) => void
+}) {
+	const inputRef = useRef<HTMLInputElement>(null)
+	const dragDepth = useRef(0)
+	const [dragActive, setDragActive] = useState(false)
+
+	function applyFiles(selected: File[]) {
+		if (selected.length === 0) return
+		const validationError = fileSelectionError(selected)
+		if (validationError) {
+			onError(validationError)
+			return
+		}
+		onError(null)
+		onFiles(mergeUploadFiles(files, selected))
+		if (inputRef.current) inputRef.current.value = ''
+	}
+
+	function openPicker() {
+		inputRef.current?.click()
+	}
+	function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+		if (event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault()
+			openPicker()
+		}
+	}
+	function handleDragEnter(event: DragEvent<HTMLDivElement>) {
+		event.preventDefault()
+		event.stopPropagation()
+		dragDepth.current += 1
+		if (event.dataTransfer.types.includes('Files')) setDragActive(true)
+	}
+	function handleDragLeave(event: DragEvent<HTMLDivElement>) {
+		event.preventDefault()
+		event.stopPropagation()
+		dragDepth.current = Math.max(0, dragDepth.current - 1)
+		if (dragDepth.current === 0) setDragActive(false)
+	}
+	function handleDragOver(event: DragEvent<HTMLDivElement>) {
+		event.preventDefault()
+		event.stopPropagation()
+		event.dataTransfer.dropEffect = 'copy'
+	}
+	function handleDrop(event: DragEvent<HTMLDivElement>) {
+		event.preventDefault()
+		event.stopPropagation()
+		dragDepth.current = 0
+		setDragActive(false)
+		applyFiles(Array.from(event.dataTransfer.files))
+	}
+
+	return (
+		<>
+			<PageHeading title='Dodaj dokument' />
+			<section className='document-upload-section'>
+				<label>Załącznik PDF</label>
+				<input
+					ref={inputRef}
+					type='file'
+					accept='application/pdf,.pdf'
+					multiple
+					hidden
+					onChange={(event) => applyFiles(Array.from(event.target.files ?? []))}
+				/>
+				<div
+					className={`document-drop-zone ${dragActive ? 'document-drop-zone--active' : ''}`}
+					role='button'
+					tabIndex={0}
+					aria-label='Przeciągnij pliki PDF tutaj lub wybierz je z dysku'
+					onClick={openPicker}
+					onKeyDown={handleKeyDown}
+					onDragEnter={handleDragEnter}
+					onDragLeave={handleDragLeave}
+					onDragOver={handleDragOver}
+					onDrop={handleDrop}>
+					<span className='document-upload-icon'>
+						<Upload size={29} />
+					</span>
+					<strong>
+						{dragActive
+							? 'Upuść pliki, aby je dodać'
+							: files.length > 0
+								? `Wybrano ${documentCountLabel(files.length)}`
+								: 'Przeciągnij pliki tutaj lub wybierz je z dysku'}
+					</strong>
+					<span className='document-picker-button'>Wybierz z dysku</span>
+				</div>
+				{files.length > 0 && (
+					<FileRows
+						files={files}
+						onRemove={(file) => onFiles(files.filter((item) => item !== file))}
+					/>
+				)}
+				{error && <p className='document-error'>{error}</p>}
+				<div className='document-info-grid'>
+					<InfoCard label='Akceptowane formaty' value='PDF' />
+					<InfoCard label='Maksymalny rozmiar' value='200 MB / plik' />
+					<InfoCard label='Następny krok' value='Przypisanie do maszyn' />
+				</div>
+			</section>
+		</>
+	)
+}
+
+function MachineStep({
+	devices,
+	flat,
+	search,
+	selectedDeviceIds,
+	setSearch,
+	toggleDevice,
+	toggleVisible,
+}: {
+	devices: Device[]
+	flat: ReturnType<typeof flattenCategoryTree>
+	search: string
+	selectedDeviceIds: number[]
+	setSearch: (value: string) => void
+	toggleDevice: (id: number) => void
+	toggleVisible: (ids: number[]) => void
+}) {
+	const visibleIds = devices.map((device) => device.id)
+	const allSelected =
+		visibleIds.length > 0 && visibleIds.every((id) => selectedDeviceIds.includes(id))
+	const someSelected = visibleIds.some((id) => selectedDeviceIds.includes(id))
+	return (
+		<>
+			<PageHeading
+				title='Wybór maszyn'
+				subtitle='Wybierz maszyny, do których mają zostać przypisane dokumenty.'
+			/>
+			<div className='document-machine-toolbar'>
+				<Search size={18} />
+				<input
+					value={search}
+					onChange={(event) => setSearch(event.target.value)}
+					placeholder='Szukaj po maszynie, katalogu, numerze…'
+				/>
+			</div>
+			<div className='document-machine-table'>
+				<div className='document-machine-header'>
+					<label className='document-checkbox-label'>
+						<MachineCheckbox
+							checked={allSelected}
+							mixed={!allSelected && someSelected}
+							label='Zaznacz wszystkie widoczne maszyny'
+							onChange={() => toggleVisible(visibleIds)}
+						/>
+					</label>
+					<span />
+					<span>Maszyna</span>
+					<span>Katalog</span>
+					<span>Dokumenty</span>
+				</div>
+				{devices.length === 0 && (
+					<div className='document-empty-row'>Brak maszyn do wyświetlenia.</div>
+				)}
+				{devices.map((device) => {
+					const checked = selectedDeviceIds.includes(device.id)
+					return (
+						<label
+							key={device.id}
+							className={`document-machine-row ${checked ? 'document-machine-row--selected' : ''}`}>
+							<MachineCheckbox
+								checked={checked}
+								label={`Wybierz maszynę ${device.name}`}
+								onChange={() => toggleDevice(device.id)}
+							/>
+							<span className='document-machine-image'>
+								{device.image_url ? (
+									<img src={device.image_url} alt='' />
+								) : (
+									<Wrench size={22} />
+								)}
+							</span>
+							<span className='document-machine-name'>
+								<strong>{device.name}</strong>
+								<small>{device.model_serial_code || 'Brak kodu'}</small>
+							</span>
+							<span>{categoryPath(device.category_id, flat)}</span>
+							<span className='document-muted'>Brak</span>
+						</label>
+					)
+				})}
+			</div>
+		</>
+	)
+}
+
+function SummaryStep({
+	files,
+	flat,
+	selectedDevices,
+}: {
+	files: File[]
+	flat: ReturnType<typeof flattenCategoryTree>
+	selectedDevices: Device[]
+}) {
+	return (
+		<>
+			<PageHeading
+				title='Podsumowanie'
+				subtitle='Sprawdź dokumenty i wybrane maszyny przed dodaniem.'
+			/>
+			<div className='document-summary-notice'>
+				<span>
+					<Check size={13} />
+				</span>
+				Dokumenty zostaną przypisane do{' '}
+				<strong>{machineCountLabel(selectedDevices.length)}</strong>.
+			</div>
+			<section className='document-summary-section'>
+				<h2>Dane dokumentu</h2>
+				<FileRows files={files} />
+			</section>
+			<section className='document-summary-section'>
+				<h2>Wybrane maszyny</h2>
+				<div className='document-summary-table'>
+					<div>
+						<strong>Maszyna</strong>
+						<strong>Katalog</strong>
+					</div>
+					{selectedDevices.length === 0 && <p>Brak przypisanych maszyn</p>}
+					{selectedDevices.map((device) => (
+						<div key={device.id}>
+							<span className='document-machine-name'>
+								<strong>{device.name}</strong>
+								<small>{device.model_serial_code || 'Brak kodu'}</small>
+							</span>
+							<span>{categoryPath(device.category_id, flat)}</span>
+						</div>
+					))}
+				</div>
+			</section>
+		</>
+	)
+}
+
+function WizardFooter({
+	disabled,
+	onPrimary,
+	onSecondary,
+	primaryLabel,
+	secondaryLabel,
+	status,
+}: {
+	disabled?: boolean
+	onPrimary: () => void
+	onSecondary: () => void
+	primaryLabel: string
+	secondaryLabel: string
+	status?: string
+}) {
+	return (
+		<footer className='document-wizard-footer'>
+			<button type='button' className='document-secondary-button' onClick={onSecondary}>
+				{secondaryLabel}
+			</button>
+			{status && <span className='document-footer-status'>{status}</span>}
+			<button
+				type='button'
+				className='document-primary-button'
+				disabled={disabled}
+				onClick={onPrimary}>
+				{primaryLabel} <ArrowRight size={20} />
+			</button>
+		</footer>
 	)
 }
 
@@ -52,277 +413,102 @@ export function AddDocumentPage() {
 	const { data: devices } = useDevices()
 	const { data: tree } = useCategoryTree()
 	const createAttachment = useCreateAttachment()
-
 	const [step, setStep] = useState<Step>(1)
 	const [files, setFiles] = useState<File[]>([])
 	const [selectedDeviceIds, setSelectedDeviceIds] = useState<number[]>([])
 	const [search, setSearch] = useState('')
 	const [error, setError] = useState<string | null>(null)
-
-	const flat = flattenCategoryTree(tree ?? [])
-	const filteredDevices = useMemo(
-		() => devices?.filter((d) => d.name.toLowerCase().includes(search.toLowerCase())) ?? [],
-		[devices, search],
-	)
-	const selectedDevices = devices?.filter((d) => selectedDeviceIds.includes(d.id)) ?? []
+	const flat = useMemo(() => flattenCategoryTree(tree ?? []), [tree])
+	const filteredDevices = useMemo(() => {
+		const query = search.trim().toLowerCase()
+		return (devices ?? []).filter((device) =>
+			[device.name, device.model_serial_code, categoryPath(device.category_id, flat)]
+				.filter(Boolean)
+				.some((value) => value!.toLowerCase().includes(query)),
+		)
+	}, [devices, flat, search])
+	const selectedDevices = devices?.filter((device) => selectedDeviceIds.includes(device.id)) ?? []
 
 	function toggleDevice(id: number) {
-		setSelectedDeviceIds((prev) =>
-			prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+		setSelectedDeviceIds((current) =>
+			current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
 		)
 	}
-
-	function isPdf(f: File) {
-		return f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf')
+	function toggleVisible(ids: number[]) {
+		if (ids.length === 0) return
+		setSelectedDeviceIds((current) =>
+			ids.every((id) => current.includes(id))
+				? current.filter((id) => !ids.includes(id))
+				: Array.from(new Set([...current, ...ids])),
+		)
 	}
-
-	function handleFileChange(selected: File[]) {
-		if (selected.some((f) => !isPdf(f))) {
-			setError('Wszystkie pliki muszą być w formacie PDF.')
-			return
-		}
-		setError(null)
-		setFiles(selected)
-	}
-
-	function goToStep2() {
-		if (files.length === 0) {
-			setError('Wybierz plik PDF.')
-			return
-		}
-		setError(null)
-		setStep(2)
-	}
-
 	async function handleSubmit() {
 		if (files.length === 0) return
 		try {
+			setError(null)
 			await createAttachment.mutateAsync({ files, deviceIds: selectedDeviceIds })
 			void navigate({ to: '/' })
-		} catch (err) {
-			setError(err instanceof Error ? err.message : 'Nie udało się dodać dokumentu.')
+		} catch (submitError) {
+			setError(
+				submitError instanceof Error
+					? submitError.message
+					: 'Nie udało się dodać dokumentu.',
+			)
 		}
 	}
 
 	return (
-		<div>
-			<Stepper current={step} />
-
+		<div className='add-document-page'>
+			<div className='document-wizard-content'>
+				<Stepper current={step} />
+				{step === 1 && (
+					<UploadStep files={files} error={error} onError={setError} onFiles={setFiles} />
+				)}
+				{step === 2 && (
+					<MachineStep
+						devices={filteredDevices}
+						flat={flat}
+						search={search}
+						selectedDeviceIds={selectedDeviceIds}
+						setSearch={setSearch}
+						toggleDevice={toggleDevice}
+						toggleVisible={toggleVisible}
+					/>
+				)}
+				{step === 3 && (
+					<SummaryStep files={files} flat={flat} selectedDevices={selectedDevices} />
+				)}
+				{step === 3 && error && <p className='document-error'>{error}</p>}
+			</div>
 			{step === 1 && (
-				<div>
-					<h1 className='mb-6 text-2xl font-bold text-cream'>Dodaj dokument</h1>
-					<label className='mb-2 block text-xs font-medium tracking-wide text-ember uppercase'>
-						Załącznik PDF
-					</label>
-					<label className='flex min-h-[280px] cursor-pointer flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed border-ember/50 bg-panel px-6 py-12 text-center hover:bg-panel-soft'>
-						<input
-							type='file'
-							accept='application/pdf'
-							multiple
-							className='hidden'
-							onChange={(e) => handleFileChange(Array.from(e.target.files ?? []))}
-						/>
-						<span className='flex size-12 items-center justify-center rounded-full bg-panel-soft text-ember'>
-							<Upload size={20} />
-						</span>
-						<span className='text-sm font-medium text-cream'>
-							{files.length === 1
-								? files[0].name
-								: files.length > 1
-									? `Wybrano ${documentCountLabel(files.length)}`
-									: 'Przeciągnij pliki tutaj lub wybierz je z dysku'}
-						</span>
-						<span className='rounded-md bg-panel-soft px-4 py-2 text-sm font-medium text-cream'>
-							Wybierz z dysku
-						</span>
-					</label>
-
-					{error && <p className='mt-3 text-sm text-red-400'>{error}</p>}
-
-					<div className='mt-6 grid grid-cols-3 gap-4'>
-						<div className='rounded-lg border border-line bg-panel px-4 py-3'>
-							<div className='text-xs tracking-wide text-cream/40 uppercase'>
-								Akceptowane formaty
-							</div>
-							<div className='mt-1 text-sm font-semibold text-cream'>PDF</div>
-						</div>
-						<div className='rounded-lg border border-line bg-panel px-4 py-3'>
-							<div className='text-xs tracking-wide text-cream/40 uppercase'>
-								Maksymalny rozmiar
-							</div>
-							<div className='mt-1 text-sm font-semibold text-cream'>200 MB</div>
-						</div>
-						<div className='rounded-lg border border-line bg-panel px-4 py-3'>
-							<div className='text-xs tracking-wide text-cream/40 uppercase'>
-								Następny krok
-							</div>
-							<div className='mt-1 text-sm font-semibold text-cream'>
-								Przypisanie do maszyn
-							</div>
-						</div>
-					</div>
-
-					<div className='mt-8 flex justify-between border-t border-line pt-6'>
-						<button
-							onClick={() => void navigate({ to: '/' })}
-							className='rounded-md border border-line px-4 py-2 text-sm font-medium text-cream/70 hover:bg-panel-soft'>
-							Anuluj
-						</button>
-						<button
-							onClick={goToStep2}
-							className='rounded-md bg-ember px-4 py-2 text-sm font-semibold text-ink'>
-							Dalej →
-						</button>
-					</div>
-				</div>
+				<WizardFooter
+					disabled={files.length === 0}
+					secondaryLabel='Anuluj'
+					primaryLabel='Dalej'
+					onSecondary={() => void navigate({ to: '/' })}
+					onPrimary={() => {
+						setError(null)
+						setStep(2)
+					}}
+				/>
 			)}
-
 			{step === 2 && (
-				<div>
-					<h1 className='text-2xl font-bold text-cream'>Wybór maszyn</h1>
-					<p className='mt-1 mb-6 text-sm text-cream/60'>
-						Wybierz modele, do których ma zostać przypisany dokument.
-					</p>
-
-					<div className='mb-4 flex items-center gap-2 rounded-md border border-line bg-panel px-3 py-2'>
-						<Search size={16} className='text-cream/40' />
-						<input
-							value={search}
-							onChange={(e) => setSearch(e.target.value)}
-							placeholder='Szukaj po modelu, marce, numerze…'
-							className='w-full bg-transparent text-sm text-cream outline-none placeholder:text-cream/40'
-						/>
-					</div>
-
-					<div className='rounded-lg border border-line bg-panel'>
-						<div className='grid grid-cols-[auto_2fr_1fr_1fr] items-center gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
-							<span />
-							<span>Model</span>
-							<span>Kategoria</span>
-							<span>Dokumenty</span>
-						</div>
-						{filteredDevices.map((device) => {
-							const checked = selectedDeviceIds.includes(device.id)
-							return (
-								<label
-									key={device.id}
-									className={`grid grid-cols-[auto_2fr_1fr_1fr] cursor-pointer items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 last:border-b-0 hover:bg-panel-soft ${checked ? 'bg-panel-soft' : ''}`}>
-									<input
-										type='checkbox'
-										checked={checked}
-										onChange={() => toggleDevice(device.id)}
-									/>
-									<span className='text-cream'>{device.name}</span>
-									<span>{categoryPath(device.category_id, flat)}</span>
-									<span className='text-xs text-cream/50'>Brak</span>
-								</label>
-							)
-						})}
-					</div>
-
-					<div className='mt-8 flex items-center justify-between border-t border-line pt-6'>
-						<button
-							onClick={() => setStep(1)}
-							className='rounded-md border border-line px-4 py-2 text-sm font-medium text-cream/70 hover:bg-panel-soft'>
-							Wstecz
-						</button>
-						<div className='flex items-center gap-4'>
-							<span className='text-sm text-cream/60'>
-								Wybrano:{' '}
-								<span className='font-semibold text-cream'>
-									{machineCountLabel(selectedDeviceIds.length)}
-								</span>
-							</span>
-							<button
-								onClick={() => setStep(3)}
-								className='rounded-md bg-ember px-4 py-2 text-sm font-semibold text-ink'>
-								Dalej →
-							</button>
-						</div>
-					</div>
-				</div>
+				<WizardFooter
+					secondaryLabel='Wstecz'
+					primaryLabel='Dalej'
+					status={`Wybrano: ${machineCountLabel(selectedDeviceIds.length)}`}
+					onSecondary={() => setStep(1)}
+					onPrimary={() => setStep(3)}
+				/>
 			)}
-
 			{step === 3 && (
-				<div>
-					<h1 className='text-2xl font-bold text-cream'>Podsumowanie</h1>
-					<p className='mt-1 mb-6 text-sm text-cream/60'>
-						Sprawdź dokument i wybrane maszyny przed dodaniem.
-					</p>
-
-					<div className='mb-3 flex items-center gap-2 rounded-md border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-300'>
-						<Check size={16} />
-						Dokument zostanie przypisany do{' '}
-						<span className='font-semibold'>
-							{machineCountLabel(selectedDeviceIds.length)}
-						</span>
-						.
-					</div>
-					<div className='mb-6 rounded-md border border-line bg-panel px-4 py-3 text-sm text-cream/60'>
-						Plik nie zostanie od razu przetworzony — pojawi się na liście dokumentów
-						jako oczekujący. Przetwarzanie uruchamiasz osobno i możesz w tym czasie
-						zamknąć kartę przeglądarki.
-					</div>
-
-					<h2 className='mb-2 text-sm font-semibold text-cream'>Dane dokumentu</h2>
-					<div className='mb-6 rounded-lg border border-line bg-panel'>
-						{files.map((f) => (
-							<div
-								key={f.name}
-								className='flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0'>
-								<span className='flex size-10 items-center justify-center rounded-md bg-rose-400/15 text-rose-300'>
-									<FileText size={18} />
-								</span>
-								<div>
-									<div className='text-sm font-medium text-cream'>{f.name}</div>
-									<div className='text-xs text-cream/50'>
-										PDF · {(f.size / 1024 / 1024).toFixed(1)} MB · Gotowy do
-										dodania
-									</div>
-								</div>
-							</div>
-						))}
-					</div>
-
-					<h2 className='mb-2 text-sm font-semibold text-cream'>Wybrane maszyny</h2>
-					<div className='mb-6 rounded-lg border border-line bg-panel'>
-						<div className='grid grid-cols-[2fr_1fr] gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
-							<span>Model</span>
-							<span>Kategoria</span>
-						</div>
-						{selectedDevices.map((device) => (
-							<div
-								key={device.id}
-								className='grid grid-cols-[2fr_1fr] items-center gap-4 border-b border-line px-4 py-3 text-sm text-cream/80 last:border-b-0'>
-								<span>
-									<div className='text-cream'>{device.name}</div>
-									{device.model_serial_code && (
-										<div className='text-xs text-cream/40'>
-											{device.model_serial_code}
-										</div>
-									)}
-								</span>
-								<span>{categoryPath(device.category_id, flat)}</span>
-							</div>
-						))}
-					</div>
-
-					{error && <p className='mb-4 text-sm text-red-400'>{error}</p>}
-
-					<div className='flex justify-between border-t border-line pt-6'>
-						<button
-							onClick={() => setStep(2)}
-							className='rounded-md border border-line px-4 py-2 text-sm font-medium text-cream/70 hover:bg-panel-soft'>
-							Wstecz
-						</button>
-						<button
-							onClick={handleSubmit}
-							disabled={createAttachment.isPending}
-							className='flex items-center gap-2 rounded-md bg-ember px-4 py-2 text-sm font-semibold text-ink disabled:opacity-40'>
-							{createAttachment.isPending ? 'Przesyłanie…' : 'Dodaj dokument →'}
-						</button>
-					</div>
-				</div>
+				<WizardFooter
+					disabled={createAttachment.isPending}
+					secondaryLabel='Wstecz'
+					primaryLabel={createAttachment.isPending ? 'Przesyłanie…' : 'Dodaj dokument'}
+					onSecondary={() => setStep(2)}
+					onPrimary={() => void handleSubmit()}
+				/>
 			)}
 		</div>
 	)

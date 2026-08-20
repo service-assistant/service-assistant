@@ -54,6 +54,15 @@ export function useUpdateCategory(categoryId: number) {
 	})
 }
 
+export function useMoveCategory() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ categoryId, parentId }: { categoryId: number; parentId: number | null }) =>
+			api.patch<Category>(`/api/categories/${categoryId}`, { parent_id: parentId }),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['categories'] }),
+	})
+}
+
 export function useDeleteCategory() {
 	const queryClient = useQueryClient()
 	return useMutation({
