@@ -17,3 +17,12 @@ export function useCreateOrganization() {
 		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organizations'] }),
 	})
 }
+
+export function useDeleteOrganization() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (organizationId: number) =>
+			api.delete(`/api/admin/organizations/${organizationId}`),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organizations'] }),
+	})
+}

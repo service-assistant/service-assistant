@@ -1,5 +1,10 @@
 from app.security import verify_password
-from tests.routers.factories import create_organization
+from tests.routers.factories import (
+    create_category,
+    create_device,
+    create_organization,
+    create_thread,
+)
 
 
 class TestCreateOrganization:
@@ -107,5 +112,49 @@ class TestListOrganizations:
 
     async def test_should_reject_when_caller_is_not_app_admin(self, client):
         response = await client.get("/api/admin/organizations")
+
+        assert response.status_code == 403
+
+
+class TestDeleteOrganization:
+    async def test_should_delete_organization_when_app_admin(
+        self, app_admin_client, session
+    ):
+        organization = await create_organization(session)
+
+        response = await app_admin_client.delete(
+            f"/api/admin/organizations/{organization.id}"
+        )
+
+        assert response.status_code == 204
+        list_response = await app_admin_client.get("/api/admin/organizations")
+        ids = {org["id"] for org in list_response.json()}
+        assert organization.id not in ids
+
+    async def test_should_delete_organization_with_devices_and_chat_threads(
+        self, app_admin_client, session
+    ):
+        organization = await create_organization(session)
+        category = await create_category(session, organization_id=organization.id)
+        device = await create_device(session, category_id=category.id)
+        await create_thread(session, device_id=device.id)
+
+        response = await app_admin_client.delete(
+            f"/api/admin/organizations/{organization.id}"
+        )
+
+        assert response.status_code == 204
+
+    async def test_should_return_404_when_organization_does_not_exist(
+        self, app_admin_client
+    ):
+        response = await app_admin_client.delete("/api/admin/organizations/999999")
+
+        assert response.status_code == 404
+
+    async def test_should_reject_when_caller_is_not_app_admin(self, client, session):
+        organization = await create_organization(session)
+
+        response = await client.delete(f"/api/admin/organizations/{organization.id}")
 
         assert response.status_code == 403

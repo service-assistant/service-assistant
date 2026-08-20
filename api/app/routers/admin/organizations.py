@@ -74,3 +74,25 @@ async def create_organization(body: OrganizationCreate, session: DbSessionDepend
             updated_at=admin_user.updated_at,
         ),
     )
+
+
+@router.delete(
+    "/{organization_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete an organization",
+    description=(
+        "Deletes an organization and everything under it — users, categories, "
+        "devices, chat threads, attachments. app_admin only."
+    ),
+    responses={404: {"description": "Organization not found"}},
+)
+async def delete_organization(organization_id: int, session: DbSessionDependency):
+    repository = OrganizationRepository(session)
+    organization = await repository.get(organization_id)
+    if organization is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found"
+        )
+
+    await repository.delete(organization)
+    await session.commit()

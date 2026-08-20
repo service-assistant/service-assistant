@@ -1,4 +1,5 @@
 import {
+	ActionIcon,
 	Alert,
 	Button,
 	Group,
@@ -12,9 +13,15 @@ import {
 	Title,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
+import { IconTrash } from '@tabler/icons-react'
 import { type FormEvent, useState } from 'react'
-import { useCreateOrganization, useOrganizations } from '@/hooks/useOrganizations'
+import {
+	useCreateOrganization,
+	useDeleteOrganization,
+	useOrganizations,
+} from '@/hooks/useOrganizations'
 import { ApiError } from '@/lib/api'
+import type { OrganizationRead } from '@/lib/types'
 
 function CreateOrganizationModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
 	const createOrganization = useCreateOrganization()
@@ -106,9 +113,93 @@ function CreateOrganizationModal({ opened, onClose }: { opened: boolean; onClose
 	)
 }
 
+function DeleteOrganizationModal({
+	organization,
+	opened,
+	onClose,
+}: {
+	organization: OrganizationRead | null
+	opened: boolean
+	onClose: () => void
+}) {
+	const deleteOrganization = useDeleteOrganization()
+	const [confirmSlug, setConfirmSlug] = useState('')
+	const [error, setError] = useState<string | null>(null)
+
+	function reset() {
+		setConfirmSlug('')
+		setError(null)
+	}
+
+	async function handleConfirm() {
+		if (!organization) return
+		setError(null)
+		try {
+			await deleteOrganization.mutateAsync(organization.id)
+			reset()
+			onClose()
+		} catch (err) {
+			setError(err instanceof ApiError ? err.message : 'Nie udało się usunąć organizacji.')
+		}
+	}
+
+	return (
+		<Modal
+			opened={opened}
+			onClose={() => {
+				reset()
+				onClose()
+			}}
+			title='Usuń organizację'>
+			{organization && (
+				<Stack gap='md'>
+					<Text size='sm'>
+						Spowoduje to trwałe usunięcie organizacji{' '}
+						<strong>{organization.name}</strong> wraz ze wszystkimi jej użytkownikami,
+						kategoriami, urządzeniami i załącznikami.
+					</Text>
+					<Text size='sm'>
+						Wpisz slug organizacji <strong>{organization.slug}</strong>, aby
+						potwierdzić.
+					</Text>
+					<TextInput
+						autoFocus
+						value={confirmSlug}
+						onChange={(e) => setConfirmSlug(e.currentTarget.value)}
+						placeholder={organization.slug}
+					/>
+					{error && (
+						<Alert color='red' variant='light'>
+							{error}
+						</Alert>
+					)}
+					<Group justify='flex-end'>
+						<Button
+							variant='default'
+							onClick={() => {
+								reset()
+								onClose()
+							}}>
+							Anuluj
+						</Button>
+						<Button
+							color='red'
+							disabled={confirmSlug !== organization.slug}
+							loading={deleteOrganization.isPending}
+							onClick={handleConfirm}>
+							Usuń
+						</Button>
+					</Group>
+				</Stack>
+			)}
+		</Modal>
+	)
+}
+
 export function OrganizationsPage() {
 	const { data, isLoading } = useOrganizations()
 	const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false)
+	const [organizationToDelete, setOrganizationToDelete] = useState<OrganizationRead | null>(null)
 
 	return (
 		<Stack gap='md'>
@@ -127,6 +218,7 @@ export function OrganizationsPage() {
 							<Table.Th>Nazwa</Table.Th>
 							<Table.Th>Slug</Table.Th>
 							<Table.Th>Utworzono</Table.Th>
+							<Table.Th />
 						</Table.Tr>
 					</Table.Thead>
 					<Table.Tbody>
@@ -138,6 +230,15 @@ export function OrganizationsPage() {
 								<Table.Td>
 									{new Date(organization.created_at).toLocaleString('pl-PL')}
 								</Table.Td>
+								<Table.Td>
+									<ActionIcon
+										variant='subtle'
+										color='red'
+										aria-label='Usuń organizację'
+										onClick={() => setOrganizationToDelete(organization)}>
+										<IconTrash size={16} />
+									</ActionIcon>
+								</Table.Td>
 							</Table.Tr>
 						))}
 					</Table.Tbody>
@@ -147,6 +248,11 @@ export function OrganizationsPage() {
 			{!isLoading && (data ?? []).length === 0 && <Text c='dimmed'>Brak organizacji.</Text>}
 
 			<CreateOrganizationModal opened={modalOpened} onClose={closeModal} />
+			<DeleteOrganizationModal
+				organization={organizationToDelete}
+				opened={organizationToDelete !== null}
+				onClose={() => setOrganizationToDelete(null)}
+			/>
 		</Stack>
 	)
 }
