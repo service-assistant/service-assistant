@@ -1,3 +1,4 @@
+from app.models import OrgRole
 from pydantic import BaseModel, Field
 
 
@@ -19,6 +20,14 @@ class UserRead(BaseModel):
     username: str
     app_role: str
     org_role: str
+
+
+class UserCreate(BaseModel):
+    username: str = Field(description="Username within the organization.")
+    password: str = Field(min_length=8, description="Account password.")
+    org_role: OrgRole = Field(
+        default=OrgRole.member, description="Role within the organization."
+    )
 
 
 class LoginResponse(BaseModel):

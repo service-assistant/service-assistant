@@ -1,4 +1,5 @@
 import { useUsers } from '@/hooks/useUsers'
+import { Link } from '@tanstack/react-router'
 
 const ORG_ROLE_LABELS: Record<string, string> = {
 	admin: 'Administrator organizacji',
@@ -10,7 +11,14 @@ export function UsersPage() {
 
 	return (
 		<div>
-			<h1 className='mb-6 text-2xl font-semibold text-cream'>Użytkownicy</h1>
+			<div className='mb-6 flex items-center justify-between'>
+				<h1 className='text-2xl font-semibold text-cream'>Użytkownicy</h1>
+				<Link
+					to='/users/new'
+					className='rounded bg-cream px-4 py-2 text-sm font-medium text-black'>
+					+ Dodaj użytkownika
+				</Link>
+			</div>
 			<div className='rounded-lg border border-line bg-panel'>
 				<div className='grid grid-cols-[2fr_2fr] gap-4 border-b border-line px-4 py-2 text-xs uppercase tracking-wide text-cream/40'>
 					<span>Login</span>

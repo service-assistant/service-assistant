@@ -1,6 +1,7 @@
 import { ProtectedLayout } from '@/components/ProtectedLayout'
 import { AddDocumentPage } from '@/pages/AddDocumentPage'
 import { AddMachinePage } from '@/pages/AddMachinePage'
+import { AddUserPage } from '@/pages/AddUserPage'
 import { CatalogPage } from '@/pages/CatalogPage'
 import { CategoryDetailPage } from '@/pages/CategoryDetailPage'
 import { CategoryNewPage } from '@/pages/CategoryNewPage'
@@ -44,6 +45,12 @@ const usersRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
 	path: '/users',
 	component: UsersPage,
+})
+
+const addUserRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/users/new',
+	component: AddUserPage,
 })
 
 const addDocumentRoute = createRoute({
@@ -91,6 +98,7 @@ const routeTree = rootRoute.addChildren([
 		documentsRoute,
 		catalogRoute,
 		usersRoute,
+		addUserRoute,
 		addDocumentRoute,
 		addMachineRoute,
 		categoryNewRoute,

@@ -8,6 +8,7 @@ from .auth import (
     LoginRequest,
     LoginResponse,
     SessionResponse,
+    UserCreate,
     UserRead,
 )
 from .category import CategoryCreate, CategoryRead, CategoryTreeRead, CategoryUpdate
@@ -36,6 +37,7 @@ __all__ = [
     "LoginRequest",
     "LoginResponse",
     "SessionResponse",
+    "UserCreate",
     "UserRead",
     "CategoryCreate",
     "CategoryRead",
