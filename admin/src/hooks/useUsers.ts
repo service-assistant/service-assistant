@@ -20,6 +20,20 @@ export function useCreateUser() {
 	})
 }
 
+export interface UserUpdateBody {
+	username?: string
+	password?: string
+	org_role?: 'member' | 'admin'
+}
+
+export function useUpdateUser(userId: number) {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (body: UserUpdateBody) => api.patch<User>(`/api/users/${userId}`, body),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+	})
+}
+
 export function useDeleteUser() {
 	const queryClient = useQueryClient()
 	return useMutation({

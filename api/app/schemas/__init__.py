@@ -10,6 +10,7 @@ from .auth import (
     SessionResponse,
     UserCreate,
     UserRead,
+    UserUpdate,
 )
 from .category import CategoryCreate, CategoryRead, CategoryTreeRead, CategoryUpdate
 from .chat_thread import ChatThreadRead, ThreadCreate
@@ -39,6 +40,7 @@ __all__ = [
     "SessionResponse",
     "UserCreate",
     "UserRead",
+    "UserUpdate",
     "CategoryCreate",
     "CategoryRead",
     "CategoryTreeRead",

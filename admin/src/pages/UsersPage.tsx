@@ -1,9 +1,10 @@
 import { useAuth } from '@/auth/use-auth'
 import { ConfirmModal } from '@/components/ConfirmModal'
+import { EditUserModal } from '@/components/EditUserModal'
 import { useDeleteUser, useUsers } from '@/hooks/useUsers'
 import type { User } from '@/lib/types'
 import { Link } from '@tanstack/react-router'
-import { Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 
 const ORG_ROLE_LABELS: Record<string, string> = {
@@ -17,6 +18,7 @@ export function UsersPage() {
 	const { user: currentUser } = useAuth()
 
 	const [pendingDelete, setPendingDelete] = useState<User | null>(null)
+	const [pendingEdit, setPendingEdit] = useState<User | null>(null)
 	const [error, setError] = useState<string | null>(null)
 
 	async function handleDelete() {
@@ -62,15 +64,24 @@ export function UsersPage() {
 							)}
 						</span>
 						<span>{ORG_ROLE_LABELS[user.org_role] ?? user.org_role}</span>
-						{currentUser?.id !== user.id && (
+						<div className='flex items-center gap-1'>
 							<button
 								type='button'
-								onClick={() => setPendingDelete(user)}
-								aria-label='Usuń użytkownika'
-								className='cursor-pointer rounded p-1.5 text-cream/40 hover:text-red-400'>
-								<Trash2 size={16} />
+								onClick={() => setPendingEdit(user)}
+								aria-label='Edytuj użytkownika'
+								className='cursor-pointer rounded p-1.5 text-cream/40 hover:text-cream'>
+								<Pencil size={16} />
 							</button>
-						)}
+							{currentUser?.id !== user.id && (
+								<button
+									type='button'
+									onClick={() => setPendingDelete(user)}
+									aria-label='Usuń użytkownika'
+									className='cursor-pointer rounded p-1.5 text-cream/40 hover:text-red-400'>
+									<Trash2 size={16} />
+								</button>
+							)}
+						</div>
 					</div>
 				))}
 			</div>
@@ -85,6 +96,10 @@ export function UsersPage() {
 					onConfirm={() => void handleDelete()}
 					onClose={() => setPendingDelete(null)}
 				/>
+			)}
+
+			{pendingEdit && (
+				<EditUserModal user={pendingEdit} onClose={() => setPendingEdit(null)} />
 			)}
 		</div>
 	)

@@ -1,6 +1,6 @@
 from typing import Annotated, Any
 
-from app.models import Attachment, Category, ChatThread, Chunk, Device, Message
+from app.models import Attachment, Category, ChatThread, Chunk, Device, Message, User
 from app.repositories import (
     AttachmentRepository,
     CategoryRepository,
@@ -9,6 +9,7 @@ from app.repositories import (
     MessageRepository,
     Repository,
     ThreadRepository,
+    UserRepository,
 )
 from fastapi import Depends, HTTPException, Path, status
 
@@ -84,3 +85,25 @@ ChunkDependency = Annotated[
         org_scoped_entity_dependency(ChunkRepository, "chunk_id", "Chunk not found")
     ),
 ]
+
+
+async def get_user_or_404(
+    user_id: Annotated[int, Path()],
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
+) -> User:
+    """`UserRepository` isn't an `OrgScopedRepository` (it's also used unscoped
+    for login/session lookups), so it can't go through
+    `org_scoped_entity_dependency` — this mirrors that dependency's shape by
+    hand instead."""
+    user = await UserRepository(session).get_by_id_for_organization(
+        user_id, organization_id
+    )
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    return user
+
+
+UserDependency = Annotated[User, Depends(get_user_or_404)]

@@ -1,8 +1,9 @@
 from app.dependencies.auth import CurrentOrganizationDependency, OrgAdminDependency
 from app.dependencies.database import DbSessionDependency
+from app.dependencies.entities import UserDependency
 from app.models import AppRole, Organization, User
 from app.repositories import UserRepository
-from app.schemas import UserCreate, UserRead
+from app.schemas import UserCreate, UserRead, UserUpdate
 from app.security import hash_password
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -81,6 +82,58 @@ async def create_user(
     )
 
 
+@router.patch(
+    "/{user_id}",
+    response_model=UserRead,
+    summary="Update a user",
+    description="Partially updates a user. Only the fields provided in the request body are changed.",
+    responses={
+        404: {"description": "User not found"},
+        409: {"description": "Username already taken, or attempted to change own role"},
+    },
+)
+async def update_user(
+    user: UserDependency,
+    body: UserUpdate,
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
+    current_user: OrgAdminDependency,
+):
+    updates = body.model_dump(exclude_unset=True)
+    if "password" in updates:
+        updates["password_hash"] = hash_password(updates.pop("password"))
+    if (
+        "org_role" in updates
+        and user.id == current_user.id
+        and updates["org_role"] != user.org_role
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot change your own role",
+        )
+
+    try:
+        user = await UserRepository(session).update(user, **updates)
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Username already taken",
+        )
+
+    organization = await session.get(Organization, organization_id)
+    assert organization is not None
+
+    return UserRead(
+        id=user.id,
+        organization_id=organization_id,
+        organization_slug=organization.slug,
+        username=user.username,
+        app_role=user.app_role.value,
+        org_role=user.org_role.value,
+    )
+
+
 @router.delete(
     "/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -92,16 +145,10 @@ async def create_user(
     },
 )
 async def delete_user(
-    user_id: int,
+    user: UserDependency,
     session: DbSessionDependency,
-    organization_id: CurrentOrganizationDependency,
     current_user: OrgAdminDependency,
 ):
-    user = await UserRepository(session).get_by_id(user_id)
-    if user is None or user.organization_id != organization_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
     if user.id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

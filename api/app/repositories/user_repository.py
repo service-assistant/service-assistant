@@ -30,6 +30,15 @@ class UserRepository:
     async def get_by_id(self, user_id: int) -> User | None:
         return await self.session.get(User, user_id)
 
+    async def get_by_id_for_organization(
+        self, user_id: int, organization_id: int
+    ) -> User | None:
+        return await self.session.scalar(
+            select(User).where(
+                User.id == user_id, User.organization_id == organization_id
+            )
+        )
+
     async def list_for_organization(self, organization_id: int) -> list[User]:
         result = await self.session.execute(
             select(User)
@@ -49,3 +58,11 @@ class UserRepository:
     async def delete(self, user: User) -> None:
         await self.session.delete(user)
         await self.session.commit()
+
+    async def update(self, user: User, **fields: object) -> User:
+        for field, value in fields.items():
+            setattr(user, field, value)
+        self.session.add(user)
+        await self.session.commit()
+        await self.session.refresh(user)
+        return user
