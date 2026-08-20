@@ -23,9 +23,9 @@ describe('parseStreamData', () => {
 });
 
 describe('buildChunkImageUrl', () => {
-	test('encodes image paths for the API route', () => {
-		expect(buildChunkImageUrl('https://api.example.test', 'folder/page 1.png')).toBe(
-			'https://api.example.test/api/images/folder%2Fpage%201.png',
+	test('should build an attachment-scoped image URL and encode the filename', () => {
+		expect(buildChunkImageUrl('https://api.example.test', 42, 'page 1.png')).toBe(
+			'https://api.example.test/api/images/42/page%201.png',
 		);
 	});
 });

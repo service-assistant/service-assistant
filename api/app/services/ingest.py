@@ -110,14 +110,14 @@ def save_ocr_rendered_image(
     image_bytes: bytes,
     output_dir: Path,
 ) -> list[str]:
-    """Save OCR-rendered image and return list of image paths."""
+    """Save OCR-rendered image and return list of filenames (relative to output_dir)."""
     filename = f"{uuid.uuid4()}.jpg"
     image_path = output_dir / filename
 
     output_dir.mkdir(parents=True, exist_ok=True)
     image_path.write_bytes(image_bytes)
 
-    return [str(image_path)]
+    return [filename]
 
 
 async def ingest_pdf_to_attachment(
@@ -156,6 +156,7 @@ async def _ingest_pdf_to_attachment_unlocked(
         timeout=settings.azure_embeddings_timeout_seconds,
         max_retries=settings.azure_embeddings_max_retries,
     )
+    images_dir = settings.attachments_dir / "images" / str(attachment_id)
     doc: fitz.Document | None = None
     try:
         doc = await run_blocking(fitz.open, pdf_path)
@@ -255,7 +256,7 @@ async def _ingest_pdf_to_attachment_unlocked(
                     extract_page_images,
                     doc,
                     page,
-                    settings.attachments_dir / "images",
+                    images_dir,
                 )
             else:
                 report.ocr_pages_attempted += 1
@@ -303,7 +304,7 @@ async def _ingest_pdf_to_attachment_unlocked(
                     page_images = await run_blocking(
                         save_ocr_rendered_image,
                         image,
-                        settings.attachments_dir / "images",
+                        images_dir,
                     )
                 except asyncio.CancelledError:
                     raise

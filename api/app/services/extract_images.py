@@ -192,9 +192,10 @@ def save_drawing_region(
         if pix.width <= 0 or pix.height <= 0:
             continue
 
-        image_path = output_dir / f"{uuid.uuid4()}.png"
+        filename = f"{uuid.uuid4()}.png"
+        image_path = output_dir / filename
         pix.save(str(image_path))
-        image_paths.append(str(image_path))
+        image_paths.append(filename)
 
     return image_paths
 
@@ -227,7 +228,7 @@ def extract_page_images(
 
         output_dir.mkdir(parents=True, exist_ok=True)
         pix.save(str(image_path))
-        image_paths.append(str(image_path))
+        image_paths.append(filename)
 
     image_paths.extend(save_drawing_region(page, output_dir))
 

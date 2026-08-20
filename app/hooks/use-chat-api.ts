@@ -470,7 +470,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 								loadedImageEntries = uniqueImageEntries.map(({ chunk, path }) => ({
 									chunk,
 									url: createAuthorizedImageSource(
-										buildChunkImageUrl(serverUrl, path),
+										buildChunkImageUrl(serverUrl, chunk.attachment_id, path),
 										AUTH_TOKEN,
 									),
 								}));
