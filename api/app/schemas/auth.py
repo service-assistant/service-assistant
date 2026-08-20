@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from app.models import OrgRole
 from pydantic import BaseModel, Field
 
@@ -20,6 +22,8 @@ class UserRead(BaseModel):
     username: str
     app_role: str
     org_role: str
+    created_at: datetime
+    updated_at: datetime
 
 
 class UserCreate(BaseModel):

@@ -16,6 +16,8 @@ async def build_user_read(session: AsyncSession, user: User) -> UserRead:
         username=user.username,
         app_role=user.app_role.value,
         org_role=user.org_role.value,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
     )
 
 

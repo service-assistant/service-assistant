@@ -50,4 +50,6 @@ export interface User {
 	username: string
 	app_role: string
 	org_role: string
+	created_at: string
+	updated_at: string
 }

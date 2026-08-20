@@ -31,6 +31,8 @@ async def list_users(
             username=user.username,
             app_role=user.app_role.value,
             org_role=user.org_role.value,
+            created_at=user.created_at,
+            updated_at=user.updated_at,
         )
         for user in users
     ]
@@ -79,6 +81,8 @@ async def create_user(
         username=user.username,
         app_role=user.app_role.value,
         org_role=user.org_role.value,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
     )
 
 
@@ -131,6 +135,8 @@ async def update_user(
         username=user.username,
         app_role=user.app_role.value,
         org_role=user.org_role.value,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
     )
 
 

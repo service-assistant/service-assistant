@@ -70,5 +70,7 @@ async def create_organization(body: OrganizationCreate, session: DbSessionDepend
             username=admin_user.username,
             app_role=admin_user.app_role.value,
             org_role=admin_user.org_role.value,
+            created_at=admin_user.created_at,
+            updated_at=admin_user.updated_at,
         ),
     )
