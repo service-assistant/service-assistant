@@ -44,6 +44,15 @@ const catalogRoute = createRoute({
 const usersRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
 	path: '/users',
+	validateSearch: (
+		search: Record<string, unknown>,
+	): {
+		sort?: 'username' | 'org_role' | 'created_at' | 'updated_at'
+		order?: 'asc' | 'desc'
+	} => ({
+		sort: search.sort as 'username' | 'org_role' | 'created_at' | 'updated_at' | undefined,
+		order: search.order as 'asc' | 'desc' | undefined,
+	}),
 	component: UsersPage,
 })
 
