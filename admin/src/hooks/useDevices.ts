@@ -44,6 +44,15 @@ export function useUpdateDevice(deviceId: number) {
 	})
 }
 
+export function useMoveDevice() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ deviceId, categoryId }: { deviceId: number; categoryId: number | null }) =>
+			api.patch<Device>(`/api/devices/${deviceId}`, { category_id: categoryId }),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['devices'] }),
+	})
+}
+
 export function useDeleteDevice() {
 	const queryClient = useQueryClient()
 	return useMutation({

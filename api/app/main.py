@@ -98,6 +98,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-File-Size", "X-PDF-Page-Count"],
 )
 
 
