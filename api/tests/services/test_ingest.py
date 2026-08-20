@@ -139,6 +139,60 @@ async def test_ingest_pdf_to_attachment(mocker, settings):
     )
 
 
+async def test_sparse_native_text_gets_image_description_chunks(mocker, settings):
+    session = mocker.AsyncMock()
+    page = mocker.Mock()
+    page.get_text.return_value = "Native text"
+    document = mocker.MagicMock()
+    document.__len__.return_value = 1
+    document.pages.return_value = [page]
+    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch(
+        "app.services.ingest.pymupdf4llm.to_markdown", return_value="Native markdown"
+    )
+    mocker.patch("app.services.ingest.chunk_page", return_value=["native chunk"])
+    image_paths = ["image-1.png", "image-2.png"]
+    mocker.patch("app.services.ingest.extract_page_images", return_value=image_paths)
+    mocker.patch(
+        "app.services.ingest.describe_image",
+        side_effect=["Description 1", "Description 2"],
+    )
+
+    embedding_client = mocker.AsyncMock()
+    embedding_client.embeddings.create.return_value = mocker.Mock(
+        data=[mocker.Mock(embedding=[0.1] * 1536) for _ in range(3)]
+    )
+    vision_client = mocker.AsyncMock()
+    clients = [embedding_client, vision_client]
+    azure_client = mocker.patch(
+        "app.services.ingest.AsyncAzureOpenAI", side_effect=clients
+    )
+    insert = mocker.patch(
+        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+    )
+
+    report = await ingest_pdf_to_attachment(
+        session, "text-with-images.pdf", 1, settings
+    )
+
+    rows = insert.call_args.args[1]
+    assert [row[0] for row in rows] == [
+        "Description 1",
+        "Description 2",
+        "native chunk",
+    ]
+    assert rows[0][3] == [image_paths[0]]
+    assert rows[1][3] == [image_paths[1]]
+    assert rows[2][3] == image_paths
+    assert report.chunks_indexed == 3
+    assert azure_client.call_count == 2
+    assert azure_client.call_args_list[1].kwargs == {
+        "api_version": settings.azure_openai_vision_api_version,
+        "azure_endpoint": settings.azure_openai_vision_endpoint,
+        "api_key": settings.azure_openai_vision_api_key,
+    }
+
+
 async def test_image_only_pdf_is_rejected_only_after_azure_ocr_fails(mocker, settings):
     session = mocker.AsyncMock()
     pages = [mocker.Mock(), mocker.Mock()]
@@ -209,6 +263,47 @@ async def test_image_only_pdf_is_kept_when_azure_ocr_recovers_text(mocker, setti
     assert report.ocr_pages_attempted == 1
     assert report.ocr_pages_succeeded == 1
     assert report.ocr_pages_skipped == 0
+    assert report.chunks_indexed == 1
+    insert.assert_awaited_once()
+
+
+async def test_image_only_page_gets_description_when_ocr_recovers_no_text(
+    mocker, settings
+):
+    session = mocker.AsyncMock()
+    page = mocker.Mock()
+    page.get_text.return_value = ""
+    document = mocker.MagicMock()
+    document.__len__.return_value = 1
+    document.pages.return_value = [page]
+    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch("app.services.ingest.render_page_for_ocr", return_value=b"jpeg")
+    mocker.patch("app.services.ingest.process_ocr_text", return_value="")
+    mocker.patch("app.services.ingest.chunk_page", return_value=[])
+    describe = mocker.patch(
+        "app.services.ingest.describe_image", return_value="A technical diagram"
+    )
+
+    poller = mocker.MagicMock()
+    poller.result.return_value = mocker.Mock(content="raw OCR")
+    ocr_client = mocker.MagicMock()
+    ocr_client.begin_analyze_document.return_value = poller
+    mocker.patch(
+        "app.services.ingest.DocumentIntelligenceClient", return_value=ocr_client
+    )
+    embedding_client = mocker.AsyncMock()
+    embedding_client.embeddings.create.return_value = mocker.Mock(
+        data=[mocker.Mock(embedding=[0.1] * 1536)]
+    )
+    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    insert = mocker.patch(
+        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+    )
+
+    report = await ingest_pdf_to_attachment(session, "image-only.pdf", 1, settings)
+
+    describe.assert_awaited_once()
+    assert describe.call_args.kwargs["image_path"].endswith(".jpg")
     assert report.chunks_indexed == 1
     insert.assert_awaited_once()
 

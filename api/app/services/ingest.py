@@ -20,6 +20,7 @@ from ..config import Settings
 from ..models import Chunk
 from .async_utils import run_blocking
 from .chunking import chunk_page
+from .describe_image import describe_image
 from .extract_images import extract_page_images
 from .process_ocr_text import process_ocr_text
 
@@ -155,6 +156,11 @@ async def _ingest_pdf_to_attachment_unlocked(
         api_key=settings.azure_openai_api_key,
         timeout=settings.azure_embeddings_timeout_seconds,
         max_retries=settings.azure_embeddings_max_retries,
+    )
+    vision_client = AsyncAzureOpenAI(
+        api_version=settings.azure_openai_vision_api_version,
+        azure_endpoint=settings.azure_openai_vision_endpoint,
+        api_key=settings.azure_openai_vision_api_key,
     )
     doc: fitz.Document | None = None
     try:
@@ -321,6 +327,16 @@ async def _ingest_pdf_to_attachment_unlocked(
                     continue
 
             chunks = await run_blocking(chunk_page, markdown_text)
+            if len(chunks) < 2 and page_images:
+                for image_path in page_images:
+                    description = await describe_image(
+                        image_path=image_path,
+                        client=vision_client,
+                        model=settings.azure_openai_vision_deployment,
+                    )
+                    if description.strip():
+                        pending.append((description, page_num, [image_path]))
+
             if not chunks:
                 report.pages_processed += 1
                 _report(
@@ -369,6 +385,7 @@ async def _ingest_pdf_to_attachment_unlocked(
         if doc is not None:
             await run_blocking(doc.close)
         await client.close()
+        await vision_client.close()
 
 
 async def insert_chunks(
