@@ -27,6 +27,16 @@ class OrganizationRepository:
         await self.session.flush()
         return organization
 
+    async def update(
+        self, organization: Organization, **fields: object
+    ) -> Organization:
+        for field, value in fields.items():
+            setattr(organization, field, value)
+        self.session.add(organization)
+        await self.session.commit()
+        await self.session.refresh(organization)
+        return organization
+
     async def delete(self, organization: Organization) -> None:
         # devices.category_id and chat_threads.device_id are ON DELETE
         # RESTRICT (guard rails for the single-entity delete endpoints), so a

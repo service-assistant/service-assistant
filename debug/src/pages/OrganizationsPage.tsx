@@ -13,12 +13,13 @@ import {
 	Title,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { IconTrash } from '@tabler/icons-react'
-import { type FormEvent, useState } from 'react'
+import { IconPencil, IconTrash } from '@tabler/icons-react'
+import { type FormEvent, useEffect, useState } from 'react'
 import {
 	useCreateOrganization,
 	useDeleteOrganization,
 	useOrganizations,
+	useUpdateOrganization,
 } from '@/hooks/useOrganizations'
 import { ApiError } from '@/lib/api'
 import type { OrganizationRead } from '@/lib/types'
@@ -113,6 +114,97 @@ function CreateOrganizationModal({ opened, onClose }: { opened: boolean; onClose
 	)
 }
 
+function EditOrganizationModal({
+	organization,
+	opened,
+	onClose,
+}: {
+	organization: OrganizationRead | null
+	opened: boolean
+	onClose: () => void
+}) {
+	const updateOrganization = useUpdateOrganization()
+	const [name, setName] = useState('')
+	const [slug, setSlug] = useState('')
+	const [error, setError] = useState<string | null>(null)
+
+	useEffect(() => {
+		if (organization) {
+			setName(organization.name)
+			setSlug(organization.slug)
+			setError(null)
+		}
+	}, [organization])
+
+	function reset() {
+		setName('')
+		setSlug('')
+		setError(null)
+	}
+
+	async function handleSubmit(e: FormEvent) {
+		e.preventDefault()
+		if (!organization) return
+		setError(null)
+		try {
+			await updateOrganization.mutateAsync({ id: organization.id, body: { name, slug } })
+			reset()
+			onClose()
+		} catch (err) {
+			setError(
+				err instanceof ApiError ? err.message : 'Nie udało się zaktualizować organizacji.',
+			)
+		}
+	}
+
+	return (
+		<Modal
+			opened={opened}
+			onClose={() => {
+				reset()
+				onClose()
+			}}
+			title='Edytuj organizację'>
+			<form onSubmit={handleSubmit}>
+				<Stack gap='md'>
+					<TextInput
+						autoFocus
+						label='Nazwa organizacji'
+						value={name}
+						onChange={(e) => setName(e.currentTarget.value)}
+						required
+					/>
+					<TextInput
+						label='Slug (identyfikator logowania)'
+						value={slug}
+						onChange={(e) => setSlug(e.currentTarget.value)}
+						required
+					/>
+					{error && (
+						<Alert color='red' variant='light'>
+							{error}
+						</Alert>
+					)}
+					<Group justify='flex-end'>
+						<Button
+							variant='default'
+							onClick={() => {
+								reset()
+								onClose()
+							}}
+							type='button'>
+							Anuluj
+						</Button>
+						<Button type='submit' loading={updateOrganization.isPending}>
+							Zapisz
+						</Button>
+					</Group>
+				</Stack>
+			</form>
+		</Modal>
+	)
+}
+
 function DeleteOrganizationModal({
 	organization,
 	opened,
@@ -199,6 +291,7 @@ function DeleteOrganizationModal({
 export function OrganizationsPage() {
 	const { data, isLoading } = useOrganizations()
 	const [modalOpened, { open: openModal, close: closeModal }] = useDisclosure(false)
+	const [organizationToEdit, setOrganizationToEdit] = useState<OrganizationRead | null>(null)
 	const [organizationToDelete, setOrganizationToDelete] = useState<OrganizationRead | null>(null)
 
 	return (
@@ -231,13 +324,21 @@ export function OrganizationsPage() {
 									{new Date(organization.created_at).toLocaleString('pl-PL')}
 								</Table.Td>
 								<Table.Td>
-									<ActionIcon
-										variant='subtle'
-										color='red'
-										aria-label='Usuń organizację'
-										onClick={() => setOrganizationToDelete(organization)}>
-										<IconTrash size={16} />
-									</ActionIcon>
+									<Group gap='xs'>
+										<ActionIcon
+											variant='subtle'
+											aria-label='Edytuj organizację'
+											onClick={() => setOrganizationToEdit(organization)}>
+											<IconPencil size={16} />
+										</ActionIcon>
+										<ActionIcon
+											variant='subtle'
+											color='red'
+											aria-label='Usuń organizację'
+											onClick={() => setOrganizationToDelete(organization)}>
+											<IconTrash size={16} />
+										</ActionIcon>
+									</Group>
 								</Table.Td>
 							</Table.Tr>
 						))}
@@ -248,6 +349,11 @@ export function OrganizationsPage() {
 			{!isLoading && (data ?? []).length === 0 && <Text c='dimmed'>Brak organizacji.</Text>}
 
 			<CreateOrganizationModal opened={modalOpened} onClose={closeModal} />
+			<EditOrganizationModal
+				organization={organizationToEdit}
+				opened={organizationToEdit !== null}
+				onClose={() => setOrganizationToEdit(null)}
+			/>
 			<DeleteOrganizationModal
 				organization={organizationToDelete}
 				opened={organizationToDelete !== null}

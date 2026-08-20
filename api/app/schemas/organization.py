@@ -20,6 +20,13 @@ class OrganizationCreate(BaseModel):
     )
 
 
+class OrganizationUpdate(BaseModel):
+    name: str | None = Field(default=None, description="New display name.")
+    slug: str | None = Field(
+        default=None, description="New unique, URL-safe identifier used to log in."
+    )
+
+
 class OrganizationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

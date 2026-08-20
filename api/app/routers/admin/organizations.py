@@ -5,6 +5,7 @@ from app.schemas import (
     OrganizationCreate,
     OrganizationCreateResponse,
     OrganizationRead,
+    OrganizationUpdate,
     UserRead,
 )
 from app.security import hash_password
@@ -74,6 +75,40 @@ async def create_organization(body: OrganizationCreate, session: DbSessionDepend
             updated_at=admin_user.updated_at,
         ),
     )
+
+
+@router.patch(
+    "/{organization_id}",
+    response_model=OrganizationRead,
+    summary="Update an organization",
+    description="Partially updates an organization. Only the fields provided in the request body are changed.",
+    responses={
+        404: {"description": "Organization not found"},
+        409: {"description": "Slug already taken"},
+    },
+)
+async def update_organization(
+    organization_id: int, body: OrganizationUpdate, session: DbSessionDependency
+):
+    repository = OrganizationRepository(session)
+    organization = await repository.get(organization_id)
+    if organization is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found"
+        )
+
+    updates = body.model_dump(exclude_unset=True)
+
+    try:
+        organization = await repository.update(organization, **updates)
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Slug already taken",
+        )
+
+    return organization
 
 
 @router.delete(

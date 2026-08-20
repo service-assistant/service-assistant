@@ -142,6 +142,11 @@ export interface OrganizationCreate {
 	admin_password: string
 }
 
+export interface OrganizationUpdate {
+	name?: string
+	slug?: string
+}
+
 export interface UserRead {
 	id: number
 	organization_id: number

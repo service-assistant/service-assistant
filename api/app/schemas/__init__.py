@@ -28,6 +28,7 @@ from .organization import (
     OrganizationCreate,
     OrganizationCreateResponse,
     OrganizationRead,
+    OrganizationUpdate,
 )
 from .photo_context import PhotoContextResponse, PhotoObservation
 from .tts import TtsRequest
@@ -61,6 +62,7 @@ __all__ = [
     "OrganizationCreate",
     "OrganizationCreateResponse",
     "OrganizationRead",
+    "OrganizationUpdate",
     "PhotoContextResponse",
     "PhotoObservation",
     "ThreadCreate",

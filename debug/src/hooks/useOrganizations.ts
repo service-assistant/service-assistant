@@ -1,6 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { OrganizationCreate, OrganizationCreateResponse, OrganizationRead } from '@/lib/types'
+import type {
+	OrganizationCreate,
+	OrganizationCreateResponse,
+	OrganizationRead,
+	OrganizationUpdate,
+} from '@/lib/types'
 
 export function useOrganizations() {
 	return useQuery({
@@ -14,6 +19,15 @@ export function useCreateOrganization() {
 	return useMutation({
 		mutationFn: (body: OrganizationCreate) =>
 			api.post<OrganizationCreateResponse>('/api/admin/organizations', body),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organizations'] }),
+	})
+}
+
+export function useUpdateOrganization() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: ({ id, body }: { id: number; body: OrganizationUpdate }) =>
+			api.patch<OrganizationRead>(`/api/admin/organizations/${id}`, body),
 		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['organizations'] }),
 	})
 }

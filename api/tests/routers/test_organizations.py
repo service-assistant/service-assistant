@@ -116,6 +116,69 @@ class TestListOrganizations:
         assert response.status_code == 403
 
 
+class TestUpdateOrganization:
+    async def test_should_update_name_and_slug_when_app_admin(
+        self, app_admin_client, session
+    ):
+        organization = await create_organization(
+            session, name="Old Name", slug="old-slug"
+        )
+
+        response = await app_admin_client.patch(
+            f"/api/admin/organizations/{organization.id}",
+            json={"name": "New Name", "slug": "new-slug"},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["name"] == "New Name"
+        assert body["slug"] == "new-slug"
+
+    async def test_should_only_update_provided_fields(self, app_admin_client, session):
+        organization = await create_organization(
+            session, name="Old Name", slug="only-name"
+        )
+
+        response = await app_admin_client.patch(
+            f"/api/admin/organizations/{organization.id}",
+            json={"name": "New Name"},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["name"] == "New Name"
+        assert body["slug"] == "only-name"
+
+    async def test_should_reject_duplicate_slug(self, app_admin_client, session):
+        await create_organization(session, slug="already-taken")
+        organization = await create_organization(session, slug="to-be-changed")
+
+        response = await app_admin_client.patch(
+            f"/api/admin/organizations/{organization.id}",
+            json={"slug": "already-taken"},
+        )
+
+        assert response.status_code == 409
+
+    async def test_should_return_404_when_organization_does_not_exist(
+        self, app_admin_client
+    ):
+        response = await app_admin_client.patch(
+            "/api/admin/organizations/999999", json={"name": "Nope"}
+        )
+
+        assert response.status_code == 404
+
+    async def test_should_reject_when_caller_is_not_app_admin(self, client, session):
+        organization = await create_organization(session)
+
+        response = await client.patch(
+            f"/api/admin/organizations/{organization.id}", json={"name": "Nope"}
+        )
+
+        assert response.status_code == 403
+
+
 class TestDeleteOrganization:
     async def test_should_delete_organization_when_app_admin(
         self, app_admin_client, session
