@@ -4,6 +4,28 @@ from app.models import Category
 from tests.routers.factories import create_category, create_device
 
 
+class TestOrgMemberPermissions:
+    async def test_member_can_read_category_tree(self, member_client):
+        response = await member_client.get("/api/categories/tree")
+        assert response.status_code == 200
+
+    async def test_member_cannot_create_category(self, member_client):
+        response = await member_client.post("/api/categories", json={"name": "Linde"})
+        assert response.status_code == 403
+
+    async def test_member_cannot_update_category(self, member_client, session):
+        category = await create_category(session, name="Toyota")
+        response = await member_client.patch(
+            f"/api/categories/{category.id}", json={"name": "Renamed"}
+        )
+        assert response.status_code == 403
+
+    async def test_member_cannot_delete_category(self, member_client, session):
+        category = await create_category(session, name="Toyota")
+        response = await member_client.delete(f"/api/categories/{category.id}")
+        assert response.status_code == 403
+
+
 class TestCreateCategory:
     async def test_should_create_category_when_valid_data_provided(self, client):
         response = await client.post(
@@ -260,18 +282,19 @@ class TestDeleteCategory:
         assert response.status_code == 404
         assert response.json()["detail"] == "Category not found"
 
-    async def test_should_return_409_when_deleting_category_with_children(
+    async def test_should_cascade_delete_children_when_deleting_category(
         self, client, session
     ):
         parent = await create_category(session, name="Toyota")
-        await create_category(session, name="Reach Truck", parent_id=parent.id)
+        child = await create_category(session, name="Reach Truck", parent_id=parent.id)
 
         response = await client.delete(f"/api/categories/{parent.id}")
 
-        assert response.status_code == 409
-        assert "Cannot delete category" in response.json()["detail"]
+        assert response.status_code == 204
+        get_child_response = await client.get(f"/api/categories/{child.id}")
+        assert get_child_response.status_code == 404
 
-    async def test_should_detach_devices_when_deleting_referenced_category(
+    async def test_should_return_409_when_deleting_category_referenced_by_device(
         self, client, session
     ):
         category = await create_category(session)
@@ -279,9 +302,24 @@ class TestDeleteCategory:
 
         response = await client.delete(f"/api/categories/{category.id}")
 
-        assert response.status_code == 204
+        assert response.status_code == 409
+        assert "Cannot delete category" in response.json()["detail"]
         await session.refresh(device)
-        assert device.category_id is None
+        assert device.category_id == category.id
+
+    async def test_should_return_409_when_deleting_category_with_device_on_descendant(
+        self, client, session
+    ):
+        parent = await create_category(session, name="Toyota")
+        child = await create_category(session, name="Reach Truck", parent_id=parent.id)
+        device = await create_device(session, child.id)
+
+        response = await client.delete(f"/api/categories/{parent.id}")
+
+        assert response.status_code == 409
+        assert "Cannot delete category" in response.json()["detail"]
+        await session.refresh(device)
+        assert device.category_id == child.id
 
     async def test_should_handle_concurrent_category_delete_and_child_create(
         self, client, session
@@ -297,6 +335,15 @@ class TestDeleteCategory:
                 )
             )
 
-        delete_status = t1.result().status_code
-        create_status = t2.result().status_code
-        assert (delete_status == 204) != (create_status == 201)
+        delete_response = t1.result()
+        create_response = t2.result()
+
+        # Parent delete cascades to any child, so it always succeeds regardless
+        # of the race outcome; a concurrently created child either never gets
+        # inserted (404, parent already gone) or gets cascade-deleted with it.
+        assert delete_response.status_code == 204
+        assert create_response.status_code in (201, 404)
+        if create_response.status_code == 201:
+            child_id = create_response.json()["id"]
+            get_child_response = await client.get(f"/api/categories/{child_id}")
+            assert get_child_response.status_code == 404

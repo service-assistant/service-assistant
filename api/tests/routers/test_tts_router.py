@@ -3,6 +3,17 @@ from app.main import app
 from app.services.tts import TtsError
 
 
+async def test_member_can_synthesize_speech(member_client, mocker):
+    mocker.patch(
+        "app.services.tts.synthesize_pcm",
+        mocker.AsyncMock(return_value=b"\x01\x02\x03\x04"),
+    )
+
+    response = await member_client.post("/api/tts", json={"text": "Dzien dobry"})
+
+    assert response.status_code == 200
+
+
 async def test_should_synthesize_speech_as_wav(client, mocker):
     mock_synthesize = mocker.patch(
         "app.services.tts.synthesize_pcm",

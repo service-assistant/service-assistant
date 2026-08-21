@@ -5,6 +5,6 @@ import type { DeviceRead } from '@/lib/types'
 export function useDevices() {
 	return useQuery({
 		queryKey: ['devices'],
-		queryFn: () => api.get<DeviceRead[]>('/api/devices'),
+		queryFn: () => api.get<DeviceRead[]>('/api/admin/next-best-step/devices'),
 	})
 }

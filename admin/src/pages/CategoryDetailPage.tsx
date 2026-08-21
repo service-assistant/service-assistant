@@ -273,18 +273,20 @@ function CatalogInfoCard({
 	)
 }
 
-function DangerCard({ onDelete }: { onDelete: () => void }) {
+function DangerCard({ deleteBlocked, onDelete }: { deleteBlocked: boolean; onDelete: () => void }) {
 	return (
 		<section className='catalog-detail-card catalog-detail-danger-card'>
 			<h2>Strefa niebezpieczna</h2>
 			<p>Trwałe działania dotyczące katalogu.</p>
-			<button type='button' onClick={onDelete}>
+			<button type='button' disabled={deleteBlocked} onClick={onDelete}>
 				<Trash2 size={16} />
 				Usuń katalog
 			</button>
 			<small>
 				<AlertTriangle size={14} />
-				Po usunięciu katalog zniknie z drzewa katalogu maszyn.
+				{deleteBlocked
+					? 'Nie można usunąć — istnieją maszyny przypisane do tego katalogu lub jego podkatalogów.'
+					: 'Po usunięciu katalog zniknie z drzewa katalogu maszyn.'}
 			</small>
 		</section>
 	)
@@ -293,6 +295,7 @@ function DangerCard({ onDelete }: { onDelete: () => void }) {
 function CategoryDetailContent({
 	category,
 	subcatalogs,
+	deleteBlocked,
 	dirty,
 	error,
 	flat,
@@ -312,6 +315,7 @@ function CategoryDetailContent({
 }: {
 	category: Category
 	subcatalogs: Category[]
+	deleteBlocked: boolean
 	dirty: boolean
 	error: string | null
 	flat: ParentOption[]
@@ -369,7 +373,7 @@ function CategoryDetailContent({
 							flat={flat}
 							relatedDevices={relatedDevices}
 						/>
-						<DangerCard onDelete={onDelete} />
+						<DangerCard deleteBlocked={deleteBlocked} onDelete={onDelete} />
 					</aside>
 				</div>
 			</div>
@@ -406,6 +410,13 @@ export function CategoryDetailPage() {
 	const excluded = new Set([id, ...descendantIds(id, flat)])
 	const parentOptions = flat.filter((item) => !excluded.has(item.id))
 	const relatedDevices = devices?.filter((device) => device.category_id === id) ?? []
+	const descendantCategoryIds = descendantIds(id, flat)
+	const blockingDevices =
+		devices?.filter(
+			(device) =>
+				device.category_id === id ||
+				(device.category_id !== null && descendantCategoryIds.has(device.category_id)),
+		) ?? []
 	const dirty = Boolean(
 		category &&
 		(name !== category.name ||
@@ -504,13 +515,14 @@ export function CategoryDetailPage() {
 				parentId={parentId}
 				parentOptions={parentOptions}
 				relatedDevices={relatedDevices}
+				deleteBlocked={blockingDevices.length > 0}
 				savedMessage={savedMessage}
 				saving={updateCategory.isPending}
 			/>
 			{showDeleteModal && (
 				<ConfirmDeleteModal
 					title='Usuń katalog'
-					description={`Katalog "${category.name}" zostanie trwale usunięty.`}
+					description={`Katalog "${category.name}" oraz wszystkie jego podkatalogi zostaną trwale usunięte.`}
 					pending={deleteCategory.isPending}
 					onConfirm={() => void handleDelete()}
 					onClose={() => setShowDeleteModal(false)}

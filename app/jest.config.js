@@ -15,6 +15,7 @@ module.exports = {
 	moduleNameMapper: {
 		'^@/(.*)$': '<rootDir>/$1',
 		'^expo-constants$': '<rootDir>/test-utils/expo-constants-mock.js',
+		'^expo-secure-store$': '<rootDir>/test-utils/expo-secure-store-mock.js',
 		'^react-native-color-matrix-image-filters$':
 			'<rootDir>/test-utils/color-matrix-image-filters-mock.js',
 		'\\.(png|jpg|jpeg|gif|webp|pdf)$': '<rootDir>/test-utils/file-mock.js',

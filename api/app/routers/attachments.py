@@ -3,16 +3,17 @@ import mimetypes
 from pathlib import Path
 
 import fitz
-from app.dependencies.attachments import AttachmentDependency
+from app.dependencies.auth import CurrentOrganizationDependency, require_org_admin
 from app.dependencies.database import DbSessionDependency
-from app.dependencies.devices import DeviceDependency
+from app.dependencies.entities import AttachmentDependency, DeviceDependency
 from app.dependencies.settings import SettingsDependency
-from app.models import Attachment, AttachmentDevice, Device
+from app.repositories import AttachmentRepository
 from app.schemas import AttachmentRead, DeviceRead
 from app.services.attachments import save_attachment
 from app.services.ingestion_queue import cancel_ingestion, enqueue_ingestion, is_active
 from fastapi import (
     APIRouter,
+    Depends,
     File,
     Form,
     HTTPException,
@@ -22,7 +23,6 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse
-from sqlalchemy import select
 
 router = APIRouter()
 
@@ -40,10 +40,12 @@ router = APIRouter()
         "`POST /{attachment_id}/cancel` for how a job moves between these "
         "states."
     ),
+    dependencies=[Depends(require_org_admin)],
 )
-async def list_attachments(session: DbSessionDependency):
-    result = await session.scalars(select(Attachment))
-    return result.all()
+async def list_attachments(
+    session: DbSessionDependency, organization_id: CurrentOrganizationDependency
+):
+    return await AttachmentRepository(session, organization_id).list()
 
 
 @router.post(
@@ -60,10 +62,12 @@ async def list_attachments(session: DbSessionDependency):
         "`POST /{attachment_id}/ingest`."
     ),
     responses={404: {"description": "One or more device IDs not found"}},
+    dependencies=[Depends(require_org_admin)],
 )
 async def create_attachment(
     settings: SettingsDependency,
     session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
     files: list[UploadFile] = File(
         default=[], description="PDF file(s) to upload (repeatable form field)."
     ),
@@ -80,6 +84,7 @@ async def create_attachment(
             session=session,
             file=upload,
             device_ids=device_ids,
+            organization_id=organization_id,
         )
         for upload in files
     ]
@@ -149,6 +154,7 @@ def _render_pdf_page(file_path: Path, page_number: int, zoom: float):
         404: {"description": "Attachment, file, or page not found"},
         422: {"description": "Invalid page number or zoom"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
 async def preview_attachment_page(
     attachment: AttachmentDependency,
@@ -199,6 +205,7 @@ async def preview_attachment_page(
         "vanished attachment."
     ),
     responses={404: {"description": "Attachment not found"}},
+    dependencies=[Depends(require_org_admin)],
 )
 async def delete_attachment(
     attachment: AttachmentDependency,
@@ -253,6 +260,7 @@ async def delete_attachment(
         404: {"description": "Attachment not found"},
         409: {"description": "Already queued or running"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
 async def ingest_attachment(
     attachment: AttachmentDependency,
@@ -296,6 +304,7 @@ async def ingest_attachment(
         404: {"description": "Attachment not found"},
         409: {"description": "Not currently queued or running"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
 async def cancel_attachment_ingestion(
     attachment: AttachmentDependency,
@@ -316,17 +325,16 @@ async def cancel_attachment_ingestion(
     summary="List devices linked to an attachment",
     description="Returns all devices associated with the given attachment.",
     responses={404: {"description": "Attachment not found"}},
+    dependencies=[Depends(require_org_admin)],
 )
 async def list_attachment_devices(
     attachment: AttachmentDependency,
     session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    result = await session.execute(
-        select(Device)
-        .join(AttachmentDevice)
-        .where(AttachmentDevice.attachment_id == attachment.id)
+    return await AttachmentRepository(session, organization_id).list_devices(
+        attachment.id
     )
-    return result.scalars().all()
 
 
 @router.post(
@@ -335,21 +343,17 @@ async def list_attachment_devices(
     summary="Link a device to an attachment",
     description="Associates a device with an attachment. Idempotent — no error if the link already exists.",
     responses={404: {"description": "Attachment or device not found"}},
+    dependencies=[Depends(require_org_admin)],
 )
 async def link_device(
     attachment: AttachmentDependency,
     device: DeviceDependency,
     session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    existing = await session.execute(
-        select(AttachmentDevice).where(
-            AttachmentDevice.attachment_id == attachment.id,
-            AttachmentDevice.device_id == device.id,
-        )
+    await AttachmentRepository(session, organization_id).link_device(
+        attachment.id, device.id
     )
-    if not existing.scalars().first():
-        session.add(AttachmentDevice(attachment_id=attachment.id, device_id=device.id))
-        await session.commit()
 
 
 @router.delete(
@@ -358,19 +362,14 @@ async def link_device(
     summary="Unlink a device from an attachment",
     description="Removes the association between a device and an attachment. Idempotent — no error if the link doesn't exist.",
     responses={404: {"description": "Attachment or device not found"}},
+    dependencies=[Depends(require_org_admin)],
 )
 async def unlink_device(
     attachment: AttachmentDependency,
     device: DeviceDependency,
     session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    result = await session.execute(
-        select(AttachmentDevice).where(
-            AttachmentDevice.attachment_id == attachment.id,
-            AttachmentDevice.device_id == device.id,
-        )
+    await AttachmentRepository(session, organization_id).unlink_device(
+        attachment.id, device.id
     )
-    link = result.scalars().first()
-    if link:
-        await session.delete(link)
-        await session.commit()

@@ -15,6 +15,60 @@ from tests.routers.factories import (
 )
 
 
+class TestOrgMemberPermissions:
+    async def test_member_can_get_attachment_metadata(
+        self, member_client, tmp_path, session
+    ):
+        attachment = await create_attachment(
+            session,
+            file_global_path=str(tmp_path / "manual.pdf"),
+            original_filename="manual.pdf",
+        )
+
+        response = await member_client.get(f"/api/attachments/{attachment.id}")
+
+        assert response.status_code == 200
+
+    async def test_member_can_download_attachment_file(
+        self, member_client, tmp_path, session
+    ):
+        pdf_path = tmp_path / "manual.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 test document")
+        attachment = await create_attachment(
+            session,
+            file_global_path=str(pdf_path),
+            original_filename="manual.pdf",
+        )
+
+        response = await member_client.get(f"/api/attachments/{attachment.id}/file")
+
+        assert response.status_code == 200
+
+    async def test_member_cannot_list_attachments(self, member_client):
+        response = await member_client.get("/api/attachments")
+        assert response.status_code == 403
+
+    async def test_member_cannot_upload_attachment(self, member_client):
+        response = await member_client.post(
+            "/api/attachments",
+            files={"files": ("a.pdf", b"%PDF-1.4", "application/pdf")},
+        )
+        assert response.status_code == 403
+
+    async def test_member_cannot_delete_attachment(
+        self, member_client, tmp_path, session
+    ):
+        attachment = await create_attachment(
+            session,
+            file_global_path=str(tmp_path / "manual.pdf"),
+            original_filename="manual.pdf",
+        )
+
+        response = await member_client.delete(f"/api/attachments/{attachment.id}")
+
+        assert response.status_code == 403
+
+
 class TestListAttachments:
     async def test_should_list_all_attachments(self, client, tmp_path, session):
         await create_attachment(

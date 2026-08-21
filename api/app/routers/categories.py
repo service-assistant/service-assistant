@@ -1,13 +1,13 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-
-from app.database import get_session
+from app.dependencies.auth import CurrentOrganizationDependency, require_org_admin
+from app.dependencies.database import DbSessionDependency
+from app.dependencies.entities import CategoryDependency
 from app.models import Category
+from app.repositories import CategoryRepository
 from app.schemas import CategoryCreate, CategoryRead, CategoryTreeRead, CategoryUpdate
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError, InvalidRequestError
 
 router = APIRouter()
 
@@ -19,24 +19,31 @@ router = APIRouter()
     summary="Create a category",
     description="Creates a new category, optionally nested under a parent category.",
     responses={404: {"description": "Parent category not found"}},
+    dependencies=[Depends(require_org_admin)],
 )
 async def create_category(
-    body: CategoryCreate, session: AsyncSession = Depends(get_session)
+    body: CategoryCreate,
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
+    repository = CategoryRepository(session, organization_id)
+
     if body.parent_id is not None:
-        parent = await session.get(Category, body.parent_id)
+        parent = await repository.get(body.parent_id)
         if not parent:
             raise HTTPException(status_code=404, detail="Parent category not found")
 
     category = Category(**body.model_dump())
-    session.add(category)
     try:
-        await session.commit()
+        return await repository.add(category)
     except IntegrityError:
         await session.rollback()
         raise HTTPException(status_code=404, detail="Parent category not found")
-    await session.refresh(category)
-    return category
+    except InvalidRequestError:
+        # Parent was concurrently deleted after our insert committed but before
+        # we could refresh it — ON DELETE CASCADE already removed this row.
+        await session.rollback()
+        raise HTTPException(status_code=404, detail="Parent category not found")
 
 
 @router.get(
@@ -45,9 +52,10 @@ async def create_category(
     summary="List root categories",
     description="Returns top-level categories (those without a parent). Use /{id}/children to descend.",
 )
-async def list_root_categories(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Category).where(Category.parent_id.is_(None)))
-    return result.scalars().all()
+async def list_root_categories(
+    session: DbSessionDependency, organization_id: CurrentOrganizationDependency
+):
+    return await CategoryRepository(session, organization_id).list_roots()
 
 
 @router.get(
@@ -56,9 +64,10 @@ async def list_root_categories(session: AsyncSession = Depends(get_session)):
     summary="Get the category tree",
     description="Returns root categories with all descendants nested under `children`.",
 )
-async def get_category_tree(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Category))
-    categories = result.scalars().all()
+async def get_category_tree(
+    session: DbSessionDependency, organization_id: CurrentOrganizationDependency
+):
+    categories = await CategoryRepository(session, organization_id).list_all()
 
     by_parent: dict[int | None, list[Category]] = {}
     for category in categories:
@@ -81,16 +90,11 @@ async def get_category_tree(session: AsyncSession = Depends(get_session)):
     responses={404: {"description": "Category not found"}},
 )
 async def list_category_children(
-    category_id: int, session: AsyncSession = Depends(get_session)
+    category: CategoryDependency,
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    category = await session.get(Category, category_id)
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
-
-    result = await session.execute(
-        select(Category).where(Category.parent_id == category_id)
-    )
-    return result.scalars().all()
+    return await CategoryRepository(session, organization_id).list_children(category.id)
 
 
 @router.get(
@@ -100,24 +104,19 @@ async def list_category_children(
     description="Returns a single category by its ID.",
     responses={404: {"description": "Category not found"}},
 )
-async def get_category(category_id: int, session: AsyncSession = Depends(get_session)):
-    category = await session.get(Category, category_id)
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
+async def get_category(category: CategoryDependency):
     return category
 
 
 async def _would_create_cycle(
-    session: AsyncSession, category_id: int, new_parent_id: int
+    repository: CategoryRepository, category_id: int, new_parent_id: int
 ) -> bool:
     """Walk up the ancestor chain from new_parent_id, looking for category_id."""
     current_id: int | None = new_parent_id
     while current_id is not None:
         if current_id == category_id:
             return True
-        current_id = await session.scalar(
-            select(Category.parent_id).where(Category.id == current_id)
-        )
+        current_id = await repository.get_parent_id(current_id)
     return False
 
 
@@ -130,34 +129,28 @@ async def _would_create_cycle(
         404: {"description": "Category or parent category not found"},
         422: {"description": "The new parent would create a circular reference"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
 async def update_category(
-    category_id: int,
+    category: CategoryDependency,
     body: CategoryUpdate,
-    session: AsyncSession = Depends(get_session),
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    category = await session.get(Category, category_id)
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
-
+    repository = CategoryRepository(session, organization_id)
     updates = body.model_dump(exclude_unset=True)
     if "parent_id" in updates and updates["parent_id"] is not None:
-        parent = await session.get(Category, updates["parent_id"])
+        parent = await repository.get(updates["parent_id"])
         if not parent:
             raise HTTPException(status_code=404, detail="Parent category not found")
-        if await _would_create_cycle(session, category_id, updates["parent_id"]):
+        if await _would_create_cycle(repository, category.id, updates["parent_id"]):
             raise HTTPException(
                 status_code=422,
                 detail="Cannot set parent: it would create a circular reference",
             )
 
-    for field, value in updates.items():
-        setattr(category, field, value)
-    category.updated_at = datetime.now(timezone.utc)
-    session.add(category)
-    await session.commit()
-    await session.refresh(category)
-    return category
+    updates["updated_at"] = datetime.now(timezone.utc)
+    return await repository.update(category, **updates)
 
 
 @router.delete(
@@ -165,26 +158,30 @@ async def update_category(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a category",
     description=(
-        "Permanently deletes a category. Fails with 409 if it has child categories. "
-        "Devices referencing it are detached (their category_id becomes null)."
+        "Permanently deletes a category and all of its descendant categories. "
+        "Fails with 409 if any devices still reference this category or any "
+        "of its descendants."
     ),
     responses={
         404: {"description": "Category not found"},
-        409: {"description": "Category has one or more child categories"},
+        409: {"description": "Devices still reference this category or a descendant"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
 async def delete_category(
-    category_id: int, session: AsyncSession = Depends(get_session)
+    category: CategoryDependency,
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    category = await session.get(Category, category_id)
-    if not category:
-        raise HTTPException(status_code=404, detail="Category not found")
+    repository = CategoryRepository(session, organization_id)
     try:
-        await session.delete(category)
-        await session.commit()
+        await repository.delete(category)
     except IntegrityError:
         await session.rollback()
         raise HTTPException(
             status_code=409,
-            detail="Cannot delete category: it has one or more child categories",
+            detail=(
+                "Cannot delete category: devices still reference it or one of "
+                "its descendant categories"
+            ),
         )

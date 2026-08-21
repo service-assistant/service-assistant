@@ -1,13 +1,13 @@
 from datetime import datetime, timezone
 
+from app.dependencies.auth import CurrentOrganizationDependency, require_org_admin
+from app.dependencies.database import DbSessionDependency
+from app.dependencies.entities import DeviceDependency
+from app.models import Device
+from app.repositories import CategoryRepository, DeviceRepository
+from app.schemas import AttachmentRead, DeviceCreate, DeviceRead, DeviceUpdate
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-
-from app.database import get_session
-from app.models import Attachment, AttachmentDevice, Category, Device
-from app.schemas import AttachmentRead, DeviceCreate, DeviceRead, DeviceUpdate
 
 router = APIRouter()
 
@@ -18,24 +18,23 @@ router = APIRouter()
     response_model=DeviceRead,
     summary="Create a device",
     description="Creates a new device and associates it with a category.",
+    dependencies=[Depends(require_org_admin)],
 )
 async def create_device(
-    body: DeviceCreate, session: AsyncSession = Depends(get_session)
+    body: DeviceCreate,
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    if body.category_id is not None:
-        category = await session.get(Category, body.category_id)
-        if not category:
-            raise HTTPException(status_code=404, detail="Category not found")
+    category = await CategoryRepository(session, organization_id).get(body.category_id)
+    if not category:
+        raise HTTPException(status_code=404, detail="Category not found")
 
     device = Device(**body.model_dump())
-    session.add(device)
     try:
-        await session.commit()
+        return await DeviceRepository(session, organization_id).add(device)
     except IntegrityError:
         await session.rollback()
         raise HTTPException(status_code=409, detail="Category no longer exists")
-    await session.refresh(device)
-    return device
 
 
 @router.get(
@@ -44,9 +43,10 @@ async def create_device(
     summary="List devices",
     description="Returns all devices.",
 )
-async def list_devices(session: AsyncSession = Depends(get_session)):
-    result = await session.execute(select(Device))
-    return result.scalars().all()
+async def list_devices(
+    session: DbSessionDependency, organization_id: CurrentOrganizationDependency
+):
+    return await DeviceRepository(session, organization_id).list()
 
 
 @router.get(
@@ -57,22 +57,11 @@ async def list_devices(session: AsyncSession = Depends(get_session)):
     responses={404: {"description": "Device not found"}},
 )
 async def list_device_attachments(
-    device_id: int, session: AsyncSession = Depends(get_session)
+    device: DeviceDependency,
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
-    device = await session.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
-
-    result = await session.execute(
-        select(Attachment)
-        .join(
-            AttachmentDevice,
-            AttachmentDevice.attachment_id == Attachment.id,
-        )
-        .where(AttachmentDevice.device_id == device_id)
-        .order_by(Attachment.created_at.desc())
-    )
-    return result.scalars().all()
+    return await DeviceRepository(session, organization_id).list_attachments(device.id)
 
 
 @router.get(
@@ -82,10 +71,7 @@ async def list_device_attachments(
     description="Returns a single device by its ID.",
     responses={404: {"description": "Device not found"}},
 )
-async def get_device(device_id: int, session: AsyncSession = Depends(get_session)):
-    device = await session.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+async def get_device(device: DeviceDependency):
     return device
 
 
@@ -94,29 +80,31 @@ async def get_device(device_id: int, session: AsyncSession = Depends(get_session
     response_model=DeviceRead,
     summary="Update a device",
     description="Partially updates a device. Only provided fields are changed.",
-    responses={404: {"description": "Device not found"}},
+    responses={
+        404: {"description": "Device not found"},
+        422: {"description": "category_id cannot be cleared"},
+    },
+    dependencies=[Depends(require_org_admin)],
 )
 async def update_device(
-    device_id: int,
+    device: DeviceDependency,
     body: DeviceUpdate,
-    session: AsyncSession = Depends(get_session),
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
 ):
+    repository = DeviceRepository(session, organization_id)
     updates = body.model_dump(exclude_unset=True)
-
-    device = await session.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
-    if updates.get("category_id") is not None:
-        category = await session.get(Category, updates["category_id"])
+    if "category_id" in updates:
+        if updates["category_id"] is None:
+            raise HTTPException(status_code=422, detail="category_id cannot be cleared")
+        category = await CategoryRepository(session, organization_id).get(
+            updates["category_id"]
+        )
         if not category:
             raise HTTPException(status_code=404, detail="Category not found")
-    for field, value in updates.items():
-        setattr(device, field, value)
-    device.updated_at = datetime.now(timezone.utc)
-    session.add(device)
-    await session.commit()
-    await session.refresh(device)
-    return device
+
+    updates["updated_at"] = datetime.now(timezone.utc)
+    return await repository.update(device, **updates)
 
 
 @router.delete(
@@ -128,14 +116,16 @@ async def update_device(
         404: {"description": "Device not found"},
         409: {"description": "Device is referenced by one or more chat threads"},
     },
+    dependencies=[Depends(require_org_admin)],
 )
-async def delete_device(device_id: int, session: AsyncSession = Depends(get_session)):
-    device = await session.get(Device, device_id)
-    if not device:
-        raise HTTPException(status_code=404, detail="Device not found")
+async def delete_device(
+    device: DeviceDependency,
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
+):
+    repository = DeviceRepository(session, organization_id)
     try:
-        await session.delete(device)
-        await session.commit()
+        await repository.delete(device)
     except IntegrityError:
         await session.rollback()
         raise HTTPException(

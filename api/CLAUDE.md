@@ -56,7 +56,7 @@ FastAPI async app backed by PostgreSQL + pgvector. Three core layers:
 
 ### Auth
 
-Single bearer token in `settings.auth_token` (env var `AUTH_TOKEN`). Checked by HTTP middleware in `main.py`. Open paths: `/health`, `/docs`, `/redoc`, `/openapi.json`, `/auth`. Dev token is `abcd`. `/auth` (login/session/logout) accepts the token via form field or the `admin_token` cookie it sets; every other endpoint accepts either the bearer header or that same cookie.
+Multi-tenant, per-user sessions. `Organization` → `User` (`app_role`: `user`/`admin` — `admin` is a system-level superuser, gates the debug SPA; `org_role`: `member`/`admin` — `admin` gates the admin SPA and org-admin routes) → `UserSession` (opaque token, only its SHA-256 hash stored, sliding expiration). `POST /auth/login` (`app/routers/auth.py`) takes `{organization_slug, username, password}`, returns the raw token in the body and sets it as an httponly `session_token` cookie. Every other endpoint requires that cookie or an `Authorization: Bearer <token>` header (checked via `app/dependencies/auth.py`'s `get_current_user`/`require_org_admin`/`require_app_admin`, applied per-router in `main.py`'s `include_router(..., dependencies=...)` calls — not global middleware). `/health`, `/docs`, `/redoc`, `/openapi.json` need no auth. All business data is scoped to the caller's organization via the repository layer (`app/repositories/`).
 
 ### DB session
 
@@ -64,14 +64,13 @@ Single bearer token in `settings.auth_token` (env var `AUTH_TOKEN`). Checked by 
 
 ## Testing
 
-Tests run against a real PostgreSQL instance on the developer's OS (`127.0.0.1:5432`, env from `.env.test`) — no Docker involved. `tests/conftest.py` runs alembic migrations once per session and truncates all tables after each test via `clean_db`. `tests/routers/conftest.py` provides `client` (async `AsyncClient`) and `unauthenticated_client` fixtures; `factories.py` builds and persists ORM objects. Auth token is injected automatically in the `client` fixture — no need to set headers manually.
+Tests run against a real PostgreSQL instance on the developer's OS (`127.0.0.1:5432`, env from `.env.test`) — no Docker involved. `tests/conftest.py` runs alembic migrations once per session and truncates all tables after each test via `clean_db` (the seeded `system`/`default` organizations are preserved). `tests/routers/conftest.py` provides `client` (organization_admin session), `app_admin_client` (app_admin session), and `unauthenticated_client` fixtures; `factories.py` builds and persists ORM objects, including `create_organization`/`create_user`.
 
 ## Key env vars
 
 | Var | Purpose |
 |-----|---------|
 | `DATABASE_URL` | psycopg3 async URL (`postgresql+psycopg://...`) |
-| `AUTH_TOKEN` | Bearer token for API auth |
 | `OPENAI_API_KEY` | Chat completions (direct OpenAI) |
 | `OPENAI_CHAT_MODEL` | e.g. `gpt-4o` |
 | `AZURE_OPENAI_*` | Embeddings (Azure deployment) |

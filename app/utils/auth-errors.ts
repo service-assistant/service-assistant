@@ -1,3 +1,6 @@
+import { notifySessionInvalidated } from './session-events';
+import { getCachedToken } from './token-store';
+
 export const AUTH_SERVICE_FEATURE = 'autoryzacja aplikacji';
 
 type ServiceFeatureError = Error & {
@@ -15,13 +18,16 @@ export const createInvalidAuthTokenError = (status: number) =>
 	});
 
 export const getAuthTokenOrThrow = () => {
-	const authToken = process.env.EXPO_PUBLIC_AUTH_TOKEN ?? '';
+	const authToken = getCachedToken() ?? '';
 	if (!authToken) throw createMissingAuthTokenError();
 	return authToken;
 };
 
 export const throwIfAuthResponseError = (response: Response) => {
 	if (response.status === 401 || response.status === 403) {
+		// A rejected/expired session anywhere in the app should log the user
+		// out and send them back to the login screen, not just show an error.
+		notifySessionInvalidated();
 		throw createInvalidAuthTokenError(response.status);
 	}
 };

@@ -8,7 +8,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import Settings
-from ..models import Attachment, AttachmentDevice, Device
+from ..models import Attachment, AttachmentDevice
+from ..repositories.device_repository import DeviceRepository
 from .async_utils import run_blocking
 
 logger = logging.getLogger(__name__)
@@ -49,14 +50,18 @@ async def save_attachment(
     session: AsyncSession,
     file: UploadFile,
     device_ids: list[int],
+    organization_id: int,
 ) -> Attachment:
     """Stores an uploaded PDF on disk and links it to the given devices.
 
     Does not ingest — the attachment lands with `ingest_status = ready` and
     waits for an explicit `POST /{attachment_id}/ingest` call.
     """
+    device_repository = DeviceRepository(session, organization_id)
     for device_id in device_ids:
-        if not await session.get(Device, device_id):
+        # Org-scoped lookup: a device_id belonging to another organization
+        # 404s here exactly like one that doesn't exist at all.
+        if not await device_repository.get(device_id):
             raise HTTPException(status_code=404, detail=f"Device {device_id} not found")
 
     original_name = Path(str(file.filename)).name
@@ -69,7 +74,9 @@ async def save_attachment(
         )
 
         attachment = Attachment(
-            file_global_path=str(saved_path), original_filename=original_name
+            organization_id=organization_id,
+            file_global_path=str(saved_path),
+            original_filename=original_name,
         )
         session.add(attachment)
         await session.flush()

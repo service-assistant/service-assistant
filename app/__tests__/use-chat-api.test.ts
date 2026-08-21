@@ -384,7 +384,7 @@ describe('useChatApi', () => {
 					{
 						attachment_id: 77,
 						metadata: {
-							images: ['manual/page 2.png'],
+							images: ['page 2.png'],
 							page: 4,
 						},
 					},
@@ -424,7 +424,7 @@ describe('useChatApi', () => {
 			}),
 		);
 		const authorizedImageSource = {
-			uri: 'https://api.example.test/api/images/manual%2Fpage%202.png',
+			uri: 'https://api.example.test/api/images/77/page%202.png',
 			headers: { Authorization: 'Bearer test-token' },
 		};
 		expect(harness.state.currentImage).toEqual(authorizedImageSource);
@@ -454,7 +454,7 @@ describe('useChatApi', () => {
 					{
 						attachment_id: 77,
 						metadata: {
-							images: ['manual/page 2.png'],
+							images: ['page 2.png'],
 							page: 4,
 						},
 					},
@@ -477,7 +477,7 @@ describe('useChatApi', () => {
 		await flushPromises();
 
 		const authorizedImageSource = {
-			uri: 'https://api.example.test/api/images/manual%2Fpage%202.png',
+			uri: 'https://api.example.test/api/images/77/page%202.png',
 			headers: { Authorization: 'Bearer test-token' },
 		};
 		expect(harness.state.currentImage).toEqual(authorizedImageSource);
@@ -503,12 +503,12 @@ describe('useChatApi', () => {
 						attachment_id: 77,
 						metadata: {
 							images: [
-								'manual/page 2.png',
-								'manual/page 3.png',
-								'manual/page 4.png',
-								'manual/page 5.png',
-								'manual/page 6.png',
-								'manual/page 7.png',
+								'page 2.png',
+								'page 3.png',
+								'page 4.png',
+								'page 5.png',
+								'page 6.png',
+								'page 7.png',
 							],
 							page: 4,
 						},
@@ -532,17 +532,17 @@ describe('useChatApi', () => {
 
 		expect(fetchMock).toHaveBeenCalledTimes(2);
 		expect(fetchMock).not.toHaveBeenCalledWith(
-			'https://api.example.test/api/images/manual%2Fpage%207.png',
+			'https://api.example.test/api/images/77/page%207.png',
 			expect.anything(),
 		);
 		expect(harness.state.messages[0]).toMatchObject({
 			schemaImage: {
-				uri: 'https://api.example.test/api/images/manual%2Fpage%202.png',
+				uri: 'https://api.example.test/api/images/77/page%202.png',
 				headers: { Authorization: 'Bearer test-token' },
 			},
 			schemaImages: [
 				...['2', '3', '4', '5', '6'].map((page) => ({
-					uri: `https://api.example.test/api/images/manual%2Fpage%20${page}.png`,
+					uri: `https://api.example.test/api/images/77/page%20${page}.png`,
 					headers: { Authorization: 'Bearer test-token' },
 				})),
 			],

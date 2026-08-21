@@ -22,7 +22,10 @@ class Settings(BaseSettings):
     postgres_user: str
     postgres_password: str
 
-    auth_token: str
+    session_idle_timeout_minutes: int = 60 * 24 * 14
+    # Skip the expiry-refresh write when the session was already extended
+    # within this many minutes, to avoid a DB write on every request.
+    session_extend_threshold_minutes: int = 60 * 24
 
     azure_openai_endpoint: str
     azure_openai_api_key: str

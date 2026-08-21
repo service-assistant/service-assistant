@@ -3,6 +3,15 @@
 """
 
 from .attachment import AttachmentRead
+from .auth import (
+    AdminLoginRequest,
+    LoginRequest,
+    LoginResponse,
+    SessionResponse,
+    UserCreate,
+    UserRead,
+    UserUpdate,
+)
 from .category import CategoryCreate, CategoryRead, CategoryTreeRead, CategoryUpdate
 from .chat_thread import ChatThreadRead, ThreadCreate
 from .chunk import ChunkRead
@@ -15,11 +24,24 @@ from .nameplate import (
     NameplateDeviceCandidate,
     NameplateRecognitionResponse,
 )
+from .organization import (
+    OrganizationCreate,
+    OrganizationCreateResponse,
+    OrganizationRead,
+    OrganizationUpdate,
+)
 from .photo_context import PhotoContextResponse, PhotoObservation
 from .tts import TtsRequest
 
 __all__ = [
     "AttachmentRead",
+    "AdminLoginRequest",
+    "LoginRequest",
+    "LoginResponse",
+    "SessionResponse",
+    "UserCreate",
+    "UserRead",
+    "UserUpdate",
     "CategoryCreate",
     "CategoryRead",
     "CategoryTreeRead",
@@ -37,6 +59,10 @@ __all__ = [
     "NameplateData",
     "NameplateDeviceCandidate",
     "NameplateRecognitionResponse",
+    "OrganizationCreate",
+    "OrganizationCreateResponse",
+    "OrganizationRead",
+    "OrganizationUpdate",
     "PhotoContextResponse",
     "PhotoObservation",
     "ThreadCreate",

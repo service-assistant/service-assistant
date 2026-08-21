@@ -3,6 +3,10 @@ from app.schemas import JobListRead, JobRead
 from fastapi import APIRouter
 from sqlalchemy import text
 
+# Procrastinate's job queue is shared, unscoped system infrastructure (one
+# ingestion job runs globally at a time across every organization) — not
+# tenant data, so this stays app_admin/debug-only rather than org-scoped
+# (gate applied in main.py's include_router call, not here).
 router = APIRouter()
 
 _PAGE_SIZE = 25
@@ -31,6 +35,7 @@ async def list_jobs(session: DbSessionDependency, page: int = 1):
     total_pages = max((total + _PAGE_SIZE - 1) // _PAGE_SIZE, 1)
     page = min(page, total_pages)
 
+    # TODO: create SQLAlchemy model mirroring procrastinate_jobs table and JobsRepository class
     rows = (
         (
             await session.execute(

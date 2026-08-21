@@ -7,6 +7,27 @@ from app.services.nameplate_ocr import (
 from tests.routers.factories import create_category, create_device
 
 
+async def test_member_can_recognize_nameplate(member_client, session, mocker):
+    mocker.patch(
+        "app.routers.nameplates.recognize_nameplate",
+        mocker.AsyncMock(
+            return_value=NameplateData(
+                model="XXX1D1XXX",
+                attributes=[],
+                raw_text="MODEL XXX1D1XXX",
+                model_confidence=0.98,
+            )
+        ),
+    )
+
+    response = await member_client.post(
+        "/api/nameplates/recognize",
+        files={"photo": ("nameplate.jpg", b"image-bytes", "image/jpeg")},
+    )
+
+    assert response.status_code != 403
+
+
 async def test_recognize_nameplate_requires_confirmation_for_exact_device_match(
     client, session, mocker
 ):

@@ -1,5 +1,4 @@
 from app.models import Device
-
 from tests.routers.factories import (
     create_attachment,
     create_category,
@@ -30,14 +29,13 @@ async def test_should_create_device_when_category_exists(client, session):
     assert data["image_url"] == "https://example.com/images/toyota-8fbe20.jpg"
 
 
-async def test_should_create_device_without_category(client):
+async def test_should_return_422_when_creating_device_without_category(client):
     response = await client.post(
         "/api/devices",
         json={"name": "Toyota 8FBE20"},
     )
 
-    assert response.status_code == 201
-    assert response.json()["category_id"] is None
+    assert response.status_code == 422
 
 
 async def test_should_return_404_when_category_not_found_on_create(client):
@@ -129,7 +127,7 @@ async def test_should_return_404_when_updating_device_with_nonexistent_category(
     assert response.json()["detail"] == "Category not found"
 
 
-async def test_should_clear_category_when_patch_sets_it_to_null(client, session):
+async def test_should_return_422_when_patch_sets_category_to_null(client, session):
     category = await create_category(session)
     device = await create_device(session, category.id)
 
@@ -137,10 +135,10 @@ async def test_should_clear_category_when_patch_sets_it_to_null(client, session)
         f"/api/devices/{device.id}", json={"category_id": None}
     )
 
-    assert response.status_code == 200
-    assert response.json()["category_id"] is None
+    assert response.status_code == 422
+    assert response.json()["detail"] == "category_id cannot be cleared"
     await session.refresh(device)
-    assert device.category_id is None
+    assert device.category_id == category.id
 
 
 async def test_should_delete_device_when_id_exists(client, session):
@@ -234,3 +232,45 @@ async def test_should_update_only_category_when_partial_patch_provided(client, s
     await session.refresh(device)
     assert device.category_id == category_new.id
     assert device.name == "Toyota 8FBE20"
+
+
+async def test_should_list_devices_in_app_admins_own_organization(
+    app_admin_client, session
+):
+    category = await create_category(session)
+    await create_device(session, category.id, name="Toyota 8FBE20")
+
+    response = await app_admin_client.get("/api/devices")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+
+async def test_member_can_list_devices(member_client, session):
+    category = await create_category(session)
+    await create_device(session, category.id, name="Toyota 8FBE20")
+
+    response = await member_client.get("/api/devices")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+
+
+async def test_member_cannot_create_device(member_client, session):
+    category = await create_category(session)
+
+    response = await member_client.post(
+        "/api/devices",
+        json={"category_id": category.id, "name": "Toyota 8FBE20"},
+    )
+
+    assert response.status_code == 403
+
+
+async def test_member_cannot_delete_device(member_client, session):
+    category = await create_category(session)
+    device = await create_device(session, category.id, name="Toyota 8FBE20")
+
+    response = await member_client.delete(f"/api/devices/{device.id}")
+
+    assert response.status_code == 403
