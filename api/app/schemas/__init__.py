@@ -3,6 +3,12 @@
 """
 
 from .attachment import AttachmentRead
+from .admin_messages import (
+    DebugMessageChunkRead,
+    DebugMessageDeviceRead,
+    DebugMessageRead,
+    DebugMessageThreadRead,
+)
 from .auth import (
     AdminLoginRequest,
     LoginRequest,
@@ -14,7 +20,12 @@ from .auth import (
 )
 from .category import CategoryCreate, CategoryRead, CategoryTreeRead, CategoryUpdate
 from .chat_thread import ChatThreadRead, ThreadCreate
-from .chunk import ChunkRead
+from .chunk import (
+    ChunkRead,
+    DebugChunkFileDetailRead,
+    DebugChunkFileRead,
+    DebugChunkPageRead,
+)
 from .device import DeviceCreate, DeviceRead, DeviceUpdate
 from .job import JobListRead, JobRead
 from .message import MessageCreate, MessageRead, TranscriptDecision, TranscriptResponse
@@ -35,6 +46,10 @@ from .tts import TtsRequest
 
 __all__ = [
     "AttachmentRead",
+    "DebugMessageDeviceRead",
+    "DebugMessageChunkRead",
+    "DebugMessageRead",
+    "DebugMessageThreadRead",
     "AdminLoginRequest",
     "LoginRequest",
     "LoginResponse",
@@ -48,6 +63,9 @@ __all__ = [
     "CategoryUpdate",
     "ChatThreadRead",
     "ChunkRead",
+    "DebugChunkFileDetailRead",
+    "DebugChunkFileRead",
+    "DebugChunkPageRead",
     "DeviceCreate",
     "DeviceRead",
     "DeviceUpdate",

@@ -1,8 +1,12 @@
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { ProtectedLayout } from '@/components/ProtectedLayout'
 import { BenchmarkPage } from '@/pages/BenchmarkPage'
+import { ChunkDetailPage } from '@/pages/ChunkDetailPage'
+import { ChunksPage } from '@/pages/ChunksPage'
 import { JobsPage } from '@/pages/JobsPage'
 import { LoginPage } from '@/pages/LoginPage'
+import { MessagesPage } from '@/pages/MessagesPage'
+import { MessageThreadPage } from '@/pages/MessageThreadPage'
 import { NextBestStepPage } from '@/pages/NextBestStepPage'
 import { OrganizationsPage } from '@/pages/OrganizationsPage'
 
@@ -52,6 +56,34 @@ const organizationsRoute = createRoute({
 	component: OrganizationsPage,
 })
 
+const chunksRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/chunks',
+	component: ChunksPage,
+})
+
+const chunkDetailRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/chunks/$attachmentId',
+	validateSearch: (search: Record<string, unknown>): { page?: number } => {
+		const page = Number(search.page)
+		return { page: Number.isInteger(page) && page >= 1 ? page : undefined }
+	},
+	component: ChunkDetailPage,
+})
+
+const messagesRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/messages',
+	component: MessagesPage,
+})
+
+const messageThreadRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/messages/$threadId',
+	component: MessageThreadPage,
+})
+
 const routeTree = rootRoute.addChildren([
 	loginRoute,
 	appLayoutRoute.addChildren([
@@ -60,6 +92,10 @@ const routeTree = rootRoute.addChildren([
 		benchmarkRoute,
 		nextBestStepRoute,
 		organizationsRoute,
+		chunksRoute,
+		chunkDetailRoute,
+		messagesRoute,
+		messageThreadRoute,
 	]),
 ])
 

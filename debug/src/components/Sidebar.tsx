@@ -1,9 +1,11 @@
 import { AppShell, Button, NavLink, Stack, Title } from '@mantine/core'
 import {
+	IconBraces,
 	IconBuilding,
 	IconClipboardList,
 	IconFlask,
 	IconLogout,
+	IconMessages,
 	IconRoute,
 } from '@tabler/icons-react'
 import { Link, useRouterState } from '@tanstack/react-router'
@@ -14,6 +16,8 @@ const links = [
 	{ to: '/benchmark', label: 'Benchmark', icon: IconFlask },
 	{ to: '/next-best-step', label: 'Next Best Step', icon: IconRoute },
 	{ to: '/organizations', label: 'Organizacje', icon: IconBuilding },
+	{ to: '/chunks', label: 'Chunks', icon: IconBraces },
+	{ to: '/messages', label: 'Messages', icon: IconMessages },
 ] as const
 
 export function Sidebar() {

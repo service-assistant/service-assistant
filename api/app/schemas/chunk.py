@@ -2,6 +2,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..models import IngestionStatus
+
 
 class ChunkRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
@@ -18,3 +20,24 @@ class ChunkRead(BaseModel):
     )
     created_at: datetime = Field(description="Timestamp when the chunk was created.")
     updated_at: datetime = Field(description="Timestamp of the last update.")
+
+
+class DebugChunkPageRead(BaseModel):
+    page_number: int = Field(description="One-based PDF page number.")
+    chunk_count: int = Field(description="Number of chunks assigned to the page.")
+
+
+class DebugChunkFileRead(BaseModel):
+    id: int
+    organization_id: int
+    organization_name: str
+    organization_slug: str
+    original_filename: str
+    ingest_status: IngestionStatus
+    ingest_pages_total: int
+    chunk_count: int
+    created_at: datetime
+
+
+class DebugChunkFileDetailRead(DebugChunkFileRead):
+    chunk_pages: list[DebugChunkPageRead]
