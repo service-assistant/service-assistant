@@ -9,6 +9,7 @@ import { DocumentDetailPage } from '@/pages/DocumentDetailPage'
 import { DocumentsPage } from '@/pages/DocumentsPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { MachineDetailPage } from '@/pages/MachineDetailPage'
+import { SettingsPage } from '@/pages/SettingsPage'
 import { UsersPage } from '@/pages/UsersPage'
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 
@@ -62,6 +63,12 @@ const addUserRoute = createRoute({
 	component: AddUserPage,
 })
 
+const settingsRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/settings',
+	component: SettingsPage,
+})
+
 const addDocumentRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
 	path: '/add-document',
@@ -107,6 +114,7 @@ const routeTree = rootRoute.addChildren([
 		documentsRoute,
 		catalogRoute,
 		usersRoute,
+		settingsRoute,
 		addUserRoute,
 		addDocumentRoute,
 		addMachineRoute,

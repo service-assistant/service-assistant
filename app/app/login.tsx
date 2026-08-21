@@ -1,14 +1,7 @@
 import { useAuth } from '@/hooks/use-auth';
-import { useState } from 'react';
-import {
-	ActivityIndicator,
-	KeyboardAvoidingView,
-	Platform,
-	Text,
-	TextInput,
-	TouchableOpacity,
-	View,
-} from 'react-native';
+import React, { useState } from 'react';
+import { ActivityIndicator, Platform, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const PRIMARY_ORANGE = '#FF6B00';
@@ -37,9 +30,21 @@ export default function LoginScreen() {
 
 	return (
 		<SafeAreaView className='flex-1 bg-[#09090B]'>
-			<KeyboardAvoidingView
-				className='flex-1 items-center justify-center px-6'
-				behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+			<KeyboardAwareScrollView
+				className='flex-1'
+				enabled={Platform.OS !== 'web'}
+				mode='insets'
+				bottomOffset={24}
+				contentContainerStyle={{
+					flexGrow: 1,
+					justifyContent: 'center',
+					alignItems: 'center',
+					paddingHorizontal: 24,
+					paddingVertical: 24,
+				}}
+				keyboardShouldPersistTaps='handled'
+				keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+				showsVerticalScrollIndicator={false}>
 				<View className='w-full max-w-sm rounded-lg border border-white/10 bg-[#18181B] p-8'>
 					<Text className='mb-1 text-xl font-semibold text-white'>
 						Asystent Serwisanta
@@ -76,6 +81,8 @@ export default function LoginScreen() {
 					</Text>
 					<TextInput
 						secureTextEntry
+						autoCapitalize='none'
+						autoCorrect={false}
 						value={password}
 						onChangeText={setPassword}
 						className='mb-4 rounded-md border border-white/10 bg-[#09090B] px-3 py-3 text-base text-white'
@@ -87,7 +94,10 @@ export default function LoginScreen() {
 						onPress={handleSubmit}
 						disabled={!canSubmit}
 						accessibilityRole='button'
-						style={{ backgroundColor: PRIMARY_ORANGE, opacity: canSubmit ? 1 : 0.4 }}
+						style={{
+							backgroundColor: PRIMARY_ORANGE,
+							opacity: canSubmit ? 1 : 0.4,
+						}}
 						className='items-center justify-center rounded-md py-3'>
 						{pending ? (
 							<ActivityIndicator color='#09090B' />
@@ -96,7 +106,7 @@ export default function LoginScreen() {
 						)}
 					</TouchableOpacity>
 				</View>
-			</KeyboardAvoidingView>
+			</KeyboardAwareScrollView>
 		</SafeAreaView>
 	);
 }

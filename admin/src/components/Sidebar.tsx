@@ -11,7 +11,7 @@ import {
 
 type NavItem = {
 	label: string
-	to: '/' | '/catalog' | '/users' | null
+	to: '/' | '/catalog' | '/users' | '/settings' | null
 	icon: LucideIcon
 }
 
@@ -22,7 +22,7 @@ const NAV_ITEMS: NavItem[] = [
 	{ label: 'Użytkownicy', to: '/users', icon: ShieldCheck },
 ]
 
-const SETTINGS_ITEM: NavItem = { label: 'Ustawienia', to: null, icon: Settings }
+const SETTINGS_ITEM: NavItem = { label: 'Ustawienia', to: '/settings', icon: Settings }
 
 function SidebarItem({ active, item }: { active: boolean; item: NavItem }) {
 	const Icon = item.icon
@@ -95,7 +95,7 @@ export function Sidebar() {
 			</div>
 
 			<div className='border-t border-white/[0.08] pt-5'>
-				<SidebarItem item={SETTINGS_ITEM} active={false} />
+				<SidebarItem item={SETTINGS_ITEM} active={pathname.startsWith('/settings')} />
 			</div>
 		</aside>
 	)

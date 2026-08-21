@@ -12,6 +12,19 @@ const mockUseChatApi = jest.fn();
 const mockUseMicrophone = jest.fn();
 const mockUseSourcePanelFiles = jest.fn();
 const mockUseWakeWord = jest.fn();
+const mockLogout = jest.fn(() => Promise.resolve());
+const mockUseAuth = jest.fn(() => ({
+	authenticated: true,
+	user: {
+		id: 1,
+		organizationId: 1,
+		organizationSlug: 'serwis',
+		username: 'andrzej',
+		role: 'member',
+	},
+	login: jest.fn(),
+	logout: mockLogout,
+}));
 const mockUseFocusEffect = jest.fn((callback: () => void | (() => void)) => callback());
 const mockUseCameraPermissions = jest.fn(() => [{ granted: true }, jest.fn()]);
 const mockImpactAsync = jest.fn(() => Promise.resolve());
@@ -92,6 +105,7 @@ jest.mock('react-native', () => {
 		},
 		Image: Object.assign(createHost('Image'), { getSize: mockImageGetSize }),
 		Keyboard: { addListener: mockKeyboardAddListener, dismiss: mockKeyboardDismiss },
+		KeyboardAvoidingView: createHost('KeyboardAvoidingView'),
 		FlatList: createHost('FlatList'),
 		Modal: createHost('Modal'),
 		Pressable: createHost('Pressable'),
@@ -118,6 +132,14 @@ jest.mock('react-native-safe-area-context', () => {
 	return {
 		SafeAreaView,
 		useSafeAreaInsets: () => mockSafeAreaInsets,
+	};
+});
+
+jest.mock('react-native-keyboard-controller', () => {
+	const React = require('react');
+	return {
+		KeyboardAwareScrollView: ({ children, ...props }: Record<string, unknown>) =>
+			React.createElement('KeyboardAwareScrollView', props, children),
 	};
 });
 
@@ -253,6 +275,10 @@ jest.mock('@/hooks/use-wake-word', () => ({
 	useWakeWord: mockUseWakeWord,
 }));
 
+jest.mock('@/hooks/use-auth', () => ({
+	useAuth: mockUseAuth,
+}));
+
 jest.mock('@/utils/api-config', () => ({
 	API_URL: 'https://api.example.test',
 	API_URL_CONFIG_ERROR: null,
@@ -355,6 +381,8 @@ describe('tab screens', () => {
 		mockUseMicrophone.mockReset();
 		mockUseSourcePanelFiles.mockReset();
 		mockUseWakeWord.mockClear();
+		mockUseAuth.mockClear();
+		mockLogout.mockClear();
 		mockKeyboardAddListener.mockClear();
 		mockKeyboardDismiss.mockClear();
 		mockAppStateAddListener.mockClear();
@@ -370,6 +398,7 @@ describe('tab screens', () => {
 		);
 		mockSearchParams = {};
 		mockWindowDimensions = { width: 900, height: 700 };
+		require('react-native').Platform.OS = 'ios';
 		global.fetch = jest.fn();
 		jest.spyOn(console, 'log').mockImplementation(() => {});
 	});
@@ -405,6 +434,22 @@ describe('tab screens', () => {
 
 		expect(mockOrientationLockAsync).toHaveBeenCalledWith('PORTRAIT_UP');
 		expect(mockOrientationUnlockAsync).not.toHaveBeenCalled();
+	});
+
+	test('login tracks focused Android inputs above the keyboard', () => {
+		require('react-native').Platform.OS = 'android';
+		const LoginScreen = require('../app/login').default;
+		const tree = renderScreen(LoginScreen);
+		const keyboardAwareScrollView = findByType(tree, 'KeyboardAwareScrollView')[0];
+
+		expect(keyboardAwareScrollView.props.enabled).toBe(true);
+		expect(keyboardAwareScrollView.props.mode).toBe('insets');
+		expect(keyboardAwareScrollView.props.bottomOffset).toBe(24);
+		expect(keyboardAwareScrollView.props.keyboardShouldPersistTaps).toBe('handled');
+		expect(keyboardAwareScrollView.props.contentContainerStyle).toMatchObject({
+			flexGrow: 1,
+			justifyContent: 'center',
+		});
 	});
 
 	test('settings screen combines TTS state and voice in one expandable selector', () => {
@@ -452,6 +497,23 @@ describe('tab screens', () => {
 			ttsVoice: 'Leda',
 			ttsStyle: 'extreme_sensual',
 		});
+	});
+
+	test.each(['web', 'android'])('settings screen exposes logout for %s sessions', async (os) => {
+		require('react-native').Platform.OS = os;
+		const SettingsScreen = require('../app/(tabs)/settings').default;
+		const tree = renderScreen(SettingsScreen);
+		const logoutButton = collectElements(tree).find(
+			(element) => element.props.accessibilityLabel === 'Wyloguj się',
+		);
+
+		if (!logoutButton) throw new Error('Web logout button was not rendered.');
+		expect(getTextContent(logoutButton)).toContain('andrzej · serwis');
+
+		logoutButton.props.onPress();
+		await flushPromises();
+
+		expect(mockLogout).toHaveBeenCalledTimes(1);
 	});
 
 	test('chat screen renders desktop layout with chat params and hook wiring', () => {
