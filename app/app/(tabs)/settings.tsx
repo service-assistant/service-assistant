@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
 import {
 	Modal,
+	Platform,
 	Pressable,
 	ScrollView,
 	Switch,
@@ -17,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { useAppSettings, type TtsStyle, type TtsVoice } from '@/hooks/use-app-settings';
+import { useAuth } from '@/hooks/use-auth';
 
 const PRIMARY_ORANGE = '#FF6B00';
 type TtsMode = 'off' | TtsVoice;
@@ -50,6 +52,58 @@ const TTS_STYLE_OPTIONS: { value: TtsStyle; label: string; description: string }
 		description: 'Najniższy ton, długie pauzy i pełny głos',
 	},
 ];
+
+function LogoutSetting({
+	lightThemeEnabled,
+	rowPaddingVertical,
+}: {
+	lightThemeEnabled: boolean;
+	rowPaddingVertical: number;
+}) {
+	const { user, logout } = useAuth();
+	const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+	const handleLogout = async () => {
+		if (isLoggingOut) return;
+		setIsLoggingOut(true);
+		await logout();
+	};
+
+	return (
+		<View
+			className={`${lightThemeEnabled ? 'bg-white border-[#E4E4E7]' : 'bg-[#18181B] border-white/5'} mt-4 border rounded-[12px] overflow-hidden`}>
+			<TouchableOpacity
+				onPress={() => void handleLogout()}
+				disabled={isLoggingOut}
+				accessibilityRole='button'
+				accessibilityLabel='Wyloguj się'
+				activeOpacity={0.75}
+				className='flex-row items-center justify-between px-4'
+				style={{ paddingVertical: rowPaddingVertical }}>
+				<View className='flex-row items-center flex-1 mr-4'>
+					<View
+						className={`w-10 h-10 rounded-[10px] ${lightThemeEnabled ? 'bg-red-50' : 'bg-red-950/40'} items-center justify-center mr-3`}>
+						<Feather name='log-out' size={20} color='#EF4444' />
+					</View>
+					<View className='flex-1'>
+						<Text
+							className={`${lightThemeEnabled ? 'text-[#18181B]' : 'text-white'} text-base font-semibold`}>
+							{isLoggingOut ? 'Wylogowywanie…' : 'Wyloguj się'}
+						</Text>
+						<Text
+							numberOfLines={1}
+							className={`${lightThemeEnabled ? 'text-[#52525B]' : 'text-zinc-400'} text-sm mt-1`}>
+							{user
+								? `${user.username} · ${user.organizationSlug}`
+								: 'Zakończ bieżącą sesję.'}
+						</Text>
+					</View>
+				</View>
+				<Feather name='chevron-right' size={22} color='#EF4444' />
+			</TouchableOpacity>
+		</View>
+	);
+}
 
 export default function SettingsScreen() {
 	const router = useRouter();
@@ -394,6 +448,13 @@ export default function SettingsScreen() {
 						</View>
 					</TouchableOpacity>
 				</View>
+
+				{Platform.OS === 'web' || Platform.OS === 'android' ? (
+					<LogoutSetting
+						lightThemeEnabled={lightThemeEnabled}
+						rowPaddingVertical={rowPaddingVertical}
+					/>
+				) : null}
 			</ScrollView>
 
 			<Modal
