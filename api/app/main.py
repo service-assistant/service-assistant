@@ -14,7 +14,14 @@ from app.routers import (
     users,
 )
 from app.routers.admin import auth as admin_auth
-from app.routers.admin import benchmark, jobs, next_best_step, organizations
+from app.routers.admin import (
+    benchmark,
+    chunks as admin_chunks,
+    jobs,
+    messages as admin_messages,
+    next_best_step,
+    organizations,
+)
 from fastapi import Depends, FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -146,6 +153,18 @@ app.include_router(
     organizations.router,
     prefix="/api/admin/organizations",
     tags=["Organizations"],
+    dependencies=[Depends(require_app_admin)],
+)
+app.include_router(
+    admin_chunks.router,
+    prefix="/api/admin/chunks",
+    tags=["Admin Chunks"],
+    dependencies=[Depends(require_app_admin)],
+)
+app.include_router(
+    admin_messages.router,
+    prefix="/api/admin/messages",
+    tags=["Admin Messages"],
     dependencies=[Depends(require_app_admin)],
 )
 
