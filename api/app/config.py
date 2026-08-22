@@ -32,13 +32,9 @@ class Settings(BaseSettings):
     azure_openai_embeddings_deployment: str
     azure_openai_api_version: str
 
-    azure_openai_vision_endpoint: str
-    azure_openai_vision_api_key: str
-    azure_openai_vision_deployment: str
-    azure_openai_vision_api_version: str
-
     openai_api_key: str
     openai_chat_model: str = "gpt-5.6-luna"
+    openai_image_description_model: str = "gpt-5.6-luna"
     openai_stt_model: str = "gpt-transcribe"
     openai_stt_prompt: str = (
         "Nagranie zawiera wypowiedź polskiego technika serwisowego dotyczącą "

@@ -14,6 +14,13 @@ from app.services.ingest import (
 )
 
 
+@pytest.fixture(autouse=True)
+def openai_client(mocker):
+    return mocker.patch(
+        "app.services.ingest.AsyncOpenAI", return_value=mocker.AsyncMock()
+    )
+
+
 def test_render_page_for_ocr_limits_dimensions(mocker):
     page = mocker.Mock()
     page.rect.width = 20_000
@@ -48,7 +55,7 @@ def test_render_page_for_ocr_downscales_large_image(mocker):
     assert second_matrix.a < first_matrix.a
 
 
-async def test_ingest_pdf_to_attachment(mocker, settings):
+async def test_ingest_pdf_to_attachment(mocker, settings, openai_client):
     session = mocker.AsyncMock()
     main_thread_id = threading.get_ident()
     pdf_worker_thread_ids: list[int] = []
@@ -130,22 +137,19 @@ async def test_ingest_pdf_to_attachment(mocker, settings):
     assert report.chunks_indexed == len(rows)
     assert pdf_worker_thread_ids
     assert pdf_worker_thread_ids[0] != main_thread_id
-    assert azure_client.call_count == 2
-    assert azure_client.call_args_list[0].kwargs == {
-        "api_version": settings.azure_openai_api_version,
-        "azure_endpoint": settings.azure_openai_endpoint,
-        "api_key": settings.azure_openai_api_key,
-        "timeout": settings.azure_embeddings_timeout_seconds,
-        "max_retries": settings.azure_embeddings_max_retries,
-    }
-    assert azure_client.call_args_list[1].kwargs == {
-        "api_version": settings.azure_openai_vision_api_version,
-        "azure_endpoint": settings.azure_openai_vision_endpoint,
-        "api_key": settings.azure_openai_vision_api_key,
-    }
+    azure_client.assert_called_once_with(
+        api_version=settings.azure_openai_api_version,
+        azure_endpoint=settings.azure_openai_endpoint,
+        api_key=settings.azure_openai_api_key,
+        timeout=settings.azure_embeddings_timeout_seconds,
+        max_retries=settings.azure_embeddings_max_retries,
+    )
+    openai_client.assert_called_once_with(api_key=settings.openai_api_key)
 
 
-async def test_sparse_native_text_gets_image_description_chunks(mocker, settings):
+async def test_sparse_native_text_gets_image_description_chunks(
+    mocker, settings, openai_client
+):
     session = mocker.AsyncMock()
     page = mocker.Mock()
     page.get_text.return_value = "Native text"
@@ -159,7 +163,7 @@ async def test_sparse_native_text_gets_image_description_chunks(mocker, settings
     mocker.patch("app.services.ingest.chunk_page", return_value=["native chunk"])
     image_paths = ["image-1.png", "image-2.png"]
     mocker.patch("app.services.ingest.extract_page_images", return_value=image_paths)
-    mocker.patch(
+    describe = mocker.patch(
         "app.services.ingest.describe_image",
         side_effect=["Description 1", "Description 2"],
     )
@@ -169,10 +173,8 @@ async def test_sparse_native_text_gets_image_description_chunks(mocker, settings
         data=[mocker.Mock(embedding=[0.1] * 1536) for _ in range(3)]
     )
     vision_client = mocker.AsyncMock()
-    clients = [embedding_client, vision_client]
-    azure_client = mocker.patch(
-        "app.services.ingest.AsyncAzureOpenAI", side_effect=clients
-    )
+    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    openai_client.return_value = vision_client
     insert = mocker.patch(
         "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
     )
@@ -191,12 +193,13 @@ async def test_sparse_native_text_gets_image_description_chunks(mocker, settings
     assert rows[1][3] == [image_paths[1]]
     assert rows[2][3] == image_paths
     assert report.chunks_indexed == 3
-    assert azure_client.call_count == 2
-    assert azure_client.call_args_list[1].kwargs == {
-        "api_version": settings.azure_openai_vision_api_version,
-        "azure_endpoint": settings.azure_openai_vision_endpoint,
-        "api_key": settings.azure_openai_vision_api_key,
-    }
+    openai_client.assert_called_once_with(api_key=settings.openai_api_key)
+    assert describe.await_count == 2
+    assert all(
+        call.kwargs["client"] is vision_client
+        and call.kwargs["model"] == "gpt-5.6-luna"
+        for call in describe.await_args_list
+    )
 
 
 async def test_image_only_pdf_is_rejected_only_after_azure_ocr_fails(mocker, settings):

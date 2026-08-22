@@ -12,7 +12,7 @@ import pymupdf4llm
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import DocumentContentFormat
 from azure.core.credentials import AzureKeyCredential
-from openai import AsyncAzureOpenAI
+from openai import AsyncAzureOpenAI, AsyncOpenAI
 from sqlalchemy import delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -157,11 +157,7 @@ async def _ingest_pdf_to_attachment_unlocked(
         timeout=settings.azure_embeddings_timeout_seconds,
         max_retries=settings.azure_embeddings_max_retries,
     )
-    vision_client = AsyncAzureOpenAI(
-        api_version=settings.azure_openai_vision_api_version,
-        azure_endpoint=settings.azure_openai_vision_endpoint,
-        api_key=settings.azure_openai_vision_api_key,
-    )
+    vision_client = AsyncOpenAI(api_key=settings.openai_api_key)
     images_dir = settings.attachments_dir / "images" / str(attachment_id)
     doc: fitz.Document | None = None
     try:
@@ -333,7 +329,7 @@ async def _ingest_pdf_to_attachment_unlocked(
                     description = await describe_image(
                         image_path=str(images_dir / image_filename),
                         client=vision_client,
-                        model=settings.azure_openai_vision_deployment,
+                        model=settings.openai_image_description_model,
                     )
                     if description.strip():
                         pending.append((description, page_num, [image_filename]))

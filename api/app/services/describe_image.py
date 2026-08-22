@@ -1,10 +1,10 @@
 import base64
-from openai import AsyncAzureOpenAI
+from openai import AsyncOpenAI
 
 
 async def describe_image(
     image_path: str,
-    client: AsyncAzureOpenAI,
+    client: AsyncOpenAI,
     model: str,
 ) -> str:
 

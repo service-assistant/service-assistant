@@ -11,6 +11,7 @@ def test_reranker_is_disabled_with_provider_defaults(settings):
     assert settings.reranker_timeout_seconds == 5.0
     assert settings.azure_embeddings_max_retries == 5
     assert settings.openai_chat_model == "gpt-5.6-luna"
+    assert settings.openai_image_description_model == "gpt-5.6-luna"
     assert settings.benchmark_judge_model == "gpt-5.1"
     assert settings.benchmark_chunk_judge_model == "gpt-5.6-luna"
     assert settings.benchmark_judge_reasoning_effort == "medium"
