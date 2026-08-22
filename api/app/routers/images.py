@@ -1,30 +1,35 @@
 import mimetypes
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import FileResponse
 
 from ..config import Settings, get_settings
+from ..dependencies.entities import AttachmentDependency
 
 router = APIRouter()
 
 
 @router.get(
-    "/{image_path:path}",
+    "/{attachment_id}/{filename}",
     response_class=FileResponse,
-    summary="Get image by path",
+    summary="Get an extracted page image by attachment and filename",
     description=(
-        "Requested path should be taken from `chunk.metadata.images[]`. "
-        "This endpoint responds with the image file by using it's global path in file system."
+        "`attachment_id` and `filename` should be taken from `chunk.attachment_id` "
+        "and `chunk.metadata.images[]` respectively. Scoped to the caller's organization "
+        "via the attachment's ownership."
     ),
     responses={
         status.HTTP_200_OK: {"description": "File stream returned successfully"},
         status.HTTP_404_NOT_FOUND: {"description": "Image file not found on disk"},
     },
 )
-def get_image(image_path: str, settings: Settings = Depends(get_settings)):
-    allowed_dir = (settings.attachments_dir / "images").resolve()
-    file_path = Path(image_path).resolve()
+def get_image(
+    attachment: AttachmentDependency,
+    filename: str,
+    settings: Settings = Depends(get_settings),
+):
+    allowed_dir = (settings.attachments_dir / "images" / str(attachment.id)).resolve()
+    file_path = (allowed_dir / filename).resolve()
 
     if not file_path.is_relative_to(allowed_dir):
         raise HTTPException(

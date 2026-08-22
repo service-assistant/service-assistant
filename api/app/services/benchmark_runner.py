@@ -4,16 +4,22 @@ from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from typing import Any, cast
 
+from app.config import Settings
+from app.models import (
+    Attachment,
+    Category,
+    ChatThread,
+    Chunk,
+    ChunkMessage,
+    Device,
+)
+from app.schemas import MessageCreate
+from app.services.benchmark_cases import BenchmarkCase
+from app.services.benchmark_setup import BENCHMARK_MODEL_SERIAL_CODE
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.config import Settings
-from app.models import Attachment, ChatThread, Chunk, ChunkMessage, Device
-from app.schemas import MessageCreate
-from app.services.benchmark_cases import BenchmarkCase
-from app.services.benchmark_setup import BENCHMARK_MODEL_SERIAL_CODE
 
 REQUIRED_FACTS_PASS_THRESHOLD = 0.8
 FACT_COVERAGE_PASS_THRESHOLD = 0.8
@@ -371,6 +377,10 @@ async def run_benchmark_case(
     )
     if device is None:
         raise RuntimeError("Run the full benchmark setup before running cases.")
+    organization_id = await session.scalar(
+        select(Category.organization_id).where(Category.id == device.category_id)
+    )
+    assert organization_id is not None
 
     thread = ChatThread(
         title=f"BENCHMARK · {case.id}",
@@ -387,13 +397,14 @@ async def run_benchmark_case(
         _raise_if_cancelled(cancellation_event)
         response = await _await_with_cancellation(
             threads.create_message(
-                thread_id=thread.id,
+                thread=thread,
                 body=MessageCreate(
                     content=content,
                     diagnostic_mode_enabled=case.diagnostic_mode_enabled,
                 ),
                 settings=settings,
                 session=session,
+                organization_id=organization_id,
                 debug=True,
             ),
             cancellation_event,

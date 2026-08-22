@@ -1,197 +1,110 @@
 import {
-	ActionIcon,
-	Alert,
 	Badge,
-	Button,
-	Collapse,
+	Center,
 	Group,
-	Image,
 	Loader,
-	Select,
-	SimpleGrid,
+	Paper,
 	Stack,
 	Table,
 	Text,
+	TextInput,
 	Title,
 } from '@mantine/core'
-import { modals } from '@mantine/modals'
-import { IconChevronDown, IconChevronRight, IconTrash } from '@tabler/icons-react'
-import { useMemo, useState } from 'react'
-import { useAttachments } from '@/hooks/useAttachments'
-import { useChunks, useDeleteChunk } from '@/hooks/useChunks'
-import { buildChunkImageUrl } from '@/lib/images'
-import type { ChunkRead } from '@/lib/types'
+import { IconFileText, IconSearch } from '@tabler/icons-react'
+import { Link } from '@tanstack/react-router'
+import { useDeferredValue, useState } from 'react'
+import { useChunkFiles } from '@/hooks/useChunks'
 
-function ChunkRow({
-	chunk,
-	filename,
-	expanded,
-	onToggle,
-}: {
-	chunk: ChunkRead
-	filename: string
-	expanded: boolean
-	onToggle: () => void
-}) {
-	const deleteChunk = useDeleteChunk()
-	const images = chunk.metadata?.images ?? []
-
-	function handleDelete() {
-		modals.openConfirmModal({
-			title: 'Usunąć chunk?',
-			children: <Text size='sm'>Chunk #{chunk.id} zostanie trwale usunięty.</Text>,
-			labels: { confirm: 'Usuń', cancel: 'Anuluj' },
-			confirmProps: { color: 'red' },
-			onConfirm: () => deleteChunk.mutate(chunk.id),
-		})
-	}
-
-	return (
-		<>
-			<Table.Tr style={{ cursor: 'pointer' }} onClick={onToggle}>
-				<Table.Td>
-					{expanded ? <IconChevronDown size={16} /> : <IconChevronRight size={16} />}
-				</Table.Td>
-				<Table.Td>{chunk.id}</Table.Td>
-				<Table.Td>{filename}</Table.Td>
-				<Table.Td>{chunk.metadata?.page ?? '—'}</Table.Td>
-				<Table.Td>
-					<Text lineClamp={1} size='sm'>
-						{chunk.content}
-					</Text>
-				</Table.Td>
-				<Table.Td>
-					{images.length > 0 ? <Badge color='blue'>{images.length}</Badge> : '—'}
-				</Table.Td>
-				<Table.Td onClick={(e) => e.stopPropagation()}>
-					<ActionIcon
-						color='red'
-						variant='subtle'
-						loading={deleteChunk.isPending}
-						onClick={handleDelete}>
-						<IconTrash size={16} />
-					</ActionIcon>
-				</Table.Td>
-			</Table.Tr>
-			<Table.Tr>
-				<Table.Td colSpan={7} p={0}>
-					<Collapse expanded={expanded}>
-						<Stack p='md' gap='sm' bg='var(--mantine-color-default)'>
-							<Text style={{ whiteSpace: 'pre-wrap' }} size='sm'>
-								{chunk.content}
-							</Text>
-							{images.length > 0 && (
-								<SimpleGrid cols={{ base: 2, sm: 4 }}>
-									{images.map((path) => (
-										<Image
-											key={path}
-											src={buildChunkImageUrl(path)}
-											radius='sm'
-										/>
-									))}
-								</SimpleGrid>
-							)}
-						</Stack>
-					</Collapse>
-				</Table.Td>
-			</Table.Tr>
-		</>
-	)
-}
+const STATUS_COLORS = {
+	ready: 'gray',
+	queued: 'blue',
+	running: 'yellow',
+	succeeded: 'green',
+	failed: 'red',
+} as const
 
 export function ChunksPage() {
-	const [attachmentId, setAttachmentId] = useState<number | null>(null)
-	const [page, setPage] = useState(1)
-	const [expandedId, setExpandedId] = useState<number | null>(null)
-
-	const { data: attachments } = useAttachments()
-	const { data: chunks, isLoading, isError, error } = useChunks(attachmentId, page)
-
-	const attachmentOptions = useMemo(
-		() => (attachments ?? []).map((a) => ({ value: String(a.id), label: a.original_filename })),
-		[attachments],
-	)
-	const filenameById = useMemo(() => {
-		const map = new Map<number, string>()
-		for (const a of attachments ?? []) map.set(a.id, a.original_filename)
-		return map
-	}, [attachments])
+	const [search, setSearch] = useState('')
+	const deferredSearch = useDeferredValue(search)
+	const { data, isLoading, isFetching } = useChunkFiles(deferredSearch)
 
 	return (
-		<Stack gap='md'>
-			<Title order={2}>Chunki</Title>
-			<Group>
-				<Select
-					placeholder='Wszystkie dokumenty'
-					data={attachmentOptions}
-					value={attachmentId !== null ? String(attachmentId) : null}
-					onChange={(value) => {
-						setAttachmentId(value ? Number(value) : null)
-						setPage(1)
-					}}
-					clearable
-					searchable
-					w={320}
-				/>
-			</Group>
+		<Stack gap='lg'>
+			<div>
+				<Title order={2}>Chunks</Title>
+				<Text c='dimmed' size='sm'>
+					Podejrzyj podział dokumentów na fragmenty i zweryfikuj metadane stron.
+				</Text>
+			</div>
 
-			{isError && (
-				<Alert color='red'>{error instanceof Error ? error.message : 'Błąd'}</Alert>
-			)}
+			<TextInput
+				value={search}
+				onChange={(event) => setSearch(event.currentTarget.value)}
+				placeholder='Szukaj po nazwie pliku lub organizacji…'
+				leftSection={<IconSearch size={17} />}
+				rightSection={isFetching && !isLoading ? <Loader size={16} /> : undefined}
+			/>
 
-			{isLoading ? (
-				<Loader />
-			) : (
-				<Table highlightOnHover>
-					<Table.Thead>
-						<Table.Tr>
-							<Table.Th />
-							<Table.Th>ID</Table.Th>
-							<Table.Th>Dokument</Table.Th>
-							<Table.Th>Strona</Table.Th>
-							<Table.Th>Treść</Table.Th>
-							<Table.Th>Obrazy</Table.Th>
-							<Table.Th />
-						</Table.Tr>
-					</Table.Thead>
-					<Table.Tbody>
-						{(chunks ?? []).map((chunk) => (
-							<ChunkRow
-								key={chunk.id}
-								chunk={chunk}
-								filename={
-									filenameById.get(chunk.attachment_id) ??
-									`#${chunk.attachment_id}`
-								}
-								expanded={expandedId === chunk.id}
-								onToggle={() =>
-									setExpandedId((cur) => (cur === chunk.id ? null : chunk.id))
-								}
-							/>
-						))}
-					</Table.Tbody>
-				</Table>
-			)}
-
-			{!isLoading && (chunks ?? []).length === 0 && (
-				<Text c='dimmed'>Brak chunków dla wybranego filtra.</Text>
-			)}
-
-			<Group justify='center'>
-				<Button
-					variant='default'
-					disabled={page <= 1}
-					onClick={() => setPage((p) => p - 1)}>
-					Poprzednia
-				</Button>
-				<Text size='sm'>Strona {page}</Text>
-				<Button
-					variant='default'
-					disabled={(chunks ?? []).length < 20}
-					onClick={() => setPage((p) => p + 1)}>
-					Następna
-				</Button>
-			</Group>
+			<Paper withBorder radius='md' style={{ overflow: 'hidden' }}>
+				{isLoading ? (
+					<Center py='xl'>
+						<Loader />
+					</Center>
+				) : (
+					<Table highlightOnHover verticalSpacing='sm'>
+						<Table.Thead>
+							<Table.Tr>
+								<Table.Th>Plik</Table.Th>
+								<Table.Th>Organizacja</Table.Th>
+								<Table.Th>Status</Table.Th>
+								<Table.Th>Strony</Table.Th>
+								<Table.Th>Chunki</Table.Th>
+								<Table.Th>Dodano</Table.Th>
+							</Table.Tr>
+						</Table.Thead>
+						<Table.Tbody>
+							{(data ?? []).map((file) => (
+								<Table.Tr key={file.id}>
+									<Table.Td>
+										<Link
+											to='/chunks/$attachmentId'
+											params={{ attachmentId: String(file.id) }}
+											style={{ color: 'inherit', textDecoration: 'none' }}>
+											<Group gap='xs' wrap='nowrap'>
+												<IconFileText size={18} />
+												<Text fw={600} lineClamp={1}>
+													{file.original_filename}
+												</Text>
+											</Group>
+										</Link>
+									</Table.Td>
+									<Table.Td>
+										<Text size='sm'>{file.organization_name}</Text>
+										<Text size='xs' c='dimmed'>
+											{file.organization_slug}
+										</Text>
+									</Table.Td>
+									<Table.Td>
+										<Badge color={STATUS_COLORS[file.ingest_status]}>
+											{file.ingest_status}
+										</Badge>
+									</Table.Td>
+									<Table.Td>{file.ingest_pages_total}</Table.Td>
+									<Table.Td>{file.chunk_count}</Table.Td>
+									<Table.Td>
+										{new Date(file.created_at).toLocaleString('pl-PL')}
+									</Table.Td>
+								</Table.Tr>
+							))}
+						</Table.Tbody>
+					</Table>
+				)}
+				{!isLoading && (data ?? []).length === 0 && (
+					<Text c='dimmed' ta='center' py='xl'>
+						Nie znaleziono plików.
+					</Text>
+				)}
+			</Paper>
 		</Stack>
 	)
 }

@@ -65,8 +65,13 @@ export function useLinkDevice() {
 	return useMutation({
 		mutationFn: ({ attachmentId, deviceId }: { attachmentId: number; deviceId: number }) =>
 			api.post(`/api/attachments/${attachmentId}/devices/${deviceId}`),
-		onSuccess: (_data, { attachmentId }) =>
-			queryClient.invalidateQueries({ queryKey: ['attachments', attachmentId, 'devices'] }),
+		onSuccess: (_data, { attachmentId, deviceId }) =>
+			Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: ['attachments', attachmentId, 'devices'],
+				}),
+				queryClient.invalidateQueries({ queryKey: ['devices', deviceId, 'attachments'] }),
+			]),
 	})
 }
 
@@ -75,7 +80,12 @@ export function useUnlinkDevice() {
 	return useMutation({
 		mutationFn: ({ attachmentId, deviceId }: { attachmentId: number; deviceId: number }) =>
 			api.delete(`/api/attachments/${attachmentId}/devices/${deviceId}`),
-		onSuccess: (_data, { attachmentId }) =>
-			queryClient.invalidateQueries({ queryKey: ['attachments', attachmentId, 'devices'] }),
+		onSuccess: (_data, { attachmentId, deviceId }) =>
+			Promise.all([
+				queryClient.invalidateQueries({
+					queryKey: ['attachments', attachmentId, 'devices'],
+				}),
+				queryClient.invalidateQueries({ queryKey: ['devices', deviceId, 'attachments'] }),
+			]),
 	})
 }

@@ -16,7 +16,7 @@ function pollIntervalMs<T extends { state: string }>(data: T | null | undefined)
 export function useBenchmarkCases() {
 	return useQuery({
 		queryKey: ['benchmark', 'cases'],
-		queryFn: () => api.get<BenchmarkCaseListRead>('/api/benchmark/cases'),
+		queryFn: () => api.get<BenchmarkCaseListRead>('/api/admin/benchmark/cases'),
 	})
 }
 
@@ -24,7 +24,7 @@ export function useStartCaseRun() {
 	const queryClient = useQueryClient()
 	return useMutation({
 		mutationFn: (caseId: string) =>
-			api.post<BenchmarkCaseRun>(`/api/benchmark/cases/${caseId}/runs`),
+			api.post<BenchmarkCaseRun>(`/api/admin/benchmark/cases/${caseId}/runs`),
 		onSuccess: (run) => queryClient.setQueryData(['benchmark', 'runs', run.id], run),
 	})
 }
@@ -32,7 +32,7 @@ export function useStartCaseRun() {
 export function useCaseRun(runId: string | null) {
 	return useQuery({
 		queryKey: ['benchmark', 'runs', runId],
-		queryFn: () => api.get<BenchmarkCaseRun>(`/api/benchmark/runs/${runId}`),
+		queryFn: () => api.get<BenchmarkCaseRun>(`/api/admin/benchmark/runs/${runId}`),
 		enabled: runId !== null,
 		refetchInterval: (query) => pollIntervalMs(query.state.data),
 	})
@@ -42,7 +42,7 @@ export function useCancelCaseRun() {
 	const queryClient = useQueryClient()
 	return useMutation({
 		mutationFn: (runId: string) =>
-			api.post<BenchmarkCaseRun>(`/api/benchmark/runs/${runId}/cancel`),
+			api.post<BenchmarkCaseRun>(`/api/admin/benchmark/runs/${runId}/cancel`),
 		onSuccess: (run) => queryClient.setQueryData(['benchmark', 'runs', run.id], run),
 	})
 }
@@ -50,14 +50,15 @@ export function useCancelCaseRun() {
 export function useDocumentStatus() {
 	return useQuery({
 		queryKey: ['benchmark', 'documents', 'status'],
-		queryFn: () => api.get<BenchmarkDocumentStatus>('/api/benchmark/documents/status'),
+		queryFn: () => api.get<BenchmarkDocumentStatus>('/api/admin/benchmark/documents/status'),
 	})
 }
 
 export function useDownloadDocuments() {
 	const queryClient = useQueryClient()
 	return useMutation({
-		mutationFn: () => api.post<BenchmarkDocumentStatus>('/api/benchmark/documents/download'),
+		mutationFn: () =>
+			api.post<BenchmarkDocumentStatus>('/api/admin/benchmark/documents/download'),
 		onSuccess: () =>
 			queryClient.invalidateQueries({ queryKey: ['benchmark', 'documents', 'status'] }),
 	})
@@ -66,7 +67,7 @@ export function useDownloadDocuments() {
 export function useSetupRun() {
 	return useQuery({
 		queryKey: ['benchmark', 'setup'],
-		queryFn: () => api.get<BenchmarkSetupRun | null>('/api/benchmark/setup'),
+		queryFn: () => api.get<BenchmarkSetupRun | null>('/api/admin/benchmark/setup'),
 		refetchInterval: (query) => pollIntervalMs(query.state.data),
 	})
 }
@@ -74,7 +75,7 @@ export function useSetupRun() {
 export function useStartSetupRun() {
 	const queryClient = useQueryClient()
 	return useMutation({
-		mutationFn: () => api.post<BenchmarkSetupRun>('/api/benchmark/setup'),
+		mutationFn: () => api.post<BenchmarkSetupRun>('/api/admin/benchmark/setup'),
 		onSuccess: (run) => queryClient.setQueryData(['benchmark', 'setup'], run),
 	})
 }

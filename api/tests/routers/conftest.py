@@ -1,10 +1,12 @@
 import pytest
-from fastapi.testclient import TestClient
-from httpx import ASGITransport, AsyncClient
-
 from app.config import get_settings
 from app.database import get_session
 from app.main import app
+from app.models import AppRole, OrgRole
+from app.repositories import SessionRepository
+from fastapi.testclient import TestClient
+from httpx import ASGITransport, AsyncClient
+from tests.routers.factories import DEFAULT_ORGANIZATION_ID, create_user
 
 
 @pytest.fixture(autouse=True)
@@ -42,12 +44,65 @@ def block_unmocked_router_openai_calls(mocker):
     )
 
 
-@pytest.fixture
-async def client():
-    async with AsyncClient(
+async def _authenticated_client(
+    session,
+    cookie_name: str = "session_token",
+    headers: dict[str, str] | None = None,
+    **user_kwargs,
+):
+    user = await create_user(session, **user_kwargs)
+    _, raw_token = await SessionRepository(session).create_session(
+        user, idle_timeout_minutes=get_settings().session_idle_timeout_minutes
+    )
+    return AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://testserver",
-        headers={"Authorization": f"Bearer {get_settings().auth_token}"},
+        cookies={cookie_name: raw_token},
+        headers=headers or {},
+    )
+
+
+@pytest.fixture
+async def client(session):
+    # Scoped to the seeded "default" org (id=2), matching every other
+    # factory's default organization_id, so requests through this client see
+    # the same rows `create_category`/`create_device`/etc. create by default.
+    async with await _authenticated_client(
+        session,
+        organization_id=DEFAULT_ORGANIZATION_ID,
+        app_role=AppRole.user,
+        org_role=OrgRole.admin,
+    ) as c:
+        yield c
+
+
+@pytest.fixture
+async def member_client(session):
+    # Same org as `client`, but org_role=member — a technician using the
+    # mobile app rather than an org admin.
+    async with await _authenticated_client(
+        session,
+        organization_id=DEFAULT_ORGANIZATION_ID,
+        app_role=AppRole.user,
+        org_role=OrgRole.member,
+    ) as c:
+        yield c
+
+
+@pytest.fixture
+async def app_admin_client(session):
+    # app_admin's organization_id is arbitrary (the system org in real usage)
+    # — the app_role check, not org membership, is what gates app_admin-only
+    # routers like jobs/benchmark, so DEFAULT_ORGANIZATION_ID is fine here.
+    # org_role=admin too, matching the real bootstrap script, since some
+    # routers (e.g. the transcribe websocket) gate on org_role instead.
+    async with await _authenticated_client(
+        session,
+        cookie_name="admin_session_token",
+        headers={"X-Auth-Scope": "admin"},
+        organization_id=DEFAULT_ORGANIZATION_ID,
+        app_role=AppRole.admin,
+        org_role=OrgRole.admin,
     ) as c:
         yield c
 
@@ -97,9 +152,8 @@ def procrastinate_connector():
     jobs recorded here (`connector.jobs`) instead of on pipeline side effects.
     `app/procrastinate_app.py` selects this connector whenever `ENV=test`.
     """
-    from procrastinate.testing import InMemoryConnector
-
     from app.procrastinate_app import app as procrastinate_app
+    from procrastinate.testing import InMemoryConnector
 
     connector = procrastinate_app.connector
     assert isinstance(connector, InMemoryConnector), "ENV=test is required"

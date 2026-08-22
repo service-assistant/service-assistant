@@ -1,0 +1,43 @@
+import { api } from '@/lib/api'
+import type { User } from '@/lib/types'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+
+export function useUsers() {
+	return useQuery({ queryKey: ['users'], queryFn: () => api.get<User[]>('/api/users') })
+}
+
+export interface UserCreateBody {
+	username: string
+	password: string
+	org_role?: 'member' | 'admin'
+}
+
+export function useCreateUser() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (body: UserCreateBody) => api.post<User>('/api/users', body),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+	})
+}
+
+export interface UserUpdateBody {
+	username?: string
+	password?: string
+	org_role?: 'member' | 'admin'
+}
+
+export function useUpdateUser(userId: number) {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (body: UserUpdateBody) => api.patch<User>(`/api/users/${userId}`, body),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+	})
+}
+
+export function useDeleteUser() {
+	const queryClient = useQueryClient()
+	return useMutation({
+		mutationFn: (id: number) => api.delete<void>(`/api/users/${id}`),
+		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['users'] }),
+	})
+}

@@ -1,12 +1,14 @@
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { ProtectedLayout } from '@/components/ProtectedLayout'
 import { BenchmarkPage } from '@/pages/BenchmarkPage'
+import { ChunkDetailPage } from '@/pages/ChunkDetailPage'
 import { ChunksPage } from '@/pages/ChunksPage'
 import { JobsPage } from '@/pages/JobsPage'
 import { LoginPage } from '@/pages/LoginPage'
+import { MessagesPage } from '@/pages/MessagesPage'
+import { MessageThreadPage } from '@/pages/MessageThreadPage'
 import { NextBestStepPage } from '@/pages/NextBestStepPage'
-import { ThreadDetailPage } from '@/pages/ThreadDetailPage'
-import { ThreadsPage } from '@/pages/ThreadsPage'
+import { OrganizationsPage } from '@/pages/OrganizationsPage'
 
 const rootRoute = createRootRoute()
 
@@ -26,26 +28,8 @@ const indexRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
 	path: '/',
 	beforeLoad: () => {
-		throw redirect({ to: '/chunks' })
+		throw redirect({ to: '/benchmark' })
 	},
-})
-
-const chunksRoute = createRoute({
-	getParentRoute: () => appLayoutRoute,
-	path: '/chunks',
-	component: ChunksPage,
-})
-
-const threadsRoute = createRoute({
-	getParentRoute: () => appLayoutRoute,
-	path: '/threads',
-	component: ThreadsPage,
-})
-
-const threadDetailRoute = createRoute({
-	getParentRoute: () => appLayoutRoute,
-	path: '/threads/$threadId',
-	component: ThreadDetailPage,
 })
 
 const jobsRoute = createRoute({
@@ -66,16 +50,52 @@ const nextBestStepRoute = createRoute({
 	component: NextBestStepPage,
 })
 
+const organizationsRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/organizations',
+	component: OrganizationsPage,
+})
+
+const chunksRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/chunks',
+	component: ChunksPage,
+})
+
+const chunkDetailRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/chunks/$attachmentId',
+	validateSearch: (search: Record<string, unknown>): { page?: number } => {
+		const page = Number(search.page)
+		return { page: Number.isInteger(page) && page >= 1 ? page : undefined }
+	},
+	component: ChunkDetailPage,
+})
+
+const messagesRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/messages',
+	component: MessagesPage,
+})
+
+const messageThreadRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/messages/$threadId',
+	component: MessageThreadPage,
+})
+
 const routeTree = rootRoute.addChildren([
 	loginRoute,
 	appLayoutRoute.addChildren([
 		indexRoute,
-		chunksRoute,
-		threadsRoute,
-		threadDetailRoute,
 		jobsRoute,
 		benchmarkRoute,
 		nextBestStepRoute,
+		organizationsRoute,
+		chunksRoute,
+		chunkDetailRoute,
+		messagesRoute,
+		messageThreadRoute,
 	]),
 ])
 

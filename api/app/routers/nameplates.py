@@ -1,12 +1,9 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.config import Settings, get_settings
-from app.database import get_session
-from app.models import Device
+from app.dependencies.auth import CurrentOrganizationDependency
+from app.dependencies.database import DbSessionDependency
+from app.repositories import DeviceRepository
 from app.schemas import NameplateRecognitionResponse
 from app.services.nameplate_matching import (
     rank_device_candidates,
@@ -18,7 +15,7 @@ from app.services.nameplate_ocr import (
     NameplateOcrTimeoutError,
     recognize_nameplate,
 )
-
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
 router = APIRouter()
 
@@ -37,8 +34,9 @@ _MAX_IMAGE_BYTES = 10 * 1024 * 1024
 )
 async def recognize(
     settings: Annotated[Settings, Depends(get_settings)],
+    session: DbSessionDependency,
+    organization_id: CurrentOrganizationDependency,
     photo: UploadFile = File(...),
-    session: AsyncSession = Depends(get_session),
 ):
     if photo.content_type not in _ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -61,7 +59,7 @@ async def recognize(
     except NameplateOcrError as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
 
-    devices = list((await session.scalars(select(Device))).all())
+    devices = await DeviceRepository(session, organization_id).list()
     candidates = rank_device_candidates(
         devices,
         model=nameplate_data.model,

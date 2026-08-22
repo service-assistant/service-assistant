@@ -7,6 +7,27 @@ export interface ChunkRead {
 	updated_at: string
 }
 
+export interface DebugChunkPageRead {
+	page_number: number
+	chunk_count: number
+}
+
+export interface DebugChunkFileRead {
+	id: number
+	organization_id: number
+	organization_name: string
+	organization_slug: string
+	original_filename: string
+	ingest_status: 'ready' | 'queued' | 'running' | 'succeeded' | 'failed'
+	ingest_pages_total: number
+	chunk_count: number
+	created_at: string
+}
+
+export interface DebugChunkFileDetailRead extends DebugChunkFileRead {
+	chunk_pages: DebugChunkPageRead[]
+}
+
 export interface DeviceRead {
 	id: number
 	name: string
@@ -34,10 +55,42 @@ export interface ChatThreadRead {
 export interface MessageRead {
 	id: number
 	content: string
-	sender: 'user' | 'system'
+	sender: 'user' | 'assistant'
 	has_continuation: boolean
 	router_decision: string | null
 	thread_id: number
+	created_at: string
+	updated_at: string
+	chunks?: DebugMessageChunkRead[]
+}
+
+export interface DebugMessageChunkRead {
+	id: number
+	attachment_id: number
+	attachment_name: string
+	content: string
+	metadata: { page?: number; images?: string[] } | null
+}
+
+export interface DebugMessageDeviceRead {
+	id: number
+	name: string
+	model_serial_code: string | null
+	organization_id: number
+	organization_name: string
+	organization_slug: string
+}
+
+export interface DebugMessageThreadRead {
+	id: number
+	title: string
+	device_id: number
+	device_name: string
+	organization_id: number
+	organization_name: string
+	organization_slug: string
+	message_count: number
+	last_message_at: string | null
 	created_at: string
 	updated_at: string
 }
@@ -125,4 +178,38 @@ export interface BenchmarkDocumentStatus {
 	present: number
 	missing: string[]
 	[key: string]: unknown
+}
+
+export interface OrganizationRead {
+	id: number
+	name: string
+	slug: string
+	created_at: string
+	updated_at: string
+}
+
+export interface OrganizationCreate {
+	name: string
+	slug: string
+	admin_username: string
+	admin_password: string
+}
+
+export interface OrganizationUpdate {
+	name?: string
+	slug?: string
+}
+
+export interface UserRead {
+	id: number
+	organization_id: number
+	organization_slug: string
+	username: string
+	app_role: string
+	org_role: string
+}
+
+export interface OrganizationCreateResponse {
+	organization: OrganizationRead
+	admin_user: UserRead
 }

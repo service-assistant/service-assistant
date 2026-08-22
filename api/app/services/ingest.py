@@ -111,14 +111,14 @@ def save_ocr_rendered_image(
     image_bytes: bytes,
     output_dir: Path,
 ) -> list[str]:
-    """Save OCR-rendered image and return list of image paths."""
+    """Save OCR-rendered image and return list of filenames (relative to output_dir)."""
     filename = f"{uuid.uuid4()}.jpg"
     image_path = output_dir / filename
 
     output_dir.mkdir(parents=True, exist_ok=True)
     image_path.write_bytes(image_bytes)
 
-    return [str(image_path)]
+    return [filename]
 
 
 async def ingest_pdf_to_attachment(
@@ -162,6 +162,7 @@ async def _ingest_pdf_to_attachment_unlocked(
         azure_endpoint=settings.azure_openai_vision_endpoint,
         api_key=settings.azure_openai_vision_api_key,
     )
+    images_dir = settings.attachments_dir / "images" / str(attachment_id)
     doc: fitz.Document | None = None
     try:
         doc = await run_blocking(fitz.open, pdf_path)
@@ -261,7 +262,7 @@ async def _ingest_pdf_to_attachment_unlocked(
                     extract_page_images,
                     doc,
                     page,
-                    settings.attachments_dir / "images",
+                    images_dir,
                 )
             else:
                 report.ocr_pages_attempted += 1
@@ -309,7 +310,7 @@ async def _ingest_pdf_to_attachment_unlocked(
                     page_images = await run_blocking(
                         save_ocr_rendered_image,
                         image,
-                        settings.attachments_dir / "images",
+                        images_dir,
                     )
                 except asyncio.CancelledError:
                     raise
@@ -328,14 +329,14 @@ async def _ingest_pdf_to_attachment_unlocked(
 
             chunks = await run_blocking(chunk_page, markdown_text)
             if len(chunks) < 2 and page_images:
-                for image_path in page_images:
+                for image_filename in page_images:
                     description = await describe_image(
-                        image_path=image_path,
+                        image_path=str(images_dir / image_filename),
                         client=vision_client,
                         model=settings.azure_openai_vision_deployment,
                     )
                     if description.strip():
-                        pending.append((description, page_num, [image_path]))
+                        pending.append((description, page_num, [image_filename]))
 
             if not chunks:
                 report.pages_processed += 1

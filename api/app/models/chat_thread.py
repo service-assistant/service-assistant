@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey
+from sqlalchemy import DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -23,14 +23,20 @@ class ChatThread(Base):
         JSONB, nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow
+        DateTime(timezone=True),
+        server_default=func.now(),
+        default=utcnow,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+        DateTime(timezone=True),
+        server_default=func.now(),
+        default=utcnow,
+        onupdate=utcnow,
     )
 
     device_id: Mapped[int] = mapped_column(
-        ForeignKey("devices.id", ondelete="RESTRICT")
+        ForeignKey("devices.id", ondelete="RESTRICT"),
+        index=True,
     )
     device: Mapped[Device] = relationship(
         back_populates="threads",

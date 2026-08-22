@@ -3,14 +3,184 @@ import { useAttachments, useLinkDevice, useUnlinkDevice } from '@/hooks/useAttac
 import { useCategoryTree } from '@/hooks/useCategories'
 import { useDeleteDevice, useDevice, useDeviceAttachments } from '@/hooks/useDevices'
 import { categoryPath, flattenCategoryTree } from '@/lib/categoryTree'
+import { documentCountLabel } from '@/lib/pluralize'
+import type { Attachment } from '@/lib/types'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { useState } from 'react'
+import {
+	AlertTriangle,
+	ArrowLeft,
+	CheckCircle2,
+	FileText,
+	Forklift,
+	Trash2,
+	Wrench,
+} from 'lucide-react'
+import { useMemo, useState } from 'react'
+import './MachineDetailPage.css'
+
+function formatDate(value: string) {
+	return new Date(value).toLocaleDateString('pl-PL', {
+		day: '2-digit',
+		month: 'short',
+		year: 'numeric',
+	})
+}
+
+function StatusCard({ documentCount }: { documentCount: number }) {
+	const ready = documentCount > 0
+	return (
+		<section
+			className={`machine-status-card ${ready ? 'machine-status-card--ready' : 'machine-status-card--missing'}`}>
+			<span className='machine-status-icon'>
+				{ready ? (
+					<CheckCircle2 size={21} strokeWidth={2.7} />
+				) : (
+					<AlertTriangle size={21} strokeWidth={2.5} />
+				)}
+			</span>
+			<div>
+				<strong>
+					{ready ? 'Status: dokumentacja gotowa' : 'Status: wymaga dokumentów'}
+				</strong>
+				<p>
+					{ready
+						? 'Maszyna ma powiązane dokumenty i może być używana w bazie wiedzy.'
+						: 'Do tej maszyny nie przypisano jeszcze żadnych dokumentów.'}
+				</p>
+			</div>
+		</section>
+	)
+}
+
+function InfoItem({ label, value }: { label: string; value: string }) {
+	return (
+		<div className='machine-info-item'>
+			<dt>{label}</dt>
+			<dd>{value}</dd>
+		</div>
+	)
+}
+
+function MachineInfoCard({
+	category,
+	documentCount,
+	model,
+	serial,
+}: {
+	category: string
+	documentCount: number
+	model: string
+	serial: string | null
+}) {
+	return (
+		<section className='machine-side-card machine-info-card'>
+			<h2>Informacje o maszynie</h2>
+			<dl>
+				<InfoItem label='Maszyna' value={model} />
+				<InfoItem label='Numer maszyny' value={serial || 'Brak danych'} />
+				<InfoItem label='Katalog' value={category} />
+				<InfoItem label='Używa dokumentów' value={documentCountLabel(documentCount)} />
+			</dl>
+		</section>
+	)
+}
+
+function DocumentRow({ attachment }: { attachment: Attachment }) {
+	return (
+		<Link
+			to='/documents/$attachmentId'
+			params={{ attachmentId: String(attachment.id) }}
+			className='machine-document-row'>
+			<span className='machine-document-icon'>
+				<FileText size={20} />
+			</span>
+			<span className='machine-document-copy'>
+				<strong title={attachment.original_filename}>{attachment.original_filename}</strong>
+				<small>Dodano: {formatDate(attachment.created_at)}</small>
+			</span>
+		</Link>
+	)
+}
+
+function RelatedDocumentsCard({
+	allAttachments,
+	assigning,
+	linkedAttachments,
+	linkedIds,
+	onClose,
+	onOpen,
+	onToggle,
+}: {
+	allAttachments: Attachment[]
+	assigning: boolean
+	linkedAttachments: Attachment[]
+	linkedIds: Set<number>
+	onClose: () => void
+	onOpen: () => void
+	onToggle: (attachmentId: number, linked: boolean) => void
+}) {
+	return (
+		<section className='machine-side-card machine-documents-card'>
+			<header>
+				<h2>Powiązane dokumenty</h2>
+				<button type='button' onClick={assigning ? onClose : onOpen}>
+					{assigning ? 'Gotowe' : 'Zmień'}
+				</button>
+			</header>
+			{assigning ? (
+				<div className='machine-assignment-list'>
+					{allAttachments.length === 0 && (
+						<p className='machine-empty-documents'>Brak dokumentów do przypisania.</p>
+					)}
+					{allAttachments.map((attachment) => {
+						const linked = linkedIds.has(attachment.id)
+						return (
+							<label key={attachment.id} className='machine-assignment-row'>
+								<input
+									type='checkbox'
+									checked={linked}
+									onChange={() => onToggle(attachment.id, linked)}
+								/>
+								<span title={attachment.original_filename}>
+									{attachment.original_filename}
+								</span>
+							</label>
+						)
+					})}
+				</div>
+			) : (
+				<div className='machine-document-list'>
+					{linkedAttachments.length === 0 && (
+						<p className='machine-empty-documents'>Brak powiązanych dokumentów.</p>
+					)}
+					{linkedAttachments.map((attachment) => (
+						<DocumentRow key={attachment.id} attachment={attachment} />
+					))}
+				</div>
+			)}
+		</section>
+	)
+}
+
+function DangerCard({ onDelete }: { onDelete: () => void }) {
+	return (
+		<section className='machine-side-card machine-danger-card'>
+			<h2>Strefa niebezpieczna</h2>
+			<p>Trwałe działania dotyczące maszyny.</p>
+			<button type='button' onClick={onDelete}>
+				<Trash2 size={16} /> Usuń maszynę
+			</button>
+			<small>
+				<AlertTriangle size={14} /> Po usunięciu maszyna zniknie z katalogu.
+			</small>
+		</section>
+	)
+}
 
 export function MachineDetailPage() {
 	const { deviceId } = useParams({ strict: false }) as { deviceId: string }
 	const id = Number(deviceId)
 	const navigate = useNavigate()
-
 	const { data: device, isLoading } = useDevice(id)
 	const { data: tree } = useCategoryTree()
 	const { data: linkedAttachments } = useDeviceAttachments(id)
@@ -18,144 +188,113 @@ export function MachineDetailPage() {
 	const deleteDevice = useDeleteDevice()
 	const linkDevice = useLinkDevice()
 	const unlinkDevice = useUnlinkDevice()
-
 	const [showDeleteModal, setShowDeleteModal] = useState(false)
 	const [showAssignPanel, setShowAssignPanel] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
-	const flat = flattenCategoryTree(tree ?? [])
-	const linkedIds = new Set(linkedAttachments?.map((a) => a.id))
+	const flat = useMemo(() => flattenCategoryTree(tree ?? []), [tree])
+	const category = device ? categoryPath(device.category_id, flat) : '—'
+	const documents = linkedAttachments ?? []
+	const linkedIds = new Set(documents.map((attachment) => attachment.id))
 
 	async function handleDelete() {
 		try {
 			await deleteDevice.mutateAsync(id)
 			void navigate({ to: '/catalog', search: { tab: 'models' } })
-		} catch (err) {
-			setError(err instanceof Error ? err.message : 'Nie udało się usunąć maszyny.')
+		} catch (deleteError) {
+			setError(
+				deleteError instanceof Error
+					? deleteError.message
+					: 'Nie udało się usunąć maszyny.',
+			)
 			setShowDeleteModal(false)
 		}
 	}
 
 	async function toggleAttachment(attachmentId: number, linked: boolean) {
-		if (linked) {
-			await unlinkDevice.mutateAsync({ attachmentId, deviceId: id })
-		} else {
-			await linkDevice.mutateAsync({ attachmentId, deviceId: id })
+		try {
+			setError(null)
+			if (linked) await unlinkDevice.mutateAsync({ attachmentId, deviceId: id })
+			else await linkDevice.mutateAsync({ attachmentId, deviceId: id })
+		} catch (assignmentError) {
+			setError(
+				assignmentError instanceof Error
+					? assignmentError.message
+					: 'Nie udało się zmienić przypisania dokumentu.',
+			)
 		}
 	}
 
-	if (isLoading || !device) return <div className='text-cream/50'>Ładowanie…</div>
+	if (isLoading)
+		return <div className='machine-detail-message'>Ładowanie szczegółów maszyny…</div>
+	if (!device)
+		return (
+			<div className='machine-detail-message machine-detail-message--error'>
+				Nie znaleziono maszyny.
+			</div>
+		)
 
 	return (
-		<div className='mx-auto max-w-3xl'>
-			<Link
-				to='/catalog'
-				search={{ tab: 'models' }}
-				className='mb-4 inline-block text-sm text-cream/60 hover:text-cream'>
-				← Wróć do katalogu
-			</Link>
-
-			<div className='mb-6 flex items-center gap-4'>
-				{device.image_url && (
-					<img
-						src={device.image_url}
-						alt=''
-						className='size-20 rounded-lg border border-line object-contain'
-					/>
-				)}
-				<div>
-					<h1 className='text-2xl font-semibold text-cream'>{device.name}</h1>
-					<p className='text-sm text-cream/50'>
-						{categoryPath(device.category_id, flat)}
-					</p>
-				</div>
-				<Link
-					to='/add-document'
-					className='ml-auto rounded-md bg-ember px-4 py-2 text-sm font-medium text-ink'>
-					Dodaj dokument
+		<div className='machine-detail-page'>
+			<div className='machine-detail-content'>
+				<Link to='/catalog' search={{ tab: 'models' }} className='machine-back-button'>
+					<ArrowLeft size={17} /> Wróć do katalogu
 				</Link>
-			</div>
+				<h1>Szczegóły maszyny</h1>
+				{error && <p className='machine-detail-error'>{error}</p>}
 
-			<div className='mb-6 rounded-lg border border-line bg-panel p-6'>
-				<h2 className='mb-3 text-sm font-medium text-cream'>Informacje techniczne</h2>
-				<dl className='grid grid-cols-2 gap-y-2 text-sm'>
-					<dt className='text-cream/50'>Kod modelu</dt>
-					<dd className='text-cream/80'>{device.model_serial_code ?? '—'}</dd>
-					<dt className='text-cream/50'>Utworzono</dt>
-					<dd className='text-cream/80'>
-						{new Date(device.created_at).toLocaleDateString('pl-PL')}
-					</dd>
-				</dl>
-			</div>
+				<div className='machine-detail-layout'>
+					<section className='machine-image-card'>
+						<header>
+							<Wrench size={18} />
+							<h2>Obraz maszyny</h2>
+						</header>
+						<div className='machine-image-stage'>
+							<div className='machine-image-frame'>
+								{device.image_url ? (
+									<img src={device.image_url} alt={`Maszyna ${device.name}`} />
+								) : (
+									<div className='machine-image-placeholder'>
+										<Forklift size={64} />
+										<span>Brak zdjęcia maszyny</span>
+									</div>
+								)}
+							</div>
+						</div>
+						<footer>
+							<strong>{device.name}</strong>
+							<span>{category}</span>
+						</footer>
+					</section>
 
-			<div className='mb-6 rounded-lg border border-line bg-panel p-6'>
-				<div className='mb-3 flex items-center justify-between'>
-					<h2 className='text-sm font-medium text-cream'>
-						Dokumentacja ({linkedAttachments?.length ?? 0})
-					</h2>
-					<button
-						onClick={() => setShowAssignPanel((v) => !v)}
-						className='text-sm text-ember hover:underline'>
-						{showAssignPanel ? 'Zamknij' : 'Zmień'}
-					</button>
+					<aside className='machine-detail-sidebar'>
+						<StatusCard documentCount={documents.length} />
+						<MachineInfoCard
+							category={category}
+							documentCount={documents.length}
+							model={device.name}
+							serial={device.model_serial_code}
+						/>
+						<RelatedDocumentsCard
+							allAttachments={allAttachments ?? []}
+							assigning={showAssignPanel}
+							linkedAttachments={documents}
+							linkedIds={linkedIds}
+							onClose={() => setShowAssignPanel(false)}
+							onOpen={() => setShowAssignPanel(true)}
+							onToggle={(attachmentId, linked) =>
+								void toggleAttachment(attachmentId, linked)
+							}
+						/>
+						<DangerCard onDelete={() => setShowDeleteModal(true)} />
+					</aside>
 				</div>
-
-				{!showAssignPanel && (
-					<div className='space-y-1'>
-						{(linkedAttachments?.length ?? 0) === 0 && (
-							<p className='text-sm text-cream/50'>Brak przypisanych dokumentów.</p>
-						)}
-						{linkedAttachments?.map((attachment) => (
-							<Link
-								key={attachment.id}
-								to='/documents/$attachmentId'
-								params={{ attachmentId: String(attachment.id) }}
-								className='block rounded-md px-2 py-2 text-sm text-cream/80 hover:bg-panel-soft hover:text-cream'>
-								{attachment.original_filename}
-							</Link>
-						))}
-					</div>
-				)}
-
-				{showAssignPanel && (
-					<div className='max-h-80 space-y-1 overflow-y-auto'>
-						{allAttachments?.map((attachment) => {
-							const linked = linkedIds.has(attachment.id)
-							return (
-								<label
-									key={attachment.id}
-									className='flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm text-cream/80 hover:bg-panel-soft'>
-									<input
-										type='checkbox'
-										checked={linked}
-										onChange={() =>
-											void toggleAttachment(attachment.id, linked)
-										}
-									/>
-									{attachment.original_filename}
-								</label>
-							)
-						})}
-					</div>
-				)}
-			</div>
-
-			{error && <p className='mb-4 text-sm text-red-400'>{error}</p>}
-
-			<div className='rounded-lg border border-red-900/40 bg-panel p-6'>
-				<h2 className='mb-2 text-sm font-medium text-red-300'>Strefa niebezpieczna</h2>
-				<p className='mb-3 text-sm text-cream/50'>Usunięcie maszyny jest nieodwracalne.</p>
-				<button
-					onClick={() => setShowDeleteModal(true)}
-					className='rounded-md border border-red-700 px-4 py-2 text-sm text-red-300 hover:bg-red-900/20'>
-					Usuń maszynę
-				</button>
 			</div>
 
 			{showDeleteModal && (
 				<ConfirmDeleteModal
 					title='Usuń maszynę'
-					description={`Maszyna "${device.name}" zostanie trwale usunięta.`}
+					description={`Maszyna „${device.name}” zostanie trwale usunięta.`}
 					pending={deleteDevice.isPending}
 					onConfirm={handleDelete}
 					onClose={() => setShowDeleteModal(false)}

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import DateTime, ForeignKey
+from sqlalchemy import DateTime, ForeignKey, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,17 +26,23 @@ class Chunk(Base):
     embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMENSIONS))
     extra_metadata: Mapped[dict | None] = mapped_column("metadata", JSONB)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow
+        DateTime(timezone=True),
+        server_default=func.now(),
+        default=utcnow,
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow
+        DateTime(timezone=True),
+        server_default=func.now(),
+        default=utcnow,
+        onupdate=utcnow,
     )
 
     attachment_id: Mapped[int] = mapped_column(
         ForeignKey(
             "attachments.id",
             ondelete="CASCADE",
-        )
+        ),
+        index=True,
     )
     attachment: Mapped[Attachment] = relationship(
         back_populates="chunks",

@@ -1,21 +1,23 @@
 import { AppShell, Button, NavLink, Stack, Title } from '@mantine/core'
 import {
+	IconBraces,
+	IconBuilding,
 	IconClipboardList,
 	IconFlask,
 	IconLogout,
 	IconMessages,
-	IconPuzzle,
 	IconRoute,
 } from '@tabler/icons-react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import { useAuth } from '@/auth/use-auth'
 
 const links = [
-	{ to: '/chunks', label: 'Chunki', icon: IconPuzzle },
-	{ to: '/threads', label: 'Wątki', icon: IconMessages },
 	{ to: '/jobs', label: 'Zadania w tle', icon: IconClipboardList },
 	{ to: '/benchmark', label: 'Benchmark', icon: IconFlask },
 	{ to: '/next-best-step', label: 'Next Best Step', icon: IconRoute },
+	{ to: '/organizations', label: 'Organizacje', icon: IconBuilding },
+	{ to: '/chunks', label: 'Chunks', icon: IconBraces },
+	{ to: '/messages', label: 'Messages', icon: IconMessages },
 ] as const
 
 export function Sidebar() {

@@ -10,12 +10,24 @@ from ..database import Base, utcnow
 
 if TYPE_CHECKING:
     from .device import Device
+    from .organization import Organization
 
 
 class Category(Base):
     __tablename__ = "categories"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey(
+            "organizations.id",
+            ondelete="CASCADE",
+        ),
+        index=True,
+    )
+    organization: Mapped[Organization] = relationship(
+        back_populates="categories",
+        lazy="raise",
+    )
     name: Mapped[str] = mapped_column(VARCHAR(255))
     image_url: Mapped[str | None] = mapped_column(VARCHAR(255))
     created_at: Mapped[datetime] = mapped_column(
@@ -31,7 +43,8 @@ class Category(Base):
     )
 
     parent_id: Mapped[int | None] = mapped_column(
-        ForeignKey("categories.id"),
+        ForeignKey("categories.id", ondelete="CASCADE"),
+        index=True,
     )
     parent: Mapped[Category | None] = relationship(
         remote_side=[id],
@@ -46,5 +59,6 @@ class Category(Base):
 
     devices: Mapped[list[Device]] = relationship(
         back_populates="category",
+        passive_deletes=True,
         lazy="raise",
     )

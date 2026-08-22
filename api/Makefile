@@ -6,7 +6,7 @@ GREEN  := \033[32m
 YELLOW := \033[33m
 GRAY   := \033[90m
 
-.PHONY: help dev devb dev-db worker production docs test lint format format-check typecheck check migrations migrate
+.PHONY: help dev devb dev-db worker production docs test lint format format-check typecheck check migrations migrate migrate-test admin-sql
 
 help:
 	@echo ""
@@ -18,6 +18,7 @@ help:
 	@echo "  $(GREEN)dev-db$(RESET)            $(GRAY)-$(RESET) Run only the dev database $(GRAY)(port 5432)$(RESET)"
 	@echo "  $(GREEN)worker$(RESET)            $(GRAY)-$(RESET) Run the Procrastinate worker $(GRAY)(processes PDF ingestion)$(RESET)"
 	@echo "  $(GREEN)migrate$(RESET)           $(GRAY)-$(RESET) Run Alembic migrations against the running dev container"
+	@echo "  $(GREEN)migrate-test$(RESET)      $(GRAY)-$(RESET) Run Alembic migrations against the service_assistant_test database"
 	@echo "  $(GREEN)production$(RESET)        $(GRAY)-$(RESET) Run production environment $(GRAY)(port 8000)$(RESET)"
 	@echo "  $(GREEN)test$(RESET)              $(GRAY)-$(RESET) Run tests $(GRAY)(needs a local Postgres, see .env.test)$(RESET)"
 	@echo "  $(GREEN)lint$(RESET)              $(GRAY)-$(RESET) Check code style"
@@ -26,6 +27,7 @@ help:
 	@echo "  $(GREEN)typecheck$(RESET)         $(GRAY)-$(RESET) Check Python type correctness"
 	@echo "  $(GREEN)check$(RESET)             $(GRAY)-$(RESET) Run format-check, lint, typecheck, and test"
 	@echo "  $(GREEN)migrations$(RESET)        $(GRAY)-$(RESET) Lists all Alembic migrations"
+	@echo "  $(GREEN)admin-sql$(RESET)         $(GRAY)-$(RESET) Print SQL to bootstrap the first app_admin $(GRAY)(make admin-sql USERNAME=alice)$(RESET)"
 	@echo ""
 	@echo "  $(YELLOW)NOTE:$(RESET) production runs migrations automatically on startup. dev does not — run $(GREEN)make migrate$(RESET) after $(GREEN)make dev$(RESET) is up."
 	@echo ""
@@ -59,5 +61,9 @@ check:
 	$(MAKE) test
 migrate:
 	POSTGRES_HOST=localhost poetry run alembic upgrade head
+migrate-test:
+	ENV=test POSTGRE_HOST=localhost POSTGRES_HOST=localhost poetry run alembic upgrade head
 migrations:
 	poetry run alembic history --verbose
+admin-sql:
+	PYTHONPATH=. poetry run python scripts/bootstrap_app_admin.py --username $(USERNAME)

@@ -31,11 +31,13 @@ async def _insert_job(
 
 
 class TestListJobs:
-    async def test_should_list_jobs_ordered_by_attention_first(self, client, session):
+    async def test_should_list_jobs_ordered_by_attention_first(
+        self, app_admin_client, session
+    ):
         await _insert_job(session, task_name="ingest_pdf", status="succeeded")
         doing_id = await _insert_job(session, task_name="ingest_pdf", status="doing")
 
-        response = await client.get("/api/jobs")
+        response = await app_admin_client.get("/api/admin/jobs")
 
         assert response.status_code == 200
         body = response.json()
@@ -43,11 +45,11 @@ class TestListJobs:
         assert body["items"][0]["id"] == doing_id
         assert body["items"][0]["status"] == "doing"
 
-    async def test_should_paginate_jobs(self, client, session):
+    async def test_should_paginate_jobs(self, app_admin_client, session):
         for _ in range(30):
             await _insert_job(session, task_name="ingest_pdf", status="succeeded")
 
-        response = await client.get("/api/jobs", params={"page": 2})
+        response = await app_admin_client.get("/api/admin/jobs", params={"page": 2})
 
         assert response.status_code == 200
         body = response.json()

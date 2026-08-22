@@ -1,7 +1,6 @@
 import type { NameplateDeviceCandidate } from '@/types/nameplate';
 
 const originalApiUrl = process.env.EXPO_PUBLIC_API_URL;
-const originalAuthToken = process.env.EXPO_PUBLIC_AUTH_TOKEN;
 
 class FormDataMock {
 	entries: Array<[string, unknown]> = [];
@@ -13,12 +12,16 @@ class FormDataMock {
 
 const loadApi = async () => {
 	jest.resetModules();
+	// jest.resetModules() gives token-store.ts a fresh module instance too, so
+	// the cached token must be (re-)set against that same fresh instance
+	// before nameplate-api.ts (which imports it transitively) reads it.
+	const { __setCachedTokenForTests } = await import('../utils/token-store');
+	__setCachedTokenForTests('test-token');
 	return import('../utils/nameplate-api');
 };
 
 beforeEach(() => {
 	process.env.EXPO_PUBLIC_API_URL = 'https://api.example.test';
-	process.env.EXPO_PUBLIC_AUTH_TOKEN = 'test-token';
 	global.fetch = jest.fn();
 	(global as any).FormData = FormDataMock;
 });
@@ -26,8 +29,6 @@ beforeEach(() => {
 afterEach(() => {
 	if (originalApiUrl === undefined) delete process.env.EXPO_PUBLIC_API_URL;
 	else process.env.EXPO_PUBLIC_API_URL = originalApiUrl;
-	if (originalAuthToken === undefined) delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
-	else process.env.EXPO_PUBLIC_AUTH_TOKEN = originalAuthToken;
 	jest.resetModules();
 });
 

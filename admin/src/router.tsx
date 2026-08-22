@@ -1,6 +1,7 @@
 import { ProtectedLayout } from '@/components/ProtectedLayout'
 import { AddDocumentPage } from '@/pages/AddDocumentPage'
 import { AddMachinePage } from '@/pages/AddMachinePage'
+import { AddUserPage } from '@/pages/AddUserPage'
 import { CatalogPage } from '@/pages/CatalogPage'
 import { CategoryDetailPage } from '@/pages/CategoryDetailPage'
 import { CategoryNewPage } from '@/pages/CategoryNewPage'
@@ -8,6 +9,7 @@ import { DocumentDetailPage } from '@/pages/DocumentDetailPage'
 import { DocumentsPage } from '@/pages/DocumentsPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { MachineDetailPage } from '@/pages/MachineDetailPage'
+import { SettingsPage } from '@/pages/SettingsPage'
 import { UsersPage } from '@/pages/UsersPage'
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
 
@@ -43,7 +45,28 @@ const catalogRoute = createRoute({
 const usersRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
 	path: '/users',
+	validateSearch: (
+		search: Record<string, unknown>,
+	): {
+		sort?: 'username' | 'org_role' | 'created_at' | 'updated_at'
+		order?: 'asc' | 'desc'
+	} => ({
+		sort: search.sort as 'username' | 'org_role' | 'created_at' | 'updated_at' | undefined,
+		order: search.order as 'asc' | 'desc' | undefined,
+	}),
 	component: UsersPage,
+})
+
+const addUserRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/users/new',
+	component: AddUserPage,
+})
+
+const settingsRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/settings',
+	component: SettingsPage,
 })
 
 const addDocumentRoute = createRoute({
@@ -91,6 +114,8 @@ const routeTree = rootRoute.addChildren([
 		documentsRoute,
 		catalogRoute,
 		usersRoute,
+		settingsRoute,
+		addUserRoute,
 		addDocumentRoute,
 		addMachineRoute,
 		categoryNewRoute,

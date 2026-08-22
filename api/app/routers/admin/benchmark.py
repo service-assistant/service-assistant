@@ -18,6 +18,9 @@ from app.services.async_utils import run_blocking
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Internal engineering tool (runs against a fixed benchmark dataset seeded
+# under the "default" org, not real tenant data) — app_admin/debug-only
+# (gate applied in main.py's include_router call, not here).
 router = APIRouter()
 logger = logging.getLogger(__name__)
 

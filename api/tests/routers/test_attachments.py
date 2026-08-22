@@ -1,5 +1,6 @@
 import asyncio
 
+import fitz
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,60 @@ from tests.routers.factories import (
     create_device,
     link_attachment_device,
 )
+
+
+class TestOrgMemberPermissions:
+    async def test_member_can_get_attachment_metadata(
+        self, member_client, tmp_path, session
+    ):
+        attachment = await create_attachment(
+            session,
+            file_global_path=str(tmp_path / "manual.pdf"),
+            original_filename="manual.pdf",
+        )
+
+        response = await member_client.get(f"/api/attachments/{attachment.id}")
+
+        assert response.status_code == 200
+
+    async def test_member_can_download_attachment_file(
+        self, member_client, tmp_path, session
+    ):
+        pdf_path = tmp_path / "manual.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 test document")
+        attachment = await create_attachment(
+            session,
+            file_global_path=str(pdf_path),
+            original_filename="manual.pdf",
+        )
+
+        response = await member_client.get(f"/api/attachments/{attachment.id}/file")
+
+        assert response.status_code == 200
+
+    async def test_member_cannot_list_attachments(self, member_client):
+        response = await member_client.get("/api/attachments")
+        assert response.status_code == 403
+
+    async def test_member_cannot_upload_attachment(self, member_client):
+        response = await member_client.post(
+            "/api/attachments",
+            files={"files": ("a.pdf", b"%PDF-1.4", "application/pdf")},
+        )
+        assert response.status_code == 403
+
+    async def test_member_cannot_delete_attachment(
+        self, member_client, tmp_path, session
+    ):
+        attachment = await create_attachment(
+            session,
+            file_global_path=str(tmp_path / "manual.pdf"),
+            original_filename="manual.pdf",
+        )
+
+        response = await member_client.delete(f"/api/attachments/{attachment.id}")
+
+        assert response.status_code == 403
 
 
 class TestListAttachments:
@@ -262,6 +317,50 @@ class TestDownloadAttachmentFile:
 
         assert response.status_code == 404
         assert response.json()["detail"] == "File not found on disk"
+
+
+class TestPreviewAttachmentPage:
+    async def test_should_render_pdf_page_as_png(self, client, tmp_path, session):
+        pdf_path = tmp_path / "manual.pdf"
+        with fitz.open() as document:
+            page = document.new_page()
+            page.insert_text((72, 72), "Service manual")
+            document.save(pdf_path)
+
+        attachment = await create_attachment(
+            session,
+            file_global_path=str(pdf_path),
+            original_filename="manual.pdf",
+        )
+
+        response = await client.get(
+            f"/api/attachments/{attachment.id}/preview/1?zoom=1"
+        )
+
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/png"
+        assert response.headers["x-pdf-page-count"] == "1"
+        assert response.headers["x-file-size"] == str(pdf_path.stat().st_size)
+        assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+    async def test_should_return_404_for_page_outside_pdf(
+        self, client, tmp_path, session
+    ):
+        pdf_path = tmp_path / "manual.pdf"
+        with fitz.open() as document:
+            document.new_page()
+            document.save(pdf_path)
+
+        attachment = await create_attachment(
+            session,
+            file_global_path=str(pdf_path),
+            original_filename="manual.pdf",
+        )
+
+        response = await client.get(f"/api/attachments/{attachment.id}/preview/2")
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "PDF page not found"
 
 
 class TestDeleteAttachment:

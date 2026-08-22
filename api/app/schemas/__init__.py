@@ -3,9 +3,29 @@
 """
 
 from .attachment import AttachmentRead
+from .admin_messages import (
+    DebugMessageChunkRead,
+    DebugMessageDeviceRead,
+    DebugMessageRead,
+    DebugMessageThreadRead,
+)
+from .auth import (
+    AdminLoginRequest,
+    LoginRequest,
+    LoginResponse,
+    SessionResponse,
+    UserCreate,
+    UserRead,
+    UserUpdate,
+)
 from .category import CategoryCreate, CategoryRead, CategoryTreeRead, CategoryUpdate
 from .chat_thread import ChatThreadRead, ThreadCreate
-from .chunk import ChunkRead
+from .chunk import (
+    ChunkRead,
+    DebugChunkFileDetailRead,
+    DebugChunkFileRead,
+    DebugChunkPageRead,
+)
 from .device import DeviceCreate, DeviceRead, DeviceUpdate
 from .job import JobListRead, JobRead
 from .message import MessageCreate, MessageRead, TranscriptDecision, TranscriptResponse
@@ -15,17 +35,37 @@ from .nameplate import (
     NameplateDeviceCandidate,
     NameplateRecognitionResponse,
 )
+from .organization import (
+    OrganizationCreate,
+    OrganizationCreateResponse,
+    OrganizationRead,
+    OrganizationUpdate,
+)
 from .photo_context import PhotoContextResponse, PhotoObservation
 from .tts import TtsRequest
 
 __all__ = [
     "AttachmentRead",
+    "DebugMessageDeviceRead",
+    "DebugMessageChunkRead",
+    "DebugMessageRead",
+    "DebugMessageThreadRead",
+    "AdminLoginRequest",
+    "LoginRequest",
+    "LoginResponse",
+    "SessionResponse",
+    "UserCreate",
+    "UserRead",
+    "UserUpdate",
     "CategoryCreate",
     "CategoryRead",
     "CategoryTreeRead",
     "CategoryUpdate",
     "ChatThreadRead",
     "ChunkRead",
+    "DebugChunkFileDetailRead",
+    "DebugChunkFileRead",
+    "DebugChunkPageRead",
     "DeviceCreate",
     "DeviceRead",
     "DeviceUpdate",
@@ -37,6 +77,10 @@ __all__ = [
     "NameplateData",
     "NameplateDeviceCandidate",
     "NameplateRecognitionResponse",
+    "OrganizationCreate",
+    "OrganizationCreateResponse",
+    "OrganizationRead",
+    "OrganizationUpdate",
     "PhotoContextResponse",
     "PhotoObservation",
     "ThreadCreate",

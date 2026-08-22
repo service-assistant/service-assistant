@@ -8,8 +8,8 @@ export const parseStreamData = <T>(data: string | null): T | string => {
 	}
 };
 
-export const buildChunkImageUrl = (serverUrl: string, imagePath: string) =>
-	`${serverUrl}/api/images/${encodeURIComponent(imagePath)}`;
+export const buildChunkImageUrl = (serverUrl: string, attachmentId: number, filename: string) =>
+	`${serverUrl}/api/images/${attachmentId}/${encodeURIComponent(filename)}`;
 
 export const isInlineMeasurementPointSeparator = (textBefore: string, textAfter: string) =>
 	/\b[A-Z]{1,4}\d{1,4}\s*$/.test(textBefore) &&

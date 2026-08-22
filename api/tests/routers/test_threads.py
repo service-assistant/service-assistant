@@ -1,14 +1,14 @@
 import json
 from contextlib import asynccontextmanager
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
-from sqlalchemy import select
-
 from app.config import get_settings
 from app.main import app
-from app.models import ChatThread, ChunkMessage, Message, MessageSender
-from app.routers.threads import _sse
+from app.models import ChatThread, ChunkMessage, Message, MessageSender, OrgRole
 from app.services import retrieval as retrieval_module
+from app.services.chat import _sse
 from app.services.message_router import MessageRoute, RouteDecision
 from app.services.next_best_step import (
     DiagnosticPlan,
@@ -17,10 +17,10 @@ from app.services.next_best_step import (
 )
 from app.services.stt import SttError
 from app.services.voice_query_selector import VoiceDecision, VoiceQuerySelection
-
+from sqlalchemy import select
 from tests.routers.factories import (
-    create_category,
     create_attachment,
+    create_category,
     create_chunk,
     create_device,
     create_message,
@@ -172,6 +172,21 @@ async def test_should_store_nameplate_data_on_thread(client, session):
     assert response.json()["nameplate_data"] == nameplate_data
 
 
+async def test_member_can_create_and_list_threads(member_client, session):
+    category = await create_category(session)
+    device = await create_device(session, category.id)
+
+    create_response = await member_client.post(
+        "/api/threads",
+        json={"device_id": device.id, "title": "Mast won't lift"},
+    )
+    assert create_response.status_code == 201
+
+    list_response = await member_client.get("/api/threads")
+    assert list_response.status_code == 200
+    assert len(list_response.json()) == 1
+
+
 async def test_should_return_404_when_creating_thread_with_nonexistent_device(client):
     response = await client.post(
         "/api/threads",
@@ -201,6 +216,19 @@ async def test_should_return_empty_list_when_no_threads_exist(client):
     response = await client.get("/api/threads")
     assert response.status_code == 200
     assert response.json() == []
+
+
+async def test_should_list_threads_in_app_admins_own_organization(
+    app_admin_client, session
+):
+    category = await create_category(session)
+    device = await create_device(session, category.id)
+    await create_thread(session, device.id, title="Thread 1")
+
+    response = await app_admin_client.get("/api/threads")
+
+    assert response.status_code == 200
+    assert len(response.json()) == 1
 
 
 async def test_should_return_thread_when_id_exists(client, session):
@@ -275,7 +303,7 @@ async def test_should_skip_diagnostic_mode_when_client_disables_it(
     device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     build_diagnostic_plan = mocker.patch(
-        "app.routers.threads.next_best_step.build_diagnostic_plan",
+        "app.services.chat.next_best_step.build_diagnostic_plan",
         new=mocker.AsyncMock(return_value="should not be used"),
     )
 
@@ -296,7 +324,7 @@ async def test_photo_context_augments_retrieval_and_keeps_original_user_message(
     device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     retrieve = mocker.patch(
-        "app.routers.threads.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
 
@@ -357,15 +385,15 @@ async def test_standard_mode_should_not_use_diagnostic_flow_for_exhausted_contin
         _diagnostic_plan("E-23"),
     )
     route_message = mocker.patch(
-        "app.routers.threads.message_router.route_message",
+        "app.services.chat.message_router.route_message",
         new=mocker.AsyncMock(),
     )
     build_followup_plan = mocker.patch(
-        "app.routers.threads.next_best_step.build_followup_plan",
+        "app.services.chat.next_best_step.build_followup_plan",
         new=mocker.AsyncMock(),
     )
     retrieve_context_chunks = mocker.patch(
-        "app.routers.threads.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(),
     )
 
@@ -391,12 +419,12 @@ async def test_should_start_diagnostic_for_any_error_when_mode_is_enabled(
     device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     build_diagnostic_plan = mocker.patch(
-        "app.routers.threads.next_best_step.build_diagnostic_plan",
+        "app.services.chat.next_best_step.build_diagnostic_plan",
         new=mocker.AsyncMock(return_value=_diagnostic_plan("2:004")),
     )
     mocker.patch.object(DiagnosticPlan, "has_next_action", return_value=True)
     mocker.patch(
-        "app.routers.threads.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
     response = await client.post(
@@ -419,11 +447,11 @@ async def test_should_emit_pipeline_trace_when_debug_is_requested(
     device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     mocker.patch(
-        "app.routers.threads.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
     mocker.patch(
-        "app.routers.threads.next_best_step.build_diagnostic_plan",
+        "app.services.chat.next_best_step.build_diagnostic_plan",
         new=mocker.AsyncMock(return_value=_diagnostic_plan("2:004")),
     )
 
@@ -485,7 +513,7 @@ async def test_should_send_side_question_through_standard_rag_during_diagnostic(
     await session.commit()
 
     mocker.patch(
-        "app.routers.threads.message_router.route_message",
+        "app.services.chat.message_router.route_message",
         new=mocker.AsyncMock(
             return_value=RouteDecision(
                 route=MessageRoute.standard_query,
@@ -496,15 +524,15 @@ async def test_should_send_side_question_through_standard_rag_during_diagnostic(
         ),
     )
     build_followup_plan = mocker.patch(
-        "app.routers.threads.next_best_step.build_followup_plan",
+        "app.services.chat.next_best_step.build_followup_plan",
         new=mocker.AsyncMock(return_value=(True, "should not be used")),
     )
     mocker.patch(
-        "app.routers.threads.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
     mocker.patch(
-        "app.routers.threads.llm.is_message_continuation_request",
+        "app.services.chat.llm.is_message_continuation_request",
         new=mocker.AsyncMock(return_value=False),
     )
 
@@ -543,7 +571,7 @@ async def test_should_reconstruct_diagnostic_from_history_for_any_problem(
     )
 
     mocker.patch(
-        "app.routers.threads.message_router.route_message",
+        "app.services.chat.message_router.route_message",
         new=mocker.AsyncMock(
             return_value=RouteDecision(
                 route=MessageRoute.diagnostic_followup,
@@ -554,15 +582,15 @@ async def test_should_reconstruct_diagnostic_from_history_for_any_problem(
         ),
     )
     mocker.patch(
-        "app.routers.threads.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
     mocker.patch(
-        "app.routers.threads.llm.is_message_continuation_request",
+        "app.services.chat.llm.is_message_continuation_request",
         new=mocker.AsyncMock(return_value=False),
     )
     build_followup_plan = mocker.patch(
-        "app.routers.threads.next_best_step.build_followup_plan",
+        "app.services.chat.next_best_step.build_followup_plan",
         new=mocker.AsyncMock(
             return_value=(
                 True,
@@ -878,9 +906,20 @@ async def test_should_not_leave_orphaned_user_message_when_retrieval_fails(
     assert len(messages) == 0
 
 
+def _mock_authenticated_ws_session(mock_session, thread):
+    """`transcribe_stream` now authenticates via a real session-token lookup
+    (`get_active_session_by_token` then `get_by_id`) instead of a bare string
+    compare, before doing its own org-scoped thread lookup — stub all three
+    `session` calls in order on the fully-mocked `ws_client` session."""
+    fake_user = SimpleNamespace(id=1, organization_id=1, org_role=OrgRole.admin)
+    fake_user_session = SimpleNamespace(user_id=1)
+    mock_session.scalar = AsyncMock(side_effect=[fake_user_session, thread])
+    mock_session.get.return_value = fake_user
+
+
 def test_should_stream_final_transcript_when_audio_sent(ws_client, mocker):
     client, mock_session = ws_client
-    mock_session.get.return_value = make_thread(id=1)
+    _mock_authenticated_ws_session(mock_session, make_thread(id=1))
 
     class MockDgWs:
         def __init__(self):
@@ -920,7 +959,7 @@ def test_should_stream_final_transcript_when_audio_sent(ws_client, mocker):
 
 def test_should_send_error_when_thread_not_found_via_websocket(ws_client):
     client, mock_session = ws_client
-    mock_session.get.return_value = None
+    _mock_authenticated_ws_session(mock_session, None)
 
     with client.websocket_connect(
         "/api/threads/999/messages/transcribe-stream?token=CHANGEMELATER"
@@ -933,7 +972,7 @@ def test_should_send_error_when_thread_not_found_via_websocket(ws_client):
 
 def test_should_send_error_when_stt_service_fails_during_stream(ws_client, mocker):
     client, mock_session = ws_client
-    mock_session.get.return_value = make_thread(id=1)
+    _mock_authenticated_ws_session(mock_session, make_thread(id=1))
 
     @asynccontextmanager
     async def mock_failing_dg_ws(*args, **kwargs):
@@ -964,7 +1003,7 @@ async def test_should_return_completion_without_retrieval_when_no_next_was_promi
         sender=MessageSender.assistant,
     )
     retrieve_context_chunks = mocker.patch(
-        "app.routers.threads.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(),
     )
 

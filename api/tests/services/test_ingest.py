@@ -130,13 +130,19 @@ async def test_ingest_pdf_to_attachment(mocker, settings):
     assert report.chunks_indexed == len(rows)
     assert pdf_worker_thread_ids
     assert pdf_worker_thread_ids[0] != main_thread_id
-    azure_client.assert_called_once_with(
-        api_version=settings.azure_openai_api_version,
-        azure_endpoint=settings.azure_openai_endpoint,
-        api_key=settings.azure_openai_api_key,
-        timeout=settings.azure_embeddings_timeout_seconds,
-        max_retries=settings.azure_embeddings_max_retries,
-    )
+    assert azure_client.call_count == 2
+    assert azure_client.call_args_list[0].kwargs == {
+        "api_version": settings.azure_openai_api_version,
+        "azure_endpoint": settings.azure_openai_endpoint,
+        "api_key": settings.azure_openai_api_key,
+        "timeout": settings.azure_embeddings_timeout_seconds,
+        "max_retries": settings.azure_embeddings_max_retries,
+    }
+    assert azure_client.call_args_list[1].kwargs == {
+        "api_version": settings.azure_openai_vision_api_version,
+        "azure_endpoint": settings.azure_openai_vision_endpoint,
+        "api_key": settings.azure_openai_vision_api_key,
+    }
 
 
 async def test_sparse_native_text_gets_image_description_chunks(mocker, settings):
@@ -240,6 +246,7 @@ async def test_image_only_pdf_is_kept_when_azure_ocr_recovers_text(mocker, setti
     mocker.patch("app.services.ingest.process_ocr_text", return_value="OCR text")
     mocker.patch("app.services.ingest.chunk_page", return_value=["OCR chunk"])
     mocker.patch("app.services.ingest.extract_page_images", return_value=[])
+    mocker.patch("app.services.ingest.describe_image", return_value="")
 
     poller = mocker.MagicMock()
     poller.result.return_value = mocker.Mock(content="raw OCR")

@@ -3,7 +3,7 @@ import asyncio
 from typing import cast
 
 from app.config import Settings
-from app.routers import benchmark
+from app.routers.admin import benchmark
 from app.services import benchmark_setup
 from app.services.benchmark_cases import load_benchmark_dataset
 from tests.routers.factories import (
@@ -35,7 +35,9 @@ class TestProcessBenchmarkSetup:
         session_context = mocker.MagicMock()
         session_context.__aenter__ = mocker.AsyncMock(return_value=session)
         session_context.__aexit__ = mocker.AsyncMock(return_value=None)
-        mocker.patch("app.routers.benchmark.AsyncSession", return_value=session_context)
+        mocker.patch(
+            "app.routers.admin.benchmark.AsyncSession", return_value=session_context
+        )
 
         async def fake_setup(settings, session, progress):
             del settings, session
@@ -45,7 +47,7 @@ class TestProcessBenchmarkSetup:
             return {"device_id": 7, "attachments": 4, "chunks": 100}
 
         mocker.patch(
-            "app.routers.benchmark.benchmark_setup.run_benchmark_setup",
+            "app.routers.admin.benchmark.benchmark_setup.run_benchmark_setup",
             side_effect=fake_setup,
         )
         settings = cast(
@@ -68,7 +70,9 @@ class TestProcessBenchmarkSetup:
         session_context = mocker.MagicMock()
         session_context.__aenter__ = mocker.AsyncMock(return_value=mocker.AsyncMock())
         session_context.__aexit__ = mocker.AsyncMock(return_value=None)
-        mocker.patch("app.routers.benchmark.AsyncSession", return_value=session_context)
+        mocker.patch(
+            "app.routers.admin.benchmark.AsyncSession", return_value=session_context
+        )
 
         async def failing_setup(settings, session, progress):
             del settings, session
@@ -76,7 +80,7 @@ class TestProcessBenchmarkSetup:
             raise RuntimeError("embedding failed")
 
         mocker.patch(
-            "app.routers.benchmark.benchmark_setup.run_benchmark_setup",
+            "app.routers.admin.benchmark.benchmark_setup.run_benchmark_setup",
             side_effect=failing_setup,
         )
         settings = cast(

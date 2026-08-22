@@ -135,6 +135,7 @@ jest.mock('@/modules/audio-stream', () => ({
 }));
 
 import { getWebAudioMeteringDb, useMicrophone } from '../hooks/use-microphone';
+import { __setCachedTokenForTests } from '../utils/token-store';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -236,8 +237,6 @@ describe('useMicrophone', () => {
 		expect(getWebAudioMeteringDb(new Float32Array([0, 0, 0, 0]))).toBe(-160);
 	});
 
-	const originalAuthToken = process.env.EXPO_PUBLIC_AUTH_TOKEN;
-
 	beforeEach(() => {
 		jest.useRealTimers();
 		mockRecorder.isRecording = false;
@@ -272,18 +271,14 @@ describe('useMicrophone', () => {
 		global.WebSocket = MockWebSocket as unknown as typeof WebSocket;
 		mockRequestRecordingPermissionsAsync.mockResolvedValue({ granted: true });
 		mockRecorder.prepareToRecordAsync.mockResolvedValue(undefined);
-		process.env.EXPO_PUBLIC_AUTH_TOKEN = 'test-token';
+		__setCachedTokenForTests('test-token');
 		global.fetch = jest.fn();
 		jest.spyOn(console, 'log').mockImplementation(() => {});
 		jest.spyOn(Date, 'now').mockReturnValue(1000);
 	});
 
 	afterEach(() => {
-		if (originalAuthToken === undefined) {
-			delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
-		} else {
-			process.env.EXPO_PUBLIC_AUTH_TOKEN = originalAuthToken;
-		}
+		__setCachedTokenForTests(null);
 		jest.restoreAllMocks();
 		jest.useRealTimers();
 	});
@@ -305,7 +300,7 @@ describe('useMicrophone', () => {
 	});
 
 	test('reports auth configuration errors before requesting permissions', async () => {
-		delete process.env.EXPO_PUBLIC_AUTH_TOKEN;
+		__setCachedTokenForTests(null);
 		const harness = createHarness({ authTokenOverride: null });
 
 		await harness.api.handleMicPress();

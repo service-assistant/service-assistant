@@ -17,13 +17,10 @@ import {
 	findCategoryPath,
 	useVehicleMetadata,
 } from '@/hooks/use-vehicle-metadata';
-import { API_URL, API_URL_CONFIG_ERROR } from '@/utils/api-config';
-import {
-	getAuthTokenOrThrow,
-	getServiceErrorFeature,
-	throwIfAuthResponseError,
-} from '@/utils/auth-errors';
-import { fetchWithRetry, HttpError, isTransientNetworkError } from '@/utils/network';
+import { apiGetJson } from '@/lib/api-client';
+import { API_URL_CONFIG_ERROR } from '@/utils/api-config';
+import { getServiceErrorFeature } from '@/utils/auth-errors';
+import { isTransientNetworkError } from '@/utils/network';
 
 const LARGE_HISTORY_LAYOUT = {
 	pagePaddingHorizontal: 20,
@@ -129,22 +126,9 @@ export default function HistoryScreen() {
 
 				try {
 					if (API_URL_CONFIG_ERROR) throw API_URL_CONFIG_ERROR;
-					const authToken = getAuthTokenOrThrow();
-					const threadsResponse = await fetchWithRetry(`${API_URL}/api/threads`, {
-						headers: {
-							Accept: 'application/json',
-							Authorization: `Bearer ${authToken}`,
-						},
+					const loadedThreads = await apiGetJson<ChatThread[]>('/api/threads', {
 						signal: abortController.signal,
 					});
-
-					throwIfAuthResponseError(threadsResponse);
-
-					if (!threadsResponse.ok) {
-						throw new HttpError(threadsResponse.status, 'Failed to load chat history.');
-					}
-
-					const loadedThreads = (await threadsResponse.json()) as ChatThread[];
 					setThreads(loadedThreads);
 				} catch (error: any) {
 					if (error.name !== 'AbortError') {

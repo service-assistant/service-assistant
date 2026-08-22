@@ -1,22 +1,33 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { ChunkRead } from '@/lib/types'
+import type { ChunkRead, DebugChunkFileDetailRead, DebugChunkFileRead } from '@/lib/types'
 
-export function useChunks(attachmentId: number | null, page: number) {
+export function useChunkFiles(search: string) {
+	const query = search.trim()
 	return useQuery({
-		queryKey: ['chunks', attachmentId, page],
-		queryFn: () => {
-			const params = new URLSearchParams({ page: String(page) })
-			if (attachmentId !== null) params.set('attachment_id', String(attachmentId))
-			return api.get<ChunkRead[]>(`/api/chunks?${params.toString()}`)
-		},
+		queryKey: ['debug-chunks', 'files', query],
+		queryFn: () =>
+			api.get<DebugChunkFileRead[]>(
+				`/api/admin/chunks/files${query ? `?search=${encodeURIComponent(query)}` : ''}`,
+			),
 	})
 }
 
-export function useDeleteChunk() {
-	const queryClient = useQueryClient()
-	return useMutation({
-		mutationFn: (chunkId: number) => api.delete(`/api/chunks/${chunkId}`),
-		onSuccess: () => queryClient.invalidateQueries({ queryKey: ['chunks'] }),
+export function useChunkFile(attachmentId: number) {
+	return useQuery({
+		queryKey: ['debug-chunks', 'files', attachmentId],
+		queryFn: () => api.get<DebugChunkFileDetailRead>(`/api/admin/chunks/files/${attachmentId}`),
+		enabled: Number.isInteger(attachmentId) && attachmentId > 0,
+	})
+}
+
+export function usePageChunks(attachmentId: number, pageNumber: number) {
+	return useQuery({
+		queryKey: ['debug-chunks', 'files', attachmentId, 'page', pageNumber],
+		queryFn: () =>
+			api.get<ChunkRead[]>(
+				`/api/admin/chunks/files/${attachmentId}/chunks?page_number=${pageNumber}`,
+			),
+		enabled: Number.isInteger(attachmentId) && attachmentId > 0 && pageNumber > 0,
 	})
 }

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey
+from sqlalchemy import DateTime, ForeignKey, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..database import Base, utcnow
@@ -24,27 +24,31 @@ class Device(Base):
     image_url: Mapped[str | None]
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        server_default=func.now(),
         default=utcnow,
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
+        server_default=func.now(),
         default=utcnow,
         onupdate=utcnow,
     )
 
-    category_id: Mapped[int | None] = mapped_column(
+    category_id: Mapped[int] = mapped_column(
         ForeignKey(
             "categories.id",
-            ondelete="SET NULL",
-        )
+            ondelete="RESTRICT",
+        ),
+        index=True,
     )
-    category: Mapped[Category | None] = relationship(
+    category: Mapped[Category] = relationship(
         back_populates="devices",
         lazy="raise",
     )
 
     threads: Mapped[list[ChatThread]] = relationship(
         back_populates="device",
+        passive_deletes=True,
         lazy="raise",
     )
 
