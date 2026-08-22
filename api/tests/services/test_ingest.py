@@ -14,6 +14,13 @@ from app.services.ingest import (
 )
 
 
+@pytest.fixture(autouse=True)
+def openai_client(mocker):
+    return mocker.patch(
+        "app.services.ingest.AsyncOpenAI", return_value=mocker.AsyncMock()
+    )
+
+
 def test_render_page_for_ocr_limits_dimensions(mocker):
     page = mocker.Mock()
     page.rect.width = 20_000
@@ -48,7 +55,7 @@ def test_render_page_for_ocr_downscales_large_image(mocker):
     assert second_matrix.a < first_matrix.a
 
 
-async def test_ingest_pdf_to_attachment(mocker, settings):
+async def test_ingest_pdf_to_attachment(mocker, settings, openai_client):
     session = mocker.AsyncMock()
     main_thread_id = threading.get_ident()
     pdf_worker_thread_ids: list[int] = []
@@ -97,6 +104,7 @@ async def test_ingest_pdf_to_attachment(mocker, settings):
     )
     mocker.patch("app.services.ingest.chunk_page", return_value=["chunk 1", "chunk 2"])
     mocker.patch("app.services.ingest.extract_page_images", return_value=fake_images)
+    describe = mocker.patch("app.services.ingest.describe_image", return_value="")
     mock_insert = mocker.patch(
         "app.services.ingest.insert_chunks",
         new_callable=mocker.AsyncMock,
@@ -136,6 +144,66 @@ async def test_ingest_pdf_to_attachment(mocker, settings):
         api_key=settings.azure_openai_api_key,
         timeout=settings.azure_embeddings_timeout_seconds,
         max_retries=settings.azure_embeddings_max_retries,
+    )
+    openai_client.assert_called_once_with(api_key=settings.openai_api_key)
+    assert describe.await_count == 4
+    assert all(
+        call.kwargs["model"] == "gpt-5.6-luna" for call in describe.await_args_list
+    )
+
+
+async def test_sparse_native_text_gets_image_description_chunks(
+    mocker, settings, openai_client
+):
+    session = mocker.AsyncMock()
+    page = mocker.Mock()
+    page.get_text.return_value = "Native text"
+    document = mocker.MagicMock()
+    document.__len__.return_value = 1
+    document.pages.return_value = [page]
+    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch(
+        "app.services.ingest.pymupdf4llm.to_markdown", return_value="Native markdown"
+    )
+    mocker.patch("app.services.ingest.chunk_page", return_value=["native chunk"])
+    image_paths = ["image-1.png", "image-2.png"]
+    mocker.patch("app.services.ingest.extract_page_images", return_value=image_paths)
+    describe = mocker.patch(
+        "app.services.ingest.describe_image",
+        side_effect=["Description 1", "Description 2"],
+    )
+
+    embedding_client = mocker.AsyncMock()
+    embedding_client.embeddings.create.return_value = mocker.Mock(
+        data=[mocker.Mock(embedding=[0.1] * 1536) for _ in range(3)]
+    )
+    vision_client = mocker.AsyncMock()
+    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    openai_client.return_value = vision_client
+    insert = mocker.patch(
+        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+    )
+
+    report = await ingest_pdf_to_attachment(
+        session, "text-with-images.pdf", 1, settings
+    )
+
+    rows = insert.call_args.args[1]
+    assert [row[0] for row in rows] == [
+        "Description 1",
+        "Description 2",
+        "native chunk",
+    ]
+    assert rows[0][3] == [image_paths[0]]
+    assert rows[1][3] == [image_paths[1]]
+    assert rows[2][3] == image_paths
+    assert report.chunks_indexed == 3
+    openai_client.assert_called_once_with(api_key=settings.openai_api_key)
+    assert describe.await_count == 2
+    assert all(
+        call.kwargs["client"] is vision_client
+        and call.kwargs["model"] == "gpt-5.6-luna"
+        for call in describe.await_args_list
     )
 
 
@@ -186,6 +254,7 @@ async def test_image_only_pdf_is_kept_when_azure_ocr_recovers_text(mocker, setti
     mocker.patch("app.services.ingest.process_ocr_text", return_value="OCR text")
     mocker.patch("app.services.ingest.chunk_page", return_value=["OCR chunk"])
     mocker.patch("app.services.ingest.extract_page_images", return_value=[])
+    mocker.patch("app.services.ingest.describe_image", return_value="")
 
     poller = mocker.MagicMock()
     poller.result.return_value = mocker.Mock(content="raw OCR")
@@ -209,6 +278,47 @@ async def test_image_only_pdf_is_kept_when_azure_ocr_recovers_text(mocker, setti
     assert report.ocr_pages_attempted == 1
     assert report.ocr_pages_succeeded == 1
     assert report.ocr_pages_skipped == 0
+    assert report.chunks_indexed == 1
+    insert.assert_awaited_once()
+
+
+async def test_image_only_page_gets_description_when_ocr_recovers_no_text(
+    mocker, settings
+):
+    session = mocker.AsyncMock()
+    page = mocker.Mock()
+    page.get_text.return_value = ""
+    document = mocker.MagicMock()
+    document.__len__.return_value = 1
+    document.pages.return_value = [page]
+    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch("app.services.ingest.render_page_for_ocr", return_value=b"jpeg")
+    mocker.patch("app.services.ingest.process_ocr_text", return_value="")
+    mocker.patch("app.services.ingest.chunk_page", return_value=[])
+    describe = mocker.patch(
+        "app.services.ingest.describe_image", return_value="A technical diagram"
+    )
+
+    poller = mocker.MagicMock()
+    poller.result.return_value = mocker.Mock(content="raw OCR")
+    ocr_client = mocker.MagicMock()
+    ocr_client.begin_analyze_document.return_value = poller
+    mocker.patch(
+        "app.services.ingest.DocumentIntelligenceClient", return_value=ocr_client
+    )
+    embedding_client = mocker.AsyncMock()
+    embedding_client.embeddings.create.return_value = mocker.Mock(
+        data=[mocker.Mock(embedding=[0.1] * 1536)]
+    )
+    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    insert = mocker.patch(
+        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+    )
+
+    report = await ingest_pdf_to_attachment(session, "image-only.pdf", 1, settings)
+
+    describe.assert_awaited_once()
+    assert describe.call_args.kwargs["image_path"].endswith(".jpg")
     assert report.chunks_indexed == 1
     insert.assert_awaited_once()
 

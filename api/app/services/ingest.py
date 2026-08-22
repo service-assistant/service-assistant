@@ -12,7 +12,7 @@ import pymupdf4llm
 from azure.ai.documentintelligence import DocumentIntelligenceClient
 from azure.ai.documentintelligence.models import DocumentContentFormat
 from azure.core.credentials import AzureKeyCredential
-from openai import AsyncAzureOpenAI
+from openai import AsyncAzureOpenAI, AsyncOpenAI
 from sqlalchemy import delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,6 +20,7 @@ from ..config import Settings
 from ..models import Chunk
 from .async_utils import run_blocking
 from .chunking import chunk_page
+from .describe_image import describe_image
 from .extract_images import extract_page_images
 from .process_ocr_text import process_ocr_text
 
@@ -156,6 +157,7 @@ async def _ingest_pdf_to_attachment_unlocked(
         timeout=settings.azure_embeddings_timeout_seconds,
         max_retries=settings.azure_embeddings_max_retries,
     )
+    vision_client = AsyncOpenAI(api_key=settings.openai_api_key)
     images_dir = settings.attachments_dir / "images" / str(attachment_id)
     doc: fitz.Document | None = None
     try:
@@ -322,6 +324,15 @@ async def _ingest_pdf_to_attachment_unlocked(
                     continue
 
             chunks = await run_blocking(chunk_page, markdown_text)
+            for image_filename in page_images:
+                description = await describe_image(
+                    image_path=str(images_dir / image_filename),
+                    client=vision_client,
+                    model=settings.openai_image_description_model,
+                )
+                if description.strip():
+                    pending.append((description, page_num, [image_filename]))
+
             if not chunks:
                 report.pages_processed += 1
                 _report(
@@ -370,6 +381,7 @@ async def _ingest_pdf_to_attachment_unlocked(
         if doc is not None:
             await run_blocking(doc.close)
         await client.close()
+        await vision_client.close()
 
 
 async def insert_chunks(

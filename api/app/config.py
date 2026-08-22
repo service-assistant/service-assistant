@@ -34,6 +34,7 @@ class Settings(BaseSettings):
 
     openai_api_key: str
     openai_chat_model: str = "gpt-5.6-luna"
+    openai_image_description_model: str = "gpt-5.6-luna"
     openai_stt_model: str = "gpt-transcribe"
     openai_stt_prompt: str = (
         "Nagranie zawiera wypowiedź polskiego technika serwisowego dotyczącą "
