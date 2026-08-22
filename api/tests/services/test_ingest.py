@@ -104,6 +104,7 @@ async def test_ingest_pdf_to_attachment(mocker, settings, openai_client):
     )
     mocker.patch("app.services.ingest.chunk_page", return_value=["chunk 1", "chunk 2"])
     mocker.patch("app.services.ingest.extract_page_images", return_value=fake_images)
+    describe = mocker.patch("app.services.ingest.describe_image", return_value="")
     mock_insert = mocker.patch(
         "app.services.ingest.insert_chunks",
         new_callable=mocker.AsyncMock,
@@ -145,6 +146,10 @@ async def test_ingest_pdf_to_attachment(mocker, settings, openai_client):
         max_retries=settings.azure_embeddings_max_retries,
     )
     openai_client.assert_called_once_with(api_key=settings.openai_api_key)
+    assert describe.await_count == 4
+    assert all(
+        call.kwargs["model"] == "gpt-5.6-luna" for call in describe.await_args_list
+    )
 
 
 async def test_sparse_native_text_gets_image_description_chunks(

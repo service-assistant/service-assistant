@@ -324,15 +324,14 @@ async def _ingest_pdf_to_attachment_unlocked(
                     continue
 
             chunks = await run_blocking(chunk_page, markdown_text)
-            if len(chunks) < 2 and page_images:
-                for image_filename in page_images:
-                    description = await describe_image(
-                        image_path=str(images_dir / image_filename),
-                        client=vision_client,
-                        model=settings.openai_image_description_model,
-                    )
-                    if description.strip():
-                        pending.append((description, page_num, [image_filename]))
+            for image_filename in page_images:
+                description = await describe_image(
+                    image_path=str(images_dir / image_filename),
+                    client=vision_client,
+                    model=settings.openai_image_description_model,
+                )
+                if description.strip():
+                    pending.append((description, page_num, [image_filename]))
 
             if not chunks:
                 report.pages_processed += 1
