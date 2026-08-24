@@ -236,7 +236,7 @@
 }
 
 .catalog-tree-row--device {
-	padding-left: calc(var(--tree-depth) * 34px);
+	padding-left: calc(-5px + var(--tree-depth) * 34px);
 	transition:
 		height 160ms ease,
 		border-color 120ms ease,
@@ -245,6 +245,11 @@
 
 .catalog-tree-row--device-open {
 	height: 120px;
+}
+
+.catalog-tree-row--device > .catalog-tree-toggle {
+	align-self: flex-start;
+	margin-top: 9px;
 }
 
 .catalog-tree-children {
@@ -441,8 +446,67 @@
 }
 
 .catalog-tree-row:hover > .catalog-tree-action,
+.catalog-tree-row:hover > .catalog-tree-add-menu > .catalog-tree-action,
 .catalog-tree-action:focus-visible {
 	opacity: 1;
+}
+
+.catalog-tree-add-menu {
+	position: relative;
+	z-index: 4;
+	display: flex;
+	margin-left: auto;
+}
+
+.catalog-tree-add-menu:focus-within {
+	z-index: 30;
+}
+
+.catalog-tree-add-menu .catalog-tree-add {
+	margin-left: 0;
+}
+
+.catalog-tree-add-menu__popup {
+	position: absolute;
+	top: calc(100% + 5px);
+	right: 0;
+	z-index: 20;
+	width: 190px;
+	padding: 6px;
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-radius: 7px;
+	background: #1b2633;
+	box-shadow: 0 14px 30px rgba(0, 0, 0, 0.42);
+}
+
+.catalog-tree-add-menu__popup button {
+	display: flex;
+	width: 100%;
+	height: 38px;
+	align-items: center;
+	gap: 10px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: 5px;
+	background: transparent;
+	color: #e8eaed;
+	cursor: pointer;
+	font: inherit;
+	font-size: 13px;
+	font-weight: 750;
+	text-align: left;
+}
+
+.catalog-tree-add-menu__popup button:hover,
+.catalog-tree-add-menu__popup button:focus-visible {
+	outline: none;
+	background: rgba(255, 122, 0, 0.12);
+	color: #fff;
+}
+
+.catalog-tree-add-menu__popup svg {
+	flex: 0 0 auto;
+	color: #ff921f;
 }
 
 .catalog-tree-add {
@@ -563,10 +627,10 @@
 }
 
 .catalog-tree-thumbnail--open {
-	width: 144px;
+	width: 96px;
 	height: 96px;
-	flex-basis: 144px;
-	border-color: rgba(255, 146, 31, 0.55);
+	flex-basis: 96px;
+	border-color: transparent;
 }
 
 .catalog-tree-thumbnail img {
@@ -577,11 +641,6 @@
 
 .catalog-tree-thumbnail--open img {
 	object-fit: contain;
-}
-
-.catalog-tree-thumbnail--open > svg {
-	width: 38px;
-	height: 38px;
 }
 
 .catalog-tree-unassigned {

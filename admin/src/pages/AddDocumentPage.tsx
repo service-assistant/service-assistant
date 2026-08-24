@@ -1,13 +1,15 @@
+import { MachineSelectionTree } from '@/components/MachineSelectionTree'
 import { useCreateAttachment } from '@/hooks/useAttachments'
 import { useCategoryTree } from '@/hooks/useCategories'
 import { useDevices } from '@/hooks/useDevices'
 import { categoryPath, flattenCategoryTree } from '@/lib/categoryTree'
 import { fileSelectionError, mergeUploadFiles } from '@/lib/documentUpload'
 import { documentCountLabel, machineCountLabel } from '@/lib/pluralize'
-import type { Device } from '@/lib/types'
+import { showToast } from '@/lib/toast'
+import type { CategoryTree, Device } from '@/lib/types'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowRight, Check, FileText, Search, Trash2, Upload, Wrench } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
+import { ArrowRight, Check, FileText, Search, Trash2, Upload } from 'lucide-react'
+import { useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import './AddDocumentPage.css'
 
 type Step = 1 | 2 | 3
@@ -57,44 +59,6 @@ function InfoCard({ label, value }: { label: string; value: string }) {
 			<span>{label}</span>
 			<strong>{value}</strong>
 		</div>
-	)
-}
-
-function MachineCheckbox({
-	checked,
-	label,
-	mixed = false,
-	onChange,
-}: {
-	checked: boolean
-	label: string
-	mixed?: boolean
-	onChange: () => void
-}) {
-	const inputRef = useRef<HTMLInputElement>(null)
-
-	useEffect(() => {
-		if (inputRef.current) inputRef.current.indeterminate = mixed
-	}, [mixed])
-
-	return (
-		<>
-			<input
-				ref={inputRef}
-				type='checkbox'
-				className='document-checkbox-input'
-				aria-label={label}
-				checked={checked}
-				onChange={onChange}
-			/>
-			<span className='document-checkbox-box' aria-hidden='true'>
-				{mixed ? (
-					<span className='document-checkbox-minus' />
-				) : (
-					<Check size={13} strokeWidth={4} />
-				)}
-			</span>
-		</>
 	)
 }
 
@@ -244,25 +208,19 @@ function UploadStep({
 
 function MachineStep({
 	devices,
-	flat,
+	onSelectionChange,
 	search,
 	selectedDeviceIds,
 	setSearch,
-	toggleDevice,
-	toggleVisible,
+	tree,
 }: {
 	devices: Device[]
-	flat: ReturnType<typeof flattenCategoryTree>
+	onSelectionChange: (ids: number[]) => void
 	search: string
 	selectedDeviceIds: number[]
 	setSearch: (value: string) => void
-	toggleDevice: (id: number) => void
-	toggleVisible: (ids: number[]) => void
+	tree: CategoryTree[]
 }) {
-	const visibleIds = devices.map((device) => device.id)
-	const allSelected =
-		visibleIds.length > 0 && visibleIds.every((id) => selectedDeviceIds.includes(id))
-	const someSelected = visibleIds.some((id) => selectedDeviceIds.includes(id))
 	return (
 		<>
 			<PageHeading
@@ -277,52 +235,13 @@ function MachineStep({
 					placeholder='Szukaj po maszynie, katalogu, numerze…'
 				/>
 			</div>
-			<div className='document-machine-table'>
-				<div className='document-machine-header'>
-					<label className='document-checkbox-label'>
-						<MachineCheckbox
-							checked={allSelected}
-							mixed={!allSelected && someSelected}
-							label='Zaznacz wszystkie widoczne maszyny'
-							onChange={() => toggleVisible(visibleIds)}
-						/>
-					</label>
-					<span />
-					<span>Maszyna</span>
-					<span>Katalog</span>
-					<span>Dokumenty</span>
-				</div>
-				{devices.length === 0 && (
-					<div className='document-empty-row'>Brak maszyn do wyświetlenia.</div>
-				)}
-				{devices.map((device) => {
-					const checked = selectedDeviceIds.includes(device.id)
-					return (
-						<label
-							key={device.id}
-							className={`document-machine-row ${checked ? 'document-machine-row--selected' : ''}`}>
-							<MachineCheckbox
-								checked={checked}
-								label={`Wybierz maszynę ${device.name}`}
-								onChange={() => toggleDevice(device.id)}
-							/>
-							<span className='document-machine-image'>
-								{device.image_url ? (
-									<img src={device.image_url} alt='' />
-								) : (
-									<Wrench size={22} />
-								)}
-							</span>
-							<span className='document-machine-name'>
-								<strong>{device.name}</strong>
-								<small>{device.model_serial_code || 'Brak kodu'}</small>
-							</span>
-							<span>{categoryPath(device.category_id, flat)}</span>
-							<span className='document-muted'>Brak</span>
-						</label>
-					)
-				})}
-			</div>
+			<MachineSelectionTree
+				devices={devices}
+				onSelectionChange={onSelectionChange}
+				search={search}
+				selectedIds={selectedDeviceIds}
+				tree={tree}
+			/>
 		</>
 	)
 }
@@ -419,34 +338,16 @@ export function AddDocumentPage() {
 	const [search, setSearch] = useState('')
 	const [error, setError] = useState<string | null>(null)
 	const flat = useMemo(() => flattenCategoryTree(tree ?? []), [tree])
-	const filteredDevices = useMemo(() => {
-		const query = search.trim().toLowerCase()
-		return (devices ?? []).filter((device) =>
-			[device.name, device.model_serial_code, categoryPath(device.category_id, flat)]
-				.filter(Boolean)
-				.some((value) => value!.toLowerCase().includes(query)),
-		)
-	}, [devices, flat, search])
 	const selectedDevices = devices?.filter((device) => selectedDeviceIds.includes(device.id)) ?? []
-
-	function toggleDevice(id: number) {
-		setSelectedDeviceIds((current) =>
-			current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
-		)
-	}
-	function toggleVisible(ids: number[]) {
-		if (ids.length === 0) return
-		setSelectedDeviceIds((current) =>
-			ids.every((id) => current.includes(id))
-				? current.filter((id) => !ids.includes(id))
-				: Array.from(new Set([...current, ...ids])),
-		)
-	}
 	async function handleSubmit() {
 		if (files.length === 0) return
 		try {
 			setError(null)
 			await createAttachment.mutateAsync({ files, deviceIds: selectedDeviceIds })
+			showToast({
+				message:
+					'Dodano dokumenty do bazy wiedzy. Uruchom ich przetwarzanie na liście dokumentów.',
+			})
 			void navigate({ to: '/' })
 		} catch (submitError) {
 			setError(
@@ -466,13 +367,12 @@ export function AddDocumentPage() {
 				)}
 				{step === 2 && (
 					<MachineStep
-						devices={filteredDevices}
-						flat={flat}
+						devices={devices ?? []}
+						onSelectionChange={setSelectedDeviceIds}
 						search={search}
 						selectedDeviceIds={selectedDeviceIds}
 						setSearch={setSearch}
-						toggleDevice={toggleDevice}
-						toggleVisible={toggleVisible}
+						tree={tree ?? []}
 					/>
 				)}
 				{step === 3 && (

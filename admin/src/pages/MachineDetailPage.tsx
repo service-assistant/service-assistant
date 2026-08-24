@@ -1,5 +1,4 @@
 import { ConfirmDeleteModal } from '@/components/ConfirmDeleteModal'
-import { useAttachments, useLinkDevice, useUnlinkDevice } from '@/hooks/useAttachments'
 import { useCategoryTree } from '@/hooks/useCategories'
 import { useDeleteDevice, useDevice, useDeviceAttachments } from '@/hooks/useDevices'
 import { categoryPath, flattenCategoryTree } from '@/lib/categoryTree'
@@ -103,61 +102,28 @@ function DocumentRow({ attachment }: { attachment: Attachment }) {
 }
 
 function RelatedDocumentsCard({
-	allAttachments,
-	assigning,
 	linkedAttachments,
-	linkedIds,
-	onClose,
-	onOpen,
-	onToggle,
+	onEdit,
 }: {
-	allAttachments: Attachment[]
-	assigning: boolean
 	linkedAttachments: Attachment[]
-	linkedIds: Set<number>
-	onClose: () => void
-	onOpen: () => void
-	onToggle: (attachmentId: number, linked: boolean) => void
+	onEdit: () => void
 }) {
 	return (
 		<section className='machine-side-card machine-documents-card'>
 			<header>
 				<h2>Powiązane dokumenty</h2>
-				<button type='button' onClick={assigning ? onClose : onOpen}>
-					{assigning ? 'Gotowe' : 'Zmień'}
+				<button type='button' onClick={onEdit}>
+					Zmień
 				</button>
 			</header>
-			{assigning ? (
-				<div className='machine-assignment-list'>
-					{allAttachments.length === 0 && (
-						<p className='machine-empty-documents'>Brak dokumentów do przypisania.</p>
-					)}
-					{allAttachments.map((attachment) => {
-						const linked = linkedIds.has(attachment.id)
-						return (
-							<label key={attachment.id} className='machine-assignment-row'>
-								<input
-									type='checkbox'
-									checked={linked}
-									onChange={() => onToggle(attachment.id, linked)}
-								/>
-								<span title={attachment.original_filename}>
-									{attachment.original_filename}
-								</span>
-							</label>
-						)
-					})}
-				</div>
-			) : (
-				<div className='machine-document-list'>
-					{linkedAttachments.length === 0 && (
-						<p className='machine-empty-documents'>Brak powiązanych dokumentów.</p>
-					)}
-					{linkedAttachments.map((attachment) => (
-						<DocumentRow key={attachment.id} attachment={attachment} />
-					))}
-				</div>
-			)}
+			<div className='machine-document-list'>
+				{linkedAttachments.length === 0 && (
+					<p className='machine-empty-documents'>Brak powiązanych dokumentów.</p>
+				)}
+				{linkedAttachments.map((attachment) => (
+					<DocumentRow key={attachment.id} attachment={attachment} />
+				))}
+			</div>
 		</section>
 	)
 }
@@ -184,18 +150,13 @@ export function MachineDetailPage() {
 	const { data: device, isLoading } = useDevice(id)
 	const { data: tree } = useCategoryTree()
 	const { data: linkedAttachments } = useDeviceAttachments(id)
-	const { data: allAttachments } = useAttachments()
 	const deleteDevice = useDeleteDevice()
-	const linkDevice = useLinkDevice()
-	const unlinkDevice = useUnlinkDevice()
 	const [showDeleteModal, setShowDeleteModal] = useState(false)
-	const [showAssignPanel, setShowAssignPanel] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 
 	const flat = useMemo(() => flattenCategoryTree(tree ?? []), [tree])
 	const category = device ? categoryPath(device.category_id, flat) : '—'
 	const documents = linkedAttachments ?? []
-	const linkedIds = new Set(documents.map((attachment) => attachment.id))
 
 	async function handleDelete() {
 		try {
@@ -208,20 +169,6 @@ export function MachineDetailPage() {
 					: 'Nie udało się usunąć maszyny.',
 			)
 			setShowDeleteModal(false)
-		}
-	}
-
-	async function toggleAttachment(attachmentId: number, linked: boolean) {
-		try {
-			setError(null)
-			if (linked) await unlinkDevice.mutateAsync({ attachmentId, deviceId: id })
-			else await linkDevice.mutateAsync({ attachmentId, deviceId: id })
-		} catch (assignmentError) {
-			setError(
-				assignmentError instanceof Error
-					? assignmentError.message
-					: 'Nie udało się zmienić przypisania dokumentu.',
-			)
 		}
 	}
 
@@ -276,14 +223,12 @@ export function MachineDetailPage() {
 							serial={device.model_serial_code}
 						/>
 						<RelatedDocumentsCard
-							allAttachments={allAttachments ?? []}
-							assigning={showAssignPanel}
 							linkedAttachments={documents}
-							linkedIds={linkedIds}
-							onClose={() => setShowAssignPanel(false)}
-							onOpen={() => setShowAssignPanel(true)}
-							onToggle={(attachmentId, linked) =>
-								void toggleAttachment(attachmentId, linked)
+							onEdit={() =>
+								void navigate({
+									to: '/machines/$deviceId/documents',
+									params: { deviceId: String(id) },
+								})
 							}
 						/>
 						<DangerCard onDelete={() => setShowDeleteModal(true)} />

@@ -5,7 +5,11 @@ const createApiUrlConfigError = (message: string) =>
 		serviceFeature: CONFIG_SERVICE_FEATURE,
 	});
 
-const rawApiUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+const rawApiUrl = (
+	process.env.EXPO_OS === 'web'
+		? process.env.EXPO_PUBLIC_API_URL_WEB
+		: process.env.EXPO_PUBLIC_API_URL
+)?.trim();
 
 let normalizedApiUrl = '';
 let apiUrlConfigError: Error | null = null;

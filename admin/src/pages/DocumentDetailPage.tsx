@@ -5,10 +5,7 @@ import {
 	useAttachment,
 	useAttachmentDevices,
 	useDeleteAttachment,
-	useLinkDevice,
-	useUnlinkDevice,
 } from '@/hooks/useAttachments'
-import { useDevices } from '@/hooks/useDevices'
 import { useStartIngestion } from '@/hooks/useIngestions'
 import { API_URL } from '@/lib/api'
 import { getDocumentCategory, type DocumentCategory } from '@/lib/documentCategory'
@@ -502,71 +499,32 @@ function MachineRow({ device }: { device: Device }) {
 	)
 }
 
-function RelatedMachinesCard({
-	allDevices,
-	devices,
-	editing,
-	linkedIds,
-	onClose,
-	onOpen,
-	onToggle,
-}: {
-	allDevices?: Device[]
-	devices: Device[]
-	editing: boolean
-	linkedIds: Set<number>
-	onClose: () => void
-	onOpen: () => void
-	onToggle: (deviceId: number, linked: boolean) => void
-}) {
+function RelatedMachinesCard({ devices, onEdit }: { devices: Device[]; onEdit: () => void }) {
 	return (
 		<section className='document-side-card rounded-lg border border-[#2d3745] bg-[#1a212b] px-5 py-5'>
 			<div className='mb-4 flex items-center justify-between'>
 				<h2 className='text-lg font-medium text-[#dfe6ef]'>Powiązane maszyny</h2>
 				<button
 					type='button'
-					onClick={editing ? onClose : onOpen}
+					onClick={onEdit}
 					className='cursor-pointer rounded-md px-2 py-1.5 text-xs font-black text-[#ffb36f] hover:bg-[#222b36]'>
-					{editing ? 'Zamknij' : 'Zmień'}
+					Zmień
 				</button>
 			</div>
 
-			{!editing && (
-				<div className='space-y-2.5'>
-					{devices.length === 0 && (
-						<div className='flex h-[43px] items-center rounded-md border border-[#2d3745] bg-[#171e27] px-3'>
-							<Hammer size={19} className='text-[#cfd6e0]' />
-							<span className='ml-3 text-sm font-medium text-[#dfe6ef]'>
-								Brak powiązanych maszyn
-							</span>
-						</div>
-					)}
-					{devices.map((device) => (
-						<MachineRow key={device.id} device={device} />
-					))}
-				</div>
-			)}
-
-			{editing && (
-				<div className='max-h-72 space-y-1 overflow-y-auto'>
-					{allDevices?.map((device) => {
-						const linked = linkedIds.has(device.id)
-						return (
-							<label
-								key={device.id}
-								className='flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm text-[#dfe6ef] hover:bg-[#222b36]'>
-								<input
-									type='checkbox'
-									checked={linked}
-									onChange={() => onToggle(device.id, linked)}
-									className='accent-[#ff7a00]'
-								/>
-								<span className='truncate'>{device.name}</span>
-							</label>
-						)
-					})}
-				</div>
-			)}
+			<div className='space-y-2.5'>
+				{devices.length === 0 && (
+					<div className='flex h-[43px] items-center rounded-md border border-[#2d3745] bg-[#171e27] px-3'>
+						<Hammer size={19} className='text-[#cfd6e0]' />
+						<span className='ml-3 text-sm font-medium text-[#dfe6ef]'>
+							Brak powiązanych maszyn
+						</span>
+					</div>
+				)}
+				{devices.map((device) => (
+					<MachineRow key={device.id} device={device} />
+				))}
+			</div>
 		</section>
 	)
 }
@@ -602,17 +560,12 @@ export function DocumentDetailPage() {
 	const fileUrl = useMemo(() => attachmentFileUrl(id), [id])
 	const { data: attachment, isLoading } = useAttachment(id)
 	const { data: linkedDevices } = useAttachmentDevices(id)
-	const { data: allDevices } = useDevices()
 	const [fileSize, setFileSize] = useState<number>()
 	const deleteAttachment = useDeleteAttachment()
-	const linkDevice = useLinkDevice()
-	const unlinkDevice = useUnlinkDevice()
 	const startIngestion = useStartIngestion()
 	const [showDeleteModal, setShowDeleteModal] = useState(false)
 	const [showRetryModal, setShowRetryModal] = useState(false)
-	const [showAssignPanel, setShowAssignPanel] = useState(false)
 	const [error, setError] = useState<string | null>(null)
-	const linkedIds = new Set(linkedDevices?.map((device) => device.id))
 
 	async function handleDelete() {
 		try {
@@ -625,19 +578,6 @@ export function DocumentDetailPage() {
 					: 'Nie udało się usunąć dokumentu.',
 			)
 			setShowDeleteModal(false)
-		}
-	}
-
-	async function toggleDevice(deviceId: number, linked: boolean) {
-		try {
-			if (linked) await unlinkDevice.mutateAsync({ attachmentId: id, deviceId })
-			else await linkDevice.mutateAsync({ attachmentId: id, deviceId })
-		} catch (linkError) {
-			setError(
-				linkError instanceof Error
-					? linkError.message
-					: 'Nie udało się zmienić przypisania maszyny.',
-			)
 		}
 	}
 
@@ -688,13 +628,13 @@ export function DocumentDetailPage() {
 								machineCount={linkedDevices?.length ?? 0}
 							/>
 							<RelatedMachinesCard
-								allDevices={allDevices}
 								devices={linkedDevices ?? []}
-								linkedIds={linkedIds}
-								editing={showAssignPanel}
-								onOpen={() => setShowAssignPanel(true)}
-								onClose={() => setShowAssignPanel(false)}
-								onToggle={(deviceId, linked) => void toggleDevice(deviceId, linked)}
+								onEdit={() =>
+									void navigate({
+										to: '/documents/$attachmentId/machines',
+										params: { attachmentId: String(id) },
+									})
+								}
 							/>
 							{error && (
 								<p className='rounded-md border border-red-400/30 bg-red-400/10 px-4 py-3 text-sm text-red-200'>

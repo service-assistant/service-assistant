@@ -59,8 +59,8 @@ const STATUS_PRESENTATION: Record<IngestionStatus, StatusPresentation> = {
 	failed: {
 		dot: 'bg-red-400',
 		label: 'Błąd importu',
-		pill: 'border border-red-400/35 bg-red-400/10',
-		text: 'text-red-200',
+		pill: '',
+		text: 'text-red-300',
 	},
 }
 
@@ -121,7 +121,7 @@ function DocumentRow({ attachment, devices }: { attachment: Attachment; devices?
 			<Link
 				to='/documents/$attachmentId'
 				params={{ attachmentId: String(attachment.id) }}
-				className={`group relative grid min-h-[88px] grid-cols-[minmax(320px,2.35fr)_minmax(130px,.75fr)_minmax(220px,1.35fr)_minmax(170px,.82fr)_minmax(190px,1.28fr)] items-center border border-transparent border-b-white/[0.08] px-4 text-sm transition-colors hover:rounded-md hover:border-white/[0.08] hover:border-l-ember hover:bg-[#1b2633] ${attachment.ingest_status === 'failed' ? 'border-l-4 border-l-red-400' : ''}`}>
+				className='group relative grid min-h-[88px] grid-cols-[minmax(320px,2.35fr)_minmax(130px,.75fr)_minmax(220px,1.35fr)_minmax(170px,.82fr)_minmax(190px,1.28fr)] items-center border border-transparent border-b-white/[0.08] px-4 text-sm transition-colors hover:rounded-md hover:border-white/[0.08] hover:border-l-ember hover:bg-[#1b2633]'>
 				<span className='flex min-w-0 items-center'>
 					<span
 						className={`relative flex size-[46px] shrink-0 items-center justify-center rounded-md border bg-[#151d27] ${CATEGORY_ICON_CLASSES[category]}`}>

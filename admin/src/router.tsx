@@ -1,4 +1,5 @@
 import { ProtectedLayout } from '@/components/ProtectedLayout'
+import { parseOptionalId } from '@/lib/routeSearch'
 import { AddDocumentPage } from '@/pages/AddDocumentPage'
 import { AddMachinePage } from '@/pages/AddMachinePage'
 import { AddUserPage } from '@/pages/AddUserPage'
@@ -6,9 +7,12 @@ import { CatalogPage } from '@/pages/CatalogPage'
 import { CategoryDetailPage } from '@/pages/CategoryDetailPage'
 import { CategoryNewPage } from '@/pages/CategoryNewPage'
 import { DocumentDetailPage } from '@/pages/DocumentDetailPage'
+import { DocumentMachinesPage } from '@/pages/DocumentMachinesPage'
 import { DocumentsPage } from '@/pages/DocumentsPage'
 import { LoginPage } from '@/pages/LoginPage'
 import { MachineDetailPage } from '@/pages/MachineDetailPage'
+import { MachineDocumentsPage } from '@/pages/MachineDocumentsPage'
+import { QueuePage } from '@/pages/QueuePage'
 import { SettingsPage } from '@/pages/SettingsPage'
 import { UsersPage } from '@/pages/UsersPage'
 import { createRootRoute, createRoute, createRouter } from '@tanstack/react-router'
@@ -69,6 +73,12 @@ const settingsRoute = createRoute({
 	component: SettingsPage,
 })
 
+const queueRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/queue',
+	component: QueuePage,
+})
+
 const addDocumentRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
 	path: '/add-document',
@@ -78,6 +88,9 @@ const addDocumentRoute = createRoute({
 const addMachineRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
 	path: '/add-machine',
+	validateSearch: (search: Record<string, unknown>): { categoryId?: number } => ({
+		categoryId: parseOptionalId(search.categoryId),
+	}),
 	component: AddMachinePage,
 })
 
@@ -85,7 +98,7 @@ const categoryNewRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
 	path: '/categories/new',
 	validateSearch: (search: Record<string, unknown>): { parentId?: number } => ({
-		parentId: search.parentId as number | undefined,
+		parentId: parseOptionalId(search.parentId),
 	}),
 	component: CategoryNewPage,
 })
@@ -102,10 +115,22 @@ const machineDetailRoute = createRoute({
 	component: MachineDetailPage,
 })
 
+const machineDocumentsRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/machines/$deviceId/documents',
+	component: MachineDocumentsPage,
+})
+
 const documentDetailRoute = createRoute({
 	getParentRoute: () => appLayoutRoute,
 	path: '/documents/$attachmentId',
 	component: DocumentDetailPage,
+})
+
+const documentMachinesRoute = createRoute({
+	getParentRoute: () => appLayoutRoute,
+	path: '/documents/$attachmentId/machines',
+	component: DocumentMachinesPage,
 })
 
 const routeTree = rootRoute.addChildren([
@@ -115,13 +140,16 @@ const routeTree = rootRoute.addChildren([
 		catalogRoute,
 		usersRoute,
 		settingsRoute,
+		queueRoute,
 		addUserRoute,
 		addDocumentRoute,
 		addMachineRoute,
 		categoryNewRoute,
 		categoryDetailRoute,
 		machineDetailRoute,
+		machineDocumentsRoute,
 		documentDetailRoute,
+		documentMachinesRoute,
 	]),
 ])
 

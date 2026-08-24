@@ -5,7 +5,7 @@ import { categoryPath, flattenCategoryTree, type FlatCategory } from '@/lib/cate
 import { getDocumentCategory, type DocumentCategory } from '@/lib/documentCategory'
 import { documentCountLabel } from '@/lib/pluralize'
 import type { Attachment } from '@/lib/types'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, useSearch } from '@tanstack/react-router'
 import { ArrowRight, Check, FileText, Plus, Search, ShieldAlert, Upload } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import './AddMachinePage.css'
@@ -537,12 +537,14 @@ function WizardFooter({
 export function AddMachineWizard({
 	attachments,
 	flat,
+	initialCategoryId,
 	onCancel,
 	onSubmit,
 	submitting = false,
 }: {
 	attachments: Attachment[]
 	flat: FlatCategory[]
+	initialCategoryId?: number
 	onCancel: () => void
 	onSubmit: (draft: MachineDraft, attachmentIds: number[]) => Promise<void>
 	submitting?: boolean
@@ -550,7 +552,7 @@ export function AddMachineWizard({
 	const [step, setStep] = useState<Step>(1)
 	const [modelName, setModelName] = useState('')
 	const [modelCode, setModelCode] = useState('')
-	const [categoryId, setCategoryId] = useState<number | null>(null)
+	const [categoryId, setCategoryId] = useState<number | null>(initialCategoryId ?? null)
 	const [imageUrl, setImageUrl] = useState('')
 	const [imageFileName, setImageFileName] = useState('')
 	const [selectedIds, setSelectedIds] = useState<number[]>([])
@@ -566,7 +568,9 @@ export function AddMachineWizard({
 		categoryId: categoryId ?? 0,
 		imageUrl: imageUrl.trim(),
 	}
-	const basicComplete = draft.name.length > 0 && categoryId !== null
+	const categoryExists =
+		categoryId !== null && flat.some((category) => category.id === categoryId)
+	const basicComplete = draft.name.length > 0 && categoryExists
 
 	function toggleAttachment(id: number) {
 		setSelectedIds((current) =>
@@ -676,6 +680,7 @@ export function AddMachineWizard({
 
 export function AddMachinePage() {
 	const navigate = useNavigate()
+	const { categoryId } = useSearch({ strict: false }) as { categoryId?: number }
 	const { data: tree } = useCategoryTree()
 	const { data: attachments } = useAttachments()
 	const createDevice = useCreateDevice()
@@ -698,6 +703,7 @@ export function AddMachinePage() {
 		<AddMachineWizard
 			attachments={attachments ?? []}
 			flat={flat}
+			initialCategoryId={categoryId}
 			submitting={createDevice.isPending || linkDevice.isPending}
 			onCancel={() => void navigate({ to: '/catalog', search: { tab: 'models' } })}
 			onSubmit={handleSubmit}

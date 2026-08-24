@@ -1,5 +1,6 @@
 import {
 	activeCount,
+	attentionCount,
 	canCancel,
 	canProcess,
 	canRetry,
@@ -46,6 +47,20 @@ describe('activeCount', () => {
 
 	it('should return zero when there are no attachments', () => {
 		expect(activeCount([])).toBe(0)
+	})
+})
+
+describe('attentionCount', () => {
+	it('counts queued, running and failed attachments but ignores completed and ready ones', () => {
+		expect(
+			attentionCount([
+				attachment({ id: 1, ingest_status: 'ready' }),
+				attachment({ id: 2, ingest_status: 'queued' }),
+				attachment({ id: 3, ingest_status: 'running' }),
+				attachment({ id: 4, ingest_status: 'succeeded' }),
+				attachment({ id: 5, ingest_status: 'failed' }),
+			]),
+		).toBe(3)
 	})
 })
 
