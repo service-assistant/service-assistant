@@ -1,8 +1,11 @@
+import { useAttachments } from '@/hooks/useAttachments'
+import { attentionCount } from '@/lib/ingestion'
 import { Link, useRouterState } from '@tanstack/react-router'
 import {
 	BookOpenCheck,
 	Cpu,
 	History,
+	Layers3,
 	Settings,
 	ShieldCheck,
 	Wrench,
@@ -11,13 +14,15 @@ import {
 
 type NavItem = {
 	label: string
-	to: '/' | '/catalog' | '/users' | '/settings' | null
+	to: '/' | '/catalog' | '/queue' | '/users' | '/settings' | null
 	icon: LucideIcon
+	badge?: number
 }
 
 const NAV_ITEMS: NavItem[] = [
 	{ label: 'Baza wiedzy', to: '/', icon: BookOpenCheck },
 	{ label: 'Katalog maszyn', to: '/catalog', icon: Wrench },
+	{ label: 'Kolejka', to: '/queue', icon: Layers3 },
 	{ label: 'Historia zmian', to: null, icon: History },
 	{ label: 'Użytkownicy', to: '/users', icon: ShieldCheck },
 ]
@@ -41,11 +46,18 @@ function SidebarItem({ active, item }: { active: boolean; item: NavItem }) {
 				<Icon size={18} strokeWidth={2.5} />
 			</span>
 			<span
-				className={`ml-3 text-xs font-extrabold ${
+				className={`ml-3 min-w-0 flex-1 text-xs font-extrabold ${
 					active ? 'text-[#ff921f]' : 'text-[#9aa4b2]'
 				}`}>
 				{item.label}
 			</span>
+			{item.badge !== undefined && item.badge > 0 && (
+				<span
+					aria-label={`${item.badge} elementów wymagających uwagi`}
+					className='ml-2 inline-flex min-w-5 shrink-0 items-center justify-center rounded-full bg-[#ff7a00] px-1.5 py-0.5 text-[10px] leading-4 font-black text-[#111820]'>
+					{item.badge > 99 ? '99+' : item.badge}
+				</span>
+			)}
 		</div>
 	)
 
@@ -60,6 +72,8 @@ function SidebarItem({ active, item }: { active: boolean; item: NavItem }) {
 
 export function Sidebar() {
 	const pathname = useRouterState({ select: (state) => state.location.pathname })
+	const { data: attachments } = useAttachments()
+	const queueAttentionCount = attentionCount(attachments ?? [])
 
 	return (
 		<aside className='flex h-screen w-[230px] shrink-0 flex-col overflow-hidden border-r border-white/[0.08] bg-[#111821] py-[18px]'>
@@ -71,7 +85,11 @@ export function Sidebar() {
 			</header>
 
 			<nav className='flex flex-col gap-1' aria-label='Główna nawigacja'>
-				{NAV_ITEMS.map((item) => {
+				{NAV_ITEMS.map((navItem) => {
+					const item =
+						navItem.to === '/queue'
+							? { ...navItem, badge: queueAttentionCount }
+							: navItem
 					const active =
 						item.to !== null &&
 						(item.to === '/' ? pathname === '/' : pathname.startsWith(item.to))

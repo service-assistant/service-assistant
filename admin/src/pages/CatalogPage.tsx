@@ -10,6 +10,7 @@ import {
 	ChevronRight,
 	Folder,
 	FolderOpen,
+	FolderPlus,
 	Forklift,
 	Hammer,
 	Layers3,
@@ -28,6 +29,79 @@ const CATALOG_TILE_COLORS = {
 } as const
 
 type DraggedItem = { id: number; kind: 'category' | 'device' }
+
+function CatalogAddMenu({
+	categoryId,
+	categoryName,
+}: {
+	categoryId: number | null
+	categoryName: string
+}) {
+	const navigate = useNavigate()
+	const [open, setOpen] = useState(false)
+	const containerRef = useRef<HTMLDivElement>(null)
+
+	useEffect(() => {
+		if (!open) return
+		function closeOnPointerDown(event: PointerEvent) {
+			if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+		}
+		function closeOnEscape(event: KeyboardEvent) {
+			if (event.key === 'Escape') setOpen(false)
+		}
+		document.addEventListener('pointerdown', closeOnPointerDown)
+		document.addEventListener('keydown', closeOnEscape)
+		return () => {
+			document.removeEventListener('pointerdown', closeOnPointerDown)
+			document.removeEventListener('keydown', closeOnEscape)
+		}
+	}, [open])
+
+	return (
+		<div className='catalog-tree-add-menu' ref={containerRef}>
+			<button
+				type='button'
+				className='catalog-tree-action catalog-tree-add'
+				onClick={() => setOpen((current) => !current)}
+				title={`Dodaj do ${categoryName}`}
+				aria-label={`Dodaj do ${categoryName}`}
+				aria-haspopup='menu'
+				aria-expanded={open}>
+				<Plus size={21} />
+			</button>
+			{open && (
+				<div className='catalog-tree-add-menu__popup' role='menu'>
+					<button
+						type='button'
+						role='menuitem'
+						onClick={() => {
+							setOpen(false)
+							void navigate({
+								to: '/categories/new',
+								search: categoryId === null ? {} : { parentId: categoryId },
+							})
+						}}>
+						<FolderPlus size={18} />
+						<span>Dodaj podkatalog</span>
+					</button>
+					<button
+						type='button'
+						role='menuitem'
+						onClick={() => {
+							setOpen(false)
+							void navigate({
+								to: '/add-machine',
+								search: categoryId === null ? {} : { categoryId },
+							})
+						}}>
+						<Forklift size={18} />
+						<span>Dodaj maszynę</span>
+					</button>
+				</div>
+			)}
+		</div>
+	)
+}
 
 function CatalogStatTile({
 	color,
@@ -159,7 +233,6 @@ function CategoryTreeRow({
 	depth,
 	devicesByCategory,
 	expanded,
-	onAdd,
 	onDrop,
 	onToggle,
 }: {
@@ -167,7 +240,6 @@ function CategoryTreeRow({
 	depth: number
 	devicesByCategory: Map<number, Device[]>
 	expanded: Set<number>
-	onAdd: (categoryId: number) => void
 	onDrop: (item: DraggedItem, categoryId: number) => void
 	onToggle: (categoryId: number) => void
 }) {
@@ -251,14 +323,7 @@ function CategoryTreeRow({
 					</Link>
 					<small>{childCount}</small>
 				</div>
-				<button
-					type='button'
-					className='catalog-tree-action catalog-tree-add'
-					onClick={() => onAdd(category.id)}
-					title='Dodaj podkatalog'
-					aria-label={`Dodaj podkatalog do ${category.name}`}>
-					<Plus size={21} />
-				</button>
+				<CatalogAddMenu categoryId={category.id} categoryName={category.name} />
 				<span className='catalog-tree-drop-label'>Przenieś tutaj</span>
 			</div>
 
@@ -273,7 +338,6 @@ function CategoryTreeRow({
 							depth={depth + 1}
 							devicesByCategory={devicesByCategory}
 							expanded={expanded}
-							onAdd={onAdd}
 							onDrop={onDrop}
 							onToggle={onToggle}
 						/>
@@ -288,7 +352,6 @@ function CategoryTreeRow({
 }
 
 export function CatalogPage() {
-	const navigate = useNavigate()
 	const { data: devices, isLoading: devicesLoading } = useDevices()
 	const { data: tree, isLoading: treeLoading } = useCategoryTree()
 	const moveCategory = useMoveCategory()
@@ -359,6 +422,12 @@ export function CatalogPage() {
 	async function moveItem(item: DraggedItem, parentId: number | null) {
 		if (item.kind === 'category' && item.id === parentId) return
 		setError(undefined)
+		if (item.kind === 'device' && parentId === null) {
+			setError(
+				'Maszyna nie może zostać przeniesiona do katalogu głównego. Musi znajdować się w podkatalogu.',
+			)
+			return
+		}
 		try {
 			if (item.kind === 'category') {
 				await moveCategory.mutateAsync({ categoryId: item.id, parentId })
@@ -456,7 +525,11 @@ export function CatalogPage() {
 					/>
 				</div>
 
-				{error && <p className='catalog-explorer__error'>{error}</p>}
+				{error && (
+					<p className='catalog-explorer__error' role='alert'>
+						{error}
+					</p>
+				)}
 				{(treeLoading || devicesLoading) && (
 					<p className='catalog-explorer__empty'>Ładowanie katalogu…</p>
 				)}
@@ -511,14 +584,7 @@ export function CatalogPage() {
 								<span>Katalog maszyn</span>
 								<small>{(tree?.length ?? 0) + unassignedDevices.length}</small>
 							</div>
-							<button
-								type='button'
-								className='catalog-tree-action catalog-tree-add'
-								onClick={() => void navigate({ to: '/categories/new' })}
-								title='Dodaj katalog główny'
-								aria-label='Dodaj katalog główny'>
-								<Plus size={21} />
-							</button>
+							<CatalogAddMenu categoryId={null} categoryName='Katalog maszyn' />
 							<span className='catalog-tree-drop-label'>Przenieś do katalogu</span>
 						</div>
 
@@ -535,12 +601,6 @@ export function CatalogPage() {
 												search
 													? new Set(flatCategories.map((item) => item.id))
 													: expanded
-											}
-											onAdd={(categoryId) =>
-												void navigate({
-													to: '/categories/new',
-													search: { parentId: categoryId },
-												})
 											}
 											onDrop={(item, categoryId) =>
 												void moveItem(item, categoryId)

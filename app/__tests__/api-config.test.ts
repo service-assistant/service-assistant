@@ -1,4 +1,6 @@
 const originalApiUrl = process.env.EXPO_PUBLIC_API_URL;
+const originalWebApiUrl = process.env.EXPO_PUBLIC_API_URL_WEB;
+const originalExpoOs = process.env.EXPO_OS;
 
 const loadApiConfig = async () => {
 	jest.resetModules();
@@ -10,6 +12,16 @@ afterEach(() => {
 		delete process.env.EXPO_PUBLIC_API_URL;
 	} else {
 		process.env.EXPO_PUBLIC_API_URL = originalApiUrl;
+	}
+	if (originalWebApiUrl === undefined) {
+		delete process.env.EXPO_PUBLIC_API_URL_WEB;
+	} else {
+		process.env.EXPO_PUBLIC_API_URL_WEB = originalWebApiUrl;
+	}
+	if (originalExpoOs === undefined) {
+		delete process.env.EXPO_OS;
+	} else {
+		process.env.EXPO_OS = originalExpoOs;
 	}
 	jest.resetModules();
 });
@@ -33,6 +45,28 @@ describe('api config', () => {
 		const config = await loadApiConfig();
 
 		expect(config.API_URL).toBe('https://api.example.test');
+		expect(config.API_URL_CONFIG_ERROR).toBeNull();
+	});
+
+	test('uses the web-specific URL in the browser', async () => {
+		process.env.EXPO_OS = 'web';
+		process.env.EXPO_PUBLIC_API_URL = 'http://192.168.0.240:8000';
+		process.env.EXPO_PUBLIC_API_URL_WEB = 'http://127.0.0.1:8000';
+
+		const config = await loadApiConfig();
+
+		expect(config.API_URL).toBe('http://127.0.0.1:8000');
+		expect(config.API_URL_CONFIG_ERROR).toBeNull();
+	});
+
+	test('uses the default URL on mobile', async () => {
+		process.env.EXPO_OS = 'ios';
+		process.env.EXPO_PUBLIC_API_URL = 'http://192.168.0.240:8000';
+		process.env.EXPO_PUBLIC_API_URL_WEB = 'http://127.0.0.1:8000';
+
+		const config = await loadApiConfig();
+
+		expect(config.API_URL).toBe('http://192.168.0.240:8000');
 		expect(config.API_URL_CONFIG_ERROR).toBeNull();
 	});
 

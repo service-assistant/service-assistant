@@ -1,0 +1,117 @@
+.machine-selection {
+	display: flex;
+	min-height: 0;
+	flex: 1;
+	flex-direction: column;
+}
+
+.machine-selection-clear {
+	margin-left: auto;
+	padding: 4px 8px;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: #ff921f;
+	cursor: pointer;
+	font: inherit;
+	font-weight: 800;
+}
+
+.machine-selection-clear:hover:not(:disabled) {
+	background: rgba(255, 122, 0, 0.1);
+}
+
+.machine-selection-clear:disabled {
+	cursor: default;
+	opacity: 0.4;
+}
+
+.machine-selection-tree {
+	min-height: 0;
+	flex: 1;
+	margin-top: 0;
+	padding: 8px 0;
+	overflow-y: auto;
+	border: 0;
+	background: transparent;
+	scrollbar-color: #53606e transparent;
+}
+
+.machine-selection-tree .catalog-tree-row--root {
+	margin: 0 8px 5px;
+}
+
+.machine-selection-tree .catalog-tree-row:not(.catalog-tree-row--root) {
+	margin-right: 8px;
+	margin-left: 8px;
+}
+
+.machine-selection-tree .catalog-tree-row--device {
+	padding-left: calc(-13px + var(--tree-depth) * 34px);
+}
+
+.machine-selection-tree .catalog-tree-row--device .catalog-tree-toggle {
+	margin-right: 8px;
+	transform: translateX(1px);
+}
+
+.machine-selection-tree .catalog-tree-row--device > .machine-selection-checkbox {
+	align-self: flex-start;
+	margin-top: 17px;
+}
+
+.machine-selection-checkbox {
+	position: relative;
+	display: inline-flex;
+	width: 16px;
+	height: 16px;
+	flex: 0 0 16px;
+	margin-right: 8px;
+	cursor: pointer;
+}
+
+.machine-selection-tree .document-checkbox-box {
+	width: 16px;
+	height: 16px;
+	border: 1px solid #3c4754;
+	border-radius: 3px;
+	background: #0b1117;
+}
+
+.machine-selection-checkbox:hover .document-checkbox-box {
+	border-color: #6f7a88;
+}
+
+.machine-selection-checkbox .document-checkbox-input:checked + .document-checkbox-box {
+	border-color: #ff7a00;
+	background: #ff7a00;
+	color: #111820;
+}
+
+.machine-selection-checkbox .document-checkbox-input:indeterminate + .document-checkbox-box {
+	border-color: #ff7a00;
+	background: #0b1117;
+	color: #ff921f;
+}
+
+.machine-selection-checkbox .document-checkbox-input:focus-visible + .document-checkbox-box {
+	box-shadow: 0 0 0 3px rgba(255, 122, 0, 0.24);
+}
+
+.machine-selection-checkbox .document-checkbox-input:disabled + .document-checkbox-box {
+	cursor: default;
+	opacity: 0.45;
+}
+
+.machine-selection-row--selected {
+	background: rgba(255, 122, 0, 0.045);
+}
+
+.machine-selection-device-name {
+	overflow: hidden;
+	color: #e8eaed;
+	font-size: 15px;
+	font-weight: 700;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}

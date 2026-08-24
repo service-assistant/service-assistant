@@ -39,6 +39,13 @@ export function activeCount(attachments: Attachment[]): number {
 	return attachments.filter((attachment) => isActive(attachment.ingest_status)).length
 }
 
+/** Items surfaced in the sidebar badge: work in progress and failed jobs. */
+export function attentionCount(attachments: Attachment[]): number {
+	return attachments.filter(
+		(attachment) => isActive(attachment.ingest_status) || attachment.ingest_status === 'failed',
+	).length
+}
+
 /** Attachments that have been queued at least once, newest-queued first. */
 export function touchedAttachments(attachments: Attachment[]): Attachment[] {
 	return attachments
