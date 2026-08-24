@@ -1,6 +1,30 @@
 import base64
 from openai import AsyncOpenAI
+import asyncio
 
+
+async def describe_images(
+    image_filenames: list[str],
+    images_dir,
+    client,
+    model,
+    concurrency: int = 8,
+):
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def describe(image_filename):
+        async with semaphore:
+            description = await describe_image(
+                image_path=str(images_dir / image_filename),
+                client=client,
+                model=model,
+            )
+
+            return image_filename, description
+
+    return await asyncio.gather(
+        *(describe(filename) for filename in image_filenames)
+    )
 
 async def describe_image(
     image_path: str,

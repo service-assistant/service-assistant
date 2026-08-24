@@ -20,7 +20,7 @@ from ..config import Settings
 from ..models import Chunk
 from .async_utils import run_blocking
 from .chunking import chunk_page
-from .describe_image import describe_image
+from .describe_image import describe_images
 from .extract_images import extract_page_images
 from .process_ocr_text import process_ocr_text
 
@@ -158,6 +158,15 @@ async def _ingest_pdf_to_attachment_unlocked(
         max_retries=settings.azure_embeddings_max_retries,
     )
     vision_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    page_ocr_client = DocumentIntelligenceClient(
+        endpoint=settings.azure_document_intelligence_endpoint,
+        credential=AzureKeyCredential(
+            settings.azure_document_intelligence_key
+        ),
+        connection_timeout=settings.azure_ocr_timeout_seconds,
+        read_timeout=settings.azure_ocr_timeout_seconds,
+        retry_total=0,
+    )
     images_dir = settings.attachments_dir / "images" / str(attachment_id)
     doc: fitz.Document | None = None
     try:
@@ -187,6 +196,7 @@ async def _ingest_pdf_to_attachment_unlocked(
         rows: list[tuple[str, list[float], int, list[str]]] = []
         pending: list[tuple[str, int, list[str]]] = []
         seen_chunks: set[str] = set()
+        image_pages: dict[str, int] = {}
 
         async def embed_pending() -> None:
             nonlocal pending
@@ -260,7 +270,7 @@ async def _ingest_pdf_to_attachment_unlocked(
                     page,
                     images_dir,
                 )
-            else:
+            else:   # no text - perform OCR
                 report.ocr_pages_attempted += 1
                 _report(
                     report,
@@ -271,27 +281,16 @@ async def _ingest_pdf_to_attachment_unlocked(
                     image = await run_blocking(render_page_for_ocr, page)
 
                     def run_ocr() -> str:
-                        page_ocr_client = DocumentIntelligenceClient(
-                            endpoint=settings.azure_document_intelligence_endpoint,
-                            credential=AzureKeyCredential(
-                                settings.azure_document_intelligence_key
-                            ),
-                            connection_timeout=settings.azure_ocr_timeout_seconds,
-                            read_timeout=settings.azure_ocr_timeout_seconds,
-                            retry_total=0,
+                        poller = page_ocr_client.begin_analyze_document(
+                            "prebuilt-layout",
+                            body=BytesIO(image),
+                            output_content_format=DocumentContentFormat.MARKDOWN,
                         )
-                        try:
-                            poller = page_ocr_client.begin_analyze_document(
-                                "prebuilt-layout",
-                                body=BytesIO(image),
-                                output_content_format=DocumentContentFormat.MARKDOWN,
-                            )
-                            result = poller.result(
-                                timeout=settings.azure_ocr_timeout_seconds
-                            )
-                            return process_ocr_text(result.content)
-                        finally:
-                            page_ocr_client.close()
+                        result = poller.result(
+                            timeout=settings.azure_ocr_timeout_seconds
+                        )
+                        return process_ocr_text(result.content)
+                        
 
                     markdown_text = await asyncio.wait_for(
                         asyncio.to_thread(run_ocr),
@@ -324,14 +323,9 @@ async def _ingest_pdf_to_attachment_unlocked(
                     continue
 
             chunks = await run_blocking(chunk_page, markdown_text)
+
             for image_filename in page_images:
-                description = await describe_image(
-                    image_path=str(images_dir / image_filename),
-                    client=vision_client,
-                    model=settings.openai_image_description_model,
-                )
-                if description.strip():
-                    pending.append((description, page_num, [image_filename]))
+                image_pages.setdefault(image_filename, page_num)
 
             if not chunks:
                 report.pages_processed += 1
@@ -351,6 +345,33 @@ async def _ingest_pdf_to_attachment_unlocked(
                     await embed_pending()
 
             report.pages_processed += 1
+
+        while pending:
+            await embed_pending()
+
+        if image_pages:
+            _report(
+                report,
+                f"Describing {len(image_pages)} image(s) with vision.",
+                progress_callback,
+            )
+            image_descriptions = await describe_images(
+                list(image_pages),
+                images_dir,
+                vision_client,
+                settings.openai_image_description_model,
+                concurrency=8,
+            )
+            for image_filename, description in image_descriptions:
+                if description.strip():
+                    pending.append(
+                        (description, image_pages[image_filename], [image_filename])
+                    )
+            _report(
+                report,
+                f"Image descriptions completed for {len(image_pages)} image(s).",
+                progress_callback,
+            )
 
         while pending:
             await embed_pending()
@@ -382,6 +403,7 @@ async def _ingest_pdf_to_attachment_unlocked(
             await run_blocking(doc.close)
         await client.close()
         await vision_client.close()
+        page_ocr_client.close()
 
 
 async def insert_chunks(
