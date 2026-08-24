@@ -160,9 +160,7 @@ async def _ingest_pdf_to_attachment_unlocked(
     vision_client = AsyncOpenAI(api_key=settings.openai_api_key)
     page_ocr_client = DocumentIntelligenceClient(
         endpoint=settings.azure_document_intelligence_endpoint,
-        credential=AzureKeyCredential(
-            settings.azure_document_intelligence_key
-        ),
+        credential=AzureKeyCredential(settings.azure_document_intelligence_key),
         connection_timeout=settings.azure_ocr_timeout_seconds,
         read_timeout=settings.azure_ocr_timeout_seconds,
         retry_total=0,
@@ -270,7 +268,7 @@ async def _ingest_pdf_to_attachment_unlocked(
                     page,
                     images_dir,
                 )
-            else:   # no text - perform OCR
+            else:  # no text - perform OCR
                 report.ocr_pages_attempted += 1
                 _report(
                     report,
@@ -290,7 +288,6 @@ async def _ingest_pdf_to_attachment_unlocked(
                             timeout=settings.azure_ocr_timeout_seconds
                         )
                         return process_ocr_text(result.content)
-                        
 
                     markdown_text = await asyncio.wait_for(
                         asyncio.to_thread(run_ocr),

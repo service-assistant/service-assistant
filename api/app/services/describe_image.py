@@ -22,9 +22,8 @@ async def describe_images(
 
             return image_filename, description
 
-    return await asyncio.gather(
-        *(describe(filename) for filename in image_filenames)
-    )
+    return await asyncio.gather(*(describe(filename) for filename in image_filenames))
+
 
 async def describe_image(
     image_path: str,
