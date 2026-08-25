@@ -7,6 +7,7 @@ calls, so routers stay thin and the task has one place to look for state.
 
 import logging
 
+from procrastinate.types import JSONDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import utcnow
@@ -53,9 +54,10 @@ async def enqueue_ingestions(
             setattr(attachment, column, value)
     await session.commit()
 
-    job_ids = await ingest.configure().batch_defer_async(
-        *({"attachment_id": attachment.id} for attachment in attachments)
-    )
+    task_kwargs: list[JSONDict] = [
+        {"attachment_id": attachment.id} for attachment in attachments
+    ]
+    job_ids = await ingest.configure().batch_defer_async(*task_kwargs)
     for attachment, job_id in zip(attachments, job_ids, strict=True):
         attachment.ingest_job_id = job_id
     await session.commit()
