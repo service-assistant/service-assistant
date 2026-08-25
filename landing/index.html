@@ -3,21 +3,129 @@
 	<head>
 		<meta charset="UTF-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-		<title>Asystent Serwisanta</title>
-		<link rel="stylesheet" href="style.css" />
+		<meta name="theme-color" content="#050506" />
+		<meta name="description" content="Fixo pomaga serwisantom szybciej znaleźć właściwą dokumentację i przejść krok po kroku przez diagnozę usterek." />
+		<meta property="og:type" content="website" />
+		<meta property="og:title" content="Fixo — Asystent AI dla serwisantów maszyn" />
+		<meta property="og:description" content="Właściwa wiedza i kolejne kroki na podstawie dokumentacji firmy." />
+		<meta property="og:image" content="/og.png" />
+		<meta name="twitter:card" content="summary_large_image" />
+		<meta name="twitter:title" content="Fixo — Asystent AI dla serwisantów maszyn" />
+		<meta name="twitter:description" content="Właściwa wiedza i kolejne kroki na podstawie dokumentacji firmy." />
+		<meta name="twitter:image" content="/og.png" />
+		<title>Fixo — Asystent AI dla serwisantów maszyn</title>
+		<link rel="icon" href="/assets/logo.png" />
+		<link rel="stylesheet" href="/style.css?v=fixo-20260825-9" />
 	</head>
 	<body>
-		<main>
-			<h1>Asystent Serwisanta</h1>
-			<p class="lead">
-				Aplikacja dla techników serwisowych, która odpowiada na pytania o konkretne maszyny na
-				podstawie ich dokumentacji technicznej.
-			</p>
-			<p>
-				Wgraj instrukcje serwisowe swoich urządzeń i zadawaj pytania w naturalnym języku — asystent
-				znajdzie odpowiedź w dokumentacji i wskaże źródło.
-			</p>
-			<a class="cta" href="${APP_URL}">Otwórz aplikację</a>
+		<header class="site-header">
+			<a class="brand" href="#top" aria-label="Fixo — strona główna"><img src="/assets/logo.png" alt="Fixo" width="150" height="47" /></a>
+			<nav aria-label="Główna nawigacja"><a href="#produkt">Produkt</a><a href="#jak-to-dziala">Jak to działa</a><a href="#korzysci">Korzyści</a><a href="#pilotaz">Pilotaż</a><a href="#kontakt">Kontakt</a></nav>
+			<a class="button button-small" href="#kontakt">Umów demo</a>
+		</header>
+
+		<main id="top">
+			<section class="hero section-shell" id="produkt">
+				<div class="hero-copy">
+					<p class="eyebrow"><span></span> Wiedza serwisowa zawsze pod ręką</p>
+					<h1>Asystent AI dla<br /><em>serwisantów maszyn</em></h1>
+					<p class="hero-lead">Szybciej znajdź właściwą dokumentację, prowadź techników krok po kroku i wspieraj diagnozę usterek bez przeszukiwania setek stron PDF.</p>
+					<div class="hero-actions"><a class="button" href="#kontakt">Umów demo <span aria-hidden="true">→</span></a><a class="button button-secondary" href="#demo">Zobacz jak to działa</a></div>
+					<div class="trust-row" aria-label="Najważniejsze cechy"><span>✓ Odpowiedzi oparte na dokumentacji</span><span>✓ Dla serwisu i utrzymania ruchu</span><span>✓ Gotowe do pilotażu</span></div>
+				</div>
+				<div class="hero-visual" aria-label="Aplikacja Fixo na tablecie">
+					<div class="tablet-shot"><img src="/assets/tablet.jpg?v=portrait-2" alt="Pionowy ekran diagnostyki usterki w aplikacji Fixo" width="800" height="1340" fetchpriority="high" /></div>
+				</div>
+			</section>
+
+			<section class="audience-strip" aria-label="Dla kogo jest Fixo"><div class="section-shell"><span>WÓZKI WIDŁOWE</span><span>MASZYNY PRZEMYSŁOWE</span><span>UTRZYMANIE RUCHU</span><span>MAGAZYNY</span><span>DYSTRYBUTORZY</span></div></section>
+
+			<section class="content-section section-shell" id="problem">
+				<div class="section-heading"><p class="section-kicker">Codzienność serwisu</p><h2>Serwis traci czas, bo wiedza jest rozproszona</h2><p>Najważniejsze informacje istnieją — problemem jest dotarcie do nich wtedy, kiedy technik stoi przy maszynie.</p></div>
+				<div class="pain-grid">
+					<article class="pain-card"><span class="card-number">01</span><span class="line-icon">▤</span><h3>Setki stron PDF</h3><p>Właściwa tabela, kod błędu lub procedura ginie w rozbudowanej dokumentacji.</p></article>
+					<article class="pain-card"><span class="card-number">02</span><span class="line-icon">◎</span><h3>Eksperci ciągle dopytywani</h3><p>Doświadczeni technicy przerywają swoją pracę, aby odpowiadać na powtarzalne pytania.</p></article>
+					<article class="pain-card"><span class="card-number">03</span><span class="line-icon">≠</span><h3>Niespójne procedury</h3><p>Każdy rozwiązuje podobne przypadki inaczej, co utrudnia kontrolę jakości pracy.</p></article>
+					<article class="pain-card"><span class="card-number">04</span><span class="line-icon">◷</span><h3>Dłuższa diagnoza</h3><p>Szukanie informacji wydłuża przestój maszyny i zwiększa koszt obsługi zgłoszenia.</p></article>
+				</div>
+			</section>
+
+			<section class="dark-band" id="jak-to-dziala"><div class="section-shell solution-grid">
+				<div class="section-heading align-left"><p class="section-kicker">Jedna przestrzeń robocza</p><h2>Fixo prowadzi technika do właściwej wiedzy i kolejnych kroków</h2><p>Nie jest otwartym chatbotem. Pracuje w kontekście wybranej maszyny i odpowiada na podstawie dokumentów, instrukcji oraz procedur przekazanych przez firmę.</p><a class="text-link" href="#demo">Zobacz przykładową diagnozę <span>→</span></a></div>
+				<div class="feature-stack">
+					<article><span>01</span><div><h3>Znajduje właściwy fragment</h3><p>Przeszukuje firmową bazę wiedzy i łączy pytanie z odpowiednią instrukcją.</p></div></article>
+					<article><span>02</span><div><h3>Porządkuje kolejne czynności</h3><p>Przedstawia krótkie wyjaśnienie, checklistę i sugerowany następny krok.</p></div></article>
+					<article><span>03</span><div><h3>Działa tak, jak pracuje technik</h3><p>Przyjmuje tekst, głos i obraz, aby ograniczyć obsługę telefonu podczas serwisu.</p></div></article>
+				</div>
+			</div></section>
+
+			<section class="content-section section-shell demo-section" id="demo">
+				<div class="section-heading"><p class="section-kicker">Przykładowy scenariusz</p><h2>Zobacz przykładowy przebieg pracy z Fixo</h2><p>Od zgłoszenia kodu błędu do kontrolowanej checklisty — bez wychodzenia z kontekstu maszyny.</p></div>
+				<div class="demo-shell">
+					<div class="demo-steps" role="list"><div class="demo-step active" role="listitem"><span>1</span><div><b>Wybór maszyny</b><small>Toyota LPE200</small></div></div><div class="demo-step active" role="listitem"><span>2</span><div><b>Zgłoszenie problemu</b><small>„Mam błąd 2:010”</small></div></div><div class="demo-step" role="listitem"><span>3</span><div><b>Analiza dokumentacji</b><small>Instrukcje i biuletyny serwisowe</small></div></div><div class="demo-step" role="listitem"><span>4</span><div><b>Kolejne działanie</b><small>Kontrola magistrali CAN</small></div></div></div>
+					<div class="video-frame">
+						<video autoplay muted loop playsinline preload="auto" aria-label="Przykładowy przebieg pracy z aplikacją Fixo. Kliknij, aby wstrzymać lub wznowić.">
+							<source src="/assets/video.mp4?v=demo-1" type="video/mp4" />
+							Twoja przeglądarka nie obsługuje odtwarzania wideo.
+						</video>
+						<button class="video-toggle" type="button" aria-label="Wstrzymaj film"><span aria-hidden="true">Ⅱ</span></button>
+					</div>
+				</div>
+			</section>
+
+			<section class="dark-band" id="korzysci"><div class="content-section section-shell"><div class="section-heading"><p class="section-kicker">Efekt operacyjny</p><h2>Co zyskuje serwis</h2></div><div class="benefits-grid">
+				<article><strong>01</strong><div class="benefit-icon">↗</div><h3>Szybsza diagnoza</h3><p>Mniej czasu na szukanie informacji, więcej na właściwe działania przy maszynie.</p></article>
+				<article><strong>02</strong><div class="benefit-icon">✓</div><h3>Mniej błędów</h3><p>Większa spójność działań dzięki procedurom przedstawionym krok po kroku.</p></article>
+				<article><strong>03</strong><div class="benefit-icon">⌁</div><h3>Szybszy onboarding</h3><p>Nowi technicy łatwiej korzystają z wiedzy, która dotąd była w głowach ekspertów.</p></article>
+				<article><strong>04</strong><div class="benefit-icon">▤</div><h3>Dokumentacja w użyciu</h3><p>Instrukcje i procedury stają się praktycznym narzędziem codziennej pracy.</p></article>
+			</div></div></section>
+
+			<section class="content-section section-shell rollout-section"><div class="section-heading"><p class="section-kicker">Bez rewolucji w całej firmie</p><h2>Jak wygląda wdrożenie</h2><p>Zaczynamy od ograniczonego zakresu, mierzymy efekt i dopiero potem rozszerzamy rozwiązanie.</p></div><div class="rollout-grid">
+				<article><span>01</span><h3>Przekazanie dokumentacji</h3><p>Instrukcje, procedury i materiały serwisowe dotyczące wybranego zakresu.</p></article><i></i>
+				<article><span>02</span><h3>Przygotowanie bazy wiedzy</h3><p>Porządkujemy wiedzę pod konkretne maszyny, dokumenty i przypadki.</p></article><i></i>
+				<article><span>03</span><h3>Testy na scenariuszach</h3><p>Sprawdzamy odpowiedzi na rzeczywistych błędach oraz procedurach.</p></article><i></i>
+				<article><span>04</span><h3>Pilotaż i wdrożenie</h3><p>Uruchamiamy Fixo dla wybranej grupy maszyn lub zespołu techników.</p></article>
+			</div></section>
+
+			<section class="safety-section"><div class="section-shell safety-grid">
+				<div><p class="section-kicker">Zaufanie wbudowane w produkt</p><h2>Bezpieczeństwo i kontrola</h2><p>Fixo nie zgaduje bez podstaw. Zakres odpowiedzi można ograniczyć do zatwierdzonej dokumentacji, wybranych maszyn i określonego obszaru serwisowego.</p></div>
+				<div class="safety-cards"><article><span>◈</span><div><h3>Odpowiedzi oparte na dokumentacji</h3><p>Każda odpowiedź powstaje w kontekście firmowej bazy wiedzy.</p></div></article><article><span>⌕</span><div><h3>Podgląd źródeł</h3><p>Technik może wrócić do dokumentu, z którego pochodzi informacja.</p></div></article><article><span>▣</span><div><h3>Kontrolowany zakres</h3><p>Wiedza serwisowa może być przypisana do maszyn, zespołów i przypadków.</p></div></article><article><span>✓</span><div><h3>Większa kontrola jakości</h3><p>Testy na realnych scenariuszach pozwalają sprawdzić działanie przed wdrożeniem.</p></div></article></div>
+			</div></section>
+
+			<section class="content-section section-shell" id="pilotaz"><div class="pilot-card"><div><p class="section-kicker">Mały zakres, szybka weryfikacja</p><h2>Zacznij od pilotażu</h2><p>Pilotaż może rozpocząć się od jednej grupy maszyn, jednej lokalizacji lub wybranych przypadków serwisowych. Dzięki temu szybko sprawdzisz wartość Fixo w realnej pracy techników.</p><ul><li>Jasno określony zakres</li><li>Testy na własnej dokumentacji</li><li>Wnioski oparte na realnych przypadkach</li></ul></div><div class="pilot-actions"><a class="button" href="#kontakt">Umów demo <span>→</span></a><a class="button button-secondary" href="#kontakt">Porozmawiaj o pilotażu</a></div></div></section>
+
+			<section class="contact-section" id="kontakt"><div class="section-shell contact-grid">
+				<div class="contact-copy"><p class="section-kicker">Porozmawiajmy</p><h2>Chcesz sprawdzić Fixo na własnej dokumentacji?</h2><p>Pokażemy, jak Fixo może działać na realnych przypadkach serwisowych w Twojej firmie.</p><div class="contact-points"><span>✓ Krótka rozmowa o procesie serwisowym</span><span>✓ Prezentacja działania produktu</span><span>✓ Propozycja zakresu pierwszego pilotażu</span></div></div>
+				<form id="demo-form" class="contact-form"><div class="form-row"><label>Imię i nazwisko<input name="name" autocomplete="name" required placeholder="Jan Kowalski" /></label><label>Firma<input name="company" autocomplete="organization" required placeholder="Nazwa firmy" /></label></div><div class="form-row"><label>E-mail<input type="email" name="email" autocomplete="email" required placeholder="jan@firma.pl" /></label><label>Telefon<input type="tel" name="phone" autocomplete="tel" placeholder="+48 000 000 000" /></label></div><label>Wiadomość<textarea name="message" rows="4" placeholder="Opowiedz krótko, jakie maszyny lub proces serwisowy chcesz objąć pilotażem."></textarea></label><button class="button form-submit" type="submit">Umów demo <span>→</span></button><p class="form-note" id="form-note">Kliknięcie otworzy przygotowaną wiadomość w Twoim programie pocztowym.</p></form>
+			</div></section>
 		</main>
+
+		<footer><div class="section-shell footer-inner"><a class="brand" href="#top" aria-label="Fixo — wróć na górę"><img src="/assets/logo.png" alt="Fixo" width="150" height="47" loading="lazy" /></a><p>Asystent wiedzy dla serwisu i utrzymania ruchu.</p><a href="${APP_URL}">Otwórz aplikację <span>→</span></a></div><div class="section-shell footer-bottom"><span>© 2026 Fixo</span><span>Technologia, która wspiera technika.</span></div></footer>
+		<script>
+			const productVideo = document.querySelector('.video-frame video');
+			const videoToggle = document.querySelector('.video-toggle');
+			const updateVideoToggle = () => {
+				const paused = productVideo.paused;
+				videoToggle.setAttribute('aria-label', paused ? 'Wznów film' : 'Wstrzymaj film');
+				videoToggle.querySelector('span').textContent = paused ? '▶' : 'Ⅱ';
+			};
+			const toggleProductVideo = () => {
+				if (productVideo.paused) productVideo.play().catch(updateVideoToggle);
+				else productVideo.pause();
+			};
+			productVideo.addEventListener('click', toggleProductVideo);
+			productVideo.addEventListener('play', updateVideoToggle);
+			productVideo.addEventListener('pause', updateVideoToggle);
+			videoToggle.addEventListener('click', toggleProductVideo);
+			updateVideoToggle();
+
+			document.getElementById('demo-form').addEventListener('submit', function (event) {
+				event.preventDefault();
+				const data = new FormData(event.currentTarget);
+				const subject = encodeURIComponent('Demo Fixo — ' + data.get('company'));
+				const body = encodeURIComponent('Imię i nazwisko: ' + data.get('name') + '\nFirma: ' + data.get('company') + '\nE-mail: ' + data.get('email') + '\nTelefon: ' + (data.get('phone') || '—') + '\n\nWiadomość:\n' + (data.get('message') || 'Proszę o kontakt w sprawie demonstracji Fixo.'));
+				window.location.href = 'mailto:kontakt@asystent-serwisanta.pl?subject=' + subject + '&body=' + body;
+			});
+		</script>
 	</body>
 </html>

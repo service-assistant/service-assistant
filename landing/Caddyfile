@@ -1,5 +1,7 @@
 :80 {
 	root * /srv
 	encode gzip
+	header / Cache-Control "no-cache, must-revalidate"
+	header /style.css Cache-Control "no-cache, must-revalidate"
 	file_server
 }
