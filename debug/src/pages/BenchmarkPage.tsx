@@ -23,7 +23,7 @@ const RUN_STATE_COLORS: Record<string, string> = {
 }
 
 function SetupSection() {
-	const { data: setup, isLoading } = useSetupRun()
+	const { data: setup, error: setupQueryError, isLoading } = useSetupRun()
 	const startSetup = useStartSetupRun()
 	const isActive = setup?.state === 'queued' || setup?.state === 'processing'
 
@@ -41,6 +41,8 @@ function SetupSection() {
 			</Group>
 
 			{isLoading && <Loader size='sm' />}
+			{setupQueryError && <Alert color='red'>{setupQueryError.message}</Alert>}
+			{startSetup.error && <Alert color='red'>{startSetup.error.message}</Alert>}
 
 			{setup ? (
 				<Stack gap='xs'>
@@ -83,7 +85,7 @@ function SetupSection() {
 }
 
 function DocumentsSection() {
-	const { data: status, isLoading } = useDocumentStatus()
+	const { data: status, error: statusError, isLoading } = useDocumentStatus()
 	const download = useDownloadDocuments()
 
 	return (
@@ -97,23 +99,36 @@ function DocumentsSection() {
 
 			{isLoading ? (
 				<Loader size='sm' />
+			) : statusError ? (
+				<Alert color='red'>{statusError.message}</Alert>
 			) : status ? (
 				<Stack gap='xs'>
+					{!status.configured && (
+						<Alert color='orange'>
+							Brakuje konfiguracji: {status.missing_configuration.join(', ')}
+						</Alert>
+					)}
 					<Text size='sm'>
-						Obecne: {status.present ?? '—'} / {status.total ?? '—'}
+						Gotowe: {status.ready} / {status.total} · brakujące: {status.missing} ·
+						nieaktualne: {status.outdated}
 					</Text>
-					{(status.missing ?? []).length > 0 && (
+					{status.documents.some((document) => document.state !== 'ready') && (
 						<>
 							<Text size='sm' c='orange'>
-								Brakujące pliki:
+								Pliki wymagające pobrania:
 							</Text>
 							<List size='sm'>
-								{status.missing.map((name) => (
-									<List.Item key={name}>{name}</List.Item>
-								))}
+								{status.documents
+									.filter((document) => document.state !== 'ready')
+									.map((document) => (
+										<List.Item key={document.key}>
+											{document.filename} ({document.state})
+										</List.Item>
+									))}
 							</List>
 						</>
 					)}
+					{download.error && <Alert color='red'>{download.error.message}</Alert>}
 				</Stack>
 			) : (
 				<Text c='dimmed' size='sm'>

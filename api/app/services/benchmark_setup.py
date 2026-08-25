@@ -1,3 +1,4 @@
+import asyncio
 import filecmp
 import shutil
 from collections.abc import Callable
@@ -5,16 +6,18 @@ from pathlib import Path
 from typing import Any
 
 from app.config import Settings
-from app.models import Attachment, AttachmentDevice, Category, Chunk, Device
-from app.services import benchmark_documents
+from app.models import (
+    Attachment,
+    AttachmentDevice,
+    Category,
+    Chunk,
+    Device,
+    IngestionStatus,
+)
+from app.services import benchmark_documents, ingestion_queue
 from app.services.async_utils import run_blocking
 from app.services.attachments import save_attachment
 from app.services.benchmark_cases import load_benchmark_dataset
-from app.services.ingest import (
-    IngestReport,
-    delete_attachment_chunks,
-    ingest_pdf_to_attachment,
-)
 from app.services.organizations import get_system_organization_id
 from fastapi import UploadFile
 from sqlalchemy import func, select
@@ -33,9 +36,13 @@ async def inspect_benchmark_setup(
     session: AsyncSession,
 ) -> dict[str, Any]:
     """Verify the persisted benchmark setup using database IDs and relations."""
+    organization_id = await get_system_organization_id(session)
     missing: list[str] = []
     brand_category = await _find_category(
-        session, BENCHMARK_BRAND_CATEGORY_NAME, parent_id=None
+        session,
+        BENCHMARK_BRAND_CATEGORY_NAME,
+        parent_id=None,
+        organization_id=organization_id,
     )
     if brand_category is None:
         missing.append("benchmark_brand_category")
@@ -43,7 +50,10 @@ async def inspect_benchmark_setup(
     type_category = None
     if brand_category is not None:
         type_category = await _find_category(
-            session, BENCHMARK_TYPE_CATEGORY_NAME, parent_id=brand_category.id
+            session,
+            BENCHMARK_TYPE_CATEGORY_NAME,
+            parent_id=brand_category.id,
+            organization_id=organization_id,
         )
     if type_category is None:
         missing.append("benchmark_type_category")
@@ -51,14 +61,19 @@ async def inspect_benchmark_setup(
     variant_category = None
     if type_category is not None:
         variant_category = await _find_category(
-            session, BENCHMARK_VARIANT_CATEGORY_NAME, parent_id=type_category.id
+            session,
+            BENCHMARK_VARIANT_CATEGORY_NAME,
+            parent_id=type_category.id,
+            organization_id=organization_id,
         )
     if variant_category is None:
         missing.append("benchmark_variant_category")
 
     device = await session.scalar(
         select(Device)
+        .join(Category, Category.id == Device.category_id)
         .where(Device.model_serial_code == BENCHMARK_MODEL_SERIAL_CODE)
+        .where(Category.organization_id == organization_id)
         .order_by(Device.id)
     )
     if device is None:
@@ -140,6 +155,7 @@ async def _find_category(
     session: AsyncSession,
     name: str,
     parent_id: int | None,
+    organization_id: int,
 ) -> Category | None:
     parent_filter = (
         Category.parent_id.is_(None)
@@ -148,7 +164,11 @@ async def _find_category(
     )
     return await session.scalar(
         select(Category)
-        .where(Category.name == name, parent_filter)
+        .where(
+            Category.organization_id == organization_id,
+            Category.name == name,
+            parent_filter,
+        )
         .order_by(Category.id)
     )
 
@@ -157,16 +177,11 @@ async def _get_or_create_category(
     session: AsyncSession,
     name: str,
     parent_id: int | None,
+    organization_id: int,
 ) -> tuple[Category, bool]:
-    category = await _find_category(session, name, parent_id)
+    category = await _find_category(session, name, parent_id, organization_id)
     if category is not None:
         return category, False
-    if parent_id is not None:
-        parent = await session.get(Category, parent_id)
-        assert parent is not None
-        organization_id = parent.organization_id
-    else:
-        organization_id = await get_system_organization_id(session)
     category = Category(
         organization_id=organization_id, name=name, image_url=None, parent_id=parent_id
     )
@@ -179,19 +194,29 @@ async def _get_or_create_category(
 async def _get_or_create_category_path(
     session: AsyncSession,
 ) -> tuple[tuple[Category, Category, Category], list[Category]]:
+    organization_id = await get_system_organization_id(session)
     created: list[Category] = []
     brand, was_created = await _get_or_create_category(
-        session, BENCHMARK_BRAND_CATEGORY_NAME, parent_id=None
+        session,
+        BENCHMARK_BRAND_CATEGORY_NAME,
+        parent_id=None,
+        organization_id=organization_id,
     )
     if was_created:
         created.append(brand)
     device_type, was_created = await _get_or_create_category(
-        session, BENCHMARK_TYPE_CATEGORY_NAME, parent_id=brand.id
+        session,
+        BENCHMARK_TYPE_CATEGORY_NAME,
+        parent_id=brand.id,
+        organization_id=organization_id,
     )
     if was_created:
         created.append(device_type)
     variant, was_created = await _get_or_create_category(
-        session, BENCHMARK_VARIANT_CATEGORY_NAME, parent_id=device_type.id
+        session,
+        BENCHMARK_VARIANT_CATEGORY_NAME,
+        parent_id=device_type.id,
+        organization_id=organization_id,
     )
     if was_created:
         created.append(variant)
@@ -204,7 +229,9 @@ async def _get_or_create_device(
 ) -> tuple[Device, bool]:
     device = await session.scalar(
         select(Device)
+        .join(Category, Category.id == Device.category_id)
         .where(Device.model_serial_code == BENCHMARK_MODEL_SERIAL_CODE)
+        .where(Category.organization_id == category.organization_id)
         .order_by(Device.id)
     )
     if device is not None:
@@ -237,6 +264,7 @@ async def _get_or_create_device(
 async def _linked_attachment(
     session: AsyncSession,
     device_id: int,
+    organization_id: int,
     filename: str,
 ) -> Attachment | None:
     return await session.scalar(
@@ -247,6 +275,7 @@ async def _linked_attachment(
         )
         .where(
             AttachmentDevice.device_id == device_id,
+            Attachment.organization_id == organization_id,
             Attachment.original_filename == filename,
         )
         .order_by(Attachment.id)
@@ -262,43 +291,32 @@ async def _chunk_count(session: AsyncSession, attachment_id: int) -> int:
     )
 
 
-async def _ingest_document(
+async def _prepare_document(
     settings: Settings,
     session: AsyncSession,
     device: Device,
     organization_id: int,
     local_path: Path,
-    progress_callback: Callable[[IngestReport], None],
 ) -> tuple[Attachment, int, bool]:
+    """Store and link one document without starting the ingestion pipeline."""
     filename = local_path.name
-    attachment = await _linked_attachment(session, device.id, filename)
+    attachment = await _linked_attachment(session, device.id, organization_id, filename)
     if attachment is not None:
         chunks = await _chunk_count(session, attachment.id)
         stored_path = Path(attachment.file_global_path)
         if stored_path.is_file():
+            if ingestion_queue.is_active(attachment):
+                return attachment, chunks, True
             matches_source = await run_blocking(
                 filecmp.cmp, stored_path, local_path, shallow=False
             )
-            if chunks > 0 and matches_source:
-                return attachment, chunks, False
             if not matches_source:
                 await run_blocking(shutil.copyfile, local_path, stored_path)
-            if chunks > 0:
-                await delete_attachment_chunks(session, attachment.id)
-            report = await ingest_pdf_to_attachment(
-                session=session,
-                pdf_path=str(stored_path),
-                attachment_id=attachment.id,
-                settings=settings,
-                progress_callback=progress_callback,
-            )
-            return attachment, report.chunks_indexed, True
+            return attachment, chunks, True
 
         await session.delete(attachment)
         await session.commit()
 
-    # The benchmark measures ingestion, so it runs the pipeline inline rather
-    # than deferring it to the worker like the upload endpoint does.
     with local_path.open("rb") as source:
         upload = UploadFile(file=source, filename=filename)
         attachment = await save_attachment(
@@ -308,14 +326,7 @@ async def _ingest_document(
             device_ids=[device.id],
             organization_id=organization_id,
         )
-    await ingest_pdf_to_attachment(
-        session=session,
-        pdf_path=attachment.file_global_path,
-        attachment_id=attachment.id,
-        settings=settings,
-        progress_callback=progress_callback,
-    )
-    return attachment, await _chunk_count(session, attachment.id), True
+    return attachment, 0, True
 
 
 async def run_benchmark_setup(
@@ -383,55 +394,38 @@ async def run_benchmark_setup(
     )
 
     local_directory = benchmark_documents.documents_dir(settings)
-    total_chunks = 0
     attachment_results: list[dict[str, Any]] = []
+    prepared_documents: list[tuple[Attachment, bool]] = []
     documents = document_status["documents"]
     progress(
-        "ingest",
+        "attachments",
         "processing",
-        f"Preparing {len(documents)} document(s) for chunking…",
+        f"Adding and linking {len(documents)} document(s)…",
         {"current": 0, "total": len(documents), "documents": []},
     )
 
     for index, document in enumerate(documents, start=1):
         local_path = local_directory / Path(*Path(document["filename"]).parts)
-
-        def update_ingest(report: IngestReport) -> None:
-            progress(
-                "ingest",
-                "processing",
-                f"Chunking {local_path.name}: {report.chunks_indexed} chunk(s)…",
-                {
-                    "current": index,
-                    "total": len(documents),
-                    "filename": local_path.name,
-                    "total_pages": report.total_pages,
-                    "chunks_indexed": report.chunks_indexed,
-                    "events": report.events,
-                    "documents": attachment_results,
-                },
-            )
-
-        attachment, chunks, processed = await _ingest_document(
+        attachment, chunks, requires_processing = await _prepare_document(
             settings,
             session,
             device,
             variant_category.organization_id,
             local_path,
-            update_ingest,
         )
+        prepared_documents.append((attachment, requires_processing))
         result = {
             "filename": local_path.name,
             "attachment_id": attachment.id,
             "chunks": chunks,
-            "processed": processed,
+            "processed": not requires_processing,
+            "state": "waiting" if requires_processing else "ready",
         }
         attachment_results.append(result)
-        total_chunks += chunks
         progress(
-            "ingest",
+            "attachments",
             "processing",
-            f"{index}/{len(documents)} document(s) ready.",
+            f"{index}/{len(documents)} document(s) added and linked.",
             {
                 "current": index,
                 "total": len(documents),
@@ -440,9 +434,110 @@ async def run_benchmark_setup(
         )
 
     progress(
+        "attachments",
+        "completed",
+        f"All {len(attachment_results)} document(s) are stored and linked.",
+        {"documents": attachment_results},
+    )
+
+    progress(
+        "ingest",
+        "processing",
+        f"Queueing {len(documents)} document(s) for server-side processing…",
+        {"current": 0, "total": len(documents), "documents": attachment_results},
+    )
+
+    attachments_to_queue = [
+        attachment
+        for attachment, requires_processing in prepared_documents
+        if requires_processing and not ingestion_queue.is_active(attachment)
+    ]
+    queued_attachments = await ingestion_queue.enqueue_ingestions(
+        session, attachments_to_queue
+    )
+    queued_by_id = {attachment.id: attachment for attachment in queued_attachments}
+
+    pending_ids: set[int] = set()
+    for index, (attachment, requires_processing) in enumerate(
+        prepared_documents, start=1
+    ):
+        result = attachment_results[index - 1]
+        if requires_processing:
+            attachment = queued_by_id.get(attachment.id, attachment)
+            pending_ids.add(attachment.id)
+            result["state"] = attachment.ingest_status.value
+            result["job_id"] = attachment.ingest_job_id
+        progress(
+            "ingest",
+            "processing",
+            f"{index}/{len(documents)} document(s) queued.",
+            {
+                "current": index,
+                "total": len(documents),
+                "documents": attachment_results,
+            },
+        )
+
+    while pending_ids:
+        completed = 0
+        for index, (attachment, requires_processing) in enumerate(prepared_documents):
+            if not requires_processing or attachment.id not in pending_ids:
+                if not requires_processing:
+                    completed += 1
+                elif attachment.id not in pending_ids:
+                    completed += 1
+                continue
+
+            current = await session.get(
+                Attachment, attachment.id, populate_existing=True
+            )
+            if current is None:
+                raise RuntimeError(
+                    f"Queued benchmark attachment disappeared: {attachment.id}"
+                )
+            result = attachment_results[index]
+            result.update(
+                {
+                    "state": current.ingest_status.value,
+                    "job_id": current.ingest_job_id,
+                    "pages_done": current.ingest_pages_done,
+                    "pages_total": current.ingest_pages_total,
+                    "chunks": current.ingest_chunks_indexed,
+                    "last_event": current.ingest_last_event,
+                }
+            )
+            if current.ingest_status == IngestionStatus.succeeded:
+                result["processed"] = True
+                pending_ids.remove(current.id)
+                completed += 1
+            elif current.ingest_status == IngestionStatus.failed:
+                raise RuntimeError(
+                    f"Processing {current.original_filename} failed: "
+                    f"{current.ingest_error or 'unknown worker error'}"
+                )
+            elif current.ingest_status == IngestionStatus.ready:
+                raise RuntimeError(
+                    f"Processing {current.original_filename} was cancelled."
+                )
+
+        progress(
+            "ingest",
+            "processing",
+            f"Server worker processed {completed}/{len(documents)} document(s).",
+            {
+                "current": completed,
+                "total": len(documents),
+                "documents": attachment_results,
+            },
+        )
+        if pending_ids:
+            await asyncio.sleep(1)
+
+    total_chunks = sum(int(result["chunks"]) for result in attachment_results)
+    progress(
         "ingest",
         "completed",
-        f"{len(attachment_results)} document(s) linked and chunked.",
+        f"Server worker processed all {len(attachment_results)} document(s).",
         {"documents": attachment_results, "total_chunks": total_chunks},
     )
 

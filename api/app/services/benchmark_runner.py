@@ -16,6 +16,7 @@ from app.models import (
 from app.schemas import MessageCreate
 from app.services.benchmark_cases import BenchmarkCase
 from app.services.benchmark_setup import BENCHMARK_MODEL_SERIAL_CODE
+from app.services.organizations import get_system_organization_id
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -370,17 +371,16 @@ async def run_benchmark_case(
     cancellation_event: asyncio.Event | None = None,
 ) -> dict[str, Any]:
     _raise_if_cancelled(cancellation_event)
+    organization_id = await get_system_organization_id(session)
     device = await session.scalar(
         select(Device)
+        .join(Category, Category.id == Device.category_id)
         .where(Device.model_serial_code == BENCHMARK_MODEL_SERIAL_CODE)
+        .where(Category.organization_id == organization_id)
         .order_by(Device.id)
     )
     if device is None:
         raise RuntimeError("Run the full benchmark setup before running cases.")
-    organization_id = await session.scalar(
-        select(Category.organization_id).where(Category.id == device.category_id)
-    )
-    assert organization_id is not None
 
     thread = ChatThread(
         title=f"BENCHMARK · {case.id}",

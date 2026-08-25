@@ -67,7 +67,8 @@ BENCHMARK_SETUP_STEPS = [
     ("download", "Download documents from R2"),
     ("category", "Create benchmark category hierarchy"),
     ("device", "Create benchmark machine"),
-    ("ingest", "Link and chunk documents"),
+    ("attachments", "Add and link all benchmark files"),
+    ("ingest", "Queue and process all benchmark files"),
     ("verify", "Verify benchmark setup"),
 ]
 
@@ -339,8 +340,15 @@ async def get_latest_benchmark_setup(session: DbSessionDependency):
                 details={"id": result["device_id"]},
             ),
             BenchmarkSetupStep(
+                key="attachments",
+                label="Add and link all benchmark files",
+                state="completed",
+                message=f"{result['attachments']} document(s) stored and linked.",
+                details={"documents": inspection["documents"]},
+            ),
+            BenchmarkSetupStep(
                 key="ingest",
-                label="Link and chunk documents",
+                label="Queue and process all benchmark files",
                 state="completed",
                 message=(
                     f"{result['attachments']} attachment(s) and "

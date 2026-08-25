@@ -5,6 +5,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Attachment, AttachmentDevice, Chunk, Device, IngestionStatus
+from app.services import ingestion_queue
 
 from tests.routers.factories import (
     create_category,
@@ -428,6 +429,31 @@ class TestDeleteAttachment:
 
 
 class TestIngestAttachment:
+    async def test_should_queue_an_entire_batch_before_processing(
+        self, session, tmp_path, procrastinate_connector
+    ):
+        attachments = [
+            await create_attachment(
+                session,
+                file_global_path=str(tmp_path / filename),
+                original_filename=filename,
+            )
+            for filename in ("first.pdf", "second.pdf", "third.pdf")
+        ]
+
+        queued = await ingestion_queue.enqueue_ingestions(session, attachments)
+
+        assert [item.ingest_status for item in queued] == [
+            IngestionStatus.queued,
+            IngestionStatus.queued,
+            IngestionStatus.queued,
+        ]
+        jobs = list(procrastinate_connector.jobs.values())
+        assert [job["args"]["attachment_id"] for job in jobs] == [
+            attachment.id for attachment in attachments
+        ]
+        assert all(job["lock"] == "ingest" for job in jobs)
+
     async def test_should_queue_ingestion_for_a_ready_attachment(
         self, client, tmp_path, session, procrastinate_connector
     ):

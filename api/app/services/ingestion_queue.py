@@ -7,6 +7,7 @@ calls, so routers stay thin and the task has one place to look for state.
 
 import logging
 
+from procrastinate.types import JSONDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import utcnow
@@ -31,22 +32,39 @@ async def enqueue_ingestion(
     rejecting the call while already `queued`/`running`. Resets progress fields
     so a re-run doesn't show stale numbers from a previous attempt.
     """
-    attachment.ingest_status = IngestionStatus.queued
-    attachment.ingest_queued_at = utcnow()
-    attachment.ingest_started_at = None
-    attachment.ingest_finished_at = None
-    attachment.ingest_error = None
-    for column, value in _report_columns(IngestReport()).items():
-        setattr(attachment, column, value)
-    await session.commit()
-    await session.refresh(attachment)
+    return (await enqueue_ingestions(session, [attachment]))[0]
 
-    job_id = await ingest.defer_async(attachment_id=attachment.id)
-    attachment.ingest_job_id = job_id
-    await session.commit()
-    await session.refresh(attachment)
 
-    return attachment
+async def enqueue_ingestions(
+    session: AsyncSession, attachments: list[Attachment]
+) -> list[Attachment]:
+    """Queue a complete attachment batch before a worker can pick up its first job."""
+    if not attachments:
+        return []
+
+    queued_at = utcnow()
+    empty_report = _report_columns(IngestReport())
+    for attachment in attachments:
+        attachment.ingest_status = IngestionStatus.queued
+        attachment.ingest_queued_at = queued_at
+        attachment.ingest_started_at = None
+        attachment.ingest_finished_at = None
+        attachment.ingest_error = None
+        for column, value in empty_report.items():
+            setattr(attachment, column, value)
+    await session.commit()
+
+    task_kwargs: list[JSONDict] = [
+        {"attachment_id": attachment.id} for attachment in attachments
+    ]
+    job_ids = await ingest.configure().batch_defer_async(*task_kwargs)
+    for attachment, job_id in zip(attachments, job_ids, strict=True):
+        attachment.ingest_job_id = job_id
+    await session.commit()
+    for attachment in attachments:
+        await session.refresh(attachment)
+
+    return attachments
 
 
 async def cancel_ingestion(session: AsyncSession, attachment: Attachment) -> Attachment:
