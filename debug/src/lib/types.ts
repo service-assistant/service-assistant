@@ -174,10 +174,22 @@ export interface BenchmarkSetupRun {
 }
 
 export interface BenchmarkDocumentStatus {
+	configured: boolean
+	missing_configuration: string[]
+	bucket: string | null
+	prefix: string
+	local_directory: string
 	total: number
-	present: number
-	missing: string[]
-	[key: string]: unknown
+	ready: number
+	missing: number
+	outdated: number
+	documents: Array<{
+		key: string
+		filename: string
+		size: number
+		etag: string
+		state: 'ready' | 'missing' | 'outdated'
+	}>
 }
 
 export interface OrganizationRead {

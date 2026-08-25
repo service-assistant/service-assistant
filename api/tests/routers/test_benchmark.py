@@ -7,6 +7,7 @@ from app.routers.admin import benchmark
 from app.services import benchmark_setup
 from app.services.benchmark_cases import load_benchmark_dataset
 from tests.routers.factories import (
+    SYSTEM_ORGANIZATION_ID,
     create_attachment,
     create_category,
     create_chunk,
@@ -104,17 +105,21 @@ class TestGetLatestBenchmarkSetup:
         self, session
     ):
         brand_category = await create_category(
-            session, name=benchmark_setup.BENCHMARK_BRAND_CATEGORY_NAME
+            session,
+            name=benchmark_setup.BENCHMARK_BRAND_CATEGORY_NAME,
+            organization_id=SYSTEM_ORGANIZATION_ID,
         )
         type_category = await create_category(
             session,
             name=benchmark_setup.BENCHMARK_TYPE_CATEGORY_NAME,
             parent_id=brand_category.id,
+            organization_id=SYSTEM_ORGANIZATION_ID,
         )
         variant_category = await create_category(
             session,
             name=benchmark_setup.BENCHMARK_VARIANT_CATEGORY_NAME,
             parent_id=type_category.id,
+            organization_id=SYSTEM_ORGANIZATION_ID,
         )
         device = await create_device(
             session,
@@ -129,6 +134,7 @@ class TestGetLatestBenchmarkSetup:
             attachment = await create_attachment(
                 session,
                 original_filename=source_name,
+                organization_id=SYSTEM_ORGANIZATION_ID,
             )
             chunk = await create_chunk(session, attachment.id)
             await link_attachment_device(session, attachment.id, device.id)
@@ -167,20 +173,26 @@ class TestInspectBenchmarkSetup:
         self, session
     ):
         brand_category = await create_category(
-            session, name=benchmark_setup.BENCHMARK_BRAND_CATEGORY_NAME
+            session,
+            name=benchmark_setup.BENCHMARK_BRAND_CATEGORY_NAME,
+            organization_id=SYSTEM_ORGANIZATION_ID,
         )
         type_category = await create_category(
             session,
             name=benchmark_setup.BENCHMARK_TYPE_CATEGORY_NAME,
             parent_id=brand_category.id,
+            organization_id=SYSTEM_ORGANIZATION_ID,
         )
         await create_category(
             session,
             name=benchmark_setup.BENCHMARK_VARIANT_CATEGORY_NAME,
             parent_id=type_category.id,
+            organization_id=SYSTEM_ORGANIZATION_ID,
         )
         wrong_variant = await create_category(
-            session, name=benchmark_setup.BENCHMARK_VARIANT_CATEGORY_NAME
+            session,
+            name=benchmark_setup.BENCHMARK_VARIANT_CATEGORY_NAME,
+            organization_id=SYSTEM_ORGANIZATION_ID,
         )
         await create_device(
             session,
@@ -193,6 +205,35 @@ class TestInspectBenchmarkSetup:
 
         assert inspection["ready"] is False
         assert "benchmark_device_category" in inspection["missing"]
+
+    async def test_inspection_should_ignore_benchmark_data_from_other_tenants(
+        self, session
+    ):
+        brand_category = await create_category(
+            session, name=benchmark_setup.BENCHMARK_BRAND_CATEGORY_NAME
+        )
+        type_category = await create_category(
+            session,
+            name=benchmark_setup.BENCHMARK_TYPE_CATEGORY_NAME,
+            parent_id=brand_category.id,
+        )
+        variant_category = await create_category(
+            session,
+            name=benchmark_setup.BENCHMARK_VARIANT_CATEGORY_NAME,
+            parent_id=type_category.id,
+        )
+        await create_device(
+            session,
+            variant_category.id,
+            name=benchmark_setup.BENCHMARK_DEVICE_NAME,
+            model_serial_code=benchmark_setup.BENCHMARK_MODEL_SERIAL_CODE,
+        )
+
+        inspection = await benchmark_setup.inspect_benchmark_setup(session)
+
+        assert inspection["ready"] is False
+        assert "benchmark_brand_category" in inspection["missing"]
+        assert "benchmark_device" in inspection["missing"]
 
 
 class TestCategorySetup:
@@ -214,6 +255,7 @@ class TestCategorySetup:
             benchmark_setup.BENCHMARK_VARIANT_CATEGORY_NAME,
         ]
         assert brand_category.parent_id is None
+        assert brand_category.organization_id == SYSTEM_ORGANIZATION_ID
         assert type_category.parent_id == brand_category.id
         assert variant_category.parent_id == type_category.id
         assert len(first_created) == 3
