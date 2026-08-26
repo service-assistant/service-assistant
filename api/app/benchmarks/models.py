@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
@@ -38,14 +37,3 @@ class BenchmarkCase(BaseModel):
 class BenchmarkDataset(BaseModel):
     version: str
     cases: list[BenchmarkCase]
-
-
-def load_benchmark_dataset() -> BenchmarkDataset:
-    dataset_path = Path(__file__).parent.parent / "benchmarks" / "cases.json"
-    return BenchmarkDataset.model_validate_json(
-        dataset_path.read_text(encoding="utf-8")
-    )
-
-
-def serialize_benchmark_cases() -> list[dict]:
-    return [case.model_dump(mode="json") for case in load_benchmark_dataset().cases]

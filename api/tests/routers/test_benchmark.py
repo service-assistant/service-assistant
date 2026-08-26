@@ -1,11 +1,11 @@
-from types import SimpleNamespace
 import asyncio
+from types import SimpleNamespace
 from typing import cast
 
+from app.benchmarks.dataset import load_benchmark_dataset
 from app.config import Settings
 from app.routers.admin import benchmark
-from app.services import benchmark_setup
-from app.services.benchmark_cases import load_benchmark_dataset
+from app.services.benchmark import setup as benchmark_setup
 from tests.routers.factories import (
     SYSTEM_ORGANIZATION_ID,
     create_attachment,
@@ -48,7 +48,7 @@ class TestProcessBenchmarkSetup:
             return {"device_id": 7, "attachments": 4, "chunks": 100}
 
         mocker.patch(
-            "app.routers.admin.benchmark.benchmark_setup.run_benchmark_setup",
+            "app.routers.admin.benchmark.setup.run_benchmark_setup",
             side_effect=fake_setup,
         )
         settings = cast(
@@ -81,7 +81,7 @@ class TestProcessBenchmarkSetup:
             raise RuntimeError("embedding failed")
 
         mocker.patch(
-            "app.routers.admin.benchmark.benchmark_setup.run_benchmark_setup",
+            "app.routers.admin.benchmark.setup.run_benchmark_setup",
             side_effect=failing_setup,
         )
         settings = cast(

@@ -44,8 +44,13 @@ worker:
 	POSTGRES_HOST=localhost PYTHONPATH=. poetry run procrastinate --app=app.procrastinate_app.app worker
 production:
 	docker compose -f compose.production.yml up --build -d
+ifeq ($(OS),Windows_NT)
+test:
+	powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/test-windows.ps1
+else
 test:
 	ENV=test poetry run pytest
+endif
 lint:
 	poetry run ruff check app tests alembic
 format:

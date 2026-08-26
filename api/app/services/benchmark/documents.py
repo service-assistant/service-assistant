@@ -1,14 +1,14 @@
 import hashlib
 import hmac
 import logging
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
-from datetime import datetime, timezone
 from urllib.parse import quote, urlsplit
 from xml.etree import ElementTree
 
 import httpx
-
+from app.benchmarks.exceptions import BenchmarkStorageError
 from app.config import Settings
 
 logger = logging.getLogger(__name__)
@@ -19,10 +19,6 @@ REQUIRED_CONFIGURATION = {
     "benchmark_r2_access_key_id": "BENCHMARK_R2_ACCESS_KEY_ID",
     "benchmark_r2_secret_access_key": "BENCHMARK_R2_SECRET_ACCESS_KEY",
 }
-
-
-class BenchmarkStorageError(RuntimeError):
-    """Raised when benchmark documents cannot be read from R2."""
 
 
 def _missing_configuration(settings: Settings) -> list[str]:

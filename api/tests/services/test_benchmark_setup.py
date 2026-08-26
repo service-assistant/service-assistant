@@ -3,7 +3,7 @@ from typing import cast
 
 from app.config import Settings
 from app.models import IngestionStatus
-from app.services import benchmark_setup
+from app.services.benchmark import setup as benchmark_setup
 
 
 async def test_setup_should_add_every_file_before_processing_any_file(tmp_path, mocker):
@@ -15,11 +15,11 @@ async def test_setup_should_add_every_file_before_processing_any_file(tmp_path, 
         {"filename": "second.pdf"},
     ]
     mocker.patch(
-        "app.services.benchmark_setup.benchmark_documents.download_missing_documents",
+        "app.services.benchmark.setup.benchmark_documents.download_missing_documents",
         return_value={"documents": documents, "ready": 2, "downloaded": []},
     )
     mocker.patch(
-        "app.services.benchmark_setup.benchmark_documents.documents_dir",
+        "app.services.benchmark.setup.benchmark_documents.documents_dir",
         return_value=tmp_path,
     )
     categories = (
@@ -28,12 +28,12 @@ async def test_setup_should_add_every_file_before_processing_any_file(tmp_path, 
         SimpleNamespace(id=3, name="variant", parent_id=2, organization_id=1),
     )
     mocker.patch(
-        "app.services.benchmark_setup._get_or_create_category_path",
+        "app.services.benchmark.setup._get_or_create_category_path",
         return_value=(categories, []),
     )
     device = SimpleNamespace(id=4, name="benchmark", category_id=3)
     mocker.patch(
-        "app.services.benchmark_setup._get_or_create_device",
+        "app.services.benchmark.setup._get_or_create_device",
         return_value=(device, True),
     )
     attachments = [
@@ -71,13 +71,13 @@ async def test_setup_should_add_every_file_before_processing_any_file(tmp_path, 
             attachment.ingest_error = None
         return queued_attachments
 
-    mocker.patch("app.services.benchmark_setup._prepare_document", side_effect=prepare)
+    mocker.patch("app.services.benchmark.setup._prepare_document", side_effect=prepare)
     mocker.patch(
-        "app.services.benchmark_setup.ingestion_queue.enqueue_ingestions",
+        "app.services.benchmark.setup.ingestion_queue.enqueue_ingestions",
         side_effect=enqueue_batch,
     )
     mocker.patch(
-        "app.services.benchmark_setup.ingestion_queue.is_active",
+        "app.services.benchmark.setup.ingestion_queue.is_active",
         return_value=False,
     )
     session.get = mocker.AsyncMock(
@@ -86,7 +86,7 @@ async def test_setup_should_add_every_file_before_processing_any_file(tmp_path, 
         ]
     )
     mocker.patch(
-        "app.services.benchmark_setup.inspect_benchmark_setup",
+        "app.services.benchmark.setup.inspect_benchmark_setup",
         return_value={
             "ready": True,
             "result": {"attachments": 2, "chunks": 4},

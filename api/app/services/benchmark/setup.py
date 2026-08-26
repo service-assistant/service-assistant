@@ -5,6 +5,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from app.benchmarks.dataset import load_benchmark_dataset
+from app.benchmarks.runs import BenchmarkStepState
 from app.config import Settings
 from app.models import (
     Attachment,
@@ -14,10 +16,10 @@ from app.models import (
     Device,
     IngestionStatus,
 )
-from app.services import benchmark_documents, ingestion_queue
+from app.services import ingestion_queue
 from app.services.async_utils import run_blocking
 from app.services.attachments import save_attachment
-from app.services.benchmark_cases import load_benchmark_dataset
+from app.services.benchmark import documents as benchmark_documents
 from app.services.organizations import get_system_organization_id
 from fastapi import UploadFile
 from sqlalchemy import func, select
@@ -29,7 +31,10 @@ BENCHMARK_VARIANT_CATEGORY_NAME = "BENCHMARK WARIANT"
 BENCHMARK_DEVICE_NAME = "BENCHMARK-TEST-01"
 BENCHMARK_MODEL_SERIAL_CODE = "BENCHMARK-TEST-01"
 
-ProgressCallback = Callable[[str, str, str, dict[str, Any] | None], None]
+ProgressCallback = Callable[
+    [str, BenchmarkStepState, str, dict[str, Any] | None],
+    None,
+]
 
 
 async def inspect_benchmark_setup(
@@ -482,9 +487,7 @@ async def run_benchmark_setup(
         completed = 0
         for index, (attachment, requires_processing) in enumerate(prepared_documents):
             if not requires_processing or attachment.id not in pending_ids:
-                if not requires_processing:
-                    completed += 1
-                elif attachment.id not in pending_ids:
+                if not requires_processing or attachment.id not in pending_ids:
                     completed += 1
                 continue
 
