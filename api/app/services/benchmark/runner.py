@@ -1,9 +1,13 @@
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
-from contextlib import suppress
-from typing import Any, cast
+from typing import Any
 
+from app.benchmarks.cancellation import (
+    await_with_cancellation,
+    raise_if_cancelled,
+)
+from app.benchmarks.models import BenchmarkCase
 from app.config import Settings
 from app.models import (
     Attachment,
@@ -14,143 +18,19 @@ from app.models import (
     Device,
 )
 from app.schemas import MessageCreate
-from app.services.benchmark_cases import BenchmarkCase
-from app.services.benchmark_setup import BENCHMARK_MODEL_SERIAL_CODE
+from app.services.benchmark.judge import (
+    evaluate_source_images,
+    judge_answer,
+    judge_chunks,
+)
+from app.services.benchmark.setup import BENCHMARK_MODEL_SERIAL_CODE
 from app.services.organizations import get_system_organization_id
-from openai import AsyncOpenAI
-from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 REQUIRED_FACTS_PASS_THRESHOLD = 0.8
 FACT_COVERAGE_PASS_THRESHOLD = 0.8
 MAX_CONTINUATION_MESSAGES = 3
-
-
-class BenchmarkCancelledError(RuntimeError):
-    """Raised when an active benchmark run is cancelled by the administrator."""
-
-
-def _raise_if_cancelled(cancellation_event: asyncio.Event | None) -> None:
-    if cancellation_event is not None and cancellation_event.is_set():
-        raise BenchmarkCancelledError("Benchmark run was cancelled.")
-
-
-async def _await_with_cancellation(
-    awaitable: Awaitable[Any],
-    cancellation_event: asyncio.Event | None,
-) -> Any:
-    if cancellation_event is None:
-        return await awaitable
-    operation = asyncio.ensure_future(awaitable)
-    if cancellation_event.is_set():
-        operation.cancel()
-        with suppress(asyncio.CancelledError):
-            await operation
-        raise BenchmarkCancelledError("Benchmark run was cancelled.")
-    cancelled = asyncio.create_task(cancellation_event.wait())
-    done, _pending = await asyncio.wait(
-        {operation, cancelled}, return_when=asyncio.FIRST_COMPLETED
-    )
-    if cancelled in done:
-        operation.cancel()
-        with suppress(asyncio.CancelledError):
-            await operation
-        raise BenchmarkCancelledError("Benchmark run was cancelled.")
-    cancelled.cancel()
-    with suppress(asyncio.CancelledError):
-        await cancelled
-    return await operation
-
-
-class CriterionResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    index: int = Field(ge=0)
-    satisfied: bool
-    evidence: str
-
-
-class JudgeResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    required_facts: list[CriterionResult]
-    required_behaviors: list[CriterionResult]
-    forbidden_claims: list[CriterionResult]
-    feedback: str
-
-
-class ChunkEvaluation(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    index: int = Field(ge=0)
-    relevance_score: int = Field(ge=0, le=3)
-    supported_fact_indexes: list[int]
-    evidence: str
-
-
-class ChunkJudgeResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    chunks: list[ChunkEvaluation]
-    feedback: str
-
-
-def _source_image_judgement(
-    case: BenchmarkCase,
-    chunks: list[dict[str, Any]],
-) -> tuple[JudgeResult, ChunkJudgeResult, list[str]]:
-    source_image_paths: list[str] = []
-    evaluations: list[ChunkEvaluation] = []
-    for index, chunk in enumerate(chunks):
-        metadata = chunk.get("metadata") or {}
-        image_paths = [str(path) for path in metadata.get("images", []) if path]
-        expected_source = chunk.get("source_name") == case.source.filename
-        displayed = bool(chunk.get("linked_for_display"))
-        supports_image_fact = expected_source and displayed and bool(image_paths)
-        if supports_image_fact:
-            source_image_paths.extend(image_paths)
-        evaluations.append(
-            ChunkEvaluation(
-                index=index,
-                relevance_score=3
-                if supports_image_fact
-                else (2 if expected_source else 0),
-                supported_fact_indexes=(
-                    list(range(len(case.required_facts))) if supports_image_fact else []
-                ),
-                evidence=(
-                    f"Chunk is linked to the assistant message and exposes "
-                    f"{len(image_paths)} image(s) from the expected source."
-                    if supports_image_fact
-                    else "Chunk does not expose a displayable image from the expected source."
-                ),
-            )
-        )
-
-    source_image_paths = list(dict.fromkeys(source_image_paths))
-    passed = len(source_image_paths) >= case.minimum_source_images
-    evidence = (
-        f"Found {len(source_image_paths)} displayable image(s) from "
-        f"{case.source.filename}; required {case.minimum_source_images}."
-    )
-    judge = JudgeResult(
-        required_facts=[
-            CriterionResult(index=index, satisfied=passed, evidence=evidence)
-            for index in range(len(case.required_facts))
-        ],
-        required_behaviors=[],
-        forbidden_claims=[],
-        feedback=evidence,
-    )
-    chunk_judge = ChunkJudgeResult(
-        chunks=evaluations,
-        feedback=(
-            "Source-image evaluation checks images on chunks actually linked to the "
-            "assistant message, matching what the client can display."
-        ),
-    )
-    return judge, chunk_judge, source_image_paths
 
 
 def _parse_sse(raw: str) -> list[tuple[str, str]]:
@@ -225,152 +105,13 @@ def _assistant_response_time_ms(turn: dict[str, Any]) -> int | None:
     return round(float(duration_ms))
 
 
-async def _judge_answer(
-    case: BenchmarkCase,
-    answer: str,
-    settings: Settings,
-) -> JudgeResult:
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
-    schema = {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "benchmark_judgement",
-            "strict": True,
-            "schema": JudgeResult.model_json_schema(),
-        },
-    }
-    payload = {
-        "question": case.question,
-        "reference_answer": case.reference_answer,
-        "required_facts": list(enumerate(case.required_facts)),
-        "required_behaviors": list(enumerate(case.required_behaviors)),
-        "forbidden_claims": list(enumerate(case.forbidden_claims)),
-        "assistant_answer": answer,
-    }
-    request: dict[str, Any] = {
-        "model": settings.benchmark_judge_model,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "Jesteś rygorystycznym sędzią odpowiedzi technicznych. Oceniaj "
-                    "znaczenie, nie identyczność słów. Dla każdego required_facts zwróć "
-                    "satisfied=true tylko gdy odpowiedź jasno przekazuje dany fakt. Dla "
-                    "każdego required_behaviors zwróć satisfied=true tylko gdy odpowiedź "
-                    "faktycznie realizuje opisane zachowanie; brak zachowania oznacza false. Dla "
-                    "forbidden_claims zwróć satisfied=true, gdy odpowiedź zawiera lub "
-                    "sugeruje zakazane twierdzenie. Nie uzupełniaj braków wiedzą z odpowiedzi "
-                    "referencyjnej. Evidence ma być krótkim cytatem albo opisem braku. "
-                    "Dla faktu normalizacji kodu uznaj kryterium za spełnione, gdy użytkownik "
-                    "podaje kod bez separatora, a odpowiedź bezpośrednio opisuje odpowiadający "
-                    "mu kod ze separatorem. Odpowiedź nie musi powtarzać surowego zapisu ani "
-                    "mówić wprost, że oba zapisy są równoważne. "
-                    "Zachowaj wszystkie indeksy i ich kolejność."
-                ),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(payload, ensure_ascii=False),
-            },
-        ],
-        "response_format": schema,
-        "reasoning_effort": settings.benchmark_judge_reasoning_effort,
-    }
-    response = await client.chat.completions.create(**cast(Any, request))
-    content = response.choices[0].message.content
-    if not content:
-        raise RuntimeError("Judge returned an empty response.")
-    result = JudgeResult.model_validate_json(content)
-    required_indexes = [item.index for item in result.required_facts]
-    behavior_indexes = [item.index for item in result.required_behaviors]
-    forbidden_indexes = [item.index for item in result.forbidden_claims]
-    if required_indexes != list(range(len(case.required_facts))):
-        raise RuntimeError("Judge returned invalid required-fact indexes.")
-    if behavior_indexes != list(range(len(case.required_behaviors))):
-        raise RuntimeError("Judge returned invalid required-behavior indexes.")
-    if forbidden_indexes != list(range(len(case.forbidden_claims))):
-        raise RuntimeError("Judge returned invalid forbidden-claim indexes.")
-    return result
-
-
-async def _judge_chunks(
-    case: BenchmarkCase,
-    chunks: list[dict[str, Any]],
-    settings: Settings,
-) -> ChunkJudgeResult:
-    if not chunks:
-        return ChunkJudgeResult(chunks=[], feedback="No chunks were retrieved.")
-
-    client = AsyncOpenAI(api_key=settings.openai_api_key)
-    schema = {
-        "type": "json_schema",
-        "json_schema": {
-            "name": "benchmark_chunk_judgement",
-            "strict": True,
-            "schema": ChunkJudgeResult.model_json_schema(),
-        },
-    }
-    payload = {
-        "question": case.question,
-        "reference_answer": case.reference_answer,
-        "required_facts": list(enumerate(case.required_facts)),
-        "chunks_after_reranker": [
-            {
-                "index": index,
-                "content": chunk["content"],
-                "source_name": chunk.get("source_name"),
-                "metadata": chunk.get("metadata", {}),
-            }
-            for index, chunk in enumerate(chunks)
-        ],
-    }
-    request: dict[str, Any] = {
-        "model": settings.benchmark_chunk_judge_model,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are a strict retrieval evaluator. Evaluate every chunk only "
-                    "against the question and required facts. relevance_score: 0 means "
-                    "irrelevant, 1 weakly related, 2 useful and relevant, 3 directly "
-                    "supports the central answer. Include a required-fact index only "
-                    "when the chunk explicitly supports that fact. Do not infer missing "
-                    "information from the reference answer. For an identifier-normalization "
-                    "fact, a chunk containing the separator-form code corresponding to the "
-                    "raw code in the question supports that fact; the chunk does not need to "
-                    "state their equivalence explicitly. Return every chunk index once "
-                    "and in the original order. Evidence must be concise."
-                ),
-            },
-            {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-        ],
-        "response_format": schema,
-        "reasoning_effort": settings.benchmark_judge_reasoning_effort,
-    }
-    response = await client.chat.completions.create(**cast(Any, request))
-    content = response.choices[0].message.content
-    if not content:
-        raise RuntimeError("Chunk judge returned an empty response.")
-    result = ChunkJudgeResult.model_validate_json(content)
-    if [item.index for item in result.chunks] != list(range(len(chunks))):
-        raise RuntimeError("Chunk judge returned invalid chunk indexes.")
-    valid_fact_indexes = set(range(len(case.required_facts)))
-    if any(
-        len(item.supported_fact_indexes) != len(set(item.supported_fact_indexes))
-        or not set(item.supported_fact_indexes).issubset(valid_fact_indexes)
-        for item in result.chunks
-    ):
-        raise RuntimeError("Chunk judge returned invalid required-fact indexes.")
-    return result
-
-
 async def run_benchmark_case(
     case: BenchmarkCase,
     settings: Settings,
     session: AsyncSession,
     cancellation_event: asyncio.Event | None = None,
 ) -> dict[str, Any]:
-    _raise_if_cancelled(cancellation_event)
+    raise_if_cancelled(cancellation_event)
     organization_id = await get_system_organization_id(session)
     device = await session.scalar(
         select(Device)
@@ -394,8 +135,8 @@ async def run_benchmark_case(
     from app.routers import threads
 
     async def send(content: str) -> dict[str, Any]:
-        _raise_if_cancelled(cancellation_event)
-        response = await _await_with_cancellation(
+        raise_if_cancelled(cancellation_event)
+        response = await await_with_cancellation(
             threads.create_message(
                 thread=thread,
                 body=MessageCreate(
@@ -409,7 +150,7 @@ async def run_benchmark_case(
             ),
             cancellation_event,
         )
-        return await _await_with_cancellation(
+        return await await_with_cancellation(
             _consume_assistant_response(response), cancellation_event
         )
 
@@ -527,23 +268,23 @@ async def run_benchmark_case(
         for item in chunks_after_reranker
     ]
 
-    _raise_if_cancelled(cancellation_event)
+    raise_if_cancelled(cancellation_event)
     answer = "\n\n--- Kontynuacja ---\n\n".join(
         str(payload["content"]) for payload in message_payloads
     )
     source_image_paths: list[str] = []
     if case.evaluation_mode == "source_image":
-        judge, chunk_judge, source_image_paths = _source_image_judgement(
+        judge, chunk_judge, source_image_paths = evaluate_source_images(
             case, chunks_for_judge
         )
         judge_model = "deterministic-source-image-check"
         chunk_judge_model = "deterministic-source-image-check"
         judge_reasoning_effort = "not applicable"
     else:
-        judge, chunk_judge = await _await_with_cancellation(
+        judge, chunk_judge = await await_with_cancellation(
             asyncio.gather(
-                _judge_answer(case, answer, settings),
-                _judge_chunks(case, chunks_for_judge, settings),
+                judge_answer(case, answer, settings),
+                judge_chunks(case, chunks_for_judge, settings),
             ),
             cancellation_event,
         )
@@ -590,7 +331,7 @@ async def run_benchmark_case(
         and fact_coverage_threshold_passed
         and forbidden_found == 0
     )
-    _raise_if_cancelled(cancellation_event)
+    raise_if_cancelled(cancellation_event)
 
     return {
         "case_id": case.id,

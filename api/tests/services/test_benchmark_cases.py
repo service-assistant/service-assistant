@@ -1,4 +1,4 @@
-from app.services.benchmark_cases import load_benchmark_dataset
+from app.benchmarks.dataset import load_benchmark_dataset
 
 
 def test_fault_2002_case_should_preserve_input_and_expected_normalization():

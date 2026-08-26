@@ -1,5 +1,5 @@
-from app.services import benchmark_runner
-from app.services.benchmark_cases import load_benchmark_dataset
+from app.benchmarks.dataset import load_benchmark_dataset
+from app.services.benchmark.judge import evaluate_source_images
 
 
 def _source_image_case():
@@ -36,9 +36,7 @@ def test_source_image_judgement_requires_image_linked_to_assistant_message():
         },
     ]
 
-    judge, chunk_judge, image_paths = benchmark_runner._source_image_judgement(
-        case, chunks
-    )
+    judge, chunk_judge, image_paths = evaluate_source_images(case, chunks)
 
     assert judge.required_facts[0].satisfied is True
     assert image_paths == ["/attachments/images/schematic.png"]
@@ -49,7 +47,7 @@ def test_source_image_judgement_requires_image_linked_to_assistant_message():
 def test_source_image_judgement_rejects_images_from_a_different_source():
     case = _source_image_case()
 
-    judge, _chunk_judge, image_paths = benchmark_runner._source_image_judgement(
+    judge, _chunk_judge, image_paths = evaluate_source_images(
         case,
         [
             {

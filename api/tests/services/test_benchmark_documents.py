@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from typing import cast
 
 from app.config import Settings
-from app.services import benchmark_documents
+from app.services.benchmark import documents as benchmark_documents
 
 
 def _settings(tmp_path, **updates):
@@ -27,7 +27,7 @@ def test_status_should_report_missing_ready_and_outdated_documents(tmp_path, moc
     (local_directory / ".ready.pdf.r2-etag").write_text("one", encoding="utf-8")
     (local_directory / "outdated.pdf").write_bytes(b"old")
     mocker.patch(
-        "app.services.benchmark_documents._list_remote_documents",
+        "app.services.benchmark.documents._list_remote_documents",
         return_value=[
             {
                 "key": "benchmark/v1/ready.pdf",
@@ -67,7 +67,7 @@ def test_status_should_list_missing_configuration_without_contacting_r2(
 ):
     settings = _settings(tmp_path, benchmark_r2_secret_access_key=None)
     remote_list = mocker.patch(
-        "app.services.benchmark_documents._list_remote_documents"
+        "app.services.benchmark.documents._list_remote_documents"
     )
 
     result = benchmark_documents.get_document_status(cast(Settings, settings))
@@ -98,7 +98,7 @@ def test_download_should_only_fetch_missing_or_outdated_documents(tmp_path, mock
         },
     ]
     mocker.patch(
-        "app.services.benchmark_documents._list_remote_documents",
+        "app.services.benchmark.documents._list_remote_documents",
         return_value=documents,
     )
 
@@ -106,7 +106,7 @@ def test_download_should_only_fetch_missing_or_outdated_documents(tmp_path, mock
         destination.write_bytes(b"missing")
 
     download_object = mocker.patch(
-        "app.services.benchmark_documents._download_object",
+        "app.services.benchmark.documents._download_object",
         side_effect=fake_download,
     )
 

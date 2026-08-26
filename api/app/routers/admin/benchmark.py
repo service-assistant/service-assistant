@@ -1,20 +1,27 @@
 import asyncio
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict
 from datetime import datetime, timezone
+from typing import Any
 from uuid import uuid4
 
+from app.benchmarks.dataset import BenchmarkDataset, load_benchmark_dataset
+from app.benchmarks.exceptions import (
+    BenchmarkCancelledError,
+    BenchmarkStorageError,
+)
+from app.benchmarks.runs import (
+    BenchmarkCaseRun,
+    BenchmarkSetupRun,
+    BenchmarkSetupStep,
+    BenchmarkStepState,
+)
 from app.config import Settings
 from app.database import database_url_with_driver, get_engine
 from app.dependencies.database import DbSessionDependency
 from app.dependencies.settings import SettingsDependency
-from app.services import (
-    benchmark_cases,
-    benchmark_documents,
-    benchmark_runner,
-    benchmark_setup,
-)
 from app.services.async_utils import run_blocking
+from app.services.benchmark import documents, runner, setup
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,38 +30,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # (gate applied in main.py's include_router call, not here).
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class BenchmarkSetupStep:
-    key: str
-    label: str
-    state: str = "queued"
-    message: str = "Waiting"
-    details: dict | None = None
-
-
-@dataclass
-class BenchmarkSetupRun:
-    id: str
-    state: str
-    steps: list[BenchmarkSetupStep]
-    created_at: str
-    finished_at: str | None = None
-    error: str | None = None
-    result: dict | None = None
-
-
-@dataclass
-class BenchmarkCaseRun:
-    id: str
-    case_id: str
-    state: str
-    created_at: str
-    finished_at: str | None = None
-    error: str | None = None
-    result: dict | None = None
-    cancel_requested: bool = False
 
 
 _benchmark_download_lock = asyncio.Lock()
@@ -73,21 +48,14 @@ BENCHMARK_SETUP_STEPS = [
 ]
 
 
-@router.get("/cases")
-async def get_benchmark_cases():
-    return {
-        "version": benchmark_cases.load_benchmark_dataset().version,
-        "cases": benchmark_cases.serialize_benchmark_cases(),
-    }
+@router.get("/cases", response_model=BenchmarkDataset)
+async def get_benchmark_cases() -> BenchmarkDataset:
+    return load_benchmark_dataset()
 
 
 def _get_benchmark_case(case_id: str):
     return next(
-        (
-            case
-            for case in benchmark_cases.load_benchmark_dataset().cases
-            if case.id == case_id
-        ),
+        (case for case in load_benchmark_dataset().cases if case.id == case_id),
         None,
     )
 
@@ -110,14 +78,14 @@ async def _process_benchmark_case_run(run_id: str, settings: Settings) -> None:
             get_engine(database_url_with_driver),
             expire_on_commit=False,
         ) as session:
-            run.result = await benchmark_runner.run_benchmark_case(
+            run.result = await runner.run_benchmark_case(
                 case=case,
                 settings=settings,
                 session=session,
                 cancellation_event=cancellation_event,
             )
         run.state = "completed"
-    except benchmark_runner.BenchmarkCancelledError:
+    except BenchmarkCancelledError:
         run.state = "cancelled"
         run.error = None
     except Exception as exc:
@@ -186,8 +154,8 @@ async def cancel_benchmark_case_run(run_id: str):
 @router.get("/documents/status")
 async def get_benchmark_documents_status(settings: SettingsDependency):
     try:
-        return await run_blocking(benchmark_documents.get_document_status, settings)
-    except benchmark_documents.BenchmarkStorageError as exc:
+        return await run_blocking(documents.get_document_status, settings)
+    except BenchmarkStorageError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc),
@@ -199,10 +167,10 @@ async def download_benchmark_documents(settings: SettingsDependency):
     try:
         async with _benchmark_download_lock:
             return await run_blocking(
-                benchmark_documents.download_missing_documents,
+                documents.download_missing_documents,
                 settings,
             )
-    except benchmark_documents.BenchmarkStorageError as exc:
+    except BenchmarkStorageError as exc:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=str(exc),
@@ -225,11 +193,11 @@ async def _process_benchmark_setup(setup_id: str, settings: Settings) -> None:
     run = _benchmark_setup_runs[setup_id]
     run.state = "processing"
 
-    def update_step(
+    def progress(
         key: str,
-        state: str,
+        state: BenchmarkStepState,
         message: str,
-        details: dict | None,
+        details: dict[str, Any] | None,
     ) -> None:
         step = next(item for item in run.steps if item.key == key)
         step.state = state
@@ -237,16 +205,18 @@ async def _process_benchmark_setup(setup_id: str, settings: Settings) -> None:
         step.details = details
 
     try:
-        async with _benchmark_setup_lock:
-            async with AsyncSession(
+        async with (
+            _benchmark_setup_lock,
+            AsyncSession(
                 get_engine(database_url_with_driver),
                 expire_on_commit=False,
-            ) as session:
-                run.result = await benchmark_setup.run_benchmark_setup(
-                    settings=settings,
-                    session=session,
-                    progress=update_step,
-                )
+            ) as session,
+        ):
+            run.result = await setup.run_benchmark_setup(
+                settings=settings,
+                session=session,
+                progress=progress,
+            )
         run.state = "completed"
     except Exception as exc:
         run.state = "failed"
@@ -306,7 +276,7 @@ async def get_latest_benchmark_setup(session: DbSessionDependency):
     if active_run is not None:
         return _serialize_benchmark_setup(active_run)
 
-    inspection = await benchmark_setup.inspect_benchmark_setup(session)
+    inspection = await setup.inspect_benchmark_setup(session)
     if inspection["ready"]:
         result = inspection["result"]
         completed_steps = [

@@ -5,9 +5,12 @@ from typing import cast
 
 import pytest
 
+from app.benchmarks.cancellation import await_with_cancellation
+from app.benchmarks.dataset import load_benchmark_dataset
+from app.benchmarks.exceptions import BenchmarkCancelledError
 from app.config import Settings
-from app.services import benchmark_runner
-from app.services.benchmark_cases import load_benchmark_dataset
+from app.services.benchmark import runner as benchmark_runner
+from app.services.benchmark.judge import judge_answer, judge_chunks
 
 
 def test_pass_thresholds_require_seven_of_eight_facts():
@@ -110,13 +113,13 @@ async def test_cancellation_should_interrupt_active_async_operation():
             operation_cancelled.set()
 
     task = asyncio.create_task(
-        benchmark_runner._await_with_cancellation(long_operation(), cancellation_event)
+        await_with_cancellation(long_operation(), cancellation_event)
     )
     await operation_started.wait()
     cancellation_event.set()
 
     with pytest.raises(
-        benchmark_runner.BenchmarkCancelledError,
+        BenchmarkCancelledError,
         match="cancelled",
     ):
         await task
@@ -154,7 +157,7 @@ async def test_judge_should_use_reasoning_model_and_validate_all_criteria(mocker
     client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create))
     )
-    mocker.patch("app.services.benchmark_runner.AsyncOpenAI", return_value=client)
+    mocker.patch("app.services.benchmark.judge.AsyncOpenAI", return_value=client)
     settings = SimpleNamespace(
         openai_api_key="test",
         benchmark_judge_model="gpt-5.1",
@@ -162,9 +165,7 @@ async def test_judge_should_use_reasoning_model_and_validate_all_criteria(mocker
         benchmark_judge_reasoning_effort="medium",
     )
 
-    result = await benchmark_runner._judge_answer(
-        case, "answer", cast(Settings, settings)
-    )
+    result = await judge_answer(case, "answer", cast(Settings, settings))
 
     assert all(item.satisfied for item in result.required_facts)
     assert all(item.satisfied for item in result.required_behaviors)
@@ -207,7 +208,7 @@ async def test_chunk_judge_should_score_each_chunk_and_fact_coverage(mocker):
     client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create))
     )
-    mocker.patch("app.services.benchmark_runner.AsyncOpenAI", return_value=client)
+    mocker.patch("app.services.benchmark.judge.AsyncOpenAI", return_value=client)
     settings = SimpleNamespace(
         openai_api_key="test",
         benchmark_judge_model="gpt-5.1",
@@ -215,7 +216,7 @@ async def test_chunk_judge_should_score_each_chunk_and_fact_coverage(mocker):
         benchmark_judge_reasoning_effort="medium",
     )
 
-    result = await benchmark_runner._judge_chunks(
+    result = await judge_chunks(
         case,
         [
             {"content": "fault details", "source_name": "manual.pdf"},

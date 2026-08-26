@@ -1,5 +1,6 @@
 import pytest
 from app.config import get_settings
+
 from app.database import get_session
 from app.main import app
 from app.models import AppRole, OrgRole
