@@ -219,11 +219,7 @@ def save_drawing_region(
 
     for region in maximal_regions:
         # skip icons and small drawings
-        if (
-            region["rect"].width < 50
-            or region["rect"].height < 50
-            or (region["rect"].width < 100 and region["rect"].height < 100)
-        ):
+        if region["rect"].width * region["rect"].height < 50 * 50:
             continue
 
         region_rect = fitz.Rect(region["rect"])
