@@ -205,7 +205,7 @@ async def test_sparse_native_text_gets_image_description_chunks(
     assert rows[2][3] == [image_paths[1]]
     assert report.chunks_indexed == 3
     openai_client.assert_called_once_with(api_key=settings.openai_api_key)
-    assert describe.await_count == 2
+    assert describe.await_count == 1
     assert all(
         call.kwargs["client"] is vision_client
         and call.kwargs["model"] == "gpt-5.6-luna"
