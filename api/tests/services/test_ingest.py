@@ -206,11 +206,9 @@ async def test_sparse_native_text_gets_image_description_chunks(
     assert report.chunks_indexed == 3
     openai_client.assert_called_once_with(api_key=settings.openai_api_key)
     assert describe.await_count == 1
-    assert all(
-        call.kwargs["client"] is vision_client
-        and call.kwargs["model"] == "gpt-5.6-luna"
-        for call in describe.await_args_list
-    )
+    describe_call = describe.await_args_list[0]
+    assert describe_call.args[2] is vision_client
+    assert describe_call.args[3] == "gpt-5.6-luna"
 
 
 async def test_image_only_pdf_is_rejected_only_after_azure_ocr_fails(mocker, settings):
