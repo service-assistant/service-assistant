@@ -23,10 +23,51 @@ def normalize_for_png(pix: Pixmap) -> Pixmap | None:
 
 def select_maximal_regions(
     drawings: list[dict],
+    REGION_MINIMAL_ITEMS: int = 2,
+    REGION_CONTAINMENT_TOLERANCE: float = 5.0,
+    MINIMAL_TOO_MANY_REGIONS: int = 10,
 ) -> list[dict]:
     """
     Select maximal regions from a list of drawings.
     """
+
+    def remove_duplicate_drawings(
+        drawings: list[dict],
+    ) -> list[dict]:
+        """
+        Remove duplicate drawings based on their bounding boxes.
+        Prefers drawings with more items when duplicates are found.
+        """
+
+        unique_drawings = []
+        seen_rects = set()
+        small_drawings = []
+        for drawing in drawings:
+            rect_tuple = (
+                drawing["rect"].x0,
+                drawing["rect"].y0,
+                drawing["rect"].x1,
+                drawing["rect"].y1,
+            )
+            if rect_tuple not in seen_rects:
+                if len(drawing["items"]) < REGION_MINIMAL_ITEMS:
+                    small_drawings.append(drawing)
+                else:
+                    seen_rects.add(rect_tuple)
+                    unique_drawings.append(drawing)
+
+        for drawing in small_drawings:
+            rect_tuple = (
+                drawing["rect"].x0,
+                drawing["rect"].y0,
+                drawing["rect"].x1,
+                drawing["rect"].y1,
+            )
+            if rect_tuple not in seen_rects:
+                seen_rects.add(rect_tuple)
+                unique_drawings.append(drawing)
+
+        return unique_drawings
 
     def strictly_contains(outer: fitz.Rect, inner: fitz.Rect) -> bool:
         return (
@@ -47,49 +88,51 @@ def select_maximal_regions(
             and outer.y0 <= inner.y0 + tolerance
             and outer.x1 >= inner.x1 - tolerance
             and outer.y1 >= inner.y1 - tolerance
-            and outer != inner
         )
 
-    # Keep the original index so a drawing is never compared with itself.
-    candidates = [
-        (index, drawing)
-        for index, drawing in enumerate(drawings)
-        if any(
-            index != other_index
-            and len(other.get("items", [])) >= REGION_MINIMAL_ITEMS
-            and strictly_contains(drawing["rect"], other["rect"])
-            for other_index, other in enumerate(drawings)
-        )
-    ]
+    def main_select_maximal_regions(
+        drawings: list[dict],
+        use_item_threshold: bool = True,
+    ) -> list[dict]:
+        candidates = [dict(drawing) for drawing in drawings]
 
-    # Remove candidates contained by another candidate, except when both
-    # drawings contain less than REGION_MINIMAL_ITEMS.
-    result = [
-        drawing
-        for index, drawing in candidates
-        if not any(
-            index != other_index
-            and approximately_contains(other["rect"], drawing["rect"])
-            and not (
-                len(drawing.get("items", [])) < REGION_MINIMAL_ITEMS
-                and len(other.get("items", [])) < REGION_MINIMAL_ITEMS
-            )
-            for other_index, other in candidates
-        )
-    ]
+        # remove drawings that are contained by another drawing
+        total_drawings = len(candidates)
+        i = 0
+        while i < total_drawings:
+            drawing = candidates[i]
+            rect = drawing["rect"]
 
-    # remove duplicates
-    result = list({d["rect"]: d for d in result}.values())
+            j = 0
+            while j < total_drawings:
+                other = candidates[j]
+                if i != j:
+                    if (
+                        use_item_threshold
+                        and not (
+                            len(other.get("items", [])) < REGION_MINIMAL_ITEMS
+                            and len(drawing.get("items", [])) < REGION_MINIMAL_ITEMS
+                        )
+                    ) or not use_item_threshold:
+                        if approximately_contains(other["rect"], rect):
+                            candidates.pop(i)
+                            total_drawings -= 1
+                            i -= 1
+                            break
 
-    # Remove regions that contain another region from the remaining result.
-    result = [
-        drawing
-        for drawing in result
-        if not any(
-            drawing != other and strictly_contains(drawing["rect"], other["rect"])
-            for other in result
-        )
-    ]
+                j += 1
+            i += 1
+
+        result = []
+        for candidate in candidates:
+            if any(
+                candidate != other
+                and strictly_contains(candidate["rect"], other["rect"])
+                for other in drawings
+            ):
+                result.append(dict(candidate))
+
+        return result
 
     def expand_overlapping_regions(
         regions: list[dict],
@@ -150,7 +193,15 @@ def select_maximal_regions(
 
         return regions
 
-    return expand_overlapping_regions(result)
+    unique_drawings = remove_duplicate_drawings(drawings)
+
+    result = main_select_maximal_regions(unique_drawings)
+    result = expand_overlapping_regions(result)
+
+    if len(result) > MINIMAL_TOO_MANY_REGIONS:
+        result = main_select_maximal_regions(result, use_item_threshold=False)
+
+    return result
 
 
 def save_drawing_region(
