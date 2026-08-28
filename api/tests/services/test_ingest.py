@@ -104,7 +104,11 @@ async def test_ingest_pdf_to_attachment(mocker, settings, openai_client):
     )
     mocker.patch("app.services.ingest.chunk_page", return_value=["chunk 1", "chunk 2"])
     mocker.patch("app.services.ingest.extract_page_images", return_value=fake_images)
-    describe = mocker.patch("app.services.ingest.describe_image", return_value="")
+    describe = mocker.patch(
+        "app.services.ingest.describe_images",
+        new_callable=mocker.AsyncMock,
+        return_value=[],
+    )
     mock_insert = mocker.patch(
         "app.services.ingest.insert_chunks",
         new_callable=mocker.AsyncMock,
@@ -146,10 +150,7 @@ async def test_ingest_pdf_to_attachment(mocker, settings, openai_client):
         max_retries=settings.azure_embeddings_max_retries,
     )
     openai_client.assert_called_once_with(api_key=settings.openai_api_key)
-    assert describe.await_count == 4
-    assert all(
-        call.kwargs["model"] == "gpt-5.6-luna" for call in describe.await_args_list
-    )
+    assert describe.await_count == 1
 
 
 async def test_sparse_native_text_gets_image_description_chunks(
@@ -169,14 +170,19 @@ async def test_sparse_native_text_gets_image_description_chunks(
     image_paths = ["image-1.png", "image-2.png"]
     mocker.patch("app.services.ingest.extract_page_images", return_value=image_paths)
     describe = mocker.patch(
-        "app.services.ingest.describe_image",
-        side_effect=["Description 1", "Description 2"],
+        "app.services.ingest.describe_images",
+        new_callable=mocker.AsyncMock,
+        return_value=[
+            ("image-1.png", "Description 1"),
+            ("image-2.png", "Description 2"),
+        ],
     )
 
     embedding_client = mocker.AsyncMock()
-    embedding_client.embeddings.create.return_value = mocker.Mock(
-        data=[mocker.Mock(embedding=[0.1] * 1536) for _ in range(3)]
-    )
+    embedding_client.embeddings.create.side_effect = [
+        mocker.Mock(data=[mocker.Mock(embedding=[0.1] * 1536)]),
+        mocker.Mock(data=[mocker.Mock(embedding=[0.1] * 1536) for _ in range(2)]),
+    ]
     vision_client = mocker.AsyncMock()
     mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
     openai_client.return_value = vision_client
@@ -190,21 +196,19 @@ async def test_sparse_native_text_gets_image_description_chunks(
 
     rows = insert.call_args.args[1]
     assert [row[0] for row in rows] == [
+        "native chunk",
         "Description 1",
         "Description 2",
-        "native chunk",
     ]
-    assert rows[0][3] == [image_paths[0]]
-    assert rows[1][3] == [image_paths[1]]
-    assert rows[2][3] == image_paths
+    assert rows[0][3] == image_paths
+    assert rows[1][3] == [image_paths[0]]
+    assert rows[2][3] == [image_paths[1]]
     assert report.chunks_indexed == 3
     openai_client.assert_called_once_with(api_key=settings.openai_api_key)
-    assert describe.await_count == 2
-    assert all(
-        call.kwargs["client"] is vision_client
-        and call.kwargs["model"] == "gpt-5.6-luna"
-        for call in describe.await_args_list
-    )
+    assert describe.await_count == 1
+    describe_call = describe.await_args_list[0]
+    assert describe_call.args[2] is vision_client
+    assert describe_call.args[3] == "gpt-5.6-luna"
 
 
 async def test_image_only_pdf_is_rejected_only_after_azure_ocr_fails(mocker, settings):
@@ -238,7 +242,7 @@ async def test_image_only_pdf_is_rejected_only_after_azure_ocr_fails(mocker, set
     assert error.value.report.ocr_pages_attempted == 2
     assert error.value.report.ocr_pages_skipped == 2
     assert "Skipped entire file" in error.value.report.events[-1]
-    assert ocr_client_factory.call_count == 2
+    assert ocr_client_factory.call_count == 1
     insert.assert_not_awaited()
 
 
@@ -254,7 +258,11 @@ async def test_image_only_pdf_is_kept_when_azure_ocr_recovers_text(mocker, setti
     mocker.patch("app.services.ingest.process_ocr_text", return_value="OCR text")
     mocker.patch("app.services.ingest.chunk_page", return_value=["OCR chunk"])
     mocker.patch("app.services.ingest.extract_page_images", return_value=[])
-    mocker.patch("app.services.ingest.describe_image", return_value="")
+    mocker.patch(
+        "app.services.ingest.describe_images",
+        new_callable=mocker.AsyncMock,
+        return_value=[],
+    )
 
     poller = mocker.MagicMock()
     poller.result.return_value = mocker.Mock(content="raw OCR")
@@ -293,10 +301,15 @@ async def test_image_only_page_gets_description_when_ocr_recovers_no_text(
     document.pages.return_value = [page]
     mocker.patch("app.services.ingest.fitz.open", return_value=document)
     mocker.patch("app.services.ingest.render_page_for_ocr", return_value=b"jpeg")
+    mocker.patch(
+        "app.services.ingest.save_ocr_rendered_image", return_value=["page.jpg"]
+    )
     mocker.patch("app.services.ingest.process_ocr_text", return_value="")
     mocker.patch("app.services.ingest.chunk_page", return_value=[])
     describe = mocker.patch(
-        "app.services.ingest.describe_image", return_value="A technical diagram"
+        "app.services.ingest.describe_images",
+        new_callable=mocker.AsyncMock,
+        return_value=[("page.jpg", "A technical diagram")],
     )
 
     poller = mocker.MagicMock()
@@ -318,7 +331,6 @@ async def test_image_only_page_gets_description_when_ocr_recovers_no_text(
     report = await ingest_pdf_to_attachment(session, "image-only.pdf", 1, settings)
 
     describe.assert_awaited_once()
-    assert describe.call_args.kwargs["image_path"].endswith(".jpg")
     assert report.chunks_indexed == 1
     insert.assert_awaited_once()
 

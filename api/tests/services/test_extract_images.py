@@ -108,7 +108,7 @@ def test_save_drawing_region_saves_png(mocker, tmp_path: Path):
 def test_save_drawing_region_returns_none_for_small_amount(mocker, tmp_path: Path):
     page = mocker.Mock()
 
-    page.get_drawings.return_value = [{"rect": fitz.Rect(0, 0, 10, 10)}]
+    page.get_drawings.return_value = [{"rect": fitz.Rect(0, 0, 10, 10), "items": []}]
 
     result = save_drawing_region(
         page=page,
