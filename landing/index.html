@@ -24,7 +24,7 @@
 		<meta name="twitter:image" content="/og.png" />
 		<title>Fixo — Asystent AI dla serwisantów maszyn</title>
 		<link rel="icon" href="/assets/logo.png" />
-		<link rel="stylesheet" href="/style.css?v=fixo-20260825-9" />
+		<link rel="stylesheet" href="/style.css?v=fixo-20260830-12" />
 	</head>
 	<body>
 		<header class="site-header">
@@ -40,7 +40,8 @@
 		</header>
 
 		<main id="top">
-			<section class="hero section-shell" id="produkt">
+			<div class="hero-band">
+				<section class="hero section-shell" id="produkt">
 				<div class="hero-copy">
 					<p class="eyebrow"><span></span> Wiedza serwisowa zawsze pod ręką</p>
 					<h1>Asystent AI dla<br /><em>serwisantów maszyn</em></h1>
@@ -50,12 +51,15 @@
 					</p>
 					<div class="hero-actions">
 						<a class="button" href="#kontakt"
-							>Umów demo <span aria-hidden="true">→</span></a
+							>Umów demo
+							<span class="button-arrow" aria-hidden="true">
+								<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+							</span></a
 						><a class="button button-secondary" href="#demo">Zobacz jak to działa</a>
 					</div>
 					<div class="trust-row" aria-label="Najważniejsze cechy">
 						<span>✓ Odpowiedzi oparte na dokumentacji</span
-						><span>✓ Dla serwisu i utrzymania ruchu</span
+						><span>✓ Telefon, tablet i przeglądarka</span
 						><span>✓ Gotowe do pilotażu</span>
 					</div>
 				</div>
@@ -90,32 +94,59 @@
 				</div>
 				<div class="pain-grid">
 					<article class="pain-card">
-						<span class="card-number">01</span><span class="line-icon">▤</span>
-						<h3>Setki stron PDF</h3>
+						<span class="card-number">01</span>
+						<span class="line-icon" aria-hidden="true">
+							<svg viewBox="0 0 24 24">
+								<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h8"></path>
+								<path d="M14 2v6h6M9 13h2"></path>
+								<circle cx="16" cy="16" r="3"></circle>
+								<path d="m18.5 18.5 2.5 2.5"></path>
+							</svg>
+						</span>
+						<h3>Wiedza ginie w dokumentacji</h3>
 						<p>
 							Właściwa tabela, kod błędu lub procedura ginie w rozbudowanej
 							dokumentacji.
 						</p>
 					</article>
 					<article class="pain-card">
-						<span class="card-number">02</span><span class="line-icon">◎</span>
-						<h3>Eksperci ciągle dopytywani</h3>
+						<span class="card-number">02</span>
+						<span class="line-icon" aria-hidden="true">
+							<svg viewBox="0 0 24 24">
+								<circle cx="9" cy="7" r="4"></circle>
+								<path d="M3 21v-2a4 4 0 0 1 4-4h4"></path>
+								<circle cx="18" cy="17" r="3"></circle>
+								<path d="M18 12.5v1.5M18 20v1.5M13.5 17H15M21 17h1.5"></path>
+							</svg>
+						</span>
+						<h3>Eksperci stają się wąskim gardłem</h3>
 						<p>
 							Doświadczeni technicy przerywają swoją pracę, aby odpowiadać na
 							powtarzalne pytania.
 						</p>
 					</article>
 					<article class="pain-card">
-						<span class="card-number">03</span><span class="line-icon">≠</span>
-						<h3>Niespójne procedury</h3>
+						<span class="card-number">03</span>
+						<span class="line-icon" aria-hidden="true">
+							<svg viewBox="0 0 24 24">
+								<path d="m3 6 2 2 4-4M13 6h8M3 18l2 2 4-4M13 18h8"></path>
+							</svg>
+						</span>
+						<h3>Brak jednego standardu pracy</h3>
 						<p>
 							Każdy rozwiązuje podobne przypadki inaczej, co utrudnia kontrolę jakości
 							pracy.
 						</p>
 					</article>
 					<article class="pain-card">
-						<span class="card-number">04</span><span class="line-icon">◷</span>
-						<h3>Dłuższa diagnoza</h3>
+						<span class="card-number">04</span>
+						<span class="line-icon" aria-hidden="true">
+							<svg viewBox="0 0 24 24">
+								<circle cx="12" cy="12" r="9"></circle>
+								<path d="M12 7v5l3 2"></path>
+							</svg>
+						</span>
+						<h3>Diagnoza trwa dłużej</h3>
 						<p>
 							Szukanie informacji wydłuża przestój maszyny i zwiększa koszt obsługi
 							zgłoszenia.
@@ -152,7 +183,7 @@
 						<article>
 							<span>02</span>
 							<div>
-								<h3>Porządkuje kolejne czynności</h3>
+								<h3>Wskazuje kolejne kroki</h3>
 								<p>
 									Przedstawia krótkie wyjaśnienie, checklistę i sugerowany
 									następny krok.
@@ -171,6 +202,77 @@
 						</article>
 					</div>
 				</div>
+				</section>
+			</div>
+
+			<section class="devices-section" id="urzadzenia" aria-labelledby="devices-heading">
+				<div class="section-shell">
+					<div class="section-heading">
+						<p class="section-kicker">Praca bez ograniczeń do urządzenia</p>
+						<h2 id="devices-heading">Fixo jest tam, gdzie go potrzebujesz</h2>
+						<p>
+							Telefon przy maszynie, tablet podczas diagnostyki, przeglądarka przy
+							stanowisku pracy.
+						</p>
+					</div>
+					<div class="devices-showcase">
+						<div
+							class="devices-stage"
+							aria-label="Fixo na telefonie, tablecie i w przeglądarce"
+						>
+							<div class="device device-browser">
+								<div class="browser-bar" aria-hidden="true">
+									<span></span><span></span><span></span><i>app.fixo.pl</i>
+								</div>
+								<div class="device-screen">
+									<img
+										src="/assets/web.png?v=web-1"
+										alt="Interfejs Fixo otwarty w przeglądarce"
+										loading="lazy"
+									/>
+								</div>
+							</div>
+							<div class="device device-tablet">
+								<div class="device-camera" aria-hidden="true"></div>
+								<div class="device-screen">
+									<img
+										src="/assets/tablet.jpg?v=portrait-2"
+										alt="Interfejs Fixo na tablecie podczas diagnostyki"
+										loading="lazy"
+									/>
+								</div>
+							</div>
+							<div class="device device-phone">
+								<div class="phone-speaker" aria-hidden="true"></div>
+								<div class="device-screen">
+									<img
+										src="/assets/phone.jpg?v=phone-1"
+										alt="Interfejs Fixo na telefonie przy maszynie"
+										loading="lazy"
+									/>
+								</div>
+							</div>
+						</div>
+						<div class="device-uses">
+							<div>
+								<h3>Telefon</h3>
+								<p>Szybki dostęp do Fixo bezpośrednio przy maszynie.</p>
+							</div>
+							<div>
+								<h3>Tablet</h3>
+								<p>
+									Wygodna diagnostyka, checklisty i dokumentacja podczas pracy serwisowej.
+								</p>
+							</div>
+							<div>
+								<h3>Przeglądarka</h3>
+								<p>
+									Pełny dostęp z komputera bez instalowania dodatkowego oprogramowania.
+								</p>
+							</div>
+						</div>
+					</div>
+				</div>
 			</section>
 
 			<section class="content-section section-shell demo-section" id="demo">
@@ -183,44 +285,53 @@
 					</p>
 				</div>
 				<div class="demo-shell">
-					<div class="demo-steps" role="list">
-						<div class="demo-step active" role="listitem">
-							<span>1</span>
-							<div><b>Wybór maszyny</b><small>Toyota LPE200</small></div>
+					<ol class="demo-steps" aria-label="Rozdziały filmu">
+						<li>
+							<button class="demo-step active" type="button" data-time="0" aria-current="true">
+								<span class="step-marker" aria-hidden="true"></span>
+								<span class="step-number">01</span>
+								<span class="step-copy"><b>Wybór maszyny</b><small>Toyota LPE200</small></span>
+							</button>
+						</li>
+						<li>
+							<button class="demo-step" type="button" data-time="12">
+								<span class="step-marker" aria-hidden="true"></span>
+								<span class="step-number">02</span>
+								<span class="step-copy"><b>Zgłoszenie problemu</b><small>„Mam błąd 2:010”</small></span>
+							</button>
+						</li>
+						<li>
+							<button class="demo-step" type="button" data-time="27">
+								<span class="step-marker" aria-hidden="true"></span>
+								<span class="step-number">03</span>
+								<span class="step-copy"><b>Analiza dokumentacji</b><small>Instrukcje i biuletyny serwisowe</small></span>
+							</button>
+						</li>
+						<li>
+							<button class="demo-step" type="button" data-time="43">
+								<span class="step-marker" aria-hidden="true"></span>
+								<span class="step-number">04</span>
+								<span class="step-copy"><b>Kolejne działanie</b><small>Kontrola magistrali CAN</small></span>
+							</button>
+						</li>
+					</ol>
+					<div class="video-tablet">
+						<div class="video-frame">
+							<video
+								autoplay
+								muted
+								loop
+								playsinline
+								preload="auto"
+								aria-label="Przykładowy przebieg pracy z aplikacją Fixo. Kliknij, aby wstrzymać lub wznowić."
+							>
+								<source src="/assets/video.mp4?v=demo-1" type="video/mp4" />
+								Twoja przeglądarka nie obsługuje odtwarzania wideo.
+							</video>
+							<button class="video-toggle" type="button" aria-label="Wstrzymaj film">
+								<span aria-hidden="true">Ⅱ</span>
+							</button>
 						</div>
-						<div class="demo-step active" role="listitem">
-							<span>2</span>
-							<div><b>Zgłoszenie problemu</b><small>„Mam błąd 2:010”</small></div>
-						</div>
-						<div class="demo-step" role="listitem">
-							<span>3</span>
-							<div>
-								<b>Analiza dokumentacji</b
-								><small>Instrukcje i biuletyny serwisowe</small>
-							</div>
-						</div>
-						<div class="demo-step" role="listitem">
-							<span>4</span>
-							<div>
-								<b>Kolejne działanie</b><small>Kontrola magistrali CAN</small>
-							</div>
-						</div>
-					</div>
-					<div class="video-frame">
-						<video
-							autoplay
-							muted
-							loop
-							playsinline
-							preload="auto"
-							aria-label="Przykładowy przebieg pracy z aplikacją Fixo. Kliknij, aby wstrzymać lub wznowić."
-						>
-							<source src="/assets/video.mp4?v=demo-1" type="video/mp4" />
-							Twoja przeglądarka nie obsługuje odtwarzania wideo.
-						</video>
-						<button class="video-toggle" type="button" aria-label="Wstrzymaj film">
-							<span aria-hidden="true">Ⅱ</span>
-						</button>
 					</div>
 				</div>
 			</section>
@@ -234,7 +345,13 @@
 					<div class="benefits-grid">
 						<article>
 							<strong>01</strong>
-							<div class="benefit-icon">↗</div>
+							<div class="benefit-icon" aria-hidden="true">
+								<svg viewBox="0 0 24 24">
+									<circle cx="12" cy="12" r="7"></circle>
+									<path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path>
+									<circle cx="12" cy="12" r="2"></circle>
+								</svg>
+							</div>
 							<h3>Szybsza diagnoza</h3>
 							<p>
 								Mniej czasu na szukanie informacji, więcej na właściwe działania
@@ -243,7 +360,12 @@
 						</article>
 						<article>
 							<strong>02</strong>
-							<div class="benefit-icon">✓</div>
+							<div class="benefit-icon" aria-hidden="true">
+								<svg viewBox="0 0 24 24">
+									<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"></path>
+									<path d="m9 12 2 2 4-4"></path>
+								</svg>
+							</div>
 							<h3>Mniej błędów</h3>
 							<p>
 								Większa spójność działań dzięki procedurom przedstawionym krok po
@@ -252,7 +374,12 @@
 						</article>
 						<article>
 							<strong>03</strong>
-							<div class="benefit-icon">⌁</div>
+							<div class="benefit-icon" aria-hidden="true">
+								<svg viewBox="0 0 24 24">
+									<circle cx="9" cy="7" r="4"></circle>
+									<path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M19 8v6M16 11h6"></path>
+								</svg>
+							</div>
 							<h3>Szybszy onboarding</h3>
 							<p>
 								Nowi technicy łatwiej korzystają z wiedzy, która dotąd była w
@@ -261,7 +388,12 @@
 						</article>
 						<article>
 							<strong>04</strong>
-							<div class="benefit-icon">▤</div>
+							<div class="benefit-icon" aria-hidden="true">
+								<svg viewBox="0 0 24 24">
+									<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+									<path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"></path>
+								</svg>
+							</div>
 							<h3>Dokumentacja w użyciu</h3>
 							<p>
 								Instrukcje i procedury stają się praktycznym narzędziem codziennej
@@ -272,7 +404,7 @@
 				</div>
 			</section>
 
-			<section class="content-section section-shell rollout-section">
+			<section class="content-section section-shell rollout-section" id="wdrozenie">
 				<div class="section-heading">
 					<p class="section-kicker">Bez rewolucji w całej firmie</p>
 					<h2>Jak wygląda wdrożenie</h2>
@@ -281,32 +413,64 @@
 						rozszerzamy rozwiązanie.
 					</p>
 				</div>
-				<div class="rollout-grid">
-					<article>
-						<span>01</span>
-						<h3>Przekazanie dokumentacji</h3>
-						<p>
-							Instrukcje, procedury i materiały serwisowe dotyczące wybranego zakresu.
-						</p>
-					</article>
-					<i></i>
-					<article>
-						<span>02</span>
-						<h3>Przygotowanie bazy wiedzy</h3>
-						<p>Porządkujemy wiedzę pod konkretne maszyny, dokumenty i przypadki.</p>
-					</article>
-					<i></i>
-					<article>
-						<span>03</span>
-						<h3>Testy na scenariuszach</h3>
-						<p>Sprawdzamy odpowiedzi na rzeczywistych błędach oraz procedurach.</p>
-					</article>
-					<i></i>
-					<article>
-						<span>04</span>
-						<h3>Pilotaż i wdrożenie</h3>
-						<p>Uruchamiamy Fixo dla wybranej grupy maszyn lub zespołu techników.</p>
-					</article>
+				<div class="rollout-layout">
+					<ol class="rollout-steps" aria-label="Etapy wdrożenia">
+						<li class="rollout-step">
+							<span class="rollout-number">01</span>
+							<span class="rollout-copy">
+								<span class="rollout-title">Przekazanie dokumentacji</span>
+								<span class="rollout-description">
+									Instrukcje, procedury i materiały serwisowe dotyczące wybranego
+									zakresu.
+								</span>
+							</span>
+						</li>
+						<li class="rollout-step">
+							<span class="rollout-number">02</span>
+							<span class="rollout-copy">
+								<span class="rollout-title">Przygotowanie bazy wiedzy</span>
+								<span class="rollout-description">
+									Porządkujemy wiedzę pod konkretne maszyny, dokumenty i przypadki.
+								</span>
+							</span>
+						</li>
+						<li class="rollout-step">
+							<span class="rollout-number">03</span>
+							<span class="rollout-copy">
+								<span class="rollout-title">Testy na scenariuszach</span>
+								<span class="rollout-description">
+									Sprawdzamy odpowiedzi na rzeczywistych błędach oraz procedurach.
+								</span>
+							</span>
+						</li>
+						<li class="rollout-step">
+							<span class="rollout-number">04</span>
+							<span class="rollout-copy">
+								<span class="rollout-title">Pilotaż i wdrożenie</span>
+								<span class="rollout-description">
+									Uruchamiamy Fixo dla wybranej grupy maszyn lub zespołu techników.
+								</span>
+							</span>
+						</li>
+					</ol>
+					<div
+						class="admin-preview"
+						role="img"
+						aria-label="Panel administracyjny Fixo w przeglądarce"
+					>
+						<div class="browser-bar admin-preview-bar" aria-hidden="true">
+							<span></span><span></span><span></span><i>admin.fixo.pl</i>
+						</div>
+						<div class="admin-preview-frame">
+							<img
+								src="/assets/admin.png?v=admin-2"
+								alt="Panel administracyjny Fixo z bazą wiedzy i dokumentacją"
+								width="2250"
+								height="1299"
+								loading="lazy"
+							/>
+						</div>
+					</div>
 				</div>
 			</section>
 
@@ -323,14 +487,26 @@
 					</div>
 					<div class="safety-cards">
 						<article>
-							<span>◈</span>
+							<span aria-hidden="true">
+								<svg viewBox="0 0 24 24">
+									<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+									<path d="M14 2v6h6M16 13H8M16 17H8M10 9H8"></path>
+								</svg>
+							</span>
 							<div>
 								<h3>Odpowiedzi oparte na dokumentacji</h3>
 								<p>Każda odpowiedź powstaje w kontekście firmowej bazy wiedzy.</p>
 							</div>
 						</article>
 						<article>
-							<span>⌕</span>
+							<span aria-hidden="true">
+								<svg viewBox="0 0 24 24">
+									<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h8"></path>
+									<path d="M14 2v6h6M9 13h2"></path>
+									<circle cx="16" cy="16" r="3"></circle>
+									<path d="m18.5 18.5 2.5 2.5"></path>
+								</svg>
+							</span>
 							<div>
 								<h3>Podgląd źródeł</h3>
 								<p>
@@ -339,7 +515,14 @@
 							</div>
 						</article>
 						<article>
-							<span>▣</span>
+							<span aria-hidden="true">
+								<svg viewBox="0 0 24 24">
+									<path d="M21 4h-7M10 4H3M21 12h-5M12 12H3M21 20h-8M9 20H3"></path>
+									<circle cx="12" cy="4" r="2"></circle>
+									<circle cx="14" cy="12" r="2"></circle>
+									<circle cx="11" cy="20" r="2"></circle>
+								</svg>
+							</span>
 							<div>
 								<h3>Kontrolowany zakres</h3>
 								<p>
@@ -349,7 +532,12 @@
 							</div>
 						</article>
 						<article>
-							<span>✓</span>
+							<span aria-hidden="true">
+								<svg viewBox="0 0 24 24">
+									<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"></path>
+									<path d="m9 12 2 2 4-4"></path>
+								</svg>
+							</span>
 							<div>
 								<h3>Większa kontrola jakości</h3>
 								<p>
@@ -379,7 +567,11 @@
 						</ul>
 					</div>
 					<div class="pilot-actions">
-						<a class="button" href="#kontakt">Umów demo <span>→</span></a
+						<a class="button" href="#kontakt"
+							>Umów demo
+							<span class="button-arrow" aria-hidden="true">
+								<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+							</span></a
 						><a class="button button-secondary" href="#kontakt"
 							>Porozmawiaj o pilotażu</a
 						>
@@ -441,7 +633,10 @@
 								placeholder="Opowiedz krótko, jakie maszyny lub proces serwisowy chcesz objąć pilotażem."
 							></textarea></label
 						><button class="button form-submit" type="submit">
-							Umów demo <span>→</span>
+							Umów demo
+							<span class="button-arrow" aria-hidden="true">
+								<svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"></path></svg>
+							</span>
 						</button>
 						<p class="form-note" id="form-note">
 							Kliknięcie otworzy przygotowaną wiadomość w Twoim programie pocztowym.
@@ -466,6 +661,39 @@
 		<script>
 			const productVideo = document.querySelector('.video-frame video');
 			const videoToggle = document.querySelector('.video-toggle');
+			const demoSteps = [...document.querySelectorAll('.demo-step')];
+			const stepTimes = demoSteps.map((step) => Number(step.dataset.time));
+			let activeStepIndex = -1;
+
+			const updateActiveStep = () => {
+				const safeActiveIndex = stepTimes.reduce(
+					(activeIndex, time, index) =>
+						productVideo.currentTime >= time ? index : activeIndex,
+					0,
+				);
+				if (safeActiveIndex === activeStepIndex) return;
+
+				activeStepIndex = safeActiveIndex;
+				demoSteps.forEach((step, index) => {
+					const isActive = index === activeStepIndex;
+					step.classList.toggle('active', isActive);
+					step.classList.toggle('complete', index < activeStepIndex);
+					if (isActive) step.setAttribute('aria-current', 'true');
+					else step.removeAttribute('aria-current');
+				});
+			};
+
+			demoSteps.forEach((step) => {
+				step.addEventListener('click', () => {
+					const requestedTime = Number(step.dataset.time);
+					productVideo.currentTime = Number.isFinite(productVideo.duration)
+						? Math.min(requestedTime, productVideo.duration)
+						: requestedTime;
+					productVideo.play().catch(updateVideoToggle);
+					updateActiveStep();
+				});
+			});
+
 			const updateVideoToggle = () => {
 				const paused = productVideo.paused;
 				videoToggle.setAttribute('aria-label', paused ? 'Wznów film' : 'Wstrzymaj film');
@@ -478,8 +706,11 @@
 			productVideo.addEventListener('click', toggleProductVideo);
 			productVideo.addEventListener('play', updateVideoToggle);
 			productVideo.addEventListener('pause', updateVideoToggle);
+			productVideo.addEventListener('timeupdate', updateActiveStep);
+			productVideo.addEventListener('loadedmetadata', updateActiveStep);
 			videoToggle.addEventListener('click', toggleProductVideo);
 			updateVideoToggle();
+			updateActiveStep();
 
 			document.getElementById('demo-form').addEventListener('submit', function (event) {
 				event.preventDefault();
