@@ -247,9 +247,14 @@ async def retrieve_context_chunks(
     *,
     diagnostic_mode_enabled: bool = False,
     retrieval_trace: dict[str, Any] | None = None,
+    reranking_enabled_override: bool | None = None,
 ) -> list[RetrievedChunk]:
     target_language = get_device_document_language(device_id)
-    reranking_enabled = settings.reranker_enabled and not diagnostic_mode_enabled
+    reranking_enabled = (
+        reranking_enabled_override
+        if reranking_enabled_override is not None
+        else settings.reranker_enabled and not diagnostic_mode_enabled
+    )
     semantic_limit = RERANKED_SEMANTIC_LIMIT if reranking_enabled else SEMANTIC_LIMIT
     bm25_limit = RERANKED_BM25_LIMIT if reranking_enabled else BM25_LIMIT
 

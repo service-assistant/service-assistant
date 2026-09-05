@@ -6,10 +6,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.benchmarks.dataset import BenchmarkDataset, load_benchmark_dataset
-from app.benchmarks.exceptions import (
-    BenchmarkCancelledError,
-    BenchmarkStorageError,
-)
+from app.benchmarks.exceptions import BenchmarkCancelledError
 from app.benchmarks.runs import (
     BenchmarkCaseRun,
     BenchmarkSetupRun,
@@ -20,8 +17,7 @@ from app.config import Settings
 from app.database import database_url_with_driver, get_engine
 from app.dependencies.database import DbSessionDependency
 from app.dependencies.settings import SettingsDependency
-from app.services.async_utils import run_blocking
-from app.services.benchmark import documents, runner, setup
+from app.services.benchmark import runner, setup
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,7 +28,6 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-_benchmark_download_lock = asyncio.Lock()
 _benchmark_setup_lock = asyncio.Lock()
 _benchmark_setup_runs: dict[str, BenchmarkSetupRun] = {}
 _benchmark_case_runs: dict[str, BenchmarkCaseRun] = {}
@@ -149,32 +144,6 @@ async def cancel_benchmark_case_run(run_id: str):
     if cancellation_event is not None:
         cancellation_event.set()
     return _serialize_benchmark_case_run(run)
-
-
-@router.get("/documents/status")
-async def get_benchmark_documents_status(settings: SettingsDependency):
-    try:
-        return await run_blocking(documents.get_document_status, settings)
-    except BenchmarkStorageError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
-
-
-@router.post("/documents/download")
-async def download_benchmark_documents(settings: SettingsDependency):
-    try:
-        async with _benchmark_download_lock:
-            return await run_blocking(
-                documents.download_missing_documents,
-                settings,
-            )
-    except BenchmarkStorageError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=str(exc),
-        ) from exc
 
 
 def _serialize_benchmark_setup(run: BenchmarkSetupRun) -> dict:

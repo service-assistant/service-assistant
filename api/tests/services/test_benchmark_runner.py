@@ -9,8 +9,16 @@ from app.benchmarks.cancellation import await_with_cancellation
 from app.benchmarks.dataset import load_benchmark_dataset
 from app.benchmarks.exceptions import BenchmarkCancelledError
 from app.config import Settings
+from app.models import Device
 from app.services.benchmark import runner as benchmark_runner
 from app.services.benchmark.judge import judge_answer, judge_chunks
+from app.services.chat.agent.models import (
+    CaseContext,
+    MachineContext,
+    Observation,
+    RetrievalQueryPlan,
+    Symptom,
+)
 
 
 def test_pass_thresholds_require_seven_of_eight_facts():
@@ -98,6 +106,109 @@ def test_assistant_response_time_should_use_only_generation_duration():
     }
 
     assert benchmark_runner._assistant_response_time_ms(turn) == 1567
+
+
+async def test_agent_benchmark_should_stop_after_retrieval_without_answer(mocker):
+    case = next(
+        item
+        for item in load_benchmark_dataset().cases
+        if item.id == "click_2_creep_colloquial_controls"
+    )
+    machine = MachineContext(
+        device_id=7,
+        name="LPE200",
+        model_serial_code="LPE200-TEST",
+        nameplate_data=None,
+    )
+    case_context = CaseContext(
+        machine=machine,
+        symptom=Symptom(
+            raw=case.question,
+            search_phrase="creep speed with raised tiller arm",
+        ),
+        observations=[
+            Observation(
+                type="control_input",
+                value="travel control tapped twice",
+                certainty="certain",
+            )
+        ],
+    )
+    query_plan = RetrievalQueryPlan(
+        base_queries=["creep speed raised tiller"],
+        contextual_queries=["travel control tapped twice creep speed"],
+    )
+    queries = [
+        case_context.symptom.search_phrase,
+        *query_plan.base_queries,
+        *query_plan.contextual_queries,
+    ]
+    mocker.patch(
+        "app.services.benchmark.runner.agent_engine.prepare_case",
+        new=mocker.AsyncMock(return_value=(case_context, query_plan, queries)),
+    )
+
+    async def retrieve(*args, retrieval_trace, **kwargs):
+        del args, kwargs
+        chunk = {
+            "id": 11,
+            "attachment_id": 3,
+            "content": "Click-2-Creep and SLO",
+            "extra_metadata": {"page": 48},
+        }
+        retrieval_trace.update(
+            {
+                "reranker_enabled": True,
+                "reranker_status": "applied",
+                "fusion_method": "reciprocal_rank_fusion",
+                "global_reranker_query": "\n".join(queries),
+                "before_reranker": [chunk],
+                "after_reranker": [chunk],
+                "queries": [
+                    {
+                        "query": query,
+                        "chunks": [chunk],
+                    }
+                    for query in queries
+                ],
+            }
+        )
+        return [chunk]
+
+    mocker.patch(
+        "app.services.benchmark.runner.pipeline.retrieve_for_agent_queries",
+        side_effect=retrieve,
+    )
+    mocker.patch(
+        "app.services.benchmark.runner._attachment_names",
+        new=mocker.AsyncMock(return_value={3: "manual.pdf"}),
+    )
+
+    result = await benchmark_runner._run_agent_retrieval_benchmark(
+        case=case,
+        device=Device(
+            id=7,
+            name="LPE200",
+            model_serial_code="LPE200-TEST",
+            image_url=None,
+            category_id=1,
+        ),
+        settings=cast(Settings, SimpleNamespace()),
+        session=mocker.AsyncMock(),
+        cancellation_event=None,
+    )
+
+    assert result["mode"] == "agent"
+    assert result["pipeline_stage"] == "retrieval_completed"
+    assert result["case_context"]["symptom"]["search_phrase"] == (
+        "creep speed with raised tiller arm"
+    )
+    assert result["query_plan"]["base_queries"] == ["creep speed raised tiller"]
+    assert len(result["query_runs"]) == 3
+    assert result["fusion_method"] == "reciprocal_rank_fusion"
+    assert result["chunks_after_reranker"][0]["source_name"] == "manual.pdf"
+    assert "answer" not in result
+    assert "judge" not in result
 
 
 async def test_cancellation_should_interrupt_active_async_operation():
