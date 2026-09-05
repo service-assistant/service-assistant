@@ -2,7 +2,7 @@ from pathlib import Path
 
 import fitz
 
-from app.services.extract_images import (
+from app.services.ingest.extract_images import (
     extract_page_images,
     normalize_for_png,
     save_drawing_region,
@@ -11,9 +11,9 @@ from app.services.extract_images import (
 
 def test_extract_page_images(mocker, tmp_path: Path):
     mock_save_drawing_region = mocker.patch(
-        "app.services.extract_images.save_drawing_region"
+        "app.services.ingest.extract_images.save_drawing_region"
     )
-    mock_pixmap = mocker.patch("app.services.extract_images.Pixmap")
+    mock_pixmap = mocker.patch("app.services.ingest.extract_images.Pixmap")
 
     mock_doc = mocker.Mock()
     page = mocker.Mock()
@@ -50,7 +50,7 @@ def test_normalize_for_png_converts_unsupported_colorspace(mocker):
     pix.colorspace.name = "DeviceN"
     converted = mocker.Mock()
     mock_pixmap = mocker.patch(
-        "app.services.extract_images.Pixmap", return_value=converted
+        "app.services.ingest.extract_images.Pixmap", return_value=converted
     )
 
     result = normalize_for_png(pix)

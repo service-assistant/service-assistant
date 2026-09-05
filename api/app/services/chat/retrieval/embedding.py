@@ -3,7 +3,7 @@ from typing import TypedDict
 from openai import AsyncAzureOpenAI
 
 
-from ..config import Settings
+from app.config import Settings
 
 
 class RetrievedChunk(TypedDict):

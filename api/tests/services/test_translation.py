@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.translation import (
+from app.services.chat.retrieval.translation import (
     TranslationError,
     protect_codes,
     restore_codes,
@@ -80,7 +80,9 @@ async def test_translate_query_returns_translation_when_no_codes(mocker, setting
     response_mock = mocker.MagicMock()
     response_mock.output_text = "How to reset the device?"
     client_mock.responses.create.return_value = response_mock
-    mocker.patch("app.services.translation.AsyncOpenAI", return_value=client_mock)
+    mocker.patch(
+        "app.services.chat.retrieval.translation.AsyncOpenAI", return_value=client_mock
+    )
 
     result = await translate_query("Jak zresetować urządzenie?", settings)
 
@@ -94,7 +96,9 @@ async def test_translate_query_restores_codes_after_translation(mocker, settings
     response_mock = mocker.MagicMock()
     response_mock.output_text = "error __CODE_0__ hydraulic"
     client_mock.responses.create.return_value = response_mock
-    mocker.patch("app.services.translation.AsyncOpenAI", return_value=client_mock)
+    mocker.patch(
+        "app.services.chat.retrieval.translation.AsyncOpenAI", return_value=client_mock
+    )
 
     result = await translate_query("błąd E-23 hydrauliczny", settings)
 
@@ -104,7 +108,9 @@ async def test_translate_query_restores_codes_after_translation(mocker, settings
 async def test_translate_query_fallbacks_on_api_error(mocker, settings):
     client_mock = mocker.AsyncMock()
     client_mock.responses.create.side_effect = Exception("api error")
-    mocker.patch("app.services.translation.AsyncOpenAI", return_value=client_mock)
+    mocker.patch(
+        "app.services.chat.retrieval.translation.AsyncOpenAI", return_value=client_mock
+    )
 
     result = await translate_query("błąd E-23", settings)
 
@@ -116,7 +122,9 @@ async def test_translate_query_fallbacks_when_placeholder_is_damaged(mocker, set
     response_mock = mocker.MagicMock()
     response_mock.output_text = "error hydraulic"  # placeholder disappeared
     client_mock.responses.create.return_value = response_mock
-    mocker.patch("app.services.translation.AsyncOpenAI", return_value=client_mock)
+    mocker.patch(
+        "app.services.chat.retrieval.translation.AsyncOpenAI", return_value=client_mock
+    )
 
     result = await translate_query("błąd E-23", settings)
 

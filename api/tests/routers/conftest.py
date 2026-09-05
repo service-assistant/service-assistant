@@ -26,7 +26,7 @@ def block_unmocked_router_openai_calls(mocker):
         return_value=mocker.MagicMock(output_text="translated query")
     )
     mocker.patch(
-        "app.services.translation.AsyncOpenAI",
+        "app.services.chat.retrieval.translation.AsyncOpenAI",
         return_value=translation_client,
     )
 
@@ -124,7 +124,10 @@ def mock_azure_embeddings(mocker):
     mock_response = mocker.MagicMock()
     mock_response.data = [mocker.MagicMock(embedding=[0.0] * 1536)]
     mock_client.embeddings.create = mocker.AsyncMock(return_value=mock_response)
-    mocker.patch("app.services.embedding.AsyncAzureOpenAI", return_value=mock_client)
+    mocker.patch(
+        "app.services.chat.retrieval.embedding.AsyncAzureOpenAI",
+        return_value=mock_client,
+    )
     return mock_client
 
 

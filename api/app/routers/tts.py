@@ -6,7 +6,7 @@ from fastapi.responses import Response
 
 from app.config import Settings, get_settings
 from app.schemas import TtsRequest
-from app.services import tts
+from app.services.voice import tts
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

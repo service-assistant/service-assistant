@@ -1,11 +1,11 @@
 from app.config import get_settings
 from app.main import app
-from app.services.tts import TtsError
+from app.services.voice.tts import TtsError
 
 
 async def test_member_can_synthesize_speech(member_client, mocker):
     mocker.patch(
-        "app.services.tts.synthesize_pcm",
+        "app.services.voice.tts.synthesize_pcm",
         mocker.AsyncMock(return_value=b"\x01\x02\x03\x04"),
     )
 
@@ -16,7 +16,7 @@ async def test_member_can_synthesize_speech(member_client, mocker):
 
 async def test_should_synthesize_speech_as_wav(client, mocker):
     mock_synthesize = mocker.patch(
-        "app.services.tts.synthesize_pcm",
+        "app.services.voice.tts.synthesize_pcm",
         mocker.AsyncMock(return_value=b"\x01\x02\x03\x04"),
     )
 
@@ -35,7 +35,7 @@ async def test_should_synthesize_speech_as_wav(client, mocker):
 
 async def test_should_use_requested_tts_voice(client, mocker):
     mock_synthesize = mocker.patch(
-        "app.services.tts.synthesize_pcm",
+        "app.services.voice.tts.synthesize_pcm",
         mocker.AsyncMock(return_value=b"\x01\x02\x03\x04"),
     )
 
@@ -56,7 +56,7 @@ async def test_should_use_requested_tts_voice(client, mocker):
 
 
 async def test_should_reject_unsupported_tts_style(client, mocker):
-    mock_synthesize = mocker.patch("app.services.tts.synthesize_pcm")
+    mock_synthesize = mocker.patch("app.services.voice.tts.synthesize_pcm")
 
     response = await client.post(
         "/api/tts", json={"text": "Dzien dobry", "style": "unknown"}
@@ -67,7 +67,7 @@ async def test_should_reject_unsupported_tts_style(client, mocker):
 
 
 async def test_should_reject_unsupported_tts_voice(client, mocker):
-    mock_synthesize = mocker.patch("app.services.tts.synthesize_pcm")
+    mock_synthesize = mocker.patch("app.services.voice.tts.synthesize_pcm")
 
     response = await client.post(
         "/api/tts", json={"text": "Dzien dobry", "voice": "Unknown"}
@@ -91,7 +91,7 @@ async def test_should_return_503_when_tts_is_not_configured(client):
 
 async def test_should_return_502_when_tts_provider_fails(client, mocker):
     mocker.patch(
-        "app.services.tts.synthesize_pcm",
+        "app.services.voice.tts.synthesize_pcm",
         mocker.AsyncMock(side_effect=TtsError("Invalid JSON in Gemini TTS response")),
     )
 
@@ -102,7 +102,7 @@ async def test_should_return_502_when_tts_provider_fails(client, mocker):
 
 
 async def test_should_return_422_for_whitespace_only_text(client, mocker):
-    mock_synthesize = mocker.patch("app.services.tts.synthesize_pcm")
+    mock_synthesize = mocker.patch("app.services.voice.tts.synthesize_pcm")
 
     response = await client.post("/api/tts", json={"text": " \t\n"})
 

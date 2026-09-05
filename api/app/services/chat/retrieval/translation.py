@@ -2,7 +2,7 @@ import re
 
 from openai import AsyncOpenAI
 
-from ..config import Settings
+from app.config import Settings
 
 # Match complete candidate tokens, including separators that are currently not
 # supported. Including ``/`` and ``_`` here prevents protecting only a numeric

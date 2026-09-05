@@ -1,4 +1,4 @@
-from app.services.chunking import chunk_page
+from app.services.ingest.chunking import chunk_page
 
 
 def test_chunk_page_splits_oversized_table_rows():

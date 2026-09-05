@@ -10,11 +10,12 @@ import logging
 from procrastinate.types import JSONDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import utcnow
-from ..models import Attachment, IngestionStatus
-from ..procrastinate_app import app as procrastinate_app
-from ..services.ingest import IngestReport
-from ..tasks.ingest import _report_columns, ingest
+from app.database import utcnow
+from app.models import Attachment, IngestionStatus
+from app.procrastinate_app import app as procrastinate_app
+from app.tasks.ingest import _report_columns, ingest
+
+from .pipeline import IngestReport
 
 logger = logging.getLogger(__name__)
 

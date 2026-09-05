@@ -1,5 +1,5 @@
 from app.schemas import NameplateAttribute, NameplateData
-from app.services.nameplate_ocr import (
+from app.services.nameplate import (
     NameplateNotFoundError,
     NameplateOcrTimeoutError,
 )

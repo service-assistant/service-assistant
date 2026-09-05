@@ -1,8 +1,8 @@
 import httpx
 import pytest
 
-from app.services.embedding import RetrievedChunk
-from app.services.reranker import RerankerError, rerank_chunks
+from app.services.chat.retrieval.embedding import RetrievedChunk
+from app.services.chat.retrieval.reranker import RerankerError, rerank_chunks
 
 
 def _chunk(chunk_id: int, content: str) -> RetrievedChunk:
@@ -47,7 +47,9 @@ async def test_reranker_sends_translated_query_and_content_only_documents(
             captured.update(url=url, headers=headers, json=json)
             return FakeResponse()
 
-    mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
+    mocker.patch(
+        "app.services.chat.retrieval.reranker.httpx.AsyncClient", FakeAsyncClient
+    )
 
     result = await rerank_chunks("przetłumaczone pytanie", chunks, settings)
 
@@ -119,7 +121,9 @@ async def test_reranker_rejects_invalid_or_incomplete_responses(
         async def post(self, *args, **kwargs):
             return FakeResponse()
 
-    mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
+    mocker.patch(
+        "app.services.chat.retrieval.reranker.httpx.AsyncClient", FakeAsyncClient
+    )
 
     with pytest.raises(RerankerError):
         await rerank_chunks("query", chunks, settings)
@@ -143,8 +147,10 @@ async def test_reranker_converts_http_and_connection_failures_to_reranker_errors
         async def post(self, *args, **kwargs):
             raise httpx.ReadTimeout("provider timeout")
 
-    mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
-    sleep = mocker.patch("app.services.reranker.asyncio.sleep")
+    mocker.patch(
+        "app.services.chat.retrieval.reranker.httpx.AsyncClient", FakeAsyncClient
+    )
+    sleep = mocker.patch("app.services.chat.retrieval.reranker.asyncio.sleep")
 
     with pytest.raises(RerankerError):
         await rerank_chunks("query", [_chunk(1, "first")], settings)
@@ -171,8 +177,10 @@ async def test_reranker_rejects_non_success_http_status(settings, mocker):
         async def post(self, *args, **kwargs):
             return FakeResponse()
 
-    mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
-    sleep = mocker.patch("app.services.reranker.asyncio.sleep")
+    mocker.patch(
+        "app.services.chat.retrieval.reranker.httpx.AsyncClient", FakeAsyncClient
+    )
+    sleep = mocker.patch("app.services.chat.retrieval.reranker.asyncio.sleep")
 
     with pytest.raises(RerankerError):
         await rerank_chunks("query", [_chunk(1, "first")], settings)
@@ -204,8 +212,10 @@ async def test_reranker_retries_rate_limit_and_then_succeeds(settings, mocker):
         async def post(self, *args, **kwargs):
             return FakeResponse(responses.pop(0))
 
-    mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
-    sleep = mocker.patch("app.services.reranker.asyncio.sleep")
+    mocker.patch(
+        "app.services.chat.retrieval.reranker.httpx.AsyncClient", FakeAsyncClient
+    )
+    sleep = mocker.patch("app.services.chat.retrieval.reranker.asyncio.sleep")
 
     result = await rerank_chunks("query", [_chunk(1, "first")], settings)
 

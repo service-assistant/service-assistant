@@ -2,10 +2,8 @@ from types import SimpleNamespace
 from typing import cast
 
 from app.config import Settings
-from app.services.chat.pipeline import (
-    retrieve_for_agent_queries,
-    retrieve_for_queries,
-)
+from app.services.chat.agent.retrieval import retrieve_for_agent_queries
+from app.services.chat.retrieval import retrieve_for_queries
 
 
 async def test_should_fuse_and_deduplicate_multi_query_results(mocker):
@@ -18,7 +16,7 @@ async def test_should_fuse_and_deduplicate_multi_query_results(mocker):
         {"id": 3, "content": "C", "attachment_id": 1, "extra_metadata": None},
     ]
     retrieve = mocker.patch(
-        "app.services.chat.pipeline.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.queries.service.retrieve_context_chunks",
         new_callable=mocker.AsyncMock,
         side_effect=[first, second],
     )
@@ -52,12 +50,12 @@ async def test_agent_queries_should_fuse_before_one_global_rerank(mocker):
         {"id": 3, "content": "C", "attachment_id": 1, "extra_metadata": None},
     ]
     retrieve = mocker.patch(
-        "app.services.chat.pipeline.retrieval.retrieve_context_chunks",
+        "app.services.chat.agent.retrieval.service.retrieve_context_chunks",
         new_callable=mocker.AsyncMock,
         side_effect=[first, second],
     )
     rerank = mocker.patch(
-        "app.services.chat.pipeline.rerank_chunks",
+        "app.services.chat.agent.retrieval.reranker.rerank_chunks",
         new_callable=mocker.AsyncMock,
         return_value=[first[0], second[1], first[1]],
     )

@@ -7,7 +7,7 @@ import pytest
 from app.config import get_settings
 from app.main import app
 from app.models import ChatThread, ChunkMessage, Message, MessageSender, OrgRole
-from app.services import retrieval as retrieval_module
+from app.services.chat.retrieval import service as retrieval_module
 from app.services.chat.common import sse as _sse
 from app.services.chat.diagnostic.next_best_step import (
     DiagnosticPlan,
@@ -15,8 +15,8 @@ from app.services.chat.diagnostic.next_best_step import (
     cache_diagnostic_plan,
 )
 from app.services.chat.diagnostic.router import MessageRoute, RouteDecision
-from app.services.stt import SttError
-from app.services.voice_query_selector import VoiceDecision, VoiceQuerySelection
+from app.services.voice.stt import SttError
+from app.services.voice.query_selector import VoiceDecision, VoiceQuerySelection
 from sqlalchemy import select
 from tests.routers.factories import (
     create_attachment,
@@ -115,7 +115,9 @@ def _mock_voyage_http(mocker, respond) -> dict:
             captured["posts"] += 1
             return respond(len(json["documents"]))
 
-    mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
+    mocker.patch(
+        "app.services.chat.retrieval.reranker.httpx.AsyncClient", FakeAsyncClient
+    )
     return captured
 
 
@@ -324,7 +326,7 @@ async def test_photo_context_augments_retrieval_and_keeps_original_user_message(
     device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     retrieve = mocker.patch(
-        "app.services.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.service.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
 
@@ -393,7 +395,7 @@ async def test_standard_mode_should_not_use_diagnostic_flow_for_exhausted_contin
         new=mocker.AsyncMock(),
     )
     retrieve_context_chunks = mocker.patch(
-        "app.services.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.service.retrieve_context_chunks",
         new=mocker.AsyncMock(),
     )
 
@@ -424,7 +426,7 @@ async def test_should_start_diagnostic_for_any_error_when_mode_is_enabled(
     )
     mocker.patch.object(DiagnosticPlan, "has_next_action", return_value=True)
     mocker.patch(
-        "app.services.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.service.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
     response = await client.post(
@@ -447,7 +449,7 @@ async def test_should_emit_pipeline_trace_when_debug_is_requested(
     device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     mocker.patch(
-        "app.services.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.service.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
     mocker.patch(
@@ -528,7 +530,7 @@ async def test_should_send_side_question_through_standard_rag_during_diagnostic(
         new=mocker.AsyncMock(return_value=(True, "should not be used")),
     )
     mocker.patch(
-        "app.services.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.service.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
     mocker.patch(
@@ -582,7 +584,7 @@ async def test_should_reconstruct_diagnostic_from_history_for_any_problem(
         ),
     )
     mocker.patch(
-        "app.services.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.service.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
     mocker.patch(
@@ -797,9 +799,9 @@ async def test_should_transcribe_audio_when_thread_exists(client, session, mocke
     mock_http.post = mocker.AsyncMock(return_value=mock_response)
     mock_http.__aenter__ = mocker.AsyncMock(return_value=mock_http)
     mock_http.__aexit__ = mocker.AsyncMock(return_value=False)
-    mocker.patch("app.services.stt.httpx.AsyncClient", return_value=mock_http)
+    mocker.patch("app.services.voice.stt.httpx.AsyncClient", return_value=mock_http)
     selector = mocker.patch(
-        "app.routers.threads.voice_query_selector.select_technician_query",
+        "app.routers.threads.query_selector.select_technician_query",
         new=mocker.AsyncMock(
             return_value=VoiceQuerySelection(
                 decision=VoiceDecision.accept,
@@ -852,7 +854,7 @@ async def test_should_return_502_when_stt_service_fails(client, session, mocker)
     mock_http.post = mocker.AsyncMock(return_value=mock_response)
     mock_http.__aenter__ = mocker.AsyncMock(return_value=mock_http)
     mock_http.__aexit__ = mocker.AsyncMock(return_value=False)
-    mocker.patch("app.services.stt.httpx.AsyncClient", return_value=mock_http)
+    mocker.patch("app.services.voice.stt.httpx.AsyncClient", return_value=mock_http)
 
     response = await client.post(
         f"/api/threads/{thread.id}/messages/transcribe",
@@ -886,7 +888,10 @@ async def test_should_not_leave_orphaned_user_message_when_retrieval_fails(
     mock_client.embeddings.create = mocker.AsyncMock(
         side_effect=Exception("Azure embedding service down")
     )
-    mocker.patch("app.services.embedding.AsyncAzureOpenAI", return_value=mock_client)
+    mocker.patch(
+        "app.services.chat.retrieval.embedding.AsyncAzureOpenAI",
+        return_value=mock_client,
+    )
 
     # Unhandled exceptions may propagate through starlette BaseHTTPMiddleware
     # rather than being caught as 500 responses — handle both cases.
@@ -1003,7 +1008,7 @@ async def test_should_return_completion_without_retrieval_when_no_next_was_promi
         sender=MessageSender.assistant,
     )
     retrieve_context_chunks = mocker.patch(
-        "app.services.retrieval.retrieve_context_chunks",
+        "app.services.chat.retrieval.service.retrieve_context_chunks",
         new=mocker.AsyncMock(),
     )
 

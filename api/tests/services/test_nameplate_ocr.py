@@ -3,8 +3,8 @@ import asyncio
 import pytest
 
 from app.schemas import NameplateAttribute
-from app.services import nameplate_ocr
-from app.services.nameplate_ocr import (
+from app.services.nameplate import ocr as nameplate_ocr
+from app.services.nameplate.ocr import (
     NameplateNotFoundError,
     NameplateOcrError,
     NameplateOcrTimeoutError,

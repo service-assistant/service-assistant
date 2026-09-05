@@ -1,7 +1,7 @@
 import json
 from types import SimpleNamespace
 
-from app.services.voice_query_selector import (
+from app.services.voice.query_selector import (
     VoiceDecision,
     VoiceQuerySelection,
     select_technician_query,
@@ -28,7 +28,7 @@ async def test_selects_exact_technician_question_with_luna(mocker, settings):
         )
     )
     mocker.patch(
-        "app.services.voice_query_selector.AsyncOpenAI", return_value=mock_client
+        "app.services.voice.query_selector.AsyncOpenAI", return_value=mock_client
     )
 
     selection = await select_technician_query(transcript, settings)
@@ -55,7 +55,7 @@ async def test_rejects_text_modified_by_selector(mocker, settings):
         )
     )
     mocker.patch(
-        "app.services.voice_query_selector.AsyncOpenAI", return_value=mock_client
+        "app.services.voice.query_selector.AsyncOpenAI", return_value=mock_client
     )
 
     selection = await select_technician_query(transcript, settings)
@@ -76,7 +76,7 @@ async def test_accepts_best_exact_fragment_even_with_low_confidence(mocker, sett
         )
     )
     mocker.patch(
-        "app.services.voice_query_selector.AsyncOpenAI", return_value=mock_client
+        "app.services.voice.query_selector.AsyncOpenAI", return_value=mock_client
     )
 
     selection = await select_technician_query("...błąd dwa", settings)

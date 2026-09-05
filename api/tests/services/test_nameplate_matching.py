@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.nameplate_matching import (
+from app.services.nameplate.matching import (
     normalize_identifier,
     rank_device_candidates,
     select_automatic_family_match,

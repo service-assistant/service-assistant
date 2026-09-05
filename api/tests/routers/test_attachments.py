@@ -5,7 +5,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Attachment, AttachmentDevice, Chunk, Device, IngestionStatus
-from app.services import ingestion_queue
+from app.services.ingest import queue as ingestion_queue
 
 from tests.routers.factories import (
     create_category,

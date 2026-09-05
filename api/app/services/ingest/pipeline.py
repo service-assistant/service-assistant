@@ -16,13 +16,14 @@ from openai import AsyncAzureOpenAI, AsyncOpenAI
 from sqlalchemy import delete as sql_delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import Settings
-from ..models import Chunk
-from .async_utils import run_blocking
+from app.config import Settings
+from app.models import Chunk
+
+from ..async_utils import run_blocking
 from .chunking import chunk_page
-from .describe_image import describe_images
+from .describe_images import describe_images
 from .extract_images import extract_page_images
-from .process_ocr_text import process_ocr_text
+from .ocr_text import process_ocr_text
 
 
 OCR_MAX_IMAGE_BYTES = 3_500_000

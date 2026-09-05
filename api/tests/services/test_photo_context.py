@@ -1,5 +1,5 @@
 from app.schemas import PhotoObservation
-from app.services import photo_context
+from app.services.chat import photo_context
 
 
 def _settings(mocker):

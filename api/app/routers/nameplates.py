@@ -5,15 +5,13 @@ from app.dependencies.auth import CurrentOrganizationDependency
 from app.dependencies.database import DbSessionDependency
 from app.repositories import DeviceRepository
 from app.schemas import NameplateRecognitionResponse
-from app.services.nameplate_matching import (
-    rank_device_candidates,
-    select_automatic_family_match,
-)
-from app.services.nameplate_ocr import (
+from app.services.nameplate import (
     NameplateNotFoundError,
     NameplateOcrError,
     NameplateOcrTimeoutError,
+    rank_device_candidates,
     recognize_nameplate,
+    select_automatic_family_match,
 )
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 

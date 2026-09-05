@@ -1,8 +1,8 @@
 import httpx
 import pytest
 
-from app.services.embedding import RetrievedChunk
-from app.services.retrieval import (
+from app.services.chat.retrieval.embedding import RetrievedChunk
+from app.services.chat.retrieval.service import (
     get_bm25_chunks,
     get_exact_match_chunks,
     get_semantic_chunks,
@@ -173,11 +173,11 @@ async def test_retrieve_context_chunks_uses_original_query_for_semantic_search(
     )
 
     mocker.patch(
-        "app.services.retrieval.embed_question",
+        "app.services.chat.retrieval.service.embed_question",
         return_value=_embedding(1.0),
     )
     mocker.patch(
-        "app.services.retrieval.translate_query",
+        "app.services.chat.retrieval.service.translate_query",
         return_value="drive belt replacement",
     )
 
@@ -216,11 +216,11 @@ async def test_retrieve_context_chunks_uses_translated_query_for_bm25(
     )
 
     mocker.patch(
-        "app.services.retrieval.embed_question",
+        "app.services.chat.retrieval.service.embed_question",
         return_value=_embedding(1.0),
     )
     mocker.patch(
-        "app.services.retrieval.translate_query",
+        "app.services.chat.retrieval.service.translate_query",
         return_value="how to replace the drive belt",
     )
 
@@ -261,11 +261,11 @@ async def test_retrieve_context_chunks_order_exact_then_semantic_then_bm25(
     )
 
     mocker.patch(
-        "app.services.retrieval.embed_question",
+        "app.services.chat.retrieval.service.embed_question",
         return_value=_embedding(1.0),
     )
     mocker.patch(
-        "app.services.retrieval.translate_query",
+        "app.services.chat.retrieval.service.translate_query",
         return_value="translated query text",
     )
 
@@ -294,11 +294,11 @@ async def test_retrieve_context_chunks_deduplicates_chunks_across_sources(
     )
 
     mocker.patch(
-        "app.services.retrieval.embed_question",
+        "app.services.chat.retrieval.service.embed_question",
         return_value=_embedding(1.0),
     )
     mocker.patch(
-        "app.services.retrieval.translate_query",
+        "app.services.chat.retrieval.service.translate_query",
         return_value="translated query text",
     )
 
@@ -351,9 +351,13 @@ async def test_enabled_reranking_uses_wider_deduplicated_pool_and_translated_que
     enabled_settings = settings.model_copy(
         update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
     )
-    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
     mocker.patch(
-        "app.services.retrieval.translate_query", return_value="translated query"
+        "app.services.chat.retrieval.service.embed_question",
+        return_value=_embedding(1.0),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.translate_query",
+        return_value="translated query",
     )
     captured_query = ""
     captured_candidates: list[RetrievedChunk] = []
@@ -364,7 +368,9 @@ async def test_enabled_reranking_uses_wider_deduplicated_pool_and_translated_que
         captured_candidates = candidates
         return candidates
 
-    mocker.patch("app.services.retrieval.rerank_chunks", side_effect=fake_rerank)
+    mocker.patch(
+        "app.services.chat.retrieval.service.rerank_chunks", side_effect=fake_rerank
+    )
 
     result = await retrieve_context_chunks(session, "E-23", device.id, enabled_settings)
 
@@ -396,15 +402,21 @@ async def test_successful_reranking_uses_all_candidates_when_fewer_than_five_exi
     enabled_settings = settings.model_copy(
         update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
     )
-    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
     mocker.patch(
-        "app.services.retrieval.translate_query", return_value="no matching terms"
+        "app.services.chat.retrieval.service.embed_question",
+        return_value=_embedding(1.0),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.translate_query",
+        return_value="no matching terms",
     )
 
     async def reverse_ranking(query, candidates, received_settings):
         return list(reversed(candidates))
 
-    mocker.patch("app.services.retrieval.rerank_chunks", side_effect=reverse_ranking)
+    mocker.patch(
+        "app.services.chat.retrieval.service.rerank_chunks", side_effect=reverse_ranking
+    )
 
     result = await retrieve_context_chunks(
         session, "unrelated question", device.id, enabled_settings
@@ -427,11 +439,15 @@ async def test_disabled_reranking_keeps_existing_limits_and_does_not_call_provid
         attachment.id,
         [(f"semantic guide {index}", _embedding(1.0)) for index in range(10)],
     )
-    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
     mocker.patch(
-        "app.services.retrieval.translate_query", return_value="no matching terms"
+        "app.services.chat.retrieval.service.embed_question",
+        return_value=_embedding(1.0),
     )
-    rerank = mocker.patch("app.services.retrieval.rerank_chunks")
+    mocker.patch(
+        "app.services.chat.retrieval.service.translate_query",
+        return_value="no matching terms",
+    )
+    rerank = mocker.patch("app.services.chat.retrieval.service.rerank_chunks")
 
     result = await retrieve_context_chunks(
         session, "unrelated question", device.id, settings
@@ -536,7 +552,9 @@ def _mock_voyage_http(mocker, respond):
             captured["posts"] += 1
             return respond(len(json["documents"]))
 
-    mocker.patch("app.services.reranker.httpx.AsyncClient", FakeAsyncClient)
+    mocker.patch(
+        "app.services.chat.retrieval.reranker.httpx.AsyncClient", FakeAsyncClient
+    )
     return captured
 
 
@@ -583,12 +601,16 @@ async def test_should_fall_back_to_hybrid_limits_when_voyage_fails(
     enabled_settings = settings.model_copy(
         update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
     )
-    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
     mocker.patch(
-        "app.services.retrieval.translate_query", return_value="translated query"
+        "app.services.chat.retrieval.service.embed_question",
+        return_value=_embedding(1.0),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.translate_query",
+        return_value="translated query",
     )
     captured = _mock_voyage_http(mocker, respond)
-    mocker.patch("app.services.reranker.asyncio.sleep")
+    mocker.patch("app.services.chat.retrieval.reranker.asyncio.sleep")
     scalars_spy = mocker.spy(session, "scalars")
 
     result = await retrieve_context_chunks(session, "E-23", device.id, enabled_settings)
@@ -621,9 +643,13 @@ async def test_should_deduplicate_fallback_chunks_when_sources_overlap(
     enabled_settings = settings.model_copy(
         update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
     )
-    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
     mocker.patch(
-        "app.services.retrieval.translate_query", return_value="translated query"
+        "app.services.chat.retrieval.service.embed_question",
+        return_value=_embedding(1.0),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.translate_query",
+        return_value="translated query",
     )
     _mock_voyage_http(mocker, _respond_timeout)
 
@@ -644,11 +670,15 @@ async def test_diagnostic_mode_bypasses_enabled_reranking(session, settings, moc
     enabled_settings = settings.model_copy(
         update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
     )
-    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
     mocker.patch(
-        "app.services.retrieval.translate_query", return_value="no matching terms"
+        "app.services.chat.retrieval.service.embed_question",
+        return_value=_embedding(1.0),
     )
-    rerank = mocker.patch("app.services.retrieval.rerank_chunks")
+    mocker.patch(
+        "app.services.chat.retrieval.service.translate_query",
+        return_value="no matching terms",
+    )
+    rerank = mocker.patch("app.services.chat.retrieval.service.rerank_chunks")
 
     result = await retrieve_context_chunks(
         session,
@@ -681,16 +711,21 @@ async def test_reranking_preserves_a_matching_technical_code_in_final_context(
     enabled_settings = settings.model_copy(
         update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
     )
-    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
     mocker.patch(
-        "app.services.retrieval.translate_query", return_value="translated query"
+        "app.services.chat.retrieval.service.embed_question",
+        return_value=_embedding(1.0),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.translate_query",
+        return_value="translated query",
     )
 
     async def rank_codes_after_semantic(query, candidates, received_settings):
         return [*candidates[2:], candidates[1], candidates[0]]
 
     mocker.patch(
-        "app.services.retrieval.rerank_chunks", side_effect=rank_codes_after_semantic
+        "app.services.chat.retrieval.service.rerank_chunks",
+        side_effect=rank_codes_after_semantic,
     )
 
     result = await retrieve_context_chunks(
@@ -719,9 +754,13 @@ async def test_reranking_keeps_code_in_score_order_when_already_in_top_five(
     enabled_settings = settings.model_copy(
         update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
     )
-    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
     mocker.patch(
-        "app.services.retrieval.translate_query", return_value="translated query"
+        "app.services.chat.retrieval.service.embed_question",
+        return_value=_embedding(1.0),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.translate_query",
+        return_value="translated query",
     )
     captured: dict[str, list[RetrievedChunk]] = {}
 
@@ -730,7 +769,9 @@ async def test_reranking_keeps_code_in_score_order_when_already_in_top_five(
         captured["ranked"] = ranked
         return ranked
 
-    mocker.patch("app.services.retrieval.rerank_chunks", side_effect=rank_code_first)
+    mocker.patch(
+        "app.services.chat.retrieval.service.rerank_chunks", side_effect=rank_code_first
+    )
 
     result = await retrieve_context_chunks(
         session, "What is E-23?", device.id, enabled_settings
@@ -761,9 +802,13 @@ async def test_reranking_keeps_score_order_when_one_of_multiple_matches_is_in_to
     enabled_settings = settings.model_copy(
         update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
     )
-    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
     mocker.patch(
-        "app.services.retrieval.translate_query", return_value="translated query"
+        "app.services.chat.retrieval.service.embed_question",
+        return_value=_embedding(1.0),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.translate_query",
+        return_value="translated query",
     )
     captured: dict[str, list[RetrievedChunk]] = {}
 
@@ -782,7 +827,8 @@ async def test_reranking_keeps_score_order_when_one_of_multiple_matches_is_in_to
         return ranked
 
     mocker.patch(
-        "app.services.retrieval.rerank_chunks", side_effect=rank_one_match_into_top_five
+        "app.services.chat.retrieval.service.rerank_chunks",
+        side_effect=rank_one_match_into_top_five,
     )
 
     result = await retrieve_context_chunks(
@@ -806,9 +852,13 @@ async def test_reranking_returns_top_five_unchanged_when_no_chunk_matches_techni
     enabled_settings = settings.model_copy(
         update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
     )
-    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
     mocker.patch(
-        "app.services.retrieval.translate_query", return_value="translated query"
+        "app.services.chat.retrieval.service.embed_question",
+        return_value=_embedding(1.0),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.translate_query",
+        return_value="translated query",
     )
     captured: dict[str, list[RetrievedChunk]] = {}
 
@@ -816,7 +866,9 @@ async def test_reranking_returns_top_five_unchanged_when_no_chunk_matches_techni
         captured["ranked"] = candidates
         return candidates
 
-    mocker.patch("app.services.retrieval.rerank_chunks", side_effect=rank_identity)
+    mocker.patch(
+        "app.services.chat.retrieval.service.rerank_chunks", side_effect=rank_identity
+    )
 
     result = await retrieve_context_chunks(
         session, "What is E-23?", device.id, enabled_settings
@@ -852,16 +904,22 @@ async def test_reranking_leaves_top_five_unchanged_for_unsupported_slash_or_unde
     enabled_settings = settings.model_copy(
         update={"reranker_enabled": True, "voyage_api_key": "voyage-test-key"}
     )
-    mocker.patch("app.services.retrieval.embed_question", return_value=_embedding(1.0))
     mocker.patch(
-        "app.services.retrieval.translate_query", return_value="translated query"
+        "app.services.chat.retrieval.service.embed_question",
+        return_value=_embedding(1.0),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.translate_query",
+        return_value="translated query",
     )
 
     async def rank_code_last(query, candidates, received_settings):
         unsupported, *rest = candidates
         return [*rest, unsupported]
 
-    mocker.patch("app.services.retrieval.rerank_chunks", side_effect=rank_code_last)
+    mocker.patch(
+        "app.services.chat.retrieval.service.rerank_chunks", side_effect=rank_code_last
+    )
 
     result = await retrieve_context_chunks(
         session, f"What is {unsupported_code}?", device.id, enabled_settings

@@ -8,8 +8,9 @@ from rank_bm25 import BM25Okapi
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..config import Settings
-from ..models import AttachmentDevice, Chunk
+from app.config import Settings
+from app.models import AttachmentDevice, Chunk
+
 from .document_language import get_device_document_language
 from .embedding import RetrievedChunk, embed_question
 from .reranker import rerank_chunks

@@ -24,8 +24,8 @@ from app.services.benchmark.judge import (
     judge_chunks,
 )
 from app.services.benchmark.setup import BENCHMARK_MODEL_SERIAL_CODE
-from app.services.chat import pipeline
 from app.services.chat.agent import engine as agent_engine
+from app.services.chat.agent import retrieval as agent_retrieval
 from app.services.chat.agent.models import MachineContext
 from app.services.organizations import get_system_organization_id
 from sqlalchemy import select
@@ -166,7 +166,7 @@ async def _run_agent_retrieval_benchmark(
     )
     retrieval_trace: dict[str, Any] = {}
     await await_with_cancellation(
-        pipeline.retrieve_for_agent_queries(
+        agent_retrieval.retrieve_for_agent_queries(
             session,
             queries,
             device_id=device.id,
