@@ -176,7 +176,7 @@ async def test_agent_benchmark_should_stop_after_retrieval_without_answer(mocker
         return [chunk]
 
     mocker.patch(
-        "app.services.benchmark.runner.pipeline.retrieve_for_agent_queries",
+        "app.services.benchmark.runner.agent_retrieval.retrieve_for_agent_queries",
         side_effect=retrieve,
     )
     mocker.patch(

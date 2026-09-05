@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.process_ocr_text import process_ocr_text
+from app.services.ingest.ocr_text import process_ocr_text
 
 
 @pytest.mark.parametrize(

@@ -10,7 +10,7 @@ from app.dependencies.settings import SettingsDependency
 from app.repositories import AttachmentRepository
 from app.schemas import AttachmentRead, DeviceRead
 from app.services.attachments import save_attachment
-from app.services.ingestion_queue import cancel_ingestion, enqueue_ingestion, is_active
+from app.services.ingest.queue import cancel_ingestion, enqueue_ingestion, is_active
 from fastapi import (
     APIRouter,
     Depends,

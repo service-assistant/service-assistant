@@ -5,7 +5,8 @@ from typing import Final
 
 import httpx
 
-from ..config import Settings
+from app.config import Settings
+
 from .embedding import RetrievedChunk
 
 VOYAGE_RERANK_URL: Final[str] = "https://api.voyageai.com/v1/rerank"

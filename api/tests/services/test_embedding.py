@@ -1,4 +1,4 @@
-from app.services.embedding import embed_question
+from app.services.chat.retrieval.embedding import embed_question
 
 
 async def test_embed_question_returns_first_embedding(mocker, settings):
@@ -9,5 +9,7 @@ async def test_embed_question_returns_first_embedding(mocker, settings):
         )
     )
 
-    mocker.patch("app.services.embedding.AsyncAzureOpenAI", return_value=client)
+    mocker.patch(
+        "app.services.chat.retrieval.embedding.AsyncAzureOpenAI", return_value=client
+    )
     assert await embed_question("hello", settings) == [0.0, 1.0, 0.45]

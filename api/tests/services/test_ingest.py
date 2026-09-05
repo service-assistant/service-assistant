@@ -5,7 +5,7 @@ import time
 import fitz
 import pytest
 
-from app.services.ingest import (
+from app.services.ingest.pipeline import (
     EmbeddingServiceError,
     ImageOnlyPdfError,
     IngestReport,
@@ -17,7 +17,7 @@ from app.services.ingest import (
 @pytest.fixture(autouse=True)
 def openai_client(mocker):
     return mocker.patch(
-        "app.services.ingest.AsyncOpenAI", return_value=mocker.AsyncMock()
+        "app.services.ingest.pipeline.AsyncOpenAI", return_value=mocker.AsyncMock()
     )
 
 
@@ -86,7 +86,7 @@ async def test_ingest_pdf_to_attachment(mocker, settings, openai_client):
     mocker.patch("fitz.open", side_effect=open_pdf)
 
     mocker.patch(
-        "app.services.ingest.pymupdf4llm.to_markdown",
+        "app.services.ingest.pipeline.pymupdf4llm.to_markdown",
         return_value="# Test\n\nSome markdown",
     )
 
@@ -100,17 +100,21 @@ async def test_ingest_pdf_to_attachment(mocker, settings, openai_client):
     )
 
     azure_client = mocker.patch(
-        "app.services.ingest.AsyncAzureOpenAI", return_value=mock_client
+        "app.services.ingest.pipeline.AsyncAzureOpenAI", return_value=mock_client
     )
-    mocker.patch("app.services.ingest.chunk_page", return_value=["chunk 1", "chunk 2"])
-    mocker.patch("app.services.ingest.extract_page_images", return_value=fake_images)
+    mocker.patch(
+        "app.services.ingest.pipeline.chunk_page", return_value=["chunk 1", "chunk 2"]
+    )
+    mocker.patch(
+        "app.services.ingest.pipeline.extract_page_images", return_value=fake_images
+    )
     describe = mocker.patch(
-        "app.services.ingest.describe_images",
+        "app.services.ingest.pipeline.describe_images",
         new_callable=mocker.AsyncMock,
         return_value=[],
     )
     mock_insert = mocker.patch(
-        "app.services.ingest.insert_chunks",
+        "app.services.ingest.pipeline.insert_chunks",
         new_callable=mocker.AsyncMock,
     )
 
@@ -162,15 +166,20 @@ async def test_sparse_native_text_gets_image_description_chunks(
     document = mocker.MagicMock()
     document.__len__.return_value = 1
     document.pages.return_value = [page]
-    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch("app.services.ingest.pipeline.fitz.open", return_value=document)
     mocker.patch(
-        "app.services.ingest.pymupdf4llm.to_markdown", return_value="Native markdown"
+        "app.services.ingest.pipeline.pymupdf4llm.to_markdown",
+        return_value="Native markdown",
     )
-    mocker.patch("app.services.ingest.chunk_page", return_value=["native chunk"])
+    mocker.patch(
+        "app.services.ingest.pipeline.chunk_page", return_value=["native chunk"]
+    )
     image_paths = ["image-1.png", "image-2.png"]
-    mocker.patch("app.services.ingest.extract_page_images", return_value=image_paths)
+    mocker.patch(
+        "app.services.ingest.pipeline.extract_page_images", return_value=image_paths
+    )
     describe = mocker.patch(
-        "app.services.ingest.describe_images",
+        "app.services.ingest.pipeline.describe_images",
         new_callable=mocker.AsyncMock,
         return_value=[
             ("image-1.png", "Description 1"),
@@ -184,10 +193,12 @@ async def test_sparse_native_text_gets_image_description_chunks(
         mocker.Mock(data=[mocker.Mock(embedding=[0.1] * 1536) for _ in range(2)]),
     ]
     vision_client = mocker.AsyncMock()
-    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    mocker.patch(
+        "app.services.ingest.pipeline.AsyncAzureOpenAI", return_value=embedding_client
+    )
     openai_client.return_value = vision_client
     insert = mocker.patch(
-        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+        "app.services.ingest.pipeline.insert_chunks", new_callable=mocker.AsyncMock
     )
 
     report = await ingest_pdf_to_attachment(
@@ -219,19 +230,22 @@ async def test_image_only_pdf_is_rejected_only_after_azure_ocr_fails(mocker, set
     document = mocker.MagicMock()
     document.__len__.return_value = 2
     document.pages.return_value = pages
-    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch("app.services.ingest.pipeline.fitz.open", return_value=document)
 
-    mocker.patch("app.services.ingest.render_page_for_ocr", return_value=b"jpeg")
+    mocker.patch(
+        "app.services.ingest.pipeline.render_page_for_ocr", return_value=b"jpeg"
+    )
     ocr_client = mocker.MagicMock()
     ocr_client.begin_analyze_document.side_effect = RuntimeError("Azure is down")
     ocr_client_factory = mocker.patch(
-        "app.services.ingest.DocumentIntelligenceClient", return_value=ocr_client
+        "app.services.ingest.pipeline.DocumentIntelligenceClient",
+        return_value=ocr_client,
     )
     mocker.patch(
-        "app.services.ingest.AsyncAzureOpenAI", return_value=mocker.AsyncMock()
+        "app.services.ingest.pipeline.AsyncAzureOpenAI", return_value=mocker.AsyncMock()
     )
     insert = mocker.patch(
-        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+        "app.services.ingest.pipeline.insert_chunks", new_callable=mocker.AsyncMock
     )
 
     with pytest.raises(ImageOnlyPdfError) as error:
@@ -253,13 +267,17 @@ async def test_image_only_pdf_is_kept_when_azure_ocr_recovers_text(mocker, setti
     document = mocker.MagicMock()
     document.__len__.return_value = 1
     document.pages.return_value = [page]
-    mocker.patch("app.services.ingest.fitz.open", return_value=document)
-    mocker.patch("app.services.ingest.render_page_for_ocr", return_value=b"jpeg")
-    mocker.patch("app.services.ingest.process_ocr_text", return_value="OCR text")
-    mocker.patch("app.services.ingest.chunk_page", return_value=["OCR chunk"])
-    mocker.patch("app.services.ingest.extract_page_images", return_value=[])
+    mocker.patch("app.services.ingest.pipeline.fitz.open", return_value=document)
     mocker.patch(
-        "app.services.ingest.describe_images",
+        "app.services.ingest.pipeline.render_page_for_ocr", return_value=b"jpeg"
+    )
+    mocker.patch(
+        "app.services.ingest.pipeline.process_ocr_text", return_value="OCR text"
+    )
+    mocker.patch("app.services.ingest.pipeline.chunk_page", return_value=["OCR chunk"])
+    mocker.patch("app.services.ingest.pipeline.extract_page_images", return_value=[])
+    mocker.patch(
+        "app.services.ingest.pipeline.describe_images",
         new_callable=mocker.AsyncMock,
         return_value=[],
     )
@@ -269,15 +287,18 @@ async def test_image_only_pdf_is_kept_when_azure_ocr_recovers_text(mocker, setti
     ocr_client = mocker.MagicMock()
     ocr_client.begin_analyze_document.return_value = poller
     mocker.patch(
-        "app.services.ingest.DocumentIntelligenceClient", return_value=ocr_client
+        "app.services.ingest.pipeline.DocumentIntelligenceClient",
+        return_value=ocr_client,
     )
     embedding_client = mocker.AsyncMock()
     embedding_client.embeddings.create.return_value = mocker.Mock(
         data=[mocker.Mock(embedding=[0.1] * 1536)]
     )
-    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    mocker.patch(
+        "app.services.ingest.pipeline.AsyncAzureOpenAI", return_value=embedding_client
+    )
     insert = mocker.patch(
-        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+        "app.services.ingest.pipeline.insert_chunks", new_callable=mocker.AsyncMock
     )
 
     report = await ingest_pdf_to_attachment(session, "scans.pdf", 1, settings)
@@ -299,15 +320,18 @@ async def test_image_only_page_gets_description_when_ocr_recovers_no_text(
     document = mocker.MagicMock()
     document.__len__.return_value = 1
     document.pages.return_value = [page]
-    mocker.patch("app.services.ingest.fitz.open", return_value=document)
-    mocker.patch("app.services.ingest.render_page_for_ocr", return_value=b"jpeg")
+    mocker.patch("app.services.ingest.pipeline.fitz.open", return_value=document)
     mocker.patch(
-        "app.services.ingest.save_ocr_rendered_image", return_value=["page.jpg"]
+        "app.services.ingest.pipeline.render_page_for_ocr", return_value=b"jpeg"
     )
-    mocker.patch("app.services.ingest.process_ocr_text", return_value="")
-    mocker.patch("app.services.ingest.chunk_page", return_value=[])
+    mocker.patch(
+        "app.services.ingest.pipeline.save_ocr_rendered_image",
+        return_value=["page.jpg"],
+    )
+    mocker.patch("app.services.ingest.pipeline.process_ocr_text", return_value="")
+    mocker.patch("app.services.ingest.pipeline.chunk_page", return_value=[])
     describe = mocker.patch(
-        "app.services.ingest.describe_images",
+        "app.services.ingest.pipeline.describe_images",
         new_callable=mocker.AsyncMock,
         return_value=[("page.jpg", "A technical diagram")],
     )
@@ -317,15 +341,18 @@ async def test_image_only_page_gets_description_when_ocr_recovers_no_text(
     ocr_client = mocker.MagicMock()
     ocr_client.begin_analyze_document.return_value = poller
     mocker.patch(
-        "app.services.ingest.DocumentIntelligenceClient", return_value=ocr_client
+        "app.services.ingest.pipeline.DocumentIntelligenceClient",
+        return_value=ocr_client,
     )
     embedding_client = mocker.AsyncMock()
     embedding_client.embeddings.create.return_value = mocker.Mock(
         data=[mocker.Mock(embedding=[0.1] * 1536)]
     )
-    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    mocker.patch(
+        "app.services.ingest.pipeline.AsyncAzureOpenAI", return_value=embedding_client
+    )
     insert = mocker.patch(
-        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+        "app.services.ingest.pipeline.insert_chunks", new_callable=mocker.AsyncMock
     )
 
     report = await ingest_pdf_to_attachment(session, "image-only.pdf", 1, settings)
@@ -346,26 +373,34 @@ async def test_mixed_pdf_survives_azure_ocr_failure_and_skips_only_image_page(
     document = mocker.MagicMock()
     document.__len__.return_value = 2
     document.pages.return_value = [text_page, image_page]
-    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch("app.services.ingest.pipeline.fitz.open", return_value=document)
     mocker.patch(
-        "app.services.ingest.pymupdf4llm.to_markdown", return_value="Native markdown"
+        "app.services.ingest.pipeline.pymupdf4llm.to_markdown",
+        return_value="Native markdown",
     )
-    mocker.patch("app.services.ingest.chunk_page", return_value=["native chunk"])
-    mocker.patch("app.services.ingest.extract_page_images", return_value=[])
-    mocker.patch("app.services.ingest.render_page_for_ocr", return_value=b"jpeg")
+    mocker.patch(
+        "app.services.ingest.pipeline.chunk_page", return_value=["native chunk"]
+    )
+    mocker.patch("app.services.ingest.pipeline.extract_page_images", return_value=[])
+    mocker.patch(
+        "app.services.ingest.pipeline.render_page_for_ocr", return_value=b"jpeg"
+    )
 
     ocr_client = mocker.MagicMock()
     ocr_client.begin_analyze_document.side_effect = RuntimeError("Azure is down")
     mocker.patch(
-        "app.services.ingest.DocumentIntelligenceClient", return_value=ocr_client
+        "app.services.ingest.pipeline.DocumentIntelligenceClient",
+        return_value=ocr_client,
     )
     embedding_client = mocker.AsyncMock()
     embedding_client.embeddings.create.return_value = mocker.Mock(
         data=[mocker.Mock(embedding=[0.1] * 1536)]
     )
-    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    mocker.patch(
+        "app.services.ingest.pipeline.AsyncAzureOpenAI", return_value=embedding_client
+    )
     insert = mocker.patch(
-        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+        "app.services.ingest.pipeline.insert_chunks", new_callable=mocker.AsyncMock
     )
 
     report = await ingest_pdf_to_attachment(session, "mixed.pdf", 1, settings)
@@ -388,18 +423,23 @@ async def test_embedding_failure_is_bounded_and_rejects_unindexed_file(
     document = mocker.MagicMock()
     document.__len__.return_value = 1
     document.pages.return_value = [page]
-    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch("app.services.ingest.pipeline.fitz.open", return_value=document)
     mocker.patch(
-        "app.services.ingest.pymupdf4llm.to_markdown", return_value="Native markdown"
+        "app.services.ingest.pipeline.pymupdf4llm.to_markdown",
+        return_value="Native markdown",
     )
-    mocker.patch("app.services.ingest.chunk_page", return_value=["native chunk"])
-    mocker.patch("app.services.ingest.extract_page_images", return_value=[])
-    mocker.patch("app.services.ingest.DocumentIntelligenceClient")
+    mocker.patch(
+        "app.services.ingest.pipeline.chunk_page", return_value=["native chunk"]
+    )
+    mocker.patch("app.services.ingest.pipeline.extract_page_images", return_value=[])
+    mocker.patch("app.services.ingest.pipeline.DocumentIntelligenceClient")
     embedding_client = mocker.AsyncMock()
     embedding_client.embeddings.create.side_effect = RuntimeError("Azure is down")
-    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
+    mocker.patch(
+        "app.services.ingest.pipeline.AsyncAzureOpenAI", return_value=embedding_client
+    )
     insert = mocker.patch(
-        "app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock
+        "app.services.ingest.pipeline.insert_chunks", new_callable=mocker.AsyncMock
     )
 
     with pytest.raises(EmbeddingServiceError, match="Azure embeddings failed"):
@@ -422,27 +462,37 @@ async def test_ocr_call_has_a_hard_timeout_and_native_text_is_still_indexed(
     document = mocker.MagicMock()
     document.__len__.return_value = 2
     document.pages.return_value = [text_page, image_page]
-    mocker.patch("app.services.ingest.fitz.open", return_value=document)
+    mocker.patch("app.services.ingest.pipeline.fitz.open", return_value=document)
     mocker.patch(
-        "app.services.ingest.pymupdf4llm.to_markdown", return_value="Native markdown"
+        "app.services.ingest.pipeline.pymupdf4llm.to_markdown",
+        return_value="Native markdown",
     )
-    mocker.patch("app.services.ingest.chunk_page", return_value=["native chunk"])
-    mocker.patch("app.services.ingest.extract_page_images", return_value=[])
-    mocker.patch("app.services.ingest.render_page_for_ocr", return_value=b"jpeg")
+    mocker.patch(
+        "app.services.ingest.pipeline.chunk_page", return_value=["native chunk"]
+    )
+    mocker.patch("app.services.ingest.pipeline.extract_page_images", return_value=[])
+    mocker.patch(
+        "app.services.ingest.pipeline.render_page_for_ocr", return_value=b"jpeg"
+    )
 
     poller = mocker.MagicMock()
     poller.result.side_effect = lambda **_kwargs: time.sleep(0.05)
     ocr_client = mocker.MagicMock()
     ocr_client.begin_analyze_document.return_value = poller
     mocker.patch(
-        "app.services.ingest.DocumentIntelligenceClient", return_value=ocr_client
+        "app.services.ingest.pipeline.DocumentIntelligenceClient",
+        return_value=ocr_client,
     )
     embedding_client = mocker.AsyncMock()
     embedding_client.embeddings.create.return_value = mocker.Mock(
         data=[mocker.Mock(embedding=[0.1] * 1536)]
     )
-    mocker.patch("app.services.ingest.AsyncAzureOpenAI", return_value=embedding_client)
-    mocker.patch("app.services.ingest.insert_chunks", new_callable=mocker.AsyncMock)
+    mocker.patch(
+        "app.services.ingest.pipeline.AsyncAzureOpenAI", return_value=embedding_client
+    )
+    mocker.patch(
+        "app.services.ingest.pipeline.insert_chunks", new_callable=mocker.AsyncMock
+    )
 
     report = await ingest_pdf_to_attachment(
         session, "mixed.pdf", 1, short_timeout_settings
@@ -466,7 +516,7 @@ async def test_only_one_pdf_ingest_runs_at_a_time(mocker, settings):
         return IngestReport()
 
     mocker.patch(
-        "app.services.ingest._ingest_pdf_to_attachment_unlocked",
+        "app.services.ingest.pipeline._ingest_pdf_to_attachment_unlocked",
         side_effect=fake_ingest,
     )
 

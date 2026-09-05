@@ -25,7 +25,9 @@ from app.schemas import (
     TranscriptDecision,
     TranscriptResponse,
 )
-from app.services import chat, photo_context, stt, voice_query_selector
+from app.services import chat
+from app.services.chat import photo_context
+from app.services.voice import query_selector, stt
 from fastapi import (
     APIRouter,
     Depends,
@@ -232,13 +234,13 @@ async def transcribe_message(
         raise HTTPException(status_code=502, detail=detail) from exc
 
     try:
-        selection = await voice_query_selector.select_technician_query(
+        selection = await query_selector.select_technician_query(
             full_transcript, settings
         )
-    except voice_query_selector.VoiceQuerySelectorError:
+    except query_selector.VoiceQuerySelectorError:
         selection = None
 
-    transcript = voice_query_selector.selected_text_or_full_transcript(
+    transcript = query_selector.selected_text_or_full_transcript(
         full_transcript, selection
     )
     return TranscriptResponse(

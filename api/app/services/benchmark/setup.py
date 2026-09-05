@@ -16,10 +16,10 @@ from app.models import (
     Device,
     IngestionStatus,
 )
-from app.services import ingestion_queue
 from app.services.async_utils import run_blocking
 from app.services.attachments import save_attachment
 from app.services.benchmark import documents as benchmark_documents
+from app.services.ingest import queue as ingestion_queue
 from app.services.organizations import get_system_organization_id
 from fastapi import UploadFile
 from sqlalchemy import func, select

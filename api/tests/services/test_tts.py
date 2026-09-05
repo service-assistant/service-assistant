@@ -4,7 +4,7 @@ import httpx
 import pytest
 
 from app.config import get_settings
-from app.services.tts import (
+from app.services.voice.tts import (
     GEMINI_INTERACTIONS_URL,
     PCM_CHANNELS,
     PCM_SAMPLE_RATE,
@@ -60,7 +60,7 @@ async def test_should_synthesize_long_text_in_chunks_and_join_pcm(mocker):
             captured_inputs.append(json["input"])
             return FakeResponse()
 
-    mocker.patch("app.services.tts.httpx.AsyncClient", FakeAsyncClient)
+    mocker.patch("app.services.voice.tts.httpx.AsyncClient", FakeAsyncClient)
     text = "Zdanie testowe do syntezy. " * 50
     expected_chunks = _split_tts_text(text)
 
@@ -151,7 +151,7 @@ async def test_should_call_gemini_interactions_api_for_tts(mocker):
             captured["json"] = json
             return FakeResponse()
 
-    mocker.patch("app.services.tts.httpx.AsyncClient", FakeAsyncClient)
+    mocker.patch("app.services.voice.tts.httpx.AsyncClient", FakeAsyncClient)
 
     pcm = await synthesize_pcm(
         "Dzien dobry", get_settings(), voice="Leda", style="extreme_sensual"
@@ -197,7 +197,7 @@ async def test_should_fall_back_to_safer_style_when_gemini_blocks_prompt(mocker)
             captured_inputs.append(json["input"])
             return FakeResponse(blocked=len(captured_inputs) == 1)
 
-    mocker.patch("app.services.tts.httpx.AsyncClient", FakeAsyncClient)
+    mocker.patch("app.services.voice.tts.httpx.AsyncClient", FakeAsyncClient)
 
     pcm = await synthesize_pcm(
         "Dzien dobry", get_settings(), voice="Leda", style="extreme_sensual"
@@ -257,7 +257,7 @@ async def test_should_wrap_gemini_failures_as_tts_error(
                 raise failure
             return FakeResponse()
 
-    mocker.patch("app.services.tts.httpx.AsyncClient", FakeAsyncClient)
+    mocker.patch("app.services.voice.tts.httpx.AsyncClient", FakeAsyncClient)
 
     with pytest.raises(TtsError, match=re.escape(expected_message)):
         await synthesize_pcm("Dzien dobry", get_settings())
