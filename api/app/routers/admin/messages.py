@@ -19,10 +19,11 @@ from app.schemas import (
     MessageCreate,
     ThreadCreate,
 )
-from app.services import chat
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
+
+from app.services import chat
 
 router = APIRouter()
 

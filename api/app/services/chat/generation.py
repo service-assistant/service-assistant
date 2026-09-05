@@ -7,9 +7,10 @@ from openai.types.chat import ChatCompletionMessageParam
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from ..config import Settings
-from ..models import Message
-from .next_best_step import DiagnosticPlan, DiagnosticPlanStatus
+from app.config import Settings
+from app.models import Message
+
+from .diagnostic.next_best_step import DiagnosticPlan, DiagnosticPlanStatus
 
 SYSTEM_PROMPT: Final[str] = """
 Jesteś pomocnym asystentem serwisowym dla technika pracującego przy urządzeniu.

@@ -1,4 +1,4 @@
-from app.services.streaming import ChecklistStreamLimiter
+from app.services.chat.streaming import ChecklistStreamLimiter
 
 
 def test_should_limit_checklist_before_chunks_are_streamed_to_client():

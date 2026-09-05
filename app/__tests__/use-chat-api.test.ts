@@ -48,6 +48,7 @@ jest.mock('@/components/chat/ChatMessages', () => ({
 }));
 
 import type { ChatMessageItem, SchemaImageSource } from '@/components/chat/ChatMessages';
+import type { ChatMode } from '@/types/chat';
 import { appendChatPhotosToFormData, useChatApi } from '../hooks/use-chat-api';
 
 const flushPromises = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -70,7 +71,7 @@ const createDeferred = <T>() => {
 const createHarness = (
 	params: {
 		currentThreadId?: number | null;
-		diagnosticModeEnabled?: boolean;
+		chatMode?: ChatMode;
 		ttsEnabled?: boolean;
 	} = {},
 ) => {
@@ -118,7 +119,7 @@ const createHarness = (
 		setIsLoading,
 		setIsGenerating,
 		setCurrentImage,
-		diagnosticModeEnabled: params.diagnosticModeEnabled,
+		chatMode: params.chatMode,
 		playAssistantAudio,
 		ttsEnabled: params.ttsEnabled,
 		onServiceError,
@@ -206,7 +207,7 @@ describe('useChatApi', () => {
 			},
 			body: JSON.stringify({
 				content: 'How do I start this device?',
-				diagnostic_mode_enabled: false,
+				mode: 'standard',
 			}),
 		});
 
@@ -285,7 +286,7 @@ describe('useChatApi', () => {
 		expect(MockEventSource.instances[0].options).toMatchObject({
 			body: JSON.stringify({
 				content: 'Jak zmierzyć uzwojenia?',
-				diagnostic_mode_enabled: false,
+				mode: 'standard',
 				photo_context: [
 					{
 						component: 'silnik elektryczny',
@@ -302,10 +303,10 @@ describe('useChatApi', () => {
 		await request;
 	});
 
-	test('sends the disabled diagnostic mode to the server', async () => {
+	test('sends diagnostic mode to the server', async () => {
 		const harness = createHarness({
 			currentThreadId: 321,
-			diagnosticModeEnabled: false,
+			chatMode: 'diagnostic',
 		});
 
 		const request = harness.api.askAPI('Mam błąd 2:002');
@@ -314,12 +315,34 @@ describe('useChatApi', () => {
 		expect(MockEventSource.instances[0].options).toMatchObject({
 			body: JSON.stringify({
 				content: 'Mam błąd 2:002',
-				diagnostic_mode_enabled: false,
+				mode: 'diagnostic',
 			}),
 		});
 
 		MockEventSource.instances[0].emit('message', {
 			data: JSON.stringify({ content: 'Standardowa odpowiedź RAG.' }),
+		});
+		await request;
+	});
+
+	test('sends the enabled agent mode to the server', async () => {
+		const harness = createHarness({
+			currentThreadId: 321,
+			chatMode: 'agent',
+		});
+
+		const request = harness.api.askAPI('Sprawdź maszynę');
+		await flushPromises();
+
+		expect(MockEventSource.instances[0].options).toMatchObject({
+			body: JSON.stringify({
+				content: 'Sprawdź maszynę',
+				mode: 'agent',
+			}),
+		});
+
+		MockEventSource.instances[0].emit('message', {
+			data: JSON.stringify({ content: 'Odpowiedź agenta.' }),
 		});
 		await request;
 	});

@@ -8,6 +8,7 @@ import type {
 	SchemaImageSource,
 } from '@/components/chat/ChatMessages';
 import { stripResponseDirectivesForSpeech } from '@/components/chat/ChatMessages';
+import type { ChatMode } from '@/types/chat';
 import { MAX_CHAT_PHOTOS } from '@/types/chat';
 import { API_URL_CONFIG_ERROR } from '@/utils/api-config';
 import {
@@ -99,7 +100,7 @@ type UseChatApiParams<TMessage extends ChatMessageItem> = {
 	setIsLoading: Dispatch<SetStateAction<boolean>>;
 	setIsGenerating: Dispatch<SetStateAction<boolean>>;
 	setCurrentImage: Dispatch<SetStateAction<SchemaImageSource | null>>;
-	diagnosticModeEnabled?: boolean;
+	chatMode?: ChatMode;
 	playAssistantAudio: (text: string) => void | Promise<void>;
 	ttsEnabled?: boolean;
 	onServiceError?: (featureName: string, error: unknown) => void;
@@ -123,7 +124,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 	setIsLoading,
 	setIsGenerating,
 	setCurrentImage,
-	diagnosticModeEnabled = false,
+	chatMode = 'standard',
 	playAssistantAudio,
 	ttsEnabled = true,
 	onServiceError,
@@ -261,7 +262,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 							},
 							body: JSON.stringify({
 								content: question,
-								diagnostic_mode_enabled: diagnosticModeEnabled,
+								mode: chatMode,
 								...(photoContext.length > 0 ? { photo_context: photoContext } : {}),
 							}),
 							pollingInterval: 0,
@@ -623,7 +624,7 @@ export const useChatApi = <TMessage extends ChatMessageItem>({
 		},
 		[
 			authTokenOverride,
-			diagnosticModeEnabled,
+			chatMode,
 			ensureThread,
 			playAssistantAudio,
 			ttsEnabled,

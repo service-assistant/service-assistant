@@ -8,13 +8,13 @@ from app.config import get_settings
 from app.main import app
 from app.models import ChatThread, ChunkMessage, Message, MessageSender, OrgRole
 from app.services import retrieval as retrieval_module
-from app.services.chat import _sse
-from app.services.message_router import MessageRoute, RouteDecision
-from app.services.next_best_step import (
+from app.services.chat.common import sse as _sse
+from app.services.chat.diagnostic.next_best_step import (
     DiagnosticPlan,
     DiagnosticPlanStatus,
     cache_diagnostic_plan,
 )
+from app.services.chat.diagnostic.router import MessageRoute, RouteDecision
 from app.services.stt import SttError
 from app.services.voice_query_selector import VoiceDecision, VoiceQuerySelection
 from sqlalchemy import select
@@ -303,13 +303,13 @@ async def test_should_skip_diagnostic_mode_when_client_disables_it(
     device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     build_diagnostic_plan = mocker.patch(
-        "app.services.chat.next_best_step.build_diagnostic_plan",
+        "app.services.chat.diagnostic.next_best_step.build_diagnostic_plan",
         new=mocker.AsyncMock(return_value="should not be used"),
     )
 
     response = await client.post(
         f"/api/threads/{thread.id}/messages",
-        json={"content": "Mam błąd 2:002", "diagnostic_mode_enabled": False},
+        json={"content": "Mam błąd 2:002", "mode": "standard"},
     )
 
     assert response.status_code == 200
@@ -324,7 +324,7 @@ async def test_photo_context_augments_retrieval_and_keeps_original_user_message(
     device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     retrieve = mocker.patch(
-        "app.services.chat.retrieval.retrieve_context_chunks",
+        "app.services.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
 
@@ -385,21 +385,21 @@ async def test_standard_mode_should_not_use_diagnostic_flow_for_exhausted_contin
         _diagnostic_plan("E-23"),
     )
     route_message = mocker.patch(
-        "app.services.chat.message_router.route_message",
+        "app.services.chat.diagnostic.router.route_message",
         new=mocker.AsyncMock(),
     )
     build_followup_plan = mocker.patch(
-        "app.services.chat.next_best_step.build_followup_plan",
+        "app.services.chat.diagnostic.next_best_step.build_followup_plan",
         new=mocker.AsyncMock(),
     )
     retrieve_context_chunks = mocker.patch(
-        "app.services.chat.retrieval.retrieve_context_chunks",
+        "app.services.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(),
     )
 
     response = await client.post(
         f"/api/threads/{thread.id}/messages",
-        json={"content": "Co dalej?", "diagnostic_mode_enabled": False},
+        json={"content": "Co dalej?", "mode": "standard"},
     )
 
     assert response.status_code == 200
@@ -419,17 +419,17 @@ async def test_should_start_diagnostic_for_any_error_when_mode_is_enabled(
     device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     build_diagnostic_plan = mocker.patch(
-        "app.services.chat.next_best_step.build_diagnostic_plan",
+        "app.services.chat.diagnostic.next_best_step.build_diagnostic_plan",
         new=mocker.AsyncMock(return_value=_diagnostic_plan("2:004")),
     )
     mocker.patch.object(DiagnosticPlan, "has_next_action", return_value=True)
     mocker.patch(
-        "app.services.chat.retrieval.retrieve_context_chunks",
+        "app.services.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
     response = await client.post(
         f"/api/threads/{thread.id}/messages",
-        json={"content": "Mam błąd 2:004", "diagnostic_mode_enabled": True},
+        json={"content": "Mam błąd 2:004", "mode": "diagnostic"},
     )
 
     assert response.status_code == 200
@@ -447,17 +447,17 @@ async def test_should_emit_pipeline_trace_when_debug_is_requested(
     device = await create_device(session, category.id)
     thread = await create_thread(session, device.id)
     mocker.patch(
-        "app.services.chat.retrieval.retrieve_context_chunks",
+        "app.services.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
     mocker.patch(
-        "app.services.chat.next_best_step.build_diagnostic_plan",
+        "app.services.chat.diagnostic.next_best_step.build_diagnostic_plan",
         new=mocker.AsyncMock(return_value=_diagnostic_plan("2:004")),
     )
 
     response = await client.post(
         f"/api/threads/{thread.id}/messages?debug=true",
-        json={"content": "Mam błąd 2:004", "diagnostic_mode_enabled": True},
+        json={"content": "Mam błąd 2:004", "mode": "diagnostic"},
     )
 
     assert response.status_code == 200
@@ -513,7 +513,7 @@ async def test_should_send_side_question_through_standard_rag_during_diagnostic(
     await session.commit()
 
     mocker.patch(
-        "app.services.chat.message_router.route_message",
+        "app.services.chat.diagnostic.router.route_message",
         new=mocker.AsyncMock(
             return_value=RouteDecision(
                 route=MessageRoute.standard_query,
@@ -524,15 +524,15 @@ async def test_should_send_side_question_through_standard_rag_during_diagnostic(
         ),
     )
     build_followup_plan = mocker.patch(
-        "app.services.chat.next_best_step.build_followup_plan",
+        "app.services.chat.diagnostic.next_best_step.build_followup_plan",
         new=mocker.AsyncMock(return_value=(True, "should not be used")),
     )
     mocker.patch(
-        "app.services.chat.retrieval.retrieve_context_chunks",
+        "app.services.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
     mocker.patch(
-        "app.services.chat.llm.is_message_continuation_request",
+        "app.services.chat.generation.is_message_continuation_request",
         new=mocker.AsyncMock(return_value=False),
     )
 
@@ -540,7 +540,7 @@ async def test_should_send_side_question_through_standard_rag_during_diagnostic(
         f"/api/threads/{thread.id}/messages",
         json={
             "content": "Jak bezpiecznie podnosić urządzenie?",
-            "diagnostic_mode_enabled": True,
+            "mode": "diagnostic",
         },
     )
 
@@ -571,7 +571,7 @@ async def test_should_reconstruct_diagnostic_from_history_for_any_problem(
     )
 
     mocker.patch(
-        "app.services.chat.message_router.route_message",
+        "app.services.chat.diagnostic.router.route_message",
         new=mocker.AsyncMock(
             return_value=RouteDecision(
                 route=MessageRoute.diagnostic_followup,
@@ -582,15 +582,15 @@ async def test_should_reconstruct_diagnostic_from_history_for_any_problem(
         ),
     )
     mocker.patch(
-        "app.services.chat.retrieval.retrieve_context_chunks",
+        "app.services.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(return_value=[]),
     )
     mocker.patch(
-        "app.services.chat.llm.is_message_continuation_request",
+        "app.services.chat.generation.is_message_continuation_request",
         new=mocker.AsyncMock(return_value=False),
     )
     build_followup_plan = mocker.patch(
-        "app.services.chat.next_best_step.build_followup_plan",
+        "app.services.chat.diagnostic.next_best_step.build_followup_plan",
         new=mocker.AsyncMock(
             return_value=(
                 True,
@@ -603,7 +603,7 @@ async def test_should_reconstruct_diagnostic_from_history_for_any_problem(
         f"/api/threads/{thread.id}/messages",
         json={
             "content": "Ciśnienie jest za niskie",
-            "diagnostic_mode_enabled": True,
+            "mode": "diagnostic",
         },
     )
 
@@ -1003,13 +1003,13 @@ async def test_should_return_completion_without_retrieval_when_no_next_was_promi
         sender=MessageSender.assistant,
     )
     retrieve_context_chunks = mocker.patch(
-        "app.services.chat.retrieval.retrieve_context_chunks",
+        "app.services.retrieval.retrieve_context_chunks",
         new=mocker.AsyncMock(),
     )
 
     response = await client.post(
         f"/api/threads/{thread.id}/messages",
-        json={"content": "dalej", "diagnostic_mode_2002": False},
+        json={"content": "dalej", "mode": "standard"},
     )
 
     assert response.status_code == 200
@@ -1061,7 +1061,7 @@ async def test_should_use_fresh_chunks_when_short_message_is_not_classified_as_c
 
     response = await client.post(
         f"/api/threads/{thread.id}/messages",
-        json={"content": "reset teraz", "diagnostic_mode_2002": False},
+        json={"content": "reset teraz", "mode": "standard"},
     )
 
     assert response.status_code == 200
@@ -1099,7 +1099,7 @@ async def test_should_persist_five_sources_matching_llm_context_on_successful_re
         f"/api/threads/{thread.id}/messages",
         json={
             "content": "Completely unrelated inquiry about nothing important",
-            "diagnostic_mode_2002": False,
+            "mode": "standard",
         },
     )
 
@@ -1140,7 +1140,7 @@ async def test_should_persist_wider_sources_matching_llm_context_on_rerank_fallb
         f"/api/threads/{thread.id}/messages",
         json={
             "content": "Completely unrelated inquiry about nothing important",
-            "diagnostic_mode_2002": False,
+            "mode": "standard",
         },
     )
 
@@ -1184,7 +1184,7 @@ async def test_should_persist_wider_sources_matching_llm_context_on_diagnostic_b
         f"/api/threads/{thread.id}/messages",
         json={
             "content": "Completely unrelated inquiry about nothing important",
-            "diagnostic_mode_2002": True,
+            "mode": "diagnostic",
         },
     )
 

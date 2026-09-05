@@ -7,9 +7,10 @@ from app.dependencies.entities import ThreadDependency
 from app.models import ChatThread
 from app.repositories import DeviceRepository, ThreadRepository
 from app.schemas import ChatThreadRead, DeviceRead, MessageCreate, ThreadCreate
-from app.services import chat
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
+
+from app.services import chat
 
 # Debug-only tool for tracing the RAG chat pipeline (route/retrieval/plan
 # steps). Operates on the app_admin's own (system) org, never a real

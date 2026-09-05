@@ -113,13 +113,13 @@ export default function SettingsScreen() {
 		ttsEnabled,
 		ttsVoice,
 		ttsStyle,
-		diagnosticModeEnabled,
 		setLightThemeEnabled,
 		setWakeWordEnabled,
 		setTtsEnabled,
 		setTtsVoice,
 		setTtsStyle,
-		setDiagnosticModeEnabled,
+		chatMode,
+		setChatMode,
 	} = useAppSettings();
 	const [ttsPopupPosition, setTtsPopupPosition] = useState<{
 		top: number;
@@ -335,9 +335,11 @@ export default function SettingsScreen() {
 					</TouchableOpacity>
 
 					<TouchableOpacity
-						onPress={() => setDiagnosticModeEnabled(!diagnosticModeEnabled)}
+						onPress={() =>
+							setChatMode(chatMode === 'diagnostic' ? 'standard' : 'diagnostic')
+						}
 						accessibilityRole='switch'
-						accessibilityState={{ checked: diagnosticModeEnabled }}
+						accessibilityState={{ checked: chatMode === 'diagnostic' }}
 						accessibilityLabel='Tryb diagnostyczny Next Best Step'
 						activeOpacity={0.75}
 						className={`flex-row items-center justify-between px-4 border-b ${rowBorderClassName}`}
@@ -358,10 +360,45 @@ export default function SettingsScreen() {
 							</View>
 						</View>
 						<Switch
-							value={diagnosticModeEnabled}
-							onValueChange={setDiagnosticModeEnabled}
+							value={chatMode === 'diagnostic'}
+							onValueChange={(value) =>
+								setChatMode(value ? 'diagnostic' : 'standard')
+							}
 							trackColor={switchTrackColor}
-							thumbColor={diagnosticModeEnabled ? PRIMARY_ORANGE : inactiveThumbColor}
+							thumbColor={
+								chatMode === 'diagnostic' ? PRIMARY_ORANGE : inactiveThumbColor
+							}
+							ios_backgroundColor={switchBackgroundColor}
+						/>
+					</TouchableOpacity>
+					<TouchableOpacity
+						onPress={() => setChatMode(chatMode === 'agent' ? 'standard' : 'agent')}
+						accessibilityRole='switch'
+						accessibilityState={{ checked: chatMode === 'agent' }}
+						accessibilityLabel='Tryb agentowy'
+						activeOpacity={0.75}
+						className={`flex-row items-center justify-between px-4 border-b ${rowBorderClassName}`}
+						style={{ paddingVertical: rowPaddingVertical }}>
+						<View className='flex-row items-center flex-1 mr-4'>
+							<View
+								className={`w-10 h-10 rounded-[10px] ${iconBackgroundClassName} items-center justify-center mr-3`}>
+								<Feather name='tool' size={20} color={PRIMARY_ORANGE} />
+							</View>
+							<View className='flex-1'>
+								<Text className={`${rowTitleClassName} text-base font-semibold`}>
+									Tryb agentowy
+								</Text>
+								<Text
+									className={`${lightThemeEnabled ? 'text-[#52525B]' : 'text-zinc-400'} text-sm mt-1`}>
+									Model myślący
+								</Text>
+							</View>
+						</View>
+						<Switch
+							value={chatMode === 'agent'}
+							onValueChange={(value) => setChatMode(value ? 'agent' : 'standard')}
+							trackColor={switchTrackColor}
+							thumbColor={chatMode === 'agent' ? PRIMARY_ORANGE : inactiveThumbColor}
 							ios_backgroundColor={switchBackgroundColor}
 						/>
 					</TouchableOpacity>

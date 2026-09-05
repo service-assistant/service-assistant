@@ -1,5 +1,6 @@
 from typing import Literal
 
+from app.schemas import ChatMode
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -14,7 +15,7 @@ class BenchmarkCase(BaseModel):
     title: str
     category: str
     question: str
-    diagnostic_mode_enabled: bool
+    mode: ChatMode = ChatMode.standard
     expected_route: str
     canonical_fault_code: str | None = None
     reference_answer: str
