@@ -16,3 +16,5 @@ export interface AvailableFile {
 	color: string;
 	remoteUrl: string;
 }
+
+export type ChatMode = 'standard' | 'diagnostic' | 'agent';

@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.llm import (
+from app.services.chat.generation import (
     _build_context,
     _messages,
     clean_completion_notice,
@@ -16,7 +16,10 @@ from app.services.llm import (
     promote_bare_checklist,
     stream_query,
 )
-from app.services.next_best_step import DiagnosticPlan, DiagnosticPlanStatus
+from app.services.chat.diagnostic.next_best_step import (
+    DiagnosticPlan,
+    DiagnosticPlanStatus,
+)
 
 
 def test_should_show_only_first_next_best_step_to_technician():
@@ -111,7 +114,7 @@ async def test_should_return_llm_response_content(mock_llm_session, mocker, sett
         mocker, ["Odpowiedź", " asystenta"]
     )
 
-    mocker.patch("app.services.llm.AsyncOpenAI", return_value=mock_client)
+    mocker.patch("app.services.chat.generation.AsyncOpenAI", return_value=mock_client)
     chunks = [
         chunk
         async for chunk in stream_query(
@@ -133,7 +136,7 @@ async def test_should_skip_none_delta_chunks(mock_llm_session, mocker, settings)
         mocker, [None, "real content", None]
     )
 
-    mocker.patch("app.services.llm.AsyncOpenAI", return_value=mock_client)
+    mocker.patch("app.services.chat.generation.AsyncOpenAI", return_value=mock_client)
     chunks = [
         chunk
         async for chunk in stream_query(
@@ -150,7 +153,7 @@ async def test_should_pass_question_and_context_to_llm(
     mock_client = mocker.MagicMock()
     mock_client.chat.completions.create = make_stream_mock(mocker, ["Answer"])
 
-    mocker.patch("app.services.llm.AsyncOpenAI", return_value=mock_client)
+    mocker.patch("app.services.chat.generation.AsyncOpenAI", return_value=mock_client)
     async for _ in stream_query(
         mock_llm_session, 1, "My question", ["context chunk"], settings
     ):
@@ -170,7 +173,7 @@ async def test_continuation_classifier_omits_unsupported_reasoning(mocker, setti
     mock_client.responses.create = mocker.AsyncMock(
         return_value=mocker.MagicMock(output_text="1")
     )
-    mocker.patch("app.services.llm.AsyncOpenAI", return_value=mock_client)
+    mocker.patch("app.services.chat.generation.AsyncOpenAI", return_value=mock_client)
 
     assert await is_message_continuation_request("Co dalej?", settings) is True
     request = mock_client.responses.create.await_args.kwargs

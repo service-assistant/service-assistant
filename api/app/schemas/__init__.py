@@ -2,13 +2,13 @@
 `app/schemas/` directory stores Pydantic request and response schemas.
 """
 
-from .attachment import AttachmentRead
 from .admin_messages import (
     DebugMessageChunkRead,
     DebugMessageDeviceRead,
     DebugMessageRead,
     DebugMessageThreadRead,
 )
+from .attachment import AttachmentRead
 from .auth import (
     AdminLoginRequest,
     LoginRequest,
@@ -28,7 +28,13 @@ from .chunk import (
 )
 from .device import DeviceCreate, DeviceRead, DeviceUpdate
 from .job import JobListRead, JobRead
-from .message import MessageCreate, MessageRead, TranscriptDecision, TranscriptResponse
+from .message import (
+    ChatMode,
+    MessageCreate,
+    MessageRead,
+    TranscriptDecision,
+    TranscriptResponse,
+)
 from .nameplate import (
     NameplateAttribute,
     NameplateData,
@@ -87,4 +93,5 @@ __all__ = [
     "TranscriptResponse",
     "TranscriptDecision",
     "TtsRequest",
+    "ChatMode",
 ]

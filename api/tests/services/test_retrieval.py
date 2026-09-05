@@ -655,7 +655,7 @@ async def test_diagnostic_mode_bypasses_enabled_reranking(session, settings, moc
         "diagnostic question",
         device.id,
         enabled_settings,
-        diagnostic_mode_2002=True,
+        diagnostic_mode_enabled=True,
     )
 
     assert len(result) == 7

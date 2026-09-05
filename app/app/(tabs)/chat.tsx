@@ -182,14 +182,8 @@ export default function ChatScreen() {
 	const sourcePanelFullScreen = isPortrait || (isWeb && !useDesktopSidePreview);
 	const insets = useSafeAreaInsets();
 	const router = useRouter();
-	const {
-		lightThemeEnabled,
-		wakeWordEnabled,
-		ttsEnabled,
-		ttsVoice,
-		ttsStyle,
-		diagnosticModeEnabled,
-	} = useAppSettings();
+	const { lightThemeEnabled, wakeWordEnabled, ttsEnabled, ttsVoice, ttsStyle, chatMode } =
+		useAppSettings();
 
 	const { deviceId, deviceName, logoUrl, chatSession, threadId } = useLocalSearchParams<{
 		deviceId: string;
@@ -348,7 +342,7 @@ export default function ChatScreen() {
 		setIsLoading,
 		setIsGenerating,
 		setCurrentImage,
-		diagnosticModeEnabled,
+		chatMode,
 		playAssistantAudio: playAssistantAudioWhenEnabled,
 		ttsEnabled,
 		onServiceError: showServiceError,

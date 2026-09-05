@@ -141,7 +141,7 @@ async def run_benchmark_case(
                 thread=thread,
                 body=MessageCreate(
                     content=content,
-                    diagnostic_mode_enabled=case.diagnostic_mode_enabled,
+                    mode=case.mode,
                 ),
                 settings=settings,
                 session=session,

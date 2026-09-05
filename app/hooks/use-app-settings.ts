@@ -1,3 +1,4 @@
+import type { ChatMode } from '@/types/chat';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
@@ -8,7 +9,7 @@ export type AppSettings = {
 	ttsEnabled: boolean;
 	ttsVoice: TtsVoice;
 	ttsStyle: TtsStyle;
-	diagnosticModeEnabled: boolean;
+	chatMode: ChatMode;
 };
 
 export type TtsVoice =
@@ -22,6 +23,8 @@ export type TtsVoice =
 	| 'Vindemiatrix';
 
 export type TtsStyle = 'neutral' | 'warm' | 'sensual' | 'extra_sensual' | 'extreme_sensual';
+
+const CHAT_MODES: readonly ChatMode[] = ['standard', 'diagnostic', 'agent'];
 
 const TTS_VOICES: readonly TtsVoice[] = [
 	'Algenib',
@@ -45,19 +48,13 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
 	ttsEnabled: false,
 	ttsVoice: 'Algenib',
 	ttsStyle: 'neutral',
-	diagnosticModeEnabled: false,
+	chatMode: 'standard',
 };
 
 const parseStoredAppSettings = (storedValue: string | null): Partial<AppSettings> => {
 	if (!storedValue) return {};
 
-	const parsedValue = JSON.parse(storedValue) as Partial<AppSettings> & {
-		diagnosticMode2002Enabled?: boolean;
-	};
-	const diagnosticModeEnabled =
-		typeof parsedValue.diagnosticModeEnabled === 'boolean'
-			? parsedValue.diagnosticModeEnabled
-			: parsedValue.diagnosticMode2002Enabled;
+	const parsedValue = JSON.parse(storedValue) as Partial<AppSettings>;
 
 	return {
 		...(typeof parsedValue.lightThemeEnabled === 'boolean'
@@ -79,7 +76,9 @@ const parseStoredAppSettings = (storedValue: string | null): Partial<AppSettings
 		parsedValue.ttsStyle === 'extreme_sensual'
 			? { ttsStyle: parsedValue.ttsStyle }
 			: {}),
-		...(typeof diagnosticModeEnabled === 'boolean' ? { diagnosticModeEnabled } : {}),
+		...(CHAT_MODES.includes(parsedValue.chatMode as ChatMode)
+			? { chatMode: parsedValue.chatMode as ChatMode }
+			: {}),
 	};
 };
 
@@ -189,6 +188,6 @@ export const useAppSettings = () => {
 		setTtsEnabled: (value: boolean) => setAppSetting('ttsEnabled', value),
 		setTtsVoice: (value: TtsVoice) => setAppSetting('ttsVoice', value),
 		setTtsStyle: (value: TtsStyle) => setAppSetting('ttsStyle', value),
-		setDiagnosticModeEnabled: (value: boolean) => setAppSetting('diagnosticModeEnabled', value),
+		setChatMode: (value: ChatMode) => setAppSetting('chatMode', value),
 	};
 };

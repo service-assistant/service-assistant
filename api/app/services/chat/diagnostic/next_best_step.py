@@ -9,7 +9,7 @@ from typing import Any, Final, cast
 from openai import AsyncOpenAI
 from pydantic import BaseModel, ConfigDict, Field
 
-from ..config import Settings
+from app.config import Settings
 
 logger = logging.getLogger(__name__)
 

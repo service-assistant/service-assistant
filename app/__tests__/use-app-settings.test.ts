@@ -73,7 +73,7 @@ describe('use-app-settings store', () => {
 					ttsEnabled: true,
 					ttsVoice: 'Leda',
 					ttsStyle: 'extreme_sensual',
-					diagnosticMode2002Enabled: false,
+					chatMode: 'agent',
 				}),
 			}),
 		);
@@ -87,7 +87,7 @@ describe('use-app-settings store', () => {
 				ttsEnabled: true,
 				ttsVoice: 'Leda',
 				ttsStyle: 'extreme_sensual',
-				diagnosticModeEnabled: false,
+				chatMode: 'agent',
 			});
 		});
 	});
@@ -104,7 +104,7 @@ describe('use-app-settings store', () => {
 			setAppSetting('ttsEnabled', true);
 			setAppSetting('ttsVoice', 'Leda');
 			setAppSetting('ttsStyle', 'sensual');
-			setAppSetting('diagnosticModeEnabled', false);
+			setAppSetting('chatMode', 'agent');
 
 			expect(localStorage.setItem).toHaveBeenLastCalledWith(
 				STORAGE_KEY,
@@ -114,7 +114,7 @@ describe('use-app-settings store', () => {
 					ttsEnabled: true,
 					ttsVoice: 'Leda',
 					ttsStyle: 'sensual',
-					diagnosticModeEnabled: false,
+					chatMode: 'agent',
 				}),
 			);
 		});
@@ -130,7 +130,7 @@ describe('use-app-settings store', () => {
 				ttsEnabled: true,
 				ttsVoice: 'Leda',
 				ttsStyle: 'sensual',
-				diagnosticMode2002Enabled: false,
+				chatMode: 'agent',
 			}),
 		);
 
@@ -141,7 +141,7 @@ describe('use-app-settings store', () => {
 				lightThemeEnabled: false,
 				wakeWordEnabled: false,
 				ttsEnabled: false,
-				diagnosticModeEnabled: false,
+				chatMode: 'standard',
 			});
 
 			await loadAppSettings();
@@ -154,7 +154,7 @@ describe('use-app-settings store', () => {
 				ttsEnabled: true,
 				ttsVoice: 'Leda',
 				ttsStyle: 'sensual',
-				diagnosticModeEnabled: false,
+				chatMode: 'agent',
 			});
 		});
 	});
@@ -170,7 +170,7 @@ describe('use-app-settings store', () => {
 			setAppSetting('ttsEnabled', true);
 			setAppSetting('ttsVoice', 'Leda');
 			setAppSetting('ttsStyle', 'sensual');
-			setAppSetting('diagnosticModeEnabled', false);
+			setAppSetting('chatMode', 'agent');
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			expect(mockWriteAsStringAsync).toHaveBeenLastCalledWith(
@@ -181,7 +181,7 @@ describe('use-app-settings store', () => {
 					ttsEnabled: true,
 					ttsVoice: 'Leda',
 					ttsStyle: 'sensual',
-					diagnosticModeEnabled: false,
+					chatMode: 'agent',
 				}),
 			);
 		});

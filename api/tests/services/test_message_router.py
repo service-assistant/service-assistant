@@ -1,7 +1,7 @@
 import json
 from types import SimpleNamespace
 
-from app.services.message_router import (
+from app.services.chat.diagnostic.router import (
     MessageRoute,
     RoutingHistoryMessage,
     classify_message,
@@ -16,7 +16,7 @@ def _response(payload: dict):
 
 
 async def test_should_route_any_explicit_error_code_without_llm_call(mocker, settings):
-    openai = mocker.patch("app.services.message_router.AsyncOpenAI")
+    openai = mocker.patch("app.services.chat.diagnostic.router.AsyncOpenAI")
 
     decision = await classify_message(
         "Mam błąd 2:004",
@@ -42,7 +42,9 @@ async def test_should_route_safety_question_to_standard_chat(mocker, settings):
             }
         )
     )
-    mocker.patch("app.services.message_router.AsyncOpenAI", return_value=mock_client)
+    mocker.patch(
+        "app.services.chat.diagnostic.router.AsyncOpenAI", return_value=mock_client
+    )
 
     decision = await classify_message(
         "Jak bezpiecznie podnosić urządzenie?",
@@ -76,7 +78,9 @@ async def test_should_reconstruct_followup_from_message_history(mocker, settings
             }
         )
     )
-    mocker.patch("app.services.message_router.AsyncOpenAI", return_value=mock_client)
+    mocker.patch(
+        "app.services.chat.diagnostic.router.AsyncOpenAI", return_value=mock_client
+    )
     history: list[RoutingHistoryMessage] = [
         {
             "id": 42,
@@ -109,7 +113,9 @@ async def test_should_reject_followup_with_unknown_message_id(mocker, settings):
             }
         )
     )
-    mocker.patch("app.services.message_router.AsyncOpenAI", return_value=mock_client)
+    mocker.patch(
+        "app.services.chat.diagnostic.router.AsyncOpenAI", return_value=mock_client
+    )
 
     decision = await classify_message(
         "Ciśnienie jest za niskie",
@@ -132,7 +138,9 @@ async def test_should_start_diagnostic_for_symptom_classified_by_llm(mocker, set
             }
         )
     )
-    mocker.patch("app.services.message_router.AsyncOpenAI", return_value=mock_client)
+    mocker.patch(
+        "app.services.chat.diagnostic.router.AsyncOpenAI", return_value=mock_client
+    )
 
     decision = await classify_message(
         "Widły nie chcą się podnieść",
@@ -146,7 +154,7 @@ async def test_should_start_diagnostic_for_symptom_classified_by_llm(mocker, set
 
 async def test_should_fall_back_to_standard_chat_on_provider_error(mocker, settings):
     mocker.patch(
-        "app.services.message_router.classify_message",
+        "app.services.chat.diagnostic.router.classify_message",
         new=mocker.AsyncMock(side_effect=RuntimeError("provider unavailable")),
     )
 

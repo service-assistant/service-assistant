@@ -1,33 +1,26 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
-
 from app.models.message import MessageSender
+from pydantic import BaseModel, ConfigDict, Field
 
 from .photo_context import PhotoObservation
 
 
-class MessageCreate(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+class ChatMode(str, Enum):
+    standard = "standard"
+    diagnostic = "diagnostic"
+    agent = "agent"
 
+
+class MessageCreate(BaseModel):
     content: str = Field(
         description="Text of the user message.",
-        examples=["What does fault code E-23 mean and how do I clear it?"],
     )
-    diagnostic_mode_enabled: bool = Field(
-        default=False,
-        validation_alias=AliasChoices(
-            "diagnostic_mode_enabled", "diagnostic_mode_2002"
-        ),
-        description="Whether the Next Best Step diagnostic flow is enabled.",
-    )
+    mode: ChatMode = ChatMode.standard
     photo_context: list[PhotoObservation] = Field(
         default_factory=list,
         max_length=5,
-        description=(
-            "Concise observations extracted from technician photos before retrieval."
-        ),
     )
 
 

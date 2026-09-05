@@ -1,65 +1,130 @@
 import asyncio
-import json
 import time
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from app.config import Settings
 from app.models import ChatThread, ChunkMessage, Message, MessageSender
 from app.repositories import MessageRepository
 from app.schemas import MessageCreate, MessageRead
-from app.services import (
-    llm,
-    message_router,
-    next_best_step,
-    photo_context,
-    retrieval,
-    streaming,
-)
+from app.services import photo_context, retrieval
+from app.services.embedding import RetrievedChunk
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .common import (
+    diagnostic_plan_cache_key,
+    is_explicit_continuation,
+    looks_like_continuation,
+    sse,
+)
+from . import generation, streaming
+from .diagnostic import next_best_step, router
 
-def _sse(event: str, payload: object) -> str:
-    if isinstance(payload, str):
-        data = payload
-    else:
-        data = json.dumps(payload, ensure_ascii=False)
-    normalized_data = data.replace("\r\n", "\n").replace("\r", "\n")
-    data_lines = "\n".join(f"data: {line}" for line in normalized_data.split("\n"))
-    return f"event: {event}\n{data_lines}\n\n"
+RouteResolver = Callable[
+    [
+        MessageCreate,
+        Settings,
+        list[Message],
+        list[router.RoutingHistoryMessage],
+    ],
+    Awaitable[router.RouteDecision],
+]
 
-
-_CONTINUATION_HINTS = {"kontynuuj", "dalej", "rozwiń", "więcej", "ciągnij"}
-
-
-def _looks_like_continuation(content: str) -> bool:
-    lower = content.lower().strip()
-    return len(lower.split()) <= 4 or any(hint in lower for hint in _CONTINUATION_HINTS)
-
-
-def _is_explicit_continuation(content: str) -> bool:
-    normalized = content.lower().strip().rstrip(".!?")
-    return normalized in {"co dalej", "dalej", "kontynuuj"}
-
-
-def _diagnostic_plan_cache_key(message: Message) -> str:
-    return f"{message.thread_id}:{message.id}"
+MULTI_QUERY_CHUNK_LIMIT = 7
+RECIPROCAL_RANK_CONSTANT = 60
 
 
-async def stream_chat_message(
+async def _retrieve_for_queries(
+    session: AsyncSession,
+    queries: list[str],
+    *,
+    device_id: int,
+    settings: Settings,
+    diagnostic_enabled: bool,
+    retrieval_trace: dict[str, Any],
+) -> list[RetrievedChunk]:
+    if len(queries) == 1:
+        return await retrieval.retrieve_context_chunks(
+            session,
+            queries[0],
+            device_id=device_id,
+            settings=settings,
+            diagnostic_mode_enabled=diagnostic_enabled,
+            retrieval_trace=retrieval_trace,
+        )
+
+    chunks_by_id: dict[int, RetrievedChunk] = {}
+    scores: dict[int, float] = {}
+    query_traces: list[dict[str, Any]] = []
+    reranker_enabled = False
+    reranker_statuses: set[str] = set()
+
+    # AsyncSession is not safe for concurrent task use, so expanded queries are
+    # intentionally retrieved sequentially until retrieval owns its own sessions.
+    for query in queries:
+        query_trace: dict[str, Any] = {}
+        query_chunks = await retrieval.retrieve_context_chunks(
+            session,
+            query,
+            device_id=device_id,
+            settings=settings,
+            diagnostic_mode_enabled=diagnostic_enabled,
+            retrieval_trace=query_trace,
+        )
+        query_traces.append({"query": query, **query_trace})
+        reranker_enabled = reranker_enabled or bool(
+            query_trace.get("reranker_enabled", False)
+        )
+        reranker_statuses.add(str(query_trace.get("reranker_status", "not_run")))
+        for rank, chunk in enumerate(query_chunks, start=1):
+            chunk_id = chunk["id"]
+            chunks_by_id[chunk_id] = chunk
+            scores[chunk_id] = scores.get(chunk_id, 0) + 1 / (
+                RECIPROCAL_RANK_CONSTANT + rank
+            )
+
+    ranked_ids = sorted(scores, key=scores.__getitem__, reverse=True)
+    selected = [
+        chunks_by_id[chunk_id] for chunk_id in ranked_ids[:MULTI_QUERY_CHUNK_LIMIT]
+    ]
+    all_candidates = list(chunks_by_id.values())
+    retrieval_trace.update(
+        {
+            "queries": query_traces,
+            "reranker_enabled": reranker_enabled,
+            "reranker_status": (
+                next(iter(reranker_statuses))
+                if len(reranker_statuses) == 1
+                else "mixed"
+            ),
+            "before_reranker": all_candidates,
+            "after_reranker": selected,
+        }
+    )
+    return selected
+
+
+async def stream_message(
     thread: ChatThread,
     body: MessageCreate,
     settings: Settings,
     session: AsyncSession,
     organization_id: int,
     debug: bool,
+    *,
+    route_resolver: RouteResolver | None = None,
+    retrieval_queries: list[str] | None = None,
+    preprocessing_debug: dict[str, Any] | None = None,
 ) -> StreamingResponse:
+    diagnostic_enabled = route_resolver is not None
     started_at = time.perf_counter()
     thread_id = thread.id
     device_id = thread.device_id
     rag_question = photo_context.build_augmented_rag_query(
         body.content, body.photo_context
     )
+    effective_retrieval_queries = retrieval_queries or [rag_question]
     rag_photo_context = photo_context.build_rag_photo_context(body.photo_context)
 
     recent_messages = await MessageRepository(
@@ -73,7 +138,7 @@ async def stream_chat_message(
         ),
         None,
     )
-    routing_history: list[message_router.RoutingHistoryMessage] = [
+    routing_history: list[router.RoutingHistoryMessage] = [
         {
             "id": message.id,
             "sender": message.sender.value,
@@ -83,81 +148,63 @@ async def stream_chat_message(
         for message in reversed(recent_messages)
     ]
 
-    route_decision = message_router.RouteDecision(
-        route=message_router.MessageRoute.standard_query,
-        confidence=1,
-        recognized_problem=None,
-        diagnostic_message_id=None,
+    route_decision = (
+        await route_resolver(body, settings, recent_messages, routing_history)
+        if route_resolver is not None
+        else None
     )
-    if body.diagnostic_mode_enabled:
-        route_decision = await message_router.route_message(
-            body.content,
-            settings,
-            recent_messages=routing_history,
-        )
-        if next_best_step.requests_next_action(body.content):
-            cached_message_and_plan = next(
-                (
-                    (message, plan)
-                    for message in recent_messages
-                    if message.sender == MessageSender.assistant and message.chunks
-                    if (
-                        plan := next_best_step.get_cached_diagnostic_plan(
-                            _diagnostic_plan_cache_key(message)
-                        )
-                    )
-                ),
-                None,
-            )
-            if cached_message_and_plan:
-                cached_message, cached_plan = cached_message_and_plan
-                route_decision = message_router.RouteDecision(
-                    route=message_router.MessageRoute.diagnostic_followup,
-                    confidence=1,
-                    recognized_problem=cached_plan.problem,
-                    diagnostic_message_id=cached_message.id,
-                )
+
+    diagnostic_route = (
+        route_decision.route
+        if route_decision is not None
+        else router.MessageRoute.standard_query
+    )
+
     routed_at = time.perf_counter()
-    diagnostic_route = route_decision.route
+    diagnostic_message_id = (
+        route_decision.diagnostic_message_id if route_decision else None
+    )
+
     diagnostic_message = next(
         (
             message
             for message in recent_messages
-            if message.id == route_decision.diagnostic_message_id
+            if message.id == diagnostic_message_id
             and message.sender == MessageSender.assistant
             and message.chunks
         ),
         None,
     )
+
     current_diagnostic_plan: next_best_step.DiagnosticPlan | None = None
     if diagnostic_message:
         current_diagnostic_plan = next_best_step.get_cached_diagnostic_plan(
-            _diagnostic_plan_cache_key(diagnostic_message)
+            diagnostic_plan_cache_key(diagnostic_message)
         )
     if (
-        diagnostic_route == message_router.MessageRoute.diagnostic_followup
+        diagnostic_route == router.MessageRoute.diagnostic_followup
         and current_diagnostic_plan is None
     ):
-        diagnostic_route = message_router.MessageRoute.standard_query
+        diagnostic_route = router.MessageRoute.standard_query
 
     might_continue = (
         not body.photo_context
         and latest_system_message is not None
-        and _looks_like_continuation(body.content)
+        and looks_like_continuation(body.content)
     )
     has_promised_continuation = bool(
         latest_system_message
         and (
             latest_system_message.has_continuation
-            or llm.has_continuation_marker(latest_system_message.content)
+            or generation.has_continuation_marker(latest_system_message.content)
         )
     )
     standard_completion_answer = (
-        llm.DOCUMENTATION_EXHAUSTED_ANSWER
-        if not body.diagnostic_mode_enabled
+        generation.DOCUMENTATION_EXHAUSTED_ANSWER
+        if not diagnostic_enabled
         and not body.photo_context
         and latest_system_message
-        and _is_explicit_continuation(body.content)
+        and is_explicit_continuation(body.content)
         and not has_promised_continuation
         else None
     )
@@ -177,26 +224,26 @@ async def stream_chat_message(
             }
             for chunk in diagnostic_message.chunks
         ]
-    elif might_continue and not _is_explicit_continuation(body.content):
+    elif might_continue and not is_explicit_continuation(body.content):
         is_continuation, fresh_chunks = await asyncio.gather(
-            llm.is_message_continuation_request(body.content, settings),
-            retrieval.retrieve_context_chunks(
+            generation.is_message_continuation_request(body.content, settings),
+            _retrieve_for_queries(
                 session,
-                rag_question,
+                effective_retrieval_queries,
                 device_id=device_id,
                 settings=settings,
-                diagnostic_mode_2002=body.diagnostic_mode_enabled,
+                diagnostic_enabled=diagnostic_enabled,
                 retrieval_trace=retrieval_trace,
             ),
         )
     else:
         is_continuation = might_continue
-        fresh_chunks = await retrieval.retrieve_context_chunks(
+        fresh_chunks = await _retrieve_for_queries(
             session,
-            rag_question,
+            effective_retrieval_queries,
             device_id=device_id,
             settings=settings,
-            diagnostic_mode_2002=body.diagnostic_mode_enabled,
+            diagnostic_enabled=diagnostic_enabled,
             retrieval_trace=retrieval_trace,
         )
 
@@ -225,13 +272,18 @@ async def stream_chat_message(
     context_chunks = [chunk["content"] for chunk in retrieved_chunks]
 
     diagnostic_plan: next_best_step.DiagnosticPlan | None = None
-    if diagnostic_route == message_router.MessageRoute.start_diagnostic:
-        diagnostic_problem = route_decision.recognized_problem or body.content
+    if diagnostic_route == router.MessageRoute.start_diagnostic:
+        diagnostic_problem = (
+            route_decision.recognized_problem
+            if route_decision and route_decision.recognized_problem
+            else body.content
+        )
+
         diagnostic_plan = await next_best_step.build_diagnostic_plan(
             context_chunks, diagnostic_problem, settings
         )
     elif (
-        diagnostic_route == message_router.MessageRoute.diagnostic_followup
+        diagnostic_route == router.MessageRoute.diagnostic_followup
         and diagnostic_message
         and current_diagnostic_plan
     ):
@@ -258,7 +310,7 @@ async def stream_chat_message(
     await session.commit()
 
     continuation_hint = (
-        llm.continuation_target(latest_system_message.content)
+        generation.continuation_target(latest_system_message.content)
         if is_continuation and latest_system_message
         else ""
     )
@@ -267,20 +319,27 @@ async def stream_chat_message(
         answer_parts: list[str] = []
 
         if debug:
-            yield _sse(
+            if preprocessing_debug is not None:
+                yield sse("debug", preprocessing_debug)
+            yield sse(
                 "debug",
                 {
                     "step": "route",
                     "label": "Router wiadomości",
                     "duration_ms": round((routed_at - started_at) * 1000),
                     "data": {
-                        **route_decision.model_dump(mode="json"),
+                        "mode": body.mode.value,
+                        "decision": (
+                            route_decision.model_dump(mode="json")
+                            if route_decision is not None
+                            else None
+                        ),
                         "effective_route": diagnostic_route.value,
                         "history_messages": len(routing_history),
                     },
                 },
             )
-            yield _sse(
+            yield sse(
                 "debug",
                 {
                     "step": "retrieval",
@@ -292,6 +351,7 @@ async def stream_chat_message(
                             observation.model_dump(mode="json")
                             for observation in body.photo_context
                         ],
+                        "queries": effective_retrieval_queries,
                         "continuation": is_continuation,
                         "reranker_enabled": retrieval_trace.get(
                             "reranker_enabled", False
@@ -329,7 +389,7 @@ async def stream_chat_message(
                     },
                 },
             )
-            yield _sse(
+            yield sse(
                 "debug",
                 {
                     "step": "plan",
@@ -345,15 +405,15 @@ async def stream_chat_message(
                     },
                 },
             )
-        yield _sse("route", diagnostic_route.value)
+        yield sse("route", diagnostic_route.value)
 
         generation_started_at = time.perf_counter()
         if standard_completion_answer:
             answer_parts.append(standard_completion_answer)
-            yield _sse("chunk", standard_completion_answer)
+            yield sse("chunk", standard_completion_answer)
         else:
             stream_limiter = streaming.ChecklistStreamLimiter()
-            async for chunk in llm.stream_query(
+            async for chunk in generation.stream_query(
                 session,
                 thread_id,
                 body.content,
@@ -367,17 +427,17 @@ async def stream_chat_message(
             ):
                 for visible_chunk in stream_limiter.feed(chunk):
                     answer_parts.append(visible_chunk)
-                    yield _sse("chunk", visible_chunk)
+                    yield sse("chunk", visible_chunk)
 
             for visible_chunk in stream_limiter.finish():
                 answer_parts.append(visible_chunk)
-                yield _sse("chunk", visible_chunk)
+                yield sse("chunk", visible_chunk)
         generation_duration_ms = round(
             (time.perf_counter() - generation_started_at) * 1000
         )
 
         if debug:
-            yield _sse(
+            yield sse(
                 "debug",
                 {
                     "step": "generation",
@@ -388,18 +448,16 @@ async def stream_chat_message(
             )
 
         answer = "".join(answer_parts)
-        answer = llm.normalize_numbered_checklist(answer)
-        answer = llm.promote_bare_checklist(answer)
-        answer = llm.limit_checklist_items(answer)
+        answer = generation.normalize_numbered_checklist(answer)
+        answer = generation.promote_bare_checklist(answer)
+        answer = generation.limit_checklist_items(answer)
         if is_continuation:
-            answer = llm.ensure_continuation_intro(answer)
-        answer = llm.clean_completion_notice(answer)
-        answer = llm.normalize_warning_lists(answer)
-        answer = llm.order_warnings_before_checklist(answer)
-        has_continuation = llm.has_continuation_marker(answer) or bool(
-            body.diagnostic_mode_enabled
-            and diagnostic_plan
-            and diagnostic_plan.has_next_action()
+            answer = generation.ensure_continuation_intro(answer)
+        answer = generation.clean_completion_notice(answer)
+        answer = generation.normalize_warning_lists(answer)
+        answer = generation.order_warnings_before_checklist(answer)
+        has_continuation = generation.has_continuation_marker(answer) or bool(
+            diagnostic_enabled and diagnostic_plan and diagnostic_plan.has_next_action()
         )
 
         assistant_message = Message(
@@ -414,12 +472,12 @@ async def stream_chat_message(
 
         if diagnostic_plan:
             next_best_step.cache_diagnostic_plan(
-                _diagnostic_plan_cache_key(assistant_message), diagnostic_plan
+                diagnostic_plan_cache_key(assistant_message), diagnostic_plan
             )
 
-        if not llm.is_no_source_answer(answer) and not llm.is_completion_only_answer(
+        if not generation.is_no_source_answer(
             answer
-        ):
+        ) and not generation.is_completion_only_answer(answer):
             for chunk in retrieved_chunks:
                 session.add(
                     ChunkMessage(message_id=assistant_message.id, chunk_id=chunk["id"])
@@ -428,7 +486,7 @@ async def stream_chat_message(
         await session.commit()
 
         if debug:
-            yield _sse(
+            yield sse(
                 "debug",
                 {
                     "step": "complete",
@@ -442,7 +500,7 @@ async def stream_chat_message(
                 },
             )
 
-        yield _sse(
+        yield sse(
             "message", MessageRead.model_validate(assistant_message).model_dump_json()
         )
 

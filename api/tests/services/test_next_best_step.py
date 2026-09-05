@@ -2,7 +2,7 @@ import json
 from types import SimpleNamespace
 
 from app.config import Settings
-from app.services.next_best_step import (
+from app.services.chat.diagnostic.next_best_step import (
     ActionMetadata,
     DiagnosticAction,
     DiagnosticPlan,
@@ -90,7 +90,7 @@ def test_should_require_explicit_problem_resolution_confirmation():
 
 
 def test_should_recognize_diagnostic_signals_without_polish_characters():
-    from app.services.next_best_step import (
+    from app.services.chat.diagnostic.next_best_step import (
         reports_negative_result,
         reports_only_problem_status,
     )
@@ -153,7 +153,9 @@ async def test_should_advance_to_full_next_action_when_technician_asks_what_next
 ):
     measure = _action("measure_can_resistance", information_gain=9)
     inspect = _action("inspect_can_harness", information_gain=7)
-    classify = mocker.patch("app.services.next_best_step.classify_followup")
+    classify = mocker.patch(
+        "app.services.chat.diagnostic.next_best_step.classify_followup"
+    )
 
     is_result, next_plan = await build_followup_plan(
         _plan("Błąd 2:010", [measure, inspect]),
@@ -189,7 +191,10 @@ async def test_should_extract_actions_for_dynamic_problem_and_rank_them(mocker):
     )
     mock_client = mocker.MagicMock()
     mock_client.chat.completions.create = mocker.AsyncMock(return_value=response)
-    mocker.patch("app.services.next_best_step.AsyncOpenAI", return_value=mock_client)
+    mocker.patch(
+        "app.services.chat.diagnostic.next_best_step.AsyncOpenAI",
+        return_value=mock_client,
+    )
 
     actions = await extract_and_rank_actions(
         ["|2:004|Sprawdź parametry|", "|2:004|Wymień moduł|"],
@@ -230,7 +235,7 @@ async def test_should_remove_completed_action_and_rank_followup(mocker):
         information_gain=2,
     )
     mocker.patch(
-        "app.services.next_best_step.classify_followup",
+        "app.services.chat.diagnostic.next_best_step.classify_followup",
         new=mocker.AsyncMock(
             return_value=FollowupDecision(
                 is_action_result=True,
@@ -260,7 +265,7 @@ async def test_should_remove_completed_action_and_rank_followup(mocker):
 async def test_should_not_capture_unrelated_message_as_diagnostic_result(mocker):
     check = _action("check_parameters")
     mocker.patch(
-        "app.services.next_best_step.classify_followup",
+        "app.services.chat.diagnostic.next_best_step.classify_followup",
         new=mocker.AsyncMock(
             return_value=FollowupDecision(
                 is_action_result=False,
@@ -287,7 +292,7 @@ async def test_should_advance_when_only_problem_status_is_reported(mocker):
     )
     inspect = _action("inspect_connections")
     classify = mocker.patch(
-        "app.services.next_best_step.classify_followup",
+        "app.services.chat.diagnostic.next_best_step.classify_followup",
         new=mocker.AsyncMock(
             return_value=FollowupDecision(
                 is_action_result=False,
@@ -315,7 +320,9 @@ async def test_should_advance_when_only_problem_status_is_reported(mocker):
 async def test_should_advance_on_generic_negative_result(mocker):
     measurement = _action("measure_can_resistance", information_gain=9)
     inspect = _action("inspect_connections", information_gain=7)
-    classify = mocker.patch("app.services.next_best_step.classify_followup")
+    classify = mocker.patch(
+        "app.services.chat.diagnostic.next_best_step.classify_followup"
+    )
 
     is_result, plan = await build_followup_plan(
         _plan("Błąd 2:010", [measurement, inspect]),
@@ -333,7 +340,7 @@ async def test_should_advance_on_generic_negative_result(mocker):
 async def test_should_not_repeat_last_action_for_generic_negative_result(mocker):
     measurement = _action("measure_can_resistance")
     mocker.patch(
-        "app.services.next_best_step.classify_followup",
+        "app.services.chat.diagnostic.next_best_step.classify_followup",
         new=mocker.AsyncMock(
             return_value=FollowupDecision(
                 is_action_result=True,
@@ -361,7 +368,7 @@ async def test_should_not_finish_diagnostic_on_normal_measurement_alone(mocker):
     measured = _action("measure_resistance")
     inspect = _action("inspect_connector", information_gain=7)
     mocker.patch(
-        "app.services.next_best_step.classify_followup",
+        "app.services.chat.diagnostic.next_best_step.classify_followup",
         new=mocker.AsyncMock(
             return_value=FollowupDecision(
                 is_action_result=True,
