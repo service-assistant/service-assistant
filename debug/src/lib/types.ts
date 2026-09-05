@@ -125,7 +125,7 @@ export interface BenchmarkCase {
 	title: string
 	category: string
 	question: string
-	diagnostic_mode_enabled: boolean
+	mode: 'standard' | 'diagnostic' | 'agent'
 	expected_route: string
 	canonical_fault_code: string | null
 	reference_answer: string
@@ -171,25 +171,6 @@ export interface BenchmarkSetupRun {
 	error: string | null
 	result: Record<string, unknown> | null
 	steps: BenchmarkSetupStep[]
-}
-
-export interface BenchmarkDocumentStatus {
-	configured: boolean
-	missing_configuration: string[]
-	bucket: string | null
-	prefix: string
-	local_directory: string
-	total: number
-	ready: number
-	missing: number
-	outdated: number
-	documents: Array<{
-		key: string
-		filename: string
-		size: number
-		etag: string
-		state: 'ready' | 'missing' | 'outdated'
-	}>
 }
 
 export interface OrganizationRead {

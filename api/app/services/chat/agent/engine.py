@@ -5,7 +5,7 @@ import time
 from app.config import Settings
 from app.models import ChatThread
 from app.repositories import DeviceRepository
-from app.schemas import MessageCreate
+from app.schemas import MessageCreate, PhotoObservation
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,6 +32,29 @@ def _retrieval_queries(
     return queries
 
 
+async def prepare_case(
+    message: str,
+    machine: MachineContext,
+    settings: Settings,
+    *,
+    photo_observations: list[PhotoObservation] | None = None,
+) -> tuple[CaseContext, RetrievalQueryPlan, list[str]]:
+    """Build the agent context and query plan without running retrieval or generation."""
+    understanding = await understand_case(
+        message,
+        machine,
+        settings,
+        photo_observations=photo_observations,
+    )
+    case_context = CaseContext(
+        machine=machine,
+        symptom=understanding.case_context.symptom,
+        observations=understanding.case_context.observations,
+    )
+    query_plan = understanding.query_plan
+    return case_context, query_plan, _retrieval_queries(case_context, query_plan)
+
+
 async def stream_message(
     thread: ChatThread,
     body: MessageCreate,
@@ -53,18 +76,12 @@ async def stream_message(
         model_serial_code=device.model_serial_code,
         nameplate_data=thread.nameplate_data,
     )
-    understanding = await understand_case(
+    case_context, query_plan, queries = await prepare_case(
         body.content,
         machine,
         settings,
         photo_observations=body.photo_context,
     )
-    case_context = CaseContext(
-        machine=machine,
-        symptom=understanding.case_context.symptom,
-        observations=understanding.case_context.observations,
-    )
-    queries = _retrieval_queries(case_context, understanding.query_plan)
 
     return await stream_pipeline(
         thread,
@@ -74,13 +91,14 @@ async def stream_message(
         organization_id,
         debug,
         retrieval_queries=queries,
+        agent_retrieval=True,
         preprocessing_debug={
             "step": "case_understanding",
             "label": "Case Context i Query Rewrite",
             "duration_ms": round((time.perf_counter() - started_at) * 1000),
             "data": {
                 "case_context": case_context.model_dump(mode="json"),
-                "query_plan": understanding.query_plan.model_dump(mode="json"),
+                "query_plan": query_plan.model_dump(mode="json"),
                 "retrieval_queries": queries,
             },
         },

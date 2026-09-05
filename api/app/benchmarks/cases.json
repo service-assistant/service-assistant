@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "cases": [
     {
       "id": "fault_2002_without_colon",
@@ -170,6 +170,40 @@
       "source": {
         "filename": "LPE200, LPE220, LPE250 - podręcznik operatora PL.pdf",
         "locator": "rozdziały 6.3 „Wyświetlacz”, 7.1 „Kontrola przed użyciem” i 7.6.5 „Czujnik wstrząsów”; dodatkowo „LPE200 - nowy model - kody błędów.pdf”, wpisy 2:102, 2:180, 2:501 i 2:504",
+        "page": null
+      }
+    },
+    {
+      "id": "click_2_creep_colloquial_controls",
+      "title": "Click-2-Creep opisany potocznym językiem",
+      "category": "indirect_symptom",
+      "question": "Przy postawionej pionowo rączce dwa razy szybko trąciłem motylek jazdy. Teraz paleciak bardzo wolno jedzie, chociaż przy takim ustawieniu rączki zwykle hamuje. Co włączyłem i jak wrócić do normalnego działania?",
+      "mode": "agent",
+      "expected_route": "standard_query",
+      "canonical_fault_code": null,
+      "reference_answer": "Została włączona funkcja Click-2-Creep. Umożliwia ona jazdę z obniżoną prędkością oraz podnoszenie lub opuszczanie wideł nawet wtedy, gdy ramię sterujące jest maksymalnie podniesione albo opuszczone. Przy jej aktywacji na wyświetlaczu pojawia się komunikat SLO. Aby ją wyłączyć, ponownie dwukrotnie szybko naciśnij i puść dźwignię jazdy albo użyj wyłącznika bezpieczeństwa przy cofaniu. Funkcja wyłącza się również samoczynnie, jeśli nie jest używana przez 10 sekund.",
+      "required_facts": [
+        "Włączona funkcja nazywa się Click-2-Creep.",
+        "Click-2-Creep umożliwia jazdę z obniżoną prędkością przy ramieniu sterującym znajdującym się w najwyższym położeniu.",
+        "Po aktywacji funkcji na wyświetlaczu pojawia się komunikat SLO.",
+        "Funkcję wyłącza ponowne dwukrotne szybkie naciśnięcie i puszczenie dźwigni jazdy.",
+        "Alternatywnym sposobem wyłączenia jest użycie wyłącznika bezpieczeństwa przy cofaniu.",
+        "Funkcja wyłącza się samoczynnie po 10 sekundach nieużywania.",
+        "W trybie Click-2-Creep możliwe jest również podnoszenie i opuszczanie wideł przy maksymalnie podniesionym ramieniu sterującym."
+      ],
+      "required_behaviors": [
+        "Odpowiedź rozpoznaje potoczne określenia rączki i motylka jako ramię sterujące oraz dźwignię jazdy, identyfikuje celowo aktywowaną funkcję i nie przedstawia jej jako awarii."
+      ],
+      "forbidden_claims": [
+        "Dokumentacja nie podaje nazwy tej funkcji.",
+        "Opisane zachowanie oznacza awarię sterownika albo hamulca wymagającą naprawy.",
+        "Funkcję należy wyłączyć przez odłączenie lub obejście hamulca albo urządzenia bezpieczeństwa.",
+        "W trybie Click-2-Creep wózek może poruszać się z normalną, nieograniczoną prędkością przy podniesionym ramieniu sterującym.",
+        "Do wyłączenia funkcji konieczne jest wyłączenie zasilania wózka."
+      ],
+      "source": {
+        "filename": "LPE200, LPE220, LPE250 - podręcznik operatora PL.pdf",
+        "locator": "rozdziały 6.11 i 7.6.3 „Funkcja Click-2-Creep”",
         "page": null
       }
     },

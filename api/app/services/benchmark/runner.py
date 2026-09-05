@@ -17,13 +17,16 @@ from app.models import (
     ChunkMessage,
     Device,
 )
-from app.schemas import MessageCreate
+from app.schemas import ChatMode, MessageCreate
 from app.services.benchmark.judge import (
     evaluate_source_images,
     judge_answer,
     judge_chunks,
 )
 from app.services.benchmark.setup import BENCHMARK_MODEL_SERIAL_CODE
+from app.services.chat import pipeline
+from app.services.chat.agent import engine as agent_engine
+from app.services.chat.agent.models import MachineContext
 from app.services.organizations import get_system_organization_id
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -105,6 +108,114 @@ def _assistant_response_time_ms(turn: dict[str, Any]) -> int | None:
     return round(float(duration_ms))
 
 
+async def _attachment_names(
+    session: AsyncSession, chunks: list[dict[str, Any]]
+) -> dict[int, str]:
+    attachment_ids = {
+        int(item["attachment_id"])
+        for item in chunks
+        if item.get("attachment_id") is not None
+    }
+    if not attachment_ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(Attachment.id, Attachment.original_filename).where(
+                Attachment.id.in_(attachment_ids)
+            )
+        )
+    ).all()
+    return {row.id: row.original_filename for row in rows}
+
+
+def _serialize_retrieval_chunk(
+    chunk: dict[str, Any], source_names_by_id: dict[int, str]
+) -> dict[str, Any]:
+    content = str(chunk.get("content", chunk.get("preview", "")))
+    attachment_id = chunk.get("attachment_id")
+    source_name = (
+        source_names_by_id.get(int(attachment_id))
+        if attachment_id is not None
+        else None
+    )
+    return {
+        "id": chunk.get("id"),
+        "attachment_id": attachment_id,
+        "source_name": source_name,
+        "preview": content[:1000],
+        "metadata": chunk.get("extra_metadata", chunk.get("metadata", {})) or {},
+    }
+
+
+async def _run_agent_retrieval_benchmark(
+    case: BenchmarkCase,
+    device: Device,
+    settings: Settings,
+    session: AsyncSession,
+    cancellation_event: asyncio.Event | None,
+) -> dict[str, Any]:
+    machine = MachineContext(
+        device_id=device.id,
+        name=device.name,
+        model_serial_code=device.model_serial_code,
+        nameplate_data=None,
+    )
+    case_context, query_plan, queries = await await_with_cancellation(
+        agent_engine.prepare_case(case.question, machine, settings),
+        cancellation_event,
+    )
+    retrieval_trace: dict[str, Any] = {}
+    await await_with_cancellation(
+        pipeline.retrieve_for_agent_queries(
+            session,
+            queries,
+            device_id=device.id,
+            settings=settings,
+            retrieval_trace=retrieval_trace,
+        ),
+        cancellation_event,
+    )
+    query_traces = retrieval_trace.get("queries", [])
+    all_chunks = [
+        chunk
+        for key in ("before_reranker", "after_reranker")
+        for chunk in retrieval_trace.get(key, [])
+    ] + [chunk for trace in query_traces for chunk in trace.get("chunks", [])]
+    source_names_by_id = await _attachment_names(session, all_chunks)
+
+    def serialize_many(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            _serialize_retrieval_chunk(chunk, source_names_by_id) for chunk in chunks
+        ]
+
+    return {
+        "case_id": case.id,
+        "mode": ChatMode.agent.value,
+        "pipeline_stage": "retrieval_completed",
+        "question": case.question,
+        "case_context": case_context.model_dump(mode="json"),
+        "query_plan": query_plan.model_dump(mode="json"),
+        "retrieval_queries": queries,
+        "reranker_enabled": bool(retrieval_trace.get("reranker_enabled", False)),
+        "reranker_status": retrieval_trace.get("reranker_status", "not_run"),
+        "fusion_method": retrieval_trace.get("fusion_method"),
+        "global_reranker_query": retrieval_trace.get("global_reranker_query"),
+        "chunks_before_reranker": serialize_many(
+            retrieval_trace.get("before_reranker", [])
+        ),
+        "chunks_after_reranker": serialize_many(
+            retrieval_trace.get("after_reranker", [])
+        ),
+        "query_runs": [
+            {
+                "query": trace.get("query", ""),
+                "chunks": serialize_many(trace.get("chunks", [])),
+            }
+            for trace in query_traces
+        ],
+    }
+
+
 async def run_benchmark_case(
     case: BenchmarkCase,
     settings: Settings,
@@ -122,6 +233,15 @@ async def run_benchmark_case(
     )
     if device is None:
         raise RuntimeError("Run the full benchmark setup before running cases.")
+
+    if case.mode == ChatMode.agent:
+        return await _run_agent_retrieval_benchmark(
+            case,
+            device,
+            settings,
+            session,
+            cancellation_event,
+        )
 
     thread = ChatThread(
         title=f"BENCHMARK · {case.id}",

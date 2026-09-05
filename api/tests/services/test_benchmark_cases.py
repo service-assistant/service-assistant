@@ -95,3 +95,26 @@ def test_forks_not_lifting_case_should_require_clarifying_questions():
     assert "6.3" in case.source.locator
     assert "7.6.5" in case.source.locator
     assert "kody błędów.pdf" in case.source.locator
+
+
+def test_click_2_creep_case_should_use_agent_mode_for_indirect_description():
+    dataset = load_benchmark_dataset()
+    case = next(
+        item for item in dataset.cases if item.id == "click_2_creep_colloquial_controls"
+    )
+
+    assert case.mode == ChatMode.agent
+    assert case.category == "indirect_symptom"
+    assert case.expected_route == "standard_query"
+    assert case.canonical_fault_code is None
+    assert len(case.required_facts) == 7
+    assert any("Click-2-Creep" in fact for fact in case.required_facts)
+    assert any("SLO" in fact for fact in case.required_facts)
+    assert any("10 sekund" in fact for fact in case.required_facts)
+    assert any(
+        "Dokumentacja nie podaje nazwy" in claim for claim in case.forbidden_claims
+    )
+    assert case.source.filename == (
+        "LPE200, LPE220, LPE250 - podręcznik operatora PL.pdf"
+    )
+    assert "7.6.3" in case.source.locator
