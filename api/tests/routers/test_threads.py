@@ -474,6 +474,7 @@ async def test_should_emit_pipeline_trace_when_debug_is_requested(
         "retrieval",
         "plan",
         "generation",
+        "persistence",
         "complete",
     ]
     assert debug_payloads[0]["data"]["effective_route"] == "start_diagnostic"
@@ -488,6 +489,8 @@ async def test_should_emit_pipeline_trace_when_debug_is_requested(
     }
     assert debug_payloads[3]["duration_ms"] >= 0
     assert debug_payloads[3]["data"] == {"status": "completed"}
+    assert debug_payloads[3]["first_chunk_ms"] >= debug_payloads[3]["start_ms"]
+    assert debug_payloads[3]["time_to_first_chunk_ms"] >= 0
     assert debug_payloads[-1]["data"]["answer_characters"] == len("Test response")
 
 

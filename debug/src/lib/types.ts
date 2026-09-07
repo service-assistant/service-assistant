@@ -149,6 +149,7 @@ export interface BenchmarkCaseRun {
 	case_id: string
 	state: BenchmarkRunState
 	created_at: string
+	evaluate: boolean
 	finished_at: string | null
 	error: string | null
 	result: Record<string, unknown> | null

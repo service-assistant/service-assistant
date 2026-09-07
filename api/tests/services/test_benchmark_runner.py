@@ -108,6 +108,111 @@ def test_assistant_response_time_should_use_only_generation_duration():
     assert benchmark_runner._assistant_response_time_ms(turn) == 1567
 
 
+def test_conversation_stage_timings_should_sum_all_standard_turns():
+    conversation = [
+        {
+            "debug": [
+                {"step": "route", "duration_ms": 120},
+                {
+                    "step": "retrieval",
+                    "duration_ms": 340.4,
+                    "data": {"translation_duration_ms": 150},
+                },
+                {
+                    "step": "generation",
+                    "duration_ms": 1567,
+                    "time_to_first_chunk_ms": 500,
+                },
+                {"step": "complete", "duration_ms": 1700},
+            ]
+        },
+        {
+            "debug": [
+                {"step": "route", "duration_ms": 80},
+                {
+                    "step": "retrieval",
+                    "duration_ms": 100,
+                    "data": {"translation_duration_ms": 40.4},
+                },
+                {"step": "plan", "duration_ms": 30},
+                {
+                    "step": "generation",
+                    "duration_ms": 900,
+                    "time_to_first_chunk_ms": 300,
+                },
+            ]
+        },
+    ]
+
+    assert benchmark_runner._conversation_stage_timings_ms(conversation) == {
+        "route": 200,
+        "retrieval": 440,
+        "translation": 190,
+        "generation": 800,
+        "streaming": 1667,
+    }
+
+
+def test_response_timeline_should_join_continuations_on_one_axis():
+    conversation = [
+        {
+            "duration_ms": 120,
+            "debug": [
+                {"step": "route", "label": "Router", "start_ms": 0, "end_ms": 10},
+                {
+                    "step": "generation",
+                    "label": "Generation",
+                    "start_ms": 50,
+                    "end_ms": 100,
+                    "first_chunk_ms": 72,
+                },
+            ],
+        },
+        {
+            "duration_ms": 80,
+            "debug": [
+                {"step": "route", "label": "Router", "start_ms": 0, "end_ms": 5},
+                {
+                    "step": "generation",
+                    "label": "Generation",
+                    "start_ms": 30,
+                    "end_ms": 70,
+                },
+            ],
+        },
+    ]
+
+    timeline = benchmark_runner._response_timeline(conversation)
+
+    assert timeline["duration_ms"] == 200
+    assert timeline["items"][2] == {
+        "key": "generation",
+        "label": "Generowanie odpowiedzi",
+        "turn": 1,
+        "start_ms": 50,
+        "end_ms": 72,
+        "duration_ms": 22,
+    }
+    assert timeline["items"][3] == {
+        "key": "streaming",
+        "label": "Streamowanie odpowiedzi",
+        "turn": 1,
+        "start_ms": 72,
+        "end_ms": 100,
+        "duration_ms": 28,
+    }
+    assert timeline["items"][4] == {
+        "key": "response_overhead",
+        "label": "Pozostała obsługa odpowiedzi",
+        "turn": 1,
+        "start_ms": 100,
+        "end_ms": 120,
+        "duration_ms": 20,
+    }
+    assert timeline["items"][5]["start_ms"] == 120
+    assert timeline["items"][-1]["end_ms"] == 200
+
+
 async def test_agent_benchmark_should_stop_after_retrieval_without_answer(mocker):
     case = next(
         item
@@ -183,6 +288,10 @@ async def test_agent_benchmark_should_stop_after_retrieval_without_answer(mocker
         "app.services.benchmark.runner._attachment_names",
         new=mocker.AsyncMock(return_value={3: "manual.pdf"}),
     )
+    mocker.patch(
+        "app.services.benchmark.runner.time.perf_counter",
+        side_effect=[10.0, 10.125, 10.625],
+    )
 
     result = await benchmark_runner._run_agent_retrieval_benchmark(
         case=case,
@@ -207,6 +316,12 @@ async def test_agent_benchmark_should_stop_after_retrieval_without_answer(mocker
     assert len(result["query_runs"]) == 3
     assert result["fusion_method"] == "reciprocal_rank_fusion"
     assert result["chunks_after_reranker"][0]["source_name"] == "manual.pdf"
+    assert result["stage_timings_ms"] == {
+        "message": 0,
+        "case_context_and_query_rewrite": 125,
+        "retrieval_and_reranker": 500,
+    }
+    assert result["total_time_ms"] == 625
     assert "answer" not in result
     assert "judge" not in result
 

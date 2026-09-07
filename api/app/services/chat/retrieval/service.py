@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 import re
 from functools import partial
 from typing import Any
@@ -250,6 +251,26 @@ async def retrieve_context_chunks(
     retrieval_trace: dict[str, Any] | None = None,
     reranking_enabled_override: bool | None = None,
 ) -> list[RetrievedChunk]:
+    retrieval_started_at = time.perf_counter()
+    timeline: list[dict[str, Any]] = []
+
+    def record_timing(key: str, label: str, started_at: float) -> int:
+        finished_at = time.perf_counter()
+        duration_ms = round((finished_at - started_at) * 1000)
+        timeline.append(
+            {
+                "key": key,
+                "label": label,
+                "start_ms": round((started_at - retrieval_started_at) * 1000),
+                "end_ms": round((finished_at - retrieval_started_at) * 1000),
+                "duration_ms": duration_ms,
+            }
+        )
+        return duration_ms
+
+    if retrieval_trace is not None:
+        retrieval_trace["timeline"] = timeline
+
     target_language = get_device_document_language(device_id)
     reranking_enabled = (
         reranking_enabled_override
@@ -259,25 +280,79 @@ async def retrieve_context_chunks(
     semantic_limit = RERANKED_SEMANTIC_LIMIT if reranking_enabled else SEMANTIC_LIMIT
     bm25_limit = RERANKED_BM25_LIMIT if reranking_enabled else BM25_LIMIT
 
-    (vector, translated_query), rows = await asyncio.gather(
-        asyncio.gather(
-            embed_question(question, settings),
-            translate_query(
+    async def embed_with_timing() -> list[float]:
+        started_at = time.perf_counter()
+        try:
+            return await embed_question(question, settings)
+        finally:
+            record_timing("embedding", "Embedding zapytania", started_at)
+
+    async def translate_with_timing() -> tuple[str, int]:
+        started_at = time.perf_counter()
+        try:
+            translated = await translate_query(
                 question,
                 settings,
                 target_language=target_language,
-            ),
-        ),
-        _fetch_device_chunks(session, device_id),
-    )
+            )
+            return translated, record_timing(
+                "translation", "Tłumaczenie zapytania", started_at
+            )
+        except BaseException:
+            record_timing("translation", "Tłumaczenie zapytania", started_at)
+            raise
 
+    async def fetch_with_timing() -> list[RetrievedChunk]:
+        started_at = time.perf_counter()
+        try:
+            return await _fetch_device_chunks(session, device_id)
+        finally:
+            record_timing("fetch_chunks", "Pobranie chunków", started_at)
+
+    (vector, (translated_query, translation_duration_ms)), rows = await asyncio.gather(
+        asyncio.gather(
+            embed_with_timing(),
+            translate_with_timing(),
+        ),
+        fetch_with_timing(),
+    )
+    if retrieval_trace is not None:
+        retrieval_trace.update(
+            {
+                "translation_duration_ms": translation_duration_ms,
+                "translated_query": translated_query,
+            }
+        )
+
+    exact_started_at = time.perf_counter()
     exact = get_exact_match_chunks(rows, question, limit=EXACT_LIMIT)
+    record_timing("exact_match", "Exact match", exact_started_at)
+
+    async def semantic_with_timing() -> list[RetrievedChunk]:
+        started_at = time.perf_counter()
+        try:
+            return await get_semantic_chunks(
+                session, vector, device_id, limit=semantic_limit
+            )
+        finally:
+            record_timing("semantic_search", "Semantic search", started_at)
+
+    async def bm25_with_timing() -> list[RetrievedChunk]:
+        started_at = time.perf_counter()
+        try:
+            return await get_bm25_chunks(
+                session,
+                translated_query,
+                device_id,
+                rows=rows,
+                limit=bm25_limit,
+            )
+        finally:
+            record_timing("bm25", "BM25", started_at)
 
     semantic, bm25 = await asyncio.gather(
-        get_semantic_chunks(session, vector, device_id, limit=semantic_limit),
-        get_bm25_chunks(
-            session, translated_query, device_id, rows=rows, limit=bm25_limit
-        ),
+        semantic_with_timing(),
+        bm25_with_timing(),
     )
 
     if not reranking_enabled:
@@ -303,7 +378,11 @@ async def retrieve_context_chunks(
             }
         )
     try:
-        ranked = await rerank_chunks(translated_query, candidates, settings)
+        reranker_started_at = time.perf_counter()
+        try:
+            ranked = await rerank_chunks(translated_query, candidates, settings)
+        finally:
+            record_timing("reranker", "Reranker", reranker_started_at)
         candidate_ids = {chunk["id"] for chunk in candidates}
         ranked_ids = {chunk["id"] for chunk in ranked}
         if len(ranked) != len(candidates) or ranked_ids != candidate_ids:

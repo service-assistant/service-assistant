@@ -71,6 +71,9 @@ async def retrieve_for_queries(
     retrieval_trace.update(
         {
             "queries": query_traces,
+            "translation_duration_ms": sum(
+                int(trace.get("translation_duration_ms", 0)) for trace in query_traces
+            ),
             "reranker_enabled": reranker_enabled,
             "reranker_status": (
                 next(iter(reranker_statuses))

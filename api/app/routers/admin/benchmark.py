@@ -78,6 +78,7 @@ async def _process_benchmark_case_run(run_id: str, settings: Settings) -> None:
                 settings=settings,
                 session=session,
                 cancellation_event=cancellation_event,
+                evaluate=run.evaluate,
             )
         run.state = "completed"
     except BenchmarkCancelledError:
@@ -97,6 +98,7 @@ async def start_benchmark_case_run(
     case_id: str,
     background_tasks: BackgroundTasks,
     settings: SettingsDependency,
+    evaluate: bool = True,
 ):
     if _get_benchmark_case(case_id) is None:
         raise HTTPException(status_code=404, detail="Benchmark case not found")
@@ -117,6 +119,7 @@ async def start_benchmark_case_run(
         case_id=case_id,
         state="queued",
         created_at=datetime.now(timezone.utc).isoformat(),
+        evaluate=evaluate,
     )
     _benchmark_case_runs[run_id] = run
     _benchmark_case_cancel_events[run_id] = asyncio.Event()

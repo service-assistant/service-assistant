@@ -13,12 +13,12 @@ import {
 	SegmentedControl,
 	SimpleGrid,
 	Stack,
+	Switch,
 	Text,
 	Title,
 	UnstyledButton,
 } from '@mantine/core'
 import { useDisclosure } from '@mantine/hooks'
-import { modals } from '@mantine/modals'
 import { IconChevronDown, IconChevronUp } from '@tabler/icons-react'
 import { useState } from 'react'
 import {
@@ -137,6 +137,12 @@ function asStringArray(value: unknown): string[] {
 	return Array.isArray(value)
 		? value.filter((item): item is string => typeof item === 'string')
 		: []
+}
+
+function formatDuration(value: unknown): string | null {
+	if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null
+	if (value < 1000) return `${Math.round(value)} ms`
+	return `${(value / 1000).toFixed(2)} s`
 }
 
 function ChunkList({
@@ -289,13 +295,30 @@ function AgentPipelineResult({ result }: { result: ResultRecord }) {
 	const queryRuns = asRecordArray(result.query_runs)
 	const chunksBefore = asRecordArray(result.chunks_before_reranker)
 	const chunksAfter = asRecordArray(result.chunks_after_reranker)
+	const stageTimings = asRecord(result.stage_timings_ms)
+	const preparationTime = formatDuration(stageTimings?.case_context_and_query_rewrite)
+	const retrievalTime = formatDuration(stageTimings?.retrieval_and_reranker)
+	const totalTime = formatDuration(result.total_time_ms)
+	const stageTime: Record<AgentPipelineStage, string | null> = {
+		message: formatDuration(stageTimings?.message),
+		context: preparationTime ? `${preparationTime} wspólnie z Query Rewrite` : null,
+		queries: preparationTime ? `${preparationTime} wspólnie z Case Context` : null,
+		retrieval: retrievalTime,
+	}
 
 	return (
 		<Stack gap='lg'>
 			<Paper withBorder p='md' radius='md'>
-				<Text size='xs' fw={700} tt='uppercase' c='dimmed' mb='sm'>
-					Przebieg agenta — wybierz etap
-				</Text>
+				<Group justify='space-between' align='center' mb='sm'>
+					<Text size='xs' fw={700} tt='uppercase' c='dimmed'>
+						Przebieg agenta — wybierz etap
+					</Text>
+					{totalTime && (
+						<Badge color='blue' variant='light' size='lg'>
+							Łącznie: {totalTime}
+						</Badge>
+					)}
+				</Group>
 				<Group gap='xs' wrap='nowrap' style={{ overflowX: 'auto' }} pb={4}>
 					{AGENT_PIPELINE_STAGES.map((stage, index) => (
 						<Group key={stage.value} gap='xs' wrap='nowrap'>
@@ -326,6 +349,14 @@ function AgentPipelineResult({ result }: { result: ResultRecord }) {
 										c={selectedStage === stage.value ? 'inherit' : 'dimmed'}>
 										{stage.description}
 									</Text>
+									{stageTime[stage.value] && (
+										<Text
+											size='xs'
+											fw={700}
+											c={selectedStage === stage.value ? 'inherit' : 'blue'}>
+											{stageTime[stage.value]}
+										</Text>
+									)}
 								</Stack>
 							</Button>
 						</Group>
@@ -565,10 +596,303 @@ function AgentPipelineResult({ result }: { result: ResultRecord }) {
 	)
 }
 
-function CaseRunResult({ runId, testCase }: { runId: string; testCase: BenchmarkCase }) {
+const RETRIEVAL_TIMELINE_ORDER = [
+	'translation',
+	'embedding',
+	'fetch_chunks',
+	'exact_match',
+	'semantic_search',
+	'bm25',
+	'reranker',
+]
+
+const RETRIEVAL_TIMELINE_COLORS: Record<string, string> = {
+	translation: 'var(--mantine-color-cyan-filled)',
+	embedding: 'var(--mantine-color-violet-filled)',
+	fetch_chunks: 'var(--mantine-color-yellow-filled)',
+	exact_match: 'var(--mantine-color-orange-filled)',
+	semantic_search: 'var(--mantine-color-blue-filled)',
+	bm25: 'var(--mantine-color-teal-filled)',
+	reranker: 'var(--mantine-color-grape-filled)',
+}
+
+const RESPONSE_TIMELINE_COLORS: Record<string, string> = {
+	route: 'var(--mantine-color-indigo-filled)',
+	retrieval: 'var(--mantine-color-blue-filled)',
+	generation: 'var(--mantine-color-green-filled)',
+	streaming: 'var(--mantine-color-teal-filled)',
+	persistence: 'var(--mantine-color-violet-filled)',
+	response_overhead: 'var(--mantine-color-gray-filled)',
+}
+
+function TimelineAxis({ duration, labelWidth }: { duration: number; labelWidth: string }) {
+	const ticks = Array.from(
+		{ length: Math.floor(duration / 1000) + 1 },
+		(_, index) => index * 1000,
+	)
+	const lastTick = ticks.at(-1) ?? 0
+	if (duration - lastTick >= 500) ticks.push(duration)
+
+	return (
+		<div
+			style={{
+				display: 'grid',
+				gridTemplateColumns: `${labelWidth} 1fr`,
+				gap: 12,
+			}}>
+			<div />
+			<div
+				style={{
+					position: 'relative',
+					height: 28,
+					borderTop: '1px solid var(--mantine-color-default-border)',
+				}}>
+				{ticks.map((tick, index) => {
+					const isFirst = index === 0
+					const isLast = index === ticks.length - 1
+					return (
+						<div
+							key={tick}
+							style={{
+								position: 'absolute',
+								left: `${(tick / duration) * 100}%`,
+								transform: isFirst
+									? undefined
+									: isLast && tick === duration
+										? 'translateX(-100%)'
+										: 'translateX(-50%)',
+							}}>
+							<div
+								style={{
+									width: 1,
+									height: 5,
+									background: 'var(--mantine-color-dimmed)',
+									marginLeft:
+										isLast && tick === duration ? '100%' : isFirst ? 0 : '50%',
+								}}
+							/>
+							<Text size='xs' c='dimmed' style={{ whiteSpace: 'nowrap' }}>
+								{Math.round(tick)} ms
+							</Text>
+						</div>
+					)
+				})}
+			</div>
+		</div>
+	)
+}
+
+function ResponseTimeline({ result }: { result: ResultRecord }) {
+	const timeline = asRecord(result.response_timeline)
+	const items = asRecordArray(timeline?.items)
+	const duration = typeof timeline?.duration_ms === 'number' ? timeline.duration_ms : 0
+	if (items.length === 0 || duration <= 0) return null
+
+	return (
+		<Paper withBorder p='sm' radius='sm' mt='sm'>
+			<Text fw={600} size='sm' mb='sm'>
+				Oś czasu całej odpowiedzi
+			</Text>
+			<Stack gap={6}>
+				{items.map((item) => {
+					const start = typeof item.start_ms === 'number' ? item.start_ms : 0
+					const end = typeof item.end_ms === 'number' ? item.end_ms : start
+					const itemDuration = Math.max(0, end - start)
+					const key = String(item.key ?? '')
+					const turn = typeof item.turn === 'number' ? item.turn : 1
+					return (
+						<div
+							key={`${turn}-${key}-${start}-${end}`}
+							style={{
+								display: 'grid',
+								gridTemplateColumns: 'minmax(170px, 240px) 1fr',
+								gap: 12,
+								alignItems: 'center',
+							}}>
+							<Group justify='space-between' gap='xs' wrap='nowrap'>
+								<Text size='xs' lineClamp={1}>
+									{String(item.label ?? key)}
+									{turn > 1 ? ` · odp. ${turn}` : ''}
+								</Text>
+								<Text size='xs' fw={700} style={{ whiteSpace: 'nowrap' }}>
+									{formatDuration(itemDuration)}
+								</Text>
+							</Group>
+							<div
+								style={{
+									position: 'relative',
+									height: 18,
+									background: 'var(--mantine-color-default-border)',
+									borderRadius: 4,
+								}}>
+								<div
+									style={{
+										position: 'absolute',
+										left: `${(start / duration) * 100}%`,
+										width: `${(itemDuration / duration) * 100}%`,
+										minWidth: 3,
+										height: '100%',
+										borderRadius: 4,
+										background:
+											RESPONSE_TIMELINE_COLORS[key] ??
+											'var(--mantine-color-gray-filled)',
+									}}
+								/>
+							</div>
+						</div>
+					)
+				})}
+				<TimelineAxis duration={duration} labelWidth='minmax(170px, 240px)' />
+			</Stack>
+			<Text size='xs' c='dimmed' mt='sm'>
+				Obejmuje pełną odpowiedź i jej kontynuacje. Nie obejmuje oceny benchmarkowej.
+			</Text>
+		</Paper>
+	)
+}
+
+function RetrievalTimeline({ result }: { result: ResultRecord }) {
+	const timelines = asRecordArray(result.retrieval_timelines)
+	if (timelines.length === 0) return null
+
+	return (
+		<Stack gap='md' mt='sm'>
+			{timelines.map((timeline, timelineIndex) => {
+				const items = asRecordArray(timeline.items).sort(
+					(a, b) =>
+						RETRIEVAL_TIMELINE_ORDER.indexOf(String(a.key)) -
+						RETRIEVAL_TIMELINE_ORDER.indexOf(String(b.key)),
+				)
+				const measuredDuration =
+					typeof timeline.duration_ms === 'number' ? timeline.duration_ms : 0
+				const lastEnd = Math.max(
+					0,
+					...items.map((item) => (typeof item.end_ms === 'number' ? item.end_ms : 0)),
+				)
+				const axisDuration = Math.max(measuredDuration, lastEnd, 1)
+
+				return (
+					<div key={String(timeline.turn ?? timelineIndex)}>
+						{timelines.length > 1 && (
+							<Text fw={600} size='sm' mb='xs'>
+								Odpowiedź {String(timeline.turn ?? timelineIndex + 1)}
+							</Text>
+						)}
+						<Stack gap={6}>
+							{items.map((item) => {
+								const start = typeof item.start_ms === 'number' ? item.start_ms : 0
+								const end = typeof item.end_ms === 'number' ? item.end_ms : start
+								const duration = Math.max(0, end - start)
+								const key = String(item.key ?? '')
+								return (
+									<div
+										key={`${key}-${start}`}
+										style={{
+											display: 'grid',
+											gridTemplateColumns: 'minmax(150px, 220px) 1fr',
+											gap: 12,
+											alignItems: 'center',
+										}}>
+										<Group justify='space-between' gap='xs' wrap='nowrap'>
+											<Text size='xs' lineClamp={1}>
+												{String(item.label ?? key)}
+											</Text>
+											<Text
+												size='xs'
+												fw={700}
+												style={{ whiteSpace: 'nowrap' }}>
+												{formatDuration(duration)}
+											</Text>
+										</Group>
+										<div
+											style={{
+												position: 'relative',
+												height: 18,
+												background: 'var(--mantine-color-default-border)',
+												borderRadius: 4,
+											}}>
+											<div
+												style={{
+													position: 'absolute',
+													left: `${(start / axisDuration) * 100}%`,
+													width: `${(duration / axisDuration) * 100}%`,
+													minWidth: 3,
+													height: '100%',
+													borderRadius: 4,
+													background:
+														RETRIEVAL_TIMELINE_COLORS[key] ??
+														'var(--mantine-color-blue-filled)',
+												}}
+											/>
+										</div>
+									</div>
+								)
+							})}
+							<TimelineAxis
+								duration={axisDuration}
+								labelWidth='minmax(150px, 220px)'
+							/>
+						</Stack>
+					</div>
+				)
+			})}
+		</Stack>
+	)
+}
+
+function StandardPipelineTimings({ result, opened }: { result: ResultRecord; opened: boolean }) {
+	const stageTimings = asRecord(result.stage_timings_ms)
+	const hasRetrievalTimeline = asRecordArray(result.retrieval_timelines).length > 0
+	if (!stageTimings) return null
+
+	return (
+		<Collapse expanded={opened}>
+			<Paper withBorder p='md' radius='md' mt='sm'>
+				<ResponseTimeline result={result} />
+				{hasRetrievalTimeline && (
+					<Paper withBorder p='sm' radius='sm' mt='sm'>
+						<Text fw={600} size='sm'>
+							Oś czasu Retrieval + Reranker
+						</Text>
+						<RetrievalTimeline result={result} />
+						<Text size='xs' c='dimmed' mt='sm'>
+							Tłumaczenie, embedding i pobranie chunków startują równolegle.
+							Wyszukiwanie rusza po ich zakończeniu, a reranker po zbudowaniu puli
+							kandydatów.
+						</Text>
+					</Paper>
+				)}
+			</Paper>
+		</Collapse>
+	)
+}
+
+type StandardResultStage = 'answer' | 'retrieval' | 'evaluation'
+
+const STANDARD_RESULT_STAGES: Array<{
+	value: StandardResultStage
+	label: string
+	description: string
+}> = [
+	{ value: 'answer', label: 'Odpowiedź', description: 'Treść odpowiedzi' },
+	{ value: 'retrieval', label: 'Retrieval', description: 'Chunki i reranker' },
+	{ value: 'evaluation', label: 'Ocena', description: 'Wynik judge' },
+]
+
+function CaseRunResult({
+	runId,
+	testCase,
+	timingsOpened,
+}: {
+	runId: string
+	testCase: BenchmarkCase
+	timingsOpened: boolean
+}) {
 	const { data: run } = useCaseRun(runId)
 	const cancelRun = useCancelCaseRun()
-	const [chunksOpened, { toggle: toggleChunks }] = useDisclosure(false)
+	const [selectedStandardStage, setSelectedStandardStage] = useState<StandardResultStage | null>(
+		null,
+	)
 
 	if (!run) return <Loader size='sm' />
 
@@ -582,6 +906,7 @@ function CaseRunResult({ runId, testCase }: { runId: string; testCase: Benchmark
 	const requiredFacts = asRecordArray(judge?.required_facts)
 	const requiredBehaviors = asRecordArray(judge?.required_behaviors)
 	const forbiddenClaims = asRecordArray(judge?.forbidden_claims)
+	const evaluationSkipped = result.evaluation_skipped === true
 	const isActive = run.state === 'queued' || run.state === 'processing'
 	const isAgentPipeline =
 		result.mode === 'agent' && result.pipeline_stage === 'retrieval_completed'
@@ -611,53 +936,67 @@ function CaseRunResult({ runId, testCase }: { runId: string; testCase: Benchmark
 			{run.result && isAgentPipeline && <AgentPipelineResult result={result} />}
 			{run.result && !isAgentPipeline && (
 				<>
-					<section>
-						<Title order={4} mb='sm'>
-							1. Odpowiedź
-						</Title>
-						<Paper withBorder p='md' radius='md'>
-							<Text size='sm' style={{ whiteSpace: 'pre-wrap' }}>
-								{answer || 'Model nie zwrócił odpowiedzi.'}
-							</Text>
-						</Paper>
-					</section>
+					<StandardPipelineTimings result={result} opened={timingsOpened} />
+					<Paper withBorder p='md' radius='md'>
+						<Text size='xs' fw={700} tt='uppercase' c='dimmed' mb='sm'>
+							Przebieg benchmarku — wybierz etap
+						</Text>
+						<Group gap='xs' wrap='nowrap' style={{ overflowX: 'auto' }} pb={4}>
+							{STANDARD_RESULT_STAGES.map((stage, index) => (
+								<Group key={stage.value} gap='xs' wrap='nowrap'>
+									{index > 0 && (
+										<Text size='xl' c='dimmed' aria-hidden>
+											→
+										</Text>
+									)}
+									<Button
+										variant={
+											selectedStandardStage === stage.value
+												? 'filled'
+												: 'default'
+										}
+										h='auto'
+										py='sm'
+										px='lg'
+										radius='md'
+										style={{ minWidth: 180 }}
+										aria-pressed={selectedStandardStage === stage.value}
+										onClick={() =>
+											setSelectedStandardStage((current) =>
+												current === stage.value ? null : stage.value,
+											)
+										}>
+										<Stack gap={1} align='center'>
+											<Text size='sm' fw={600} c='inherit'>
+												{index + 1}. {stage.label}
+											</Text>
+											<Text
+												size='xs'
+												c={
+													selectedStandardStage === stage.value
+														? 'inherit'
+														: 'dimmed'
+												}>
+												{stage.description}
+											</Text>
+										</Stack>
+									</Button>
+								</Group>
+							))}
+						</Group>
+					</Paper>
 
-					<Paper withBorder radius='md'>
-						<UnstyledButton
-							onClick={toggleChunks}
-							aria-expanded={chunksOpened}
-							aria-controls={`benchmark-run-${run.id}-chunks`}
-							p='md'
-							style={{ width: '100%' }}>
-							<Group justify='space-between' wrap='nowrap'>
-								<Group gap='xs'>
-									<Title order={4}>2–3. Chunki retrievalu</Title>
-									{chunksOpened ? (
-										<IconChevronUp size={16} />
-									) : (
-										<IconChevronDown size={16} />
-									)}
-								</Group>
-								<Group gap='xs'>
-									<Badge variant='light'>
-										przed: {chunksBeforeReranker.length}
-									</Badge>
-									<Badge variant='light'>po: {chunksAfterReranker.length}</Badge>
-									{typeof result.reranker_status === 'string' && (
-										<Badge
-											color={
-												result.reranker_status === 'applied'
-													? 'green'
-													: 'gray'
-											}>
-											{result.reranker_status}
-										</Badge>
-									)}
-								</Group>
-							</Group>
-						</UnstyledButton>
-						<Collapse expanded={chunksOpened} id={`benchmark-run-${run.id}-chunks`}>
-							<SimpleGrid cols={{ base: 1, xl: 2 }} spacing='md' p='md' pt={0}>
+					<Collapse expanded={selectedStandardStage !== null}>
+						{selectedStandardStage === 'answer' && (
+							<Paper withBorder p='md' radius='md'>
+								<Text size='sm' style={{ whiteSpace: 'pre-wrap' }}>
+									{answer || 'Model nie zwrócił odpowiedzi.'}
+								</Text>
+							</Paper>
+						)}
+
+						{selectedStandardStage === 'retrieval' && (
+							<SimpleGrid cols={{ base: 1, xl: 2 }} spacing='md'>
 								<section>
 									<Group justify='space-between' mb='sm'>
 										<Title order={5}>Przed rerankerem</Title>
@@ -676,39 +1015,41 @@ function CaseRunResult({ runId, testCase }: { runId: string; testCase: Benchmark
 									<ChunkList chunks={chunksAfterReranker} showEvaluation />
 								</section>
 							</SimpleGrid>
-						</Collapse>
-					</Paper>
+						)}
 
-					<section>
-						<Title order={4} mb='sm'>
-							4. Ocena odpowiedzi
-						</Title>
-						<Stack gap='sm'>
-							<EvaluationList
-								title='Wymagane fakty'
-								criteria={testCase.required_facts}
-								evaluations={requiredFacts}
-							/>
-							<EvaluationList
-								title='Wymagane zachowanie'
-								criteria={testCase.required_behaviors}
-								evaluations={requiredBehaviors}
-							/>
-							<EvaluationList
-								title='Zakazane twierdzenia'
-								criteria={testCase.forbidden_claims}
-								evaluations={forbiddenClaims}
-								forbidden
-							/>
-							{typeof judge?.feedback === 'string' && judge.feedback && (
-								<Alert
-									color={passed ? 'green' : 'orange'}
-									title='Podsumowanie oceny'>
-									{judge.feedback}
+						{selectedStandardStage === 'evaluation' &&
+							(evaluationSkipped ? (
+								<Alert color='gray' variant='light'>
+									Ocenianie zostało wyłączone dla tego uruchomienia.
 								</Alert>
-							)}
-						</Stack>
-					</section>
+							) : (
+								<Stack gap='sm'>
+									<EvaluationList
+										title='Wymagane fakty'
+										criteria={testCase.required_facts}
+										evaluations={requiredFacts}
+									/>
+									<EvaluationList
+										title='Wymagane zachowanie'
+										criteria={testCase.required_behaviors}
+										evaluations={requiredBehaviors}
+									/>
+									<EvaluationList
+										title='Zakazane twierdzenia'
+										criteria={testCase.forbidden_claims}
+										evaluations={forbiddenClaims}
+										forbidden
+									/>
+									{typeof judge?.feedback === 'string' && judge.feedback && (
+										<Alert
+											color={passed ? 'green' : 'orange'}
+											title='Podsumowanie oceny'>
+											{judge.feedback}
+										</Alert>
+									)}
+								</Stack>
+							))}
+					</Collapse>
 				</>
 			)}
 		</Stack>
@@ -718,6 +1059,7 @@ function CaseRunResult({ runId, testCase }: { runId: string; testCase: Benchmark
 interface CaseItemProps {
 	testCase: BenchmarkCase
 	runId: string | null
+	evaluationEnabled: boolean
 	onRunStarted: (caseId: string, runId: string) => void
 }
 
@@ -747,83 +1089,112 @@ function CriteriaList({ title, items, color }: { title: string; items: string[];
 	)
 }
 
-function CaseItem({ testCase, runId, onRunStarted }: CaseItemProps) {
+function CaseItem({ testCase, runId, evaluationEnabled, onRunStarted }: CaseItemProps) {
 	const startRun = useStartCaseRun()
+	const { data: caseRun } = useCaseRun(runId)
+	const [caseContentOpened, { toggle: toggleCaseContent }] = useDisclosure(false)
+	const [timingsOpened, { toggle: toggleTimings, close: closeTimings }] = useDisclosure(false)
+	const caseRunResult = caseRun?.result ?? {}
+	const caseRunStageTimings = asRecord(caseRunResult.stage_timings_ms)
+	const responseTotal =
+		caseRunStageTimings?.conversation_total !== undefined
+			? formatDuration(caseRunStageTimings.conversation_total)
+			: null
 
 	function handleRun() {
-		modals.openConfirmModal({
-			title: 'Uruchomić przypadek testowy?',
-			children: <Text size='sm'>„{testCase.title}”</Text>,
-			labels: { confirm: 'Uruchom', cancel: 'Anuluj' },
-			onConfirm: () => {
-				startRun.mutate(testCase.id, {
-					onSuccess: (run) => onRunStarted(testCase.id, run.id),
-				})
+		closeTimings()
+		startRun.mutate(
+			{ caseId: testCase.id, evaluate: evaluationEnabled },
+			{
+				onSuccess: (run) => onRunStarted(testCase.id, run.id),
 			},
-		})
+		)
 	}
 
 	return (
 		<Card withBorder>
 			<Group justify='space-between' align='flex-start'>
-				<Stack gap={6}>
-					<Title order={4}>{testCase.title}</Title>
-					<Group gap='xs'>
-						<Badge variant='light'>{testCase.category}</Badge>
-						<Badge variant='outline'>{testCase.expected_route}</Badge>
-						{testCase.canonical_fault_code && (
-							<Badge color='orange' variant='light'>
-								kod {testCase.canonical_fault_code}
-							</Badge>
-						)}
-					</Group>
-				</Stack>
+				<Title order={4}>{testCase.title}</Title>
 				<Button size='xs' loading={startRun.isPending} onClick={handleRun}>
 					Uruchom
 				</Button>
 			</Group>
 
-			<Stack gap='md' mt='lg'>
-				<div>
-					<Text size='xs' fw={700} tt='uppercase' c='dimmed' mb={6}>
-						Pytanie
-					</Text>
-					<Paper p='md' radius='md' bg='var(--mantine-color-blue-light)'>
-						<Text fw={500}>„{testCase.question}”</Text>
-					</Paper>
-				</div>
+			<Group gap='xs' mt='lg'>
+				<Button
+					size='compact-sm'
+					variant={caseContentOpened ? 'light' : 'default'}
+					onClick={toggleCaseContent}
+					aria-expanded={caseContentOpened}>
+					Treść case’a{' '}
+					{caseContentOpened ? (
+						<IconChevronUp size={14} />
+					) : (
+						<IconChevronDown size={14} />
+					)}
+				</Button>
+				{testCase.mode === 'standard' && (
+					<Button
+						size='compact-sm'
+						variant={timingsOpened ? 'light' : 'default'}
+						onClick={toggleTimings}
+						aria-expanded={timingsOpened}
+						disabled={!runId}>
+						Czasy etapów{responseTotal ? ` · ${responseTotal}` : ''}{' '}
+						{timingsOpened ? (
+							<IconChevronUp size={14} />
+						) : (
+							<IconChevronDown size={14} />
+						)}
+					</Button>
+				)}
+			</Group>
 
-				{testCase.mode === 'standard' ? (
+			<Collapse expanded={caseContentOpened}>
+				<Stack gap='md' mt='md'>
 					<div>
 						<Text size='xs' fw={700} tt='uppercase' c='dimmed' mb={6}>
-							Warunki oceny
+							Pytanie
 						</Text>
-						<SimpleGrid cols={{ base: 1, lg: 3 }} spacing='sm'>
-							<CriteriaList
-								title='Wymagane fakty'
-								items={testCase.required_facts}
-								color='green'
-							/>
-							<CriteriaList
-								title='Wymagane zachowanie'
-								items={testCase.required_behaviors}
-								color='blue'
-							/>
-							<CriteriaList
-								title='Niedozwolone twierdzenia'
-								items={testCase.forbidden_claims}
-								color='red'
-							/>
-						</SimpleGrid>
+						<Paper p='md' radius='md' bg='var(--mantine-color-blue-light)'>
+							<Text fw={500}>„{testCase.question}”</Text>
+						</Paper>
 					</div>
-				) : (
-					<Alert color='cyan' variant='light' title='Zakres uruchomienia agenta'>
-						Case Context → Query Rewrite & Expansion → Retrieval + Reranker. Generowanie
-						odpowiedzi nie jest jeszcze uruchamiane.
-					</Alert>
-				)}
-			</Stack>
-			{runId && <CaseRunResult runId={runId} testCase={testCase} />}
+
+					{testCase.mode === 'standard' ? (
+						<div>
+							<Text size='xs' fw={700} tt='uppercase' c='dimmed' mb={6}>
+								Warunki oceny
+							</Text>
+							<SimpleGrid cols={{ base: 1, lg: 3 }} spacing='sm'>
+								<CriteriaList
+									title='Wymagane fakty'
+									items={testCase.required_facts}
+									color='green'
+								/>
+								<CriteriaList
+									title='Wymagane zachowanie'
+									items={testCase.required_behaviors}
+									color='blue'
+								/>
+								<CriteriaList
+									title='Niedozwolone twierdzenia'
+									items={testCase.forbidden_claims}
+									color='red'
+								/>
+							</SimpleGrid>
+						</div>
+					) : (
+						<Alert color='cyan' variant='light' title='Zakres uruchomienia agenta'>
+							Case Context → Query Rewrite & Expansion → Retrieval + Reranker.
+							Generowanie odpowiedzi nie jest jeszcze uruchamiane.
+						</Alert>
+					)}
+				</Stack>
+			</Collapse>
+			{runId && (
+				<CaseRunResult runId={runId} testCase={testCase} timingsOpened={timingsOpened} />
+			)}
 		</Card>
 	)
 }
@@ -831,6 +1202,7 @@ function CaseItem({ testCase, runId, onRunStarted }: CaseItemProps) {
 function CasesSection() {
 	const { data, isLoading } = useBenchmarkCases()
 	const [selectedMode, setSelectedMode] = useState<'standard' | 'agent'>('standard')
+	const [evaluationEnabled, setEvaluationEnabled] = useState(true)
 	const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
 	const [runIds, setRunIds] = useState<Record<string, string>>({})
 	const modeCases = data?.cases.filter((testCase) => testCase.mode === selectedMode) ?? []
@@ -867,6 +1239,17 @@ function CasesSection() {
 								{ label: `Agent (${agentCount})`, value: 'agent' },
 							]}
 						/>
+						{selectedMode === 'standard' && (
+							<Switch
+								mt='sm'
+								checked={evaluationEnabled}
+								onChange={(event) =>
+									setEvaluationEnabled(event.currentTarget.checked)
+								}
+								label='Oceniaj odpowiedź'
+								description='Wyłącz, aby pominąć ocenę odpowiedzi i chunków przez judge.'
+							/>
+						)}
 					</div>
 
 					<Text size='xs' fw={700} tt='uppercase' c='dimmed'>
@@ -886,8 +1269,12 @@ function CasesSection() {
 					</Group>
 					{selectedCase ? (
 						<CaseItem
+							key={selectedCase.id}
 							testCase={selectedCase}
 							runId={runIds[selectedCase.id] ?? null}
+							evaluationEnabled={
+								selectedMode === 'standard' ? evaluationEnabled : false
+							}
 							onRunStarted={handleRunStarted}
 						/>
 					) : (
@@ -905,10 +1292,6 @@ export function BenchmarkPage() {
 	return (
 		<Stack gap='md'>
 			<Title order={2}>Benchmark</Title>
-			<Alert color='blue' variant='light'>
-				Działa wyłącznie na danych organizacji „system" — nie na danych rzeczywistych
-				klientów.
-			</Alert>
 			<SetupSection />
 			<CasesSection />
 		</Stack>

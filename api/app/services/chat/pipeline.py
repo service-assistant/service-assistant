@@ -260,6 +260,8 @@ async def stream_message(
                     "step": "route",
                     "label": "Router wiadomości",
                     "duration_ms": round((routed_at - started_at) * 1000),
+                    "start_ms": 0,
+                    "end_ms": round((routed_at - started_at) * 1000),
                     "data": {
                         "mode": body.mode.value,
                         "decision": (
@@ -276,8 +278,10 @@ async def stream_message(
                 "debug",
                 {
                     "step": "retrieval",
-                    "label": "Retrieval dokumentacji",
+                    "label": "Retrieval + Reranker",
                     "duration_ms": round((retrieved_at - routed_at) * 1000),
+                    "start_ms": round((routed_at - started_at) * 1000),
+                    "end_ms": round((retrieved_at - started_at) * 1000),
                     "data": {
                         "device_id": device_id,
                         "photo_context": [
@@ -286,6 +290,10 @@ async def stream_message(
                         ],
                         "queries": effective_retrieval_queries,
                         "continuation": is_continuation,
+                        "translation_duration_ms": retrieval_trace.get(
+                            "translation_duration_ms", 0
+                        ),
+                        "timeline": retrieval_trace.get("timeline", []),
                         "reranker_enabled": retrieval_trace.get(
                             "reranker_enabled", False
                         ),
@@ -328,6 +336,8 @@ async def stream_message(
                     "step": "plan",
                     "label": "Next Best Step",
                     "duration_ms": round((planned_at - retrieved_at) * 1000),
+                    "start_ms": round((retrieved_at - started_at) * 1000),
+                    "end_ms": round((planned_at - started_at) * 1000),
                     "data": {
                         "active": diagnostic_plan is not None,
                         **(
@@ -341,8 +351,10 @@ async def stream_message(
         yield sse("route", diagnostic_route.value)
 
         generation_started_at = time.perf_counter()
+        first_chunk_at: float | None = None
         if standard_completion_answer:
             answer_parts.append(standard_completion_answer)
+            first_chunk_at = time.perf_counter()
             yield sse("chunk", standard_completion_answer)
         else:
             stream_limiter = streaming.ChecklistStreamLimiter()
@@ -360,13 +372,18 @@ async def stream_message(
             ):
                 for visible_chunk in stream_limiter.feed(chunk):
                     answer_parts.append(visible_chunk)
+                    if first_chunk_at is None:
+                        first_chunk_at = time.perf_counter()
                     yield sse("chunk", visible_chunk)
 
             for visible_chunk in stream_limiter.finish():
                 answer_parts.append(visible_chunk)
+                if first_chunk_at is None:
+                    first_chunk_at = time.perf_counter()
                 yield sse("chunk", visible_chunk)
+        generation_finished_at = time.perf_counter()
         generation_duration_ms = round(
-            (time.perf_counter() - generation_started_at) * 1000
+            (generation_finished_at - generation_started_at) * 1000
         )
 
         if debug:
@@ -376,6 +393,18 @@ async def stream_message(
                     "step": "generation",
                     "label": "Generowanie odpowiedzi",
                     "duration_ms": generation_duration_ms,
+                    "start_ms": round((generation_started_at - started_at) * 1000),
+                    "end_ms": round((generation_finished_at - started_at) * 1000),
+                    "first_chunk_ms": (
+                        round((first_chunk_at - started_at) * 1000)
+                        if first_chunk_at is not None
+                        else None
+                    ),
+                    "time_to_first_chunk_ms": (
+                        round((first_chunk_at - generation_started_at) * 1000)
+                        if first_chunk_at is not None
+                        else None
+                    ),
                     "data": {"status": "completed"},
                 },
             )
@@ -417,14 +446,28 @@ async def stream_message(
                 )
 
         await session.commit()
+        persisted_at = time.perf_counter()
 
         if debug:
             yield sse(
                 "debug",
                 {
+                    "step": "persistence",
+                    "label": "Normalizacja i zapis odpowiedzi",
+                    "duration_ms": round(
+                        (persisted_at - generation_finished_at) * 1000
+                    ),
+                    "start_ms": round((generation_finished_at - started_at) * 1000),
+                    "end_ms": round((persisted_at - started_at) * 1000),
+                    "data": {"status": "completed"},
+                },
+            )
+            yield sse(
+                "debug",
+                {
                     "step": "complete",
                     "label": "Odpowiedź zapisana",
-                    "duration_ms": round((time.perf_counter() - planned_at) * 1000),
+                    "duration_ms": round((persisted_at - planned_at) * 1000),
                     "data": {
                         "message_id": assistant_message.id,
                         "answer_characters": len(answer),
