@@ -43,6 +43,7 @@ class BenchmarkCaseRun:
     case_id: str
     state: BenchmarkRunState
     created_at: str
+    evaluate: bool = True
     finished_at: str | None = None
     error: str | None = None
     result: dict[str, Any] | None = None

@@ -18,8 +18,10 @@ export function useBenchmarkCases() {
 export function useStartCaseRun() {
 	const queryClient = useQueryClient()
 	return useMutation({
-		mutationFn: (caseId: string) =>
-			api.post<BenchmarkCaseRun>(`/api/admin/benchmark/cases/${caseId}/runs`),
+		mutationFn: ({ caseId, evaluate }: { caseId: string; evaluate: boolean }) =>
+			api.post<BenchmarkCaseRun>(
+				`/api/admin/benchmark/cases/${caseId}/runs?evaluate=${evaluate}`,
+			),
 		onSuccess: (run) => queryClient.setQueryData(['benchmark', 'runs', run.id], run),
 	})
 }

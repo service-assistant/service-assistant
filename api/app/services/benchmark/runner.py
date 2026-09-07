@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -108,6 +109,140 @@ def _assistant_response_time_ms(turn: dict[str, Any]) -> int | None:
     return round(float(duration_ms))
 
 
+def _conversation_stage_timings_ms(
+    conversation: list[dict[str, Any]],
+) -> dict[str, int]:
+    timings: dict[str, int] = {}
+    for turn in conversation:
+        for event in turn.get("debug", []):
+            step = event.get("step")
+            duration_ms = event.get("duration_ms")
+            if step not in {"route", "retrieval", "generation"} or not isinstance(
+                duration_ms, int | float
+            ):
+                continue
+            if step == "generation":
+                time_to_first_chunk_ms = event.get("time_to_first_chunk_ms")
+                if isinstance(time_to_first_chunk_ms, int | float):
+                    generation_ms = round(float(time_to_first_chunk_ms))
+                    timings["generation"] = timings.get("generation", 0) + generation_ms
+                    timings["streaming"] = timings.get("streaming", 0) + max(
+                        0, round(float(duration_ms)) - generation_ms
+                    )
+                    continue
+            timings[step] = timings.get(step, 0) + round(float(duration_ms))
+            if step == "retrieval":
+                data = event.get("data")
+                translation_duration_ms = (
+                    data.get("translation_duration_ms")
+                    if isinstance(data, dict)
+                    else None
+                )
+                if isinstance(translation_duration_ms, int | float):
+                    timings["translation"] = timings.get("translation", 0) + round(
+                        float(translation_duration_ms)
+                    )
+    return timings
+
+
+def _response_timeline(
+    conversation: list[dict[str, Any]], total_duration_ms: int | None = None
+) -> dict[str, Any]:
+    items: list[dict[str, Any]] = []
+    offset_ms = 0
+    timeline_steps = {"route", "retrieval", "generation", "persistence"}
+    for turn_index, turn in enumerate(conversation, start=1):
+        turn_events = [
+            event
+            for event in turn.get("debug", [])
+            if event.get("step") in timeline_steps
+            and isinstance(event.get("start_ms"), int | float)
+            and isinstance(event.get("end_ms"), int | float)
+        ]
+        measured_duration_ms = round(float(turn.get("duration_ms", 0)))
+        pipeline_end_ms = max(
+            (round(float(event["end_ms"])) for event in turn_events), default=0
+        )
+        turn_duration_ms = max(measured_duration_ms, pipeline_end_ms)
+        cursor_ms = 0
+        for event in sorted(turn_events, key=lambda item: float(item["start_ms"])):
+            event_start_ms = round(float(event["start_ms"]))
+            event_end_ms = round(float(event["end_ms"]))
+            if event_start_ms > cursor_ms:
+                items.append(
+                    {
+                        "key": "response_overhead",
+                        "label": "Pozostała obsługa odpowiedzi",
+                        "turn": turn_index,
+                        "start_ms": offset_ms + cursor_ms,
+                        "end_ms": offset_ms + event_start_ms,
+                        "duration_ms": event_start_ms - cursor_ms,
+                    }
+                )
+            first_chunk_ms = event.get("first_chunk_ms")
+            if event.get("step") == "generation" and isinstance(
+                first_chunk_ms, int | float
+            ):
+                marker_ms = round(float(first_chunk_ms))
+                items.append(
+                    {
+                        "key": "generation",
+                        "label": "Generowanie odpowiedzi",
+                        "turn": turn_index,
+                        "start_ms": offset_ms + event_start_ms,
+                        "end_ms": offset_ms + marker_ms,
+                        "duration_ms": max(0, marker_ms - event_start_ms),
+                    }
+                )
+                items.append(
+                    {
+                        "key": "streaming",
+                        "label": "Streamowanie odpowiedzi",
+                        "turn": turn_index,
+                        "start_ms": offset_ms + marker_ms,
+                        "end_ms": offset_ms + event_end_ms,
+                        "duration_ms": max(0, event_end_ms - marker_ms),
+                    }
+                )
+            else:
+                items.append(
+                    {
+                        "key": event["step"],
+                        "label": event.get("label", event["step"]),
+                        "turn": turn_index,
+                        "start_ms": offset_ms + event_start_ms,
+                        "end_ms": offset_ms + event_end_ms,
+                        "duration_ms": round(float(event.get("duration_ms", 0))),
+                    }
+                )
+            cursor_ms = max(cursor_ms, event_end_ms)
+        if turn_duration_ms > cursor_ms:
+            items.append(
+                {
+                    "key": "response_overhead",
+                    "label": "Pozostała obsługa odpowiedzi",
+                    "turn": turn_index,
+                    "start_ms": offset_ms + cursor_ms,
+                    "end_ms": offset_ms + turn_duration_ms,
+                    "duration_ms": turn_duration_ms - cursor_ms,
+                }
+            )
+        offset_ms += turn_duration_ms
+    if total_duration_ms is not None and total_duration_ms > offset_ms:
+        items.append(
+            {
+                "key": "response_overhead",
+                "label": "Pozostała obsługa odpowiedzi",
+                "turn": len(conversation),
+                "start_ms": offset_ms,
+                "end_ms": total_duration_ms,
+                "duration_ms": total_duration_ms - offset_ms,
+            }
+        )
+        offset_ms = total_duration_ms
+    return {"duration_ms": offset_ms, "items": items}
+
+
 async def _attachment_names(
     session: AsyncSession, chunks: list[dict[str, Any]]
 ) -> dict[int, str]:
@@ -154,6 +289,7 @@ async def _run_agent_retrieval_benchmark(
     session: AsyncSession,
     cancellation_event: asyncio.Event | None,
 ) -> dict[str, Any]:
+    pipeline_started_at = time.perf_counter()
     machine = MachineContext(
         device_id=device.id,
         name=device.name,
@@ -164,6 +300,7 @@ async def _run_agent_retrieval_benchmark(
         agent_engine.prepare_case(case.question, machine, settings),
         cancellation_event,
     )
+    preparation_finished_at = time.perf_counter()
     retrieval_trace: dict[str, Any] = {}
     await await_with_cancellation(
         agent_retrieval.retrieve_for_agent_queries(
@@ -182,6 +319,7 @@ async def _run_agent_retrieval_benchmark(
         for chunk in retrieval_trace.get(key, [])
     ] + [chunk for trace in query_traces for chunk in trace.get("chunks", [])]
     source_names_by_id = await _attachment_names(session, all_chunks)
+    retrieval_finished_at = time.perf_counter()
 
     def serialize_many(chunks: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return [
@@ -192,6 +330,16 @@ async def _run_agent_retrieval_benchmark(
         "case_id": case.id,
         "mode": ChatMode.agent.value,
         "pipeline_stage": "retrieval_completed",
+        "stage_timings_ms": {
+            "message": 0,
+            "case_context_and_query_rewrite": round(
+                (preparation_finished_at - pipeline_started_at) * 1000
+            ),
+            "retrieval_and_reranker": round(
+                (retrieval_finished_at - preparation_finished_at) * 1000
+            ),
+        },
+        "total_time_ms": round((retrieval_finished_at - pipeline_started_at) * 1000),
         "question": case.question,
         "case_context": case_context.model_dump(mode="json"),
         "query_plan": query_plan.model_dump(mode="json"),
@@ -221,6 +369,7 @@ async def run_benchmark_case(
     settings: Settings,
     session: AsyncSession,
     cancellation_event: asyncio.Event | None = None,
+    evaluate: bool = True,
 ) -> dict[str, Any]:
     raise_if_cancelled(cancellation_event)
     organization_id = await get_system_organization_id(session)
@@ -243,6 +392,7 @@ async def run_benchmark_case(
             cancellation_event,
         )
 
+    benchmark_started_at = time.perf_counter()
     thread = ChatThread(
         title=f"BENCHMARK · {case.id}",
         device_id=device.id,
@@ -255,6 +405,7 @@ async def run_benchmark_case(
     from app.routers import threads
 
     async def send(content: str) -> dict[str, Any]:
+        turn_started_at = time.perf_counter()
         raise_if_cancelled(cancellation_event)
         response = await await_with_cancellation(
             threads.create_message(
@@ -270,11 +421,15 @@ async def run_benchmark_case(
             ),
             cancellation_event,
         )
-        return await await_with_cancellation(
+        turn = await await_with_cancellation(
             _consume_assistant_response(response), cancellation_event
         )
+        turn["duration_ms"] = round((time.perf_counter() - turn_started_at) * 1000)
+        return turn
 
+    conversation_started_at = time.perf_counter()
     conversation = await _collect_benchmark_conversation(case.question, send)
+    conversation_finished_at = time.perf_counter()
     route = conversation[0]["route"]
     message_payloads = [turn["message"] for turn in conversation]
     assistant_response_times_by_turn = [
@@ -392,7 +547,91 @@ async def run_benchmark_case(
     answer = "\n\n--- Kontynuacja ---\n\n".join(
         str(payload["content"]) for payload in message_payloads
     )
+
+    if not evaluate:
+        benchmark_finished_at = time.perf_counter()
+        response_total_ms = round(
+            (conversation_finished_at - conversation_started_at) * 1000
+        )
+        result_preparation_ms = round(
+            (benchmark_finished_at - conversation_finished_at) * 1000
+        )
+        benchmark_total_ms = round(
+            (benchmark_finished_at - benchmark_started_at) * 1000
+        )
+        stage_timings_ms = _conversation_stage_timings_ms(conversation)
+        response_accounted_ms = sum(
+            stage_timings_ms.get(step, 0)
+            for step in ("route", "retrieval", "generation", "streaming")
+        )
+        stage_timings_ms.update(
+            {
+                "conversation_total": response_total_ms,
+                "response_overhead": max(0, response_total_ms - response_accounted_ms),
+                "result_preparation": result_preparation_ms,
+                "evaluation": 0,
+                "benchmark_overhead": max(
+                    0,
+                    benchmark_total_ms - response_total_ms - result_preparation_ms,
+                ),
+            }
+        )
+        return {
+            "case_id": case.id,
+            "evaluation_skipped": True,
+            "stage_timings_ms": stage_timings_ms,
+            "total_time_ms": benchmark_total_ms,
+            "thread_id": thread.id,
+            "message_id": message_payload["id"],
+            "message_ids": [payload["id"] for payload in message_payloads],
+            "message_count": len(message_payloads),
+            "continued": len(message_payloads) > 1,
+            "assistant_messages": [
+                {
+                    "id": payload["id"],
+                    "content": str(payload["content"]),
+                    "has_continuation": bool(payload.get("has_continuation", False)),
+                    "response_time_ms": assistant_response_times_by_turn[index],
+                }
+                for index, payload in enumerate(message_payloads)
+            ],
+            "assistant_response_times_ms": assistant_response_times_ms,
+            "average_assistant_response_time_ms": average_assistant_response_time_ms,
+            "question": case.question,
+            "answer": answer,
+            "route": route,
+            "expected_route": case.expected_route,
+            "source_names": source_names,
+            "retrieved_chunk_count": len(retrieved_chunks),
+            "reranker_enabled": bool(retrieval_data.get("reranker_enabled", False)),
+            "reranker_status": retrieval_data.get("reranker_status", "not_run"),
+            "chunks_before_reranker": chunks_before_reranker,
+            "chunks_after_reranker": chunks_after_reranker,
+            "response_timeline": _response_timeline(
+                conversation, total_duration_ms=response_total_ms
+            ),
+            "retrieval_timelines": [
+                {
+                    "turn": index + 1,
+                    "duration_ms": item.get("duration_ms", 0),
+                    "items": item.get("data", {}).get("timeline", []),
+                }
+                for index, item in enumerate(
+                    next(
+                        (
+                            event
+                            for event in turn["debug"]
+                            if event.get("step") == "retrieval"
+                        ),
+                        {},
+                    )
+                    for turn in conversation
+                )
+            ],
+        }
+
     source_image_paths: list[str] = []
+    evaluation_started_at = time.perf_counter()
     if case.evaluation_mode == "source_image":
         judge, chunk_judge, source_image_paths = evaluate_source_images(
             case, chunks_for_judge
@@ -411,6 +650,7 @@ async def run_benchmark_case(
         judge_model = settings.benchmark_judge_model
         chunk_judge_model = settings.benchmark_chunk_judge_model
         judge_reasoning_effort = settings.benchmark_judge_reasoning_effort
+    evaluation_finished_at = time.perf_counter()
     chunk_evaluations = [item.model_dump(mode="json") for item in chunk_judge.chunks]
     chunks_after_reranker = [
         {**item, "evaluation": chunk_evaluations[index]}
@@ -452,9 +692,42 @@ async def run_benchmark_case(
         and forbidden_found == 0
     )
     raise_if_cancelled(cancellation_event)
+    benchmark_finished_at = time.perf_counter()
+
+    stage_timings_ms = _conversation_stage_timings_ms(conversation)
+    response_total_ms = round(
+        (conversation_finished_at - conversation_started_at) * 1000
+    )
+    result_preparation_ms = round(
+        (evaluation_started_at - conversation_finished_at) * 1000
+    )
+    evaluation_ms = round((evaluation_finished_at - evaluation_started_at) * 1000)
+    benchmark_total_ms = round((benchmark_finished_at - benchmark_started_at) * 1000)
+    response_accounted_ms = sum(
+        stage_timings_ms.get(step, 0)
+        for step in ("route", "retrieval", "generation", "streaming")
+    )
+    stage_timings_ms.update(
+        {
+            "conversation_total": response_total_ms,
+            "response_overhead": max(0, response_total_ms - response_accounted_ms),
+            "result_preparation": result_preparation_ms,
+            "evaluation": evaluation_ms,
+            "benchmark_overhead": max(
+                0,
+                benchmark_total_ms
+                - response_total_ms
+                - result_preparation_ms
+                - evaluation_ms,
+            ),
+        }
+    )
 
     return {
         "case_id": case.id,
+        "evaluation_skipped": False,
+        "stage_timings_ms": stage_timings_ms,
+        "total_time_ms": benchmark_total_ms,
         "passed": passed,
         "score": round(required_score * 100),
         "required_facts_threshold": round(REQUIRED_FACTS_PASS_THRESHOLD * 100),
@@ -490,6 +763,27 @@ async def run_benchmark_case(
         "reranker_status": retrieval_data.get("reranker_status", "not_run"),
         "chunks_before_reranker": chunks_before_reranker,
         "chunks_after_reranker": chunks_after_reranker,
+        "response_timeline": _response_timeline(
+            conversation, total_duration_ms=response_total_ms
+        ),
+        "retrieval_timelines": [
+            {
+                "turn": index + 1,
+                "duration_ms": item.get("duration_ms", 0),
+                "items": item.get("data", {}).get("timeline", []),
+            }
+            for index, item in enumerate(
+                next(
+                    (
+                        event
+                        for event in turn["debug"]
+                        if event.get("step") == "retrieval"
+                    ),
+                    {},
+                )
+                for turn in conversation
+            )
+        ],
         "chunk_precision_at_k": round(precision_at_k * 100),
         "chunk_fact_coverage": round(fact_coverage * 100),
         "fact_coverage_threshold": round(FACT_COVERAGE_PASS_THRESHOLD * 100),

@@ -4,6 +4,70 @@ from typing import cast
 from app.config import Settings
 from app.services.chat.agent.retrieval import retrieve_for_agent_queries
 from app.services.chat.retrieval import retrieve_for_queries
+from app.services.chat.retrieval import service as retrieval_service
+
+
+async def test_retrieval_trace_should_show_parallel_work_and_dependencies(mocker):
+    mocker.patch(
+        "app.services.chat.retrieval.service.get_device_document_language",
+        return_value="en",
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.embed_question",
+        new=mocker.AsyncMock(return_value=[0.1, 0.2]),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.translate_query",
+        new=mocker.AsyncMock(return_value="translated query"),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service._fetch_device_chunks",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.get_exact_match_chunks", return_value=[]
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.get_semantic_chunks",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.get_bm25_chunks",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+    mocker.patch(
+        "app.services.chat.retrieval.service.rerank_chunks",
+        new=mocker.AsyncMock(return_value=[]),
+    )
+    trace = {}
+    settings = cast(Settings, SimpleNamespace(reranker_enabled=True))
+
+    await retrieval_service.retrieve_context_chunks(
+        mocker.AsyncMock(),
+        "polskie pytanie",
+        device_id=123,
+        settings=settings,
+        retrieval_trace=trace,
+    )
+
+    timings = {item["key"]: item for item in trace["timeline"]}
+    assert set(timings) == {
+        "embedding",
+        "translation",
+        "fetch_chunks",
+        "exact_match",
+        "semantic_search",
+        "bm25",
+        "reranker",
+    }
+    preparation_finished_at = max(
+        timings[key]["end_ms"] for key in ("embedding", "translation", "fetch_chunks")
+    )
+    assert timings["exact_match"]["start_ms"] >= preparation_finished_at
+    search_finished_at = max(
+        timings[key]["end_ms"] for key in ("exact_match", "semantic_search", "bm25")
+    )
+    assert timings["reranker"]["start_ms"] >= search_finished_at
 
 
 async def test_should_fuse_and_deduplicate_multi_query_results(mocker):
