@@ -10,3 +10,22 @@ body,
 body {
 	margin: 0;
 }
+
+.diagnostic-state-json code,
+.diagnostic-state-json .hljs {
+	color: #ffffff;
+}
+
+.diagnostic-state-json .hljs-attr {
+	color: #facc15;
+}
+
+.diagnostic-state-json .hljs-string {
+	color: #4ade80;
+}
+
+.diagnostic-state-json .hljs-number,
+.diagnostic-state-json .hljs-literal,
+.diagnostic-state-json .hljs-punctuation {
+	color: #ffffff;
+}

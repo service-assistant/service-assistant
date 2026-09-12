@@ -556,10 +556,10 @@ async def stream_query(
         question,
         context_text,
         history_messages,
-        diagnostic_plan,
-        continuation_requested,
-        continuation_hint,
-        photo_context,
+        diagnostic_plan=diagnostic_plan,
+        continuation_requested=continuation_requested,
+        continuation_hint=continuation_hint,
+        photo_context=photo_context,
     )
 
     stream = await client.chat.completions.create(

@@ -1,5 +1,4 @@
 import pytest
-
 from app.services.chat.generation import (
     _build_context,
     _messages,

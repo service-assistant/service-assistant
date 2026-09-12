@@ -18,8 +18,8 @@ import {
 	Title,
 	UnstyledButton,
 } from '@mantine/core'
-import { useDisclosure } from '@mantine/hooks'
-import { IconChevronDown, IconChevronUp } from '@tabler/icons-react'
+import { useClipboard, useDisclosure } from '@mantine/hooks'
+import { IconCheck, IconChevronDown, IconChevronUp, IconCopy } from '@tabler/icons-react'
 import { useState } from 'react'
 import {
 	useBenchmarkCases,
@@ -29,6 +29,7 @@ import {
 	useStartCaseRun,
 	useStartSetupRun,
 } from '@/hooks/useBenchmark'
+import { formatBenchmarkCaseForClipboard } from '@/lib/benchmarkClipboard'
 import type { BenchmarkCase, BenchmarkSetupStep } from '@/lib/types'
 
 const RUN_STATE_COLORS: Record<string, string> = {
@@ -169,14 +170,18 @@ function ChunkList({
 					typeof chunk.source_name === 'string' ? chunk.source_name : 'Nieznane źródło'
 				const page = metadata?.page
 				const relevanceScore = evaluation?.relevance_score
+				const rerankerScore = chunk.reranker_score
 				const chunkKey = String(chunk.id ?? chunk.preview ?? sourceName)
 
 				return (
 					<Accordion.Item key={chunkKey} value={chunkKey}>
 						<Accordion.Control>
-							<Group gap='xs'>
+							<Group gap='xs' wrap='wrap' align='flex-start'>
 								<Badge variant='light'>#{index + 1}</Badge>
-								<Text size='sm' fw={500} lineClamp={1}>
+								<Text
+									size='sm'
+									fw={500}
+									style={{ minWidth: 180, flex: 1, overflowWrap: 'anywhere' }}>
 									{sourceName}
 								</Text>
 								{page !== undefined && (
@@ -185,6 +190,11 @@ function ChunkList({
 								{showEvaluation && typeof relevanceScore === 'number' && (
 									<Badge color={relevanceScore >= 2 ? 'green' : 'orange'}>
 										relewancja {relevanceScore}/3
+									</Badge>
+								)}
+								{typeof rerankerScore === 'number' && (
+									<Badge color='grape' variant='light'>
+										reranker {rerankerScore.toFixed(3)}
 									</Badge>
 								)}
 							</Group>
@@ -209,6 +219,61 @@ function ChunkList({
 				)
 			})}
 		</Accordion>
+	)
+}
+
+function ExtractorRuleCard({
+	rule,
+	index,
+	chunks,
+}: {
+	rule: ResultRecord
+	index: number
+	chunks: ResultRecord[]
+}) {
+	const [chunksOpened, { toggle }] = useDisclosure(false)
+	const sourceChunkIds = new Set(
+		(Array.isArray(rule.source_chunk_ids) ? rule.source_chunk_ids : []).map(String),
+	)
+	const linkedChunks = chunks.filter((chunk) => sourceChunkIds.has(String(chunk.id)))
+	const missingChunkCount = Math.max(0, sourceChunkIds.size - linkedChunks.length)
+
+	return (
+		<Paper withBorder p='md' radius='md'>
+			<Group gap='xs' mb='sm'>
+				<Badge>Reguła {index + 1}</Badge>
+			</Group>
+			<CodeHighlight
+				className='diagnostic-state-json'
+				code={JSON.stringify(rule, null, 2)}
+				language='json'
+			/>
+			<Button
+				mt='sm'
+				size='compact-sm'
+				variant={chunksOpened ? 'light' : 'default'}
+				rightSection={
+					chunksOpened ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />
+				}
+				onClick={toggle}
+				aria-expanded={chunksOpened}
+				aria-controls={`extractor-rule-${index}-chunks`}>
+				{chunksOpened ? 'Ukryj powiązane chunki' : 'Pokaż powiązane chunki'} (
+				{linkedChunks.length})
+			</Button>
+			<Collapse expanded={chunksOpened} id={`extractor-rule-${index}-chunks`}>
+				<Stack gap='xs' mt='sm'>
+					<ChunkList chunks={linkedChunks} showEvaluation={false} />
+					{missingChunkCount > 0 && (
+						<Alert color='yellow' variant='light'>
+							{missingChunkCount === 1
+								? 'Jeden wskazany chunk nie jest dostępny w danych wejściowych extractora.'
+								: `${missingChunkCount} wskazane chunki nie są dostępne w danych wejściowych extractora.`}
+						</Alert>
+					)}
+				</Stack>
+			</Collapse>
+		</Paper>
 	)
 }
 
@@ -269,7 +334,19 @@ function EvaluationList({
 	)
 }
 
-type AgentPipelineStage = 'message' | 'context' | 'queries' | 'retrieval'
+type AgentPipelineStage =
+	| 'message'
+	| 'context'
+	| 'queries'
+	| 'retrieval'
+	| 'extractor'
+	| 'evidence'
+	| 'state'
+	| 'gaps'
+	| 'next'
+	| 'simulation'
+	| 'final'
+	| 'judge'
 
 const AGENT_PIPELINE_STAGES: Array<{
 	value: AgentPipelineStage
@@ -280,9 +357,27 @@ const AGENT_PIPELINE_STAGES: Array<{
 	{ value: 'context', label: 'Case Context', description: 'Zrozumienie przypadku' },
 	{ value: 'queries', label: 'Query Rewrite', description: 'Rozszerzenie zapytań' },
 	{ value: 'retrieval', label: 'Retrieval + Reranker', description: 'Wyszukanie dokumentacji' },
+	{ value: 'extractor', label: 'Diagnostic Extractor', description: 'Reguły z cytatami' },
+	{ value: 'evidence', label: 'Evidence Gate', description: 'Deterministyczne accept/refuse' },
+	{ value: 'state', label: 'Diagnostic State', description: 'Initial diagnostic state' },
+	{ value: 'gaps', label: 'Gap Finder', description: 'Brakujące informacje' },
+	{ value: 'next', label: 'Best Next Step', description: 'Ocena i wybór kroku' },
+	{
+		value: 'simulation',
+		label: 'Symulacja technika',
+		description: 'Odpowiedzi i aktualizacja faktów',
+	},
+	{ value: 'final', label: 'Final Answer', description: 'Akcje dopasowanych reguł' },
+	{ value: 'judge', label: 'Judge', description: 'Końcowa ocena odpowiedzi' },
 ]
 
-function AgentPipelineResult({ result }: { result: ResultRecord }) {
+function AgentPipelineResult({
+	result,
+	testCase,
+}: {
+	result: ResultRecord
+	testCase: BenchmarkCase
+}) {
 	const [selectedStage, setSelectedStage] = useState<AgentPipelineStage | null>(null)
 	const caseContext = asRecord(result.case_context)
 	const symptom = asRecord(caseContext?.symptom)
@@ -295,15 +390,69 @@ function AgentPipelineResult({ result }: { result: ResultRecord }) {
 	const queryRuns = asRecordArray(result.query_runs)
 	const chunksBefore = asRecordArray(result.chunks_before_reranker)
 	const chunksAfter = asRecordArray(result.chunks_after_reranker)
+	const chunksAfterPrefilter = asRecordArray(result.chunks_after_evidence_gate)
+	const initialEvidenceGate = asRecord(result.initial_evidence_gate)
+	const extraction = asRecord(result.diagnostic_extraction)
+	const extractedRules = asRecordArray(extraction?.rules)
+	const evidenceGate = asRecord(result.evidence_gate)
+	const ruleEvaluations = asRecordArray(evidenceGate?.rule_evaluations)
+	const gateFailures = asRecordArray(evidenceGate?.failures)
+	const finalDiagnosticState = asRecord(result.diagnostic_state)
+	const diagnosticState =
+		asRecord(result.diagnostic_state_before_simulation) ?? finalDiagnosticState
+	const diagnosticFacts = asRecordArray(diagnosticState?.facts)
+	const diagnosticRules = asRecordArray(diagnosticState?.rules)
+	const diagnosticRuleStates = asRecordArray(diagnosticState?.rule_states)
+	const diagnosticGaps = asRecordArray(diagnosticState?.gaps)
+	const agentNextStep = asRecord(result.agent_next_step)
+	const recordedNextStepDecisions = asRecordArray(result.agent_next_step_decisions)
+	const agentNextStepDecisions =
+		recordedNextStepDecisions.length > 0
+			? recordedNextStepDecisions
+			: agentNextStep
+				? [agentNextStep]
+				: []
+	const agentSimulationSteps = asRecordArray(result.agent_simulation_steps)
+	const finalDiagnosticAnswer = asRecord(result.final_diagnostic_answer)
+	const finalAnswerCompleted = String(finalDiagnosticAnswer?.status ?? '').startsWith('completed')
+	const judge = asRecord(result.judge)
+	const requiredFacts = asRecordArray(judge?.required_facts)
+	const requiredBehaviors = asRecordArray(judge?.required_behaviors)
+	const forbiddenClaims = asRecordArray(judge?.forbidden_claims)
+	const evaluationSkipped = result.evaluation_skipped === true
+	const displayedGateFailures =
+		gateFailures.length > 0 || evidenceGate?.decision !== 'refuse' || extractedRules.length > 0
+			? gateFailures
+			: [
+					{
+						rule_index: null,
+						attribute: 'rules',
+						code: 'no_rules_extracted',
+						message: 'Extractor nie zwrócił żadnej kandydackiej reguły do walidacji.',
+					},
+				]
 	const stageTimings = asRecord(result.stage_timings_ms)
 	const preparationTime = formatDuration(stageTimings?.case_context_and_query_rewrite)
 	const retrievalTime = formatDuration(stageTimings?.retrieval_and_reranker)
+	const extractorTime = formatDuration(stageTimings?.diagnostic_extractor)
+	const evidenceTime = formatDuration(stageTimings?.evidence_gate)
+	const stateTime = formatDuration(stageTimings?.diagnostic_state)
+	const gapFinderTime = formatDuration(stageTimings?.gap_finder)
+	const nextBestStepTime = formatDuration(stageTimings?.next_best_step)
 	const totalTime = formatDuration(result.total_time_ms)
 	const stageTime: Record<AgentPipelineStage, string | null> = {
 		message: formatDuration(stageTimings?.message),
 		context: preparationTime ? `${preparationTime} wspólnie z Query Rewrite` : null,
 		queries: preparationTime ? `${preparationTime} wspólnie z Case Context` : null,
 		retrieval: retrievalTime,
+		extractor: extractorTime,
+		evidence: evidenceTime,
+		state: stateTime,
+		gaps: gapFinderTime,
+		next: nextBestStepTime,
+		simulation: null,
+		final: null,
+		judge: formatDuration(stageTimings?.evaluation),
 	}
 
 	return (
@@ -319,49 +468,48 @@ function AgentPipelineResult({ result }: { result: ResultRecord }) {
 						</Badge>
 					)}
 				</Group>
-				<Group gap='xs' wrap='nowrap' style={{ overflowX: 'auto' }} pb={4}>
+				<SimpleGrid cols={{ base: 1, sm: 2, lg: 3, xl: 4 }} spacing='xs'>
 					{AGENT_PIPELINE_STAGES.map((stage, index) => (
-						<Group key={stage.value} gap='xs' wrap='nowrap'>
-							{index > 0 && (
-								<Text size='xl' c='dimmed' aria-hidden>
-									→
+						<Button
+							key={stage.value}
+							variant={selectedStage === stage.value ? 'filled' : 'default'}
+							h='100%'
+							py='sm'
+							px='md'
+							radius='md'
+							style={{ width: '100%', minWidth: 0, whiteSpace: 'normal' }}
+							aria-pressed={selectedStage === stage.value}
+							onClick={() =>
+								setSelectedStage((current) =>
+									current === stage.value ? null : stage.value,
+								)
+							}>
+							<Stack gap={2} align='center' style={{ minWidth: 0 }}>
+								<Text
+									size='sm'
+									fw={600}
+									c='inherit'
+									style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+									{index + 1}. {stage.label}
 								</Text>
-							)}
-							<Button
-								variant={selectedStage === stage.value ? 'filled' : 'default'}
-								h='auto'
-								py='sm'
-								px='lg'
-								radius='md'
-								style={{ minWidth: 180 }}
-								aria-pressed={selectedStage === stage.value}
-								onClick={() =>
-									setSelectedStage((current) =>
-										current === stage.value ? null : stage.value,
-									)
-								}>
-								<Stack gap={1} align='center'>
-									<Text size='sm' fw={600} c='inherit'>
-										{index + 1}. {stage.label}
-									</Text>
+								<Text
+									size='xs'
+									c={selectedStage === stage.value ? 'inherit' : 'dimmed'}
+									style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
+									{stage.description}
+								</Text>
+								{stageTime[stage.value] && (
 									<Text
 										size='xs'
-										c={selectedStage === stage.value ? 'inherit' : 'dimmed'}>
-										{stage.description}
+										fw={700}
+										c={selectedStage === stage.value ? 'inherit' : 'blue'}>
+										{stageTime[stage.value]}
 									</Text>
-									{stageTime[stage.value] && (
-										<Text
-											size='xs'
-											fw={700}
-											c={selectedStage === stage.value ? 'inherit' : 'blue'}>
-											{stageTime[stage.value]}
-										</Text>
-									)}
-								</Stack>
-							</Button>
-						</Group>
+								)}
+							</Stack>
+						</Button>
 					))}
-				</Group>
+				</SimpleGrid>
 			</Paper>
 
 			<Collapse expanded={selectedStage !== null}>
@@ -391,22 +539,11 @@ function AgentPipelineResult({ result }: { result: ResultRecord }) {
 									<Text fw={600} mb='sm'>
 										Symptom
 									</Text>
-									<Stack gap='xs'>
-										<div>
-											<Text size='xs' c='dimmed'>
-												Surowy opis
-											</Text>
-											<Text size='sm'>{String(symptom?.raw ?? '—')}</Text>
-										</div>
-										<div>
-											<Text size='xs' c='dimmed'>
-												Znormalizowana fraza
-											</Text>
-											<Text size='sm' fw={500}>
-												{String(symptom?.search_phrase ?? '—')}
-											</Text>
-										</div>
-									</Stack>
+									<CodeHighlight
+										className='diagnostic-state-json'
+										code={JSON.stringify(symptom ?? {}, null, 2)}
+										language='json'
+									/>
 								</Paper>
 
 								<Paper withBorder p='md' radius='md'>
@@ -416,30 +553,21 @@ function AgentPipelineResult({ result }: { result: ResultRecord }) {
 									</Group>
 									<Stack gap='sm'>
 										{observations.map((observation) => (
-											<div
-												key={`${String(observation.type)}-${String(observation.value)}`}>
-												<Group gap='xs'>
-													<Badge variant='light'>
-														{String(observation.type)}
-													</Badge>
-													<Badge
-														color={
-															observation.certainty === 'certain'
-																? 'green'
-																: 'yellow'
-														}
-														variant='outline'>
-														{String(observation.certainty)}
-													</Badge>
-												</Group>
-												<Text size='sm' mt={4}>
-													{String(observation.value)}
-												</Text>
-											</div>
+											<Paper
+												key={JSON.stringify(observation)}
+												withBorder
+												p='sm'
+												radius='sm'>
+												<CodeHighlight
+													className='diagnostic-state-json'
+													code={JSON.stringify(observation, null, 2)}
+													language='json'
+												/>
+											</Paper>
 										))}
 										{observations.length === 0 && (
 											<Text size='sm' c='dimmed'>
-												Brak jawnych obserwacji.
+												No explicit observations.
 											</Text>
 										)}
 									</Stack>
@@ -449,31 +577,11 @@ function AgentPipelineResult({ result }: { result: ResultRecord }) {
 									<Text fw={600} mb='sm'>
 										Machine context
 									</Text>
-									<Stack gap={6}>
-										<Text size='sm'>
-											ID: {String(machine?.device_id ?? '—')}
-										</Text>
-										<Text size='sm'>Nazwa: {String(machine?.name ?? '—')}</Text>
-										<Text size='sm'>
-											Model/serial:{' '}
-											{String(machine?.model_serial_code ?? '—')}
-										</Text>
-										<Text size='sm'>
-											Dane tabliczki:{' '}
-											{machine?.nameplate_data ? 'dostępne' : 'brak'}
-										</Text>
-										{machine?.nameplate_data !== null &&
-											machine?.nameplate_data !== undefined && (
-												<CodeHighlight
-													code={JSON.stringify(
-														machine.nameplate_data,
-														null,
-														2,
-													)}
-													language='json'
-												/>
-											)}
-									</Stack>
+									<CodeHighlight
+										className='diagnostic-state-json'
+										code={JSON.stringify(machine ?? {}, null, 2)}
+										language='json'
+									/>
 								</Paper>
 							</SimpleGrid>
 						</section>
@@ -485,26 +593,36 @@ function AgentPipelineResult({ result }: { result: ResultRecord }) {
 								3. Query Rewrite & Expansion
 							</Title>
 							<SimpleGrid cols={{ base: 1, md: 2 }} spacing='sm'>
-								<CriteriaList
-									title='Base queries'
-									items={baseQueries}
-									color='blue'
-								/>
-								<CriteriaList
-									title='Contextual queries'
-									items={contextualQueries}
-									color='cyan'
-								/>
+								<Paper withBorder p='md' radius='md'>
+									<Text fw={600} mb='sm'>
+										Base queries
+									</Text>
+									<CodeHighlight
+										className='diagnostic-state-json'
+										code={JSON.stringify(baseQueries, null, 2)}
+										language='json'
+									/>
+								</Paper>
+								<Paper withBorder p='md' radius='md'>
+									<Text fw={600} mb='sm'>
+										Contextual queries
+									</Text>
+									<CodeHighlight
+										className='diagnostic-state-json'
+										code={JSON.stringify(contextualQueries, null, 2)}
+										language='json'
+									/>
+								</Paper>
 							</SimpleGrid>
 							<Paper withBorder p='md' radius='md' mt='sm'>
 								<Text fw={600} size='sm' mb='xs'>
-									Kolejność zapytań przekazanych do retrievalu
+									Retrieval query order
 								</Text>
-								<List type='ordered' size='sm' spacing='xs'>
-									{retrievalQueries.map((query) => (
-										<List.Item key={query}>{query}</List.Item>
-									))}
-								</List>
+								<CodeHighlight
+									className='diagnostic-state-json'
+									code={JSON.stringify(retrievalQueries, null, 2)}
+									language='json'
+								/>
 							</Paper>
 						</section>
 					)}
@@ -584,10 +702,585 @@ function AgentPipelineResult({ result }: { result: ResultRecord }) {
 									</div>
 								</SimpleGrid>
 							</Paper>
-							<Alert color='green' title='Koniec obecnego zakresu agenta' mt='md'>
-								Pipeline zakończył się po retrievalu i rerankerze. Odpowiedź nie
-								została wygenerowana.
+							<Paper withBorder p='sm' radius='sm' mt='md'>
+								<Text fw={600} size='sm'>
+									Oś czasu Retrieval + Reranker
+								</Text>
+								<RetrievalTimeline result={result} />
+								<Text size='xs' c='dimmed' mt='sm'>
+									Chunki i embedding wszystkich zapytań są pobierane równolegle.
+									Q1…Qn korzystają z gotowych wektorów i są już po angielsku po
+									Query Rewrite, więc tłumaczenie jest pomijane. Po połączeniu
+									wyników uruchamiany jest globalny reranker.
+								</Text>
+							</Paper>
+							<Alert
+								color='gray'
+								variant='light'
+								title='Tani prefilter rerankera'
+								mt='md'>
+								{String(initialEvidenceGate?.decision ?? 'brak wyniku')} —{' '}
+								{String(initialEvidenceGate?.reason ?? 'brak szczegółów')}. Do
+								extractora przekazano {chunksAfterPrefilter.length} chunków.
 							</Alert>
+						</section>
+					)}
+
+					{selectedStage === 'extractor' && (
+						<section>
+							<Group justify='space-between' mb='sm'>
+								<Title order={4}>5. Diagnostic Extractor</Title>
+								<Group gap='xs'>
+									<Badge variant='outline'>
+										{String(result.diagnostic_extractor_model ?? '—')}
+									</Badge>
+									<Badge variant='light'>{extractedRules.length} reguł</Badge>
+								</Group>
+							</Group>
+							<Stack gap='sm'>
+								{extractedRules.map((rule, index) => (
+									<ExtractorRuleCard
+										key={JSON.stringify(rule)}
+										rule={rule}
+										index={index}
+										chunks={chunksAfterPrefilter}
+									/>
+								))}
+								{extractedRules.length === 0 && (
+									<Alert color='yellow'>
+										{String(
+											extraction?.evidence_gap ??
+												'Extractor nie znalazł reguł.',
+										)}
+									</Alert>
+								)}
+							</Stack>
+						</section>
+					)}
+
+					{selectedStage === 'evidence' && (
+						<section>
+							<Group justify='space-between' mb='sm'>
+								<Title order={4}>6. Evidence Gate</Title>
+								<Badge
+									color={evidenceGate?.decision === 'accept' ? 'green' : 'red'}
+									size='lg'>
+									{String(evidenceGate?.decision ?? 'brak wyniku').toUpperCase()}
+								</Badge>
+							</Group>
+
+							<Alert
+								color={evidenceGate?.decision === 'accept' ? 'green' : 'red'}
+								title='Werdykt po walidacji reguł'
+								mb='md'>
+								{String(evidenceGate?.reason ?? 'Brak danych z gate’u.')}
+							</Alert>
+
+							<Paper withBorder p='md' radius='md' mt='md'>
+								<Group justify='space-between' mb='sm'>
+									<Text fw={600}>Co dokładnie zawiodło</Text>
+									<Badge
+										color={displayedGateFailures.length > 0 ? 'red' : 'green'}
+										variant='light'>
+										{displayedGateFailures.length} błędów
+									</Badge>
+								</Group>
+								<Stack gap='xs'>
+									{displayedGateFailures.map((failure) => (
+										<Alert
+											key={`${String(failure.rule_index)}-${String(failure.attribute)}-${String(failure.code)}`}
+											color='red'
+											variant='light'
+											title={`${String(failure.attribute)} → ${String(failure.code)}`}>
+											{String(failure.message)}
+										</Alert>
+									))}
+									{displayedGateFailures.length === 0 && (
+										<Text size='sm' c='dimmed'>
+											Wszystkie wymagane atrybuty zaakceptowanych reguł
+											przeszły walidację.
+										</Text>
+									)}
+								</Stack>
+							</Paper>
+
+							<Paper withBorder p='md' radius='md' mt='md'>
+								<Group justify='space-between' mb='sm'>
+									<Text fw={600}>Surowe oceny reguł</Text>
+									<Badge variant='outline'>{ruleEvaluations.length} ocen</Badge>
+								</Group>
+								<CodeHighlight
+									code={JSON.stringify(ruleEvaluations, null, 2)}
+									language='json'
+								/>
+							</Paper>
+
+							<Alert color='blue' title='Przekazanie do Diagnostic State' mt='md'>
+								Zaakceptowane reguły zostaną użyte do przygotowania początkowego
+								stanu diagnozy.
+							</Alert>
+						</section>
+					)}
+
+					{selectedStage === 'state' && (
+						<section>
+							<Group justify='space-between' mb='sm'>
+								<Title order={4}>7. Diagnostic State</Title>
+								<Badge
+									color={diagnosticState?.status === 'ready' ? 'green' : 'yellow'}
+									size='lg'>
+									{String(diagnosticState?.status ?? 'no state').toUpperCase()}
+								</Badge>
+							</Group>
+							<SimpleGrid cols={{ base: 1, md: 3 }} spacing='md'>
+								<Paper withBorder p='md' radius='md'>
+									<Text fw={600}>Initial facts</Text>
+									<Badge variant='light' mt='xs'>
+										{diagnosticFacts.length}
+									</Badge>
+								</Paper>
+								<Paper withBorder p='md' radius='md'>
+									<Text fw={600}>Accepted rules</Text>
+									<Badge variant='light' mt='xs'>
+										{diagnosticRules.length}
+									</Badge>
+								</Paper>
+								<Paper withBorder p='md' radius='md'>
+									<Text fw={600}>Rule evaluations</Text>
+									<Badge variant='light' mt='xs'>
+										{diagnosticRuleStates.length}
+									</Badge>
+								</Paper>
+							</SimpleGrid>
+							<SimpleGrid cols={{ base: 1, lg: 2 }} spacing='md' mt='md'>
+								<Paper withBorder p='md' radius='md'>
+									<Text fw={600} mb='sm'>
+										Facts
+									</Text>
+									<Stack gap='sm'>
+										{diagnosticFacts.map((fact) => (
+											<Paper
+												key={JSON.stringify(fact)}
+												withBorder
+												p='sm'
+												radius='sm'>
+												<CodeHighlight
+													className='diagnostic-state-json'
+													code={JSON.stringify(fact, null, 2)}
+													language='json'
+												/>
+											</Paper>
+										))}
+										{diagnosticFacts.length === 0 && (
+											<Text size='sm' c='dimmed'>
+												No initial facts.
+											</Text>
+										)}
+									</Stack>
+								</Paper>
+
+								<Paper withBorder p='md' radius='md'>
+									<Text fw={600} mb='sm'>
+										Rule matching
+									</Text>
+									<Accordion variant='separated' multiple>
+										{diagnosticRuleStates.map((ruleState, index) => {
+											const rule = diagnosticRules[index]
+											const status = String(ruleState.status ?? 'unknown')
+											const ruleNumber =
+												Number(ruleState.extraction_rule_index ?? index) + 1
+											return (
+												<Accordion.Item
+													key={`${ruleNumber}-${status}`}
+													value={`${ruleNumber}-${status}`}>
+													<Accordion.Control>
+														<Group gap='xs' wrap='wrap'>
+															<Badge>Rule {ruleNumber}</Badge>
+															<Badge
+																color={
+																	status === 'matched'
+																		? 'green'
+																		: 'yellow'
+																}>
+																{status}
+															</Badge>
+														</Group>
+													</Accordion.Control>
+													<Accordion.Panel>
+														<CodeHighlight
+															className='diagnostic-state-json'
+															code={JSON.stringify(
+																{
+																	rule: rule ?? null,
+																	matching: ruleState,
+																},
+																null,
+																2,
+															)}
+															language='json'
+														/>
+													</Accordion.Panel>
+												</Accordion.Item>
+											)
+										})}
+									</Accordion>
+									{diagnosticRuleStates.length === 0 && (
+										<Text size='sm' c='dimmed'>
+											No accepted rules to evaluate.
+										</Text>
+									)}
+								</Paper>
+							</SimpleGrid>
+							<Alert color='blue' title='Przekazanie do Gap Finder' mt='md'>
+								Fakty i zaakceptowane reguły zostaną porównane, a wynik zapisany w
+								tym samym Diagnostic State.
+							</Alert>
+						</section>
+					)}
+
+					{selectedStage === 'gaps' && (
+						<section>
+							<Group justify='space-between' mb='sm'>
+								<Title order={4}>8. Gap Finder</Title>
+								<Badge
+									color={
+										diagnosticState?.status === 'ready'
+											? 'green'
+											: diagnosticState?.status === 'conflicting'
+												? 'red'
+												: 'yellow'
+									}
+									size='lg'>
+									{String(diagnosticState?.status ?? 'no state').toUpperCase()}
+								</Badge>
+							</Group>
+
+							<Paper withBorder p='md' radius='md'>
+								<Group justify='space-between' mb='sm'>
+									<Text fw={600}>Unresolved diagnostic gaps</Text>
+									<Badge
+										color={diagnosticGaps.length > 0 ? 'yellow' : 'green'}
+										variant='light'>
+										{diagnosticGaps.length}
+									</Badge>
+								</Group>
+								<Stack gap='sm'>
+									{diagnosticGaps.map((gap) => {
+										const kind = String(gap.kind ?? 'unknown')
+										return (
+											<Paper
+												key={JSON.stringify([
+													gap.fact_key,
+													gap.operator,
+													gap.expected_value,
+													gap.unit,
+												])}
+												withBorder
+												p='sm'
+												radius='sm'>
+												<Group gap='xs' mb='sm'>
+													<Badge>
+														{String(gap.fact_key ?? 'unknown fact')}
+													</Badge>
+													<Badge
+														color={
+															kind === 'conflicting'
+																? 'red'
+																: kind === 'uncertain'
+																	? 'orange'
+																	: 'yellow'
+														}
+														variant='light'>
+														{kind}
+													</Badge>
+												</Group>
+												<CodeHighlight
+													className='diagnostic-state-json'
+													code={JSON.stringify(gap, null, 2)}
+													language='json'
+												/>
+											</Paper>
+										)
+									})}
+									{diagnosticGaps.length === 0 && (
+										<Alert color='green' variant='light'>
+											No unresolved diagnostic gaps were found.
+										</Alert>
+									)}
+								</Stack>
+							</Paper>
+
+							<Paper withBorder p='md' radius='md' mt='md'>
+								<Text fw={600} mb='sm'>
+									Diagnostic State after gap enrichment
+								</Text>
+								<CodeHighlight
+									className='diagnostic-state-json'
+									code={JSON.stringify(
+										{
+											status: diagnosticState?.status,
+											rule_states: diagnosticRuleStates,
+											gaps: diagnosticGaps,
+										},
+										null,
+										2,
+									)}
+									language='json'
+								/>
+							</Paper>
+
+							<Alert color='blue' title='Przekazanie do Best Next Step' mt='md'>
+								Zidentyfikowane luki zostaną ocenione semantycznie, a końcowy wynik
+								zostanie wybrany deterministycznie po walidacji referencji.
+							</Alert>
+						</section>
+					)}
+
+					{selectedStage === 'next' && (
+						<section>
+							<Group justify='space-between' mb='sm'>
+								<Title order={4}>9. Best Next Step</Title>
+								<Group gap='xs'>
+									<Badge variant='outline'>
+										{String(result.agent_next_step_model ?? '—')}
+									</Badge>
+									<Badge variant='light' size='lg'>
+										{agentNextStepDecisions.length} decyzji
+									</Badge>
+								</Group>
+							</Group>
+
+							<Stack gap='md'>
+								{agentNextStepDecisions.map((decision) => {
+									const selected = asRecord(decision.selected)
+									return (
+										<Paper
+											key={JSON.stringify(decision)}
+											withBorder
+											p='md'
+											radius='md'>
+											<Group justify='space-between' mb='sm'>
+												<Text fw={600}>Wynik Best Next Step</Text>
+												<Badge
+													color={
+														decision.status === 'selected'
+															? 'green'
+															: 'gray'
+													}>
+													{String(
+														decision.status ?? 'no result',
+													).toUpperCase()}
+												</Badge>
+											</Group>
+											{typeof selected?.technician_prompt === 'string' && (
+												<Alert
+													color='blue'
+													title='Wiadomość do technika'
+													mb='sm'>
+													{String(selected.technician_prompt)}
+												</Alert>
+											)}
+											<CodeHighlight
+												className='diagnostic-state-json'
+												code={JSON.stringify(decision, null, 2)}
+												language='json'
+											/>
+										</Paper>
+									)
+								})}
+								{agentNextStepDecisions.length === 0 && (
+									<Text size='sm' c='dimmed'>
+										Best Next Step nie zwrócił żadnej decyzji.
+									</Text>
+								)}
+							</Stack>
+
+							<Alert color='blue' title='Wiadomość do technika' mt='md'>
+								Dla kroków ask i observe agent wysyła zatwierdzone
+								technician_prompt. Dla documented_test evaluator zwraca polskie
+								tłumaczenie, a oryginalna instrukcja pozostaje w JSON-ie do
+								weryfikacji.
+							</Alert>
+						</section>
+					)}
+
+					{selectedStage === 'simulation' && (
+						<section>
+							<Group justify='space-between' mb='sm'>
+								<Title order={4}>10. Automatyczna symulacja technika</Title>
+								<Badge variant='light' size='lg'>
+									{agentSimulationSteps.length} kroków
+								</Badge>
+							</Group>
+							<Stack gap='sm' mb='md'>
+								{agentSimulationSteps.map((step, index) => (
+									<Paper
+										key={`${String(step.turn ?? index)}-${String(step.selected_fact_key)}`}
+										withBorder
+										p='sm'
+										radius='sm'>
+										<Group gap='xs' mb='xs'>
+											<Badge>Krok {String(step.turn ?? index + 1)}</Badge>
+											<Badge variant='outline'>
+												{String(step.selected_fact_key ?? 'unknown fact')}
+											</Badge>
+											{step.canonical_fact_key !== step.selected_fact_key && (
+												<Badge color='cyan' variant='light'>
+													alias → {String(step.canonical_fact_key)}
+												</Badge>
+											)}
+										</Group>
+										<Text size='xs' c='dimmed'>
+											Wiadomość wygenerowana przez Best Next Step
+										</Text>
+										<Text size='sm'>
+											{String(step.technician_prompt ?? '—')}
+										</Text>
+										<Text size='xs' c='dimmed' mt='sm'>
+											Automatyczna odpowiedź technika
+										</Text>
+										<Text size='sm' fw={600}>
+											{String(step.technician_reply ?? '—')}
+										</Text>
+										<Text size='xs' c='dimmed' mt='xs'>
+											Wstrzyknięta wartość: {JSON.stringify(step.fact_value)}
+											{step.unit ? ` ${String(step.unit)}` : ''}
+										</Text>
+									</Paper>
+								))}
+								{agentSimulationSteps.length === 0 && (
+									<Text size='sm' c='dimmed'>
+										Best Next Step nie wymagał odpowiedzi technika.
+									</Text>
+								)}
+							</Stack>
+							<Paper withBorder p='md' radius='md'>
+								<Text fw={600} mb='sm'>
+									Final Diagnostic State po symulacji
+								</Text>
+								<CodeHighlight
+									className='diagnostic-state-json'
+									code={JSON.stringify(finalDiagnosticState ?? {}, null, 2)}
+									language='json'
+								/>
+							</Paper>
+						</section>
+					)}
+
+					{selectedStage === 'final' && (
+						<section>
+							<Group justify='space-between' mb='sm'>
+								<Title order={4}>11. Final Diagnostic Answer</Title>
+								<Badge color={finalAnswerCompleted ? 'green' : 'yellow'} size='lg'>
+									{String(
+										finalDiagnosticAnswer?.status ?? 'no result',
+									).toUpperCase()}
+								</Badge>
+							</Group>
+							<Alert
+								color={finalAnswerCompleted ? 'green' : 'yellow'}
+								title='Odpowiedź dla technika'
+								mb='md'>
+								<Text style={{ whiteSpace: 'pre-wrap' }}>
+									{typeof finalDiagnosticAnswer?.text === 'string'
+										? finalDiagnosticAnswer.text
+										: 'Stan diagnostyczny nie pozwala jeszcze zbudować odpowiedzi.'}
+								</Text>
+							</Alert>
+							<Paper withBorder p='md' radius='md'>
+								<Text fw={600} mb='sm'>
+									Dane użyte do odpowiedzi
+								</Text>
+								<CodeHighlight
+									className='diagnostic-state-json'
+									code={JSON.stringify(finalDiagnosticAnswer ?? {}, null, 2)}
+									language='json'
+								/>
+							</Paper>
+							<Alert color='blue' title='Zasada składania' mt='md'>
+								Odpowiedź zawiera wyłącznie efekty, akcje i ograniczenia z
+								zaakceptowanych reguł o statusie matched. Reguły częściowe i
+								sprzeczne nie przekazują swoich akcji.
+							</Alert>
+						</section>
+					)}
+
+					{selectedStage === 'judge' && (
+						<section>
+							<Group justify='space-between' mb='sm'>
+								<Title order={4}>12. Judge</Title>
+								{typeof result.passed === 'boolean' && (
+									<Badge color={result.passed ? 'green' : 'red'} size='lg'>
+										{result.passed ? 'ZALICZONE' : 'NIEZALICZONE'}
+									</Badge>
+								)}
+							</Group>
+							{evaluationSkipped ? (
+								<Alert color='yellow'>
+									Ocena była wyłączona dla tego uruchomienia.
+								</Alert>
+							) : judge ? (
+								<Stack gap='md'>
+									<Group gap='xs'>
+										{typeof result.score === 'number' && (
+											<Badge variant='light'>score: {result.score}</Badge>
+										)}
+										{typeof result.judge_model === 'string' && (
+											<Badge color='violet' variant='light'>
+												{result.judge_model}
+											</Badge>
+										)}
+										{typeof result.evidence_before_fix_passed === 'boolean' && (
+											<Badge
+												color={
+													result.evidence_before_fix_passed
+														? 'green'
+														: 'red'
+												}>
+												Dowód przed naprawą:{' '}
+												{result.evidence_before_fix_passed ? 'tak' : 'nie'}
+											</Badge>
+										)}
+										{typeof result.primary_action_count === 'number' && (
+											<Badge
+												color={
+													result.primary_action_limit_passed
+														? 'green'
+														: 'red'
+												}>
+												Główne naprawy: {result.primary_action_count}/
+												{String(result.primary_action_minimum ?? 0)}–
+												{String(result.primary_action_limit ?? '—')}
+											</Badge>
+										)}
+									</Group>
+									<SimpleGrid cols={{ base: 1, lg: 3 }} spacing='sm'>
+										<EvaluationList
+											title='Wymagane fakty'
+											criteria={testCase.required_facts}
+											evaluations={requiredFacts}
+										/>
+										<EvaluationList
+											title='Wymagane zachowanie'
+											criteria={testCase.required_behaviors}
+											evaluations={requiredBehaviors}
+										/>
+										<EvaluationList
+											title='Niedozwolone twierdzenia'
+											criteria={testCase.forbidden_claims}
+											evaluations={forbiddenClaims}
+											forbidden
+										/>
+									</SimpleGrid>
+									{typeof judge.feedback === 'string' && judge.feedback && (
+										<Alert color='blue' title='Komentarz judge’a'>
+											{judge.feedback}
+										</Alert>
+									)}
+								</Stack>
+							) : (
+								<Alert color='yellow'>Brak wyniku judge’a.</Alert>
+							)}
 						</section>
 					)}
 				</Stack>
@@ -603,7 +1296,9 @@ const RETRIEVAL_TIMELINE_ORDER = [
 	'exact_match',
 	'semantic_search',
 	'bm25',
+	'fusion',
 	'reranker',
+	'initial_evidence_gate',
 ]
 
 const RETRIEVAL_TIMELINE_COLORS: Record<string, string> = {
@@ -613,7 +1308,9 @@ const RETRIEVAL_TIMELINE_COLORS: Record<string, string> = {
 	exact_match: 'var(--mantine-color-orange-filled)',
 	semantic_search: 'var(--mantine-color-blue-filled)',
 	bm25: 'var(--mantine-color-teal-filled)',
+	fusion: 'var(--mantine-color-lime-filled)',
 	reranker: 'var(--mantine-color-grape-filled)',
+	initial_evidence_gate: 'var(--mantine-color-red-filled)',
 }
 
 const RESPONSE_TIMELINE_COLORS: Record<string, string> = {
@@ -758,11 +1455,15 @@ function RetrievalTimeline({ result }: { result: ResultRecord }) {
 	return (
 		<Stack gap='md' mt='sm'>
 			{timelines.map((timeline, timelineIndex) => {
-				const items = asRecordArray(timeline.items).sort(
-					(a, b) =>
+				const items = asRecordArray(timeline.items).sort((a, b) => {
+					if (timeline.layout === 'chronological') {
+						return Number(a.start_ms ?? 0) - Number(b.start_ms ?? 0)
+					}
+					return (
 						RETRIEVAL_TIMELINE_ORDER.indexOf(String(a.key)) -
-						RETRIEVAL_TIMELINE_ORDER.indexOf(String(b.key)),
-				)
+						RETRIEVAL_TIMELINE_ORDER.indexOf(String(b.key))
+					)
+				})
 				const measuredDuration =
 					typeof timeline.duration_ms === 'number' ? timeline.duration_ms : 0
 				const lastEnd = Math.max(
@@ -773,9 +1474,11 @@ function RetrievalTimeline({ result }: { result: ResultRecord }) {
 
 				return (
 					<div key={String(timeline.turn ?? timelineIndex)}>
-						{timelines.length > 1 && (
+						{(timelines.length > 1 || typeof timeline.label === 'string') && (
 							<Text fw={600} size='sm' mb='xs'>
-								Odpowiedź {String(timeline.turn ?? timelineIndex + 1)}
+								{typeof timeline.label === 'string'
+									? timeline.label
+									: `Odpowiedź ${String(timeline.turn ?? timelineIndex + 1)}`}
 							</Text>
 						)}
 						<Stack gap={6}>
@@ -908,8 +1611,7 @@ function CaseRunResult({
 	const forbiddenClaims = asRecordArray(judge?.forbidden_claims)
 	const evaluationSkipped = result.evaluation_skipped === true
 	const isActive = run.state === 'queued' || run.state === 'processing'
-	const isAgentPipeline =
-		result.mode === 'agent' && result.pipeline_stage === 'retrieval_completed'
+	const isAgentPipeline = result.mode === 'agent'
 
 	return (
 		<Stack gap='lg' mt='lg'>
@@ -933,7 +1635,9 @@ function CaseRunResult({
 				)}
 			</Group>
 			{run.error && <Alert color='red'>{run.error}</Alert>}
-			{run.result && isAgentPipeline && <AgentPipelineResult result={result} />}
+			{run.result && isAgentPipeline && (
+				<AgentPipelineResult result={result} testCase={testCase} />
+			)}
 			{run.result && !isAgentPipeline && (
 				<>
 					<StandardPipelineTimings result={result} opened={timingsOpened} />
@@ -1092,6 +1796,7 @@ function CriteriaList({ title, items, color }: { title: string; items: string[];
 function CaseItem({ testCase, runId, evaluationEnabled, onRunStarted }: CaseItemProps) {
 	const startRun = useStartCaseRun()
 	const { data: caseRun } = useCaseRun(runId)
+	const clipboard = useClipboard({ timeout: 2000 })
 	const [caseContentOpened, { toggle: toggleCaseContent }] = useDisclosure(false)
 	const [timingsOpened, { toggle: toggleTimings, close: closeTimings }] = useDisclosure(false)
 	const caseRunResult = caseRun?.result ?? {}
@@ -1115,9 +1820,25 @@ function CaseItem({ testCase, runId, evaluationEnabled, onRunStarted }: CaseItem
 		<Card withBorder>
 			<Group justify='space-between' align='flex-start'>
 				<Title order={4}>{testCase.title}</Title>
-				<Button size='xs' loading={startRun.isPending} onClick={handleRun}>
-					Uruchom
-				</Button>
+				<Group gap='xs'>
+					<Button
+						size='xs'
+						variant='default'
+						color={clipboard.copied ? 'green' : undefined}
+						leftSection={
+							clipboard.copied ? <IconCheck size={14} /> : <IconCopy size={14} />
+						}
+						onClick={() =>
+							clipboard.copy(
+								formatBenchmarkCaseForClipboard(testCase, caseRun ?? null),
+							)
+						}>
+						{clipboard.copied ? 'Skopiowano' : 'Kopiuj cały case'}
+					</Button>
+					<Button size='xs' loading={startRun.isPending} onClick={handleRun}>
+						Uruchom
+					</Button>
+				</Group>
 			</Group>
 
 			<Group gap='xs' mt='lg'>
@@ -1185,10 +1906,70 @@ function CaseItem({ testCase, runId, evaluationEnabled, onRunStarted }: CaseItem
 							</SimpleGrid>
 						</div>
 					) : (
-						<Alert color='cyan' variant='light' title='Zakres uruchomienia agenta'>
-							Case Context → Query Rewrite & Expansion → Retrieval + Reranker.
-							Generowanie odpowiedzi nie jest jeszcze uruchamiane.
-						</Alert>
+						<Stack gap='md'>
+							<Alert color='cyan' variant='light' title='Zakres uruchomienia agenta'>
+								Pełny przebieg od Case Context przez diagnostykę i symulowane
+								odpowiedzi technika do Final Answer oraz końcowego Judge’a.
+							</Alert>
+							{testCase.agent_goal && (
+								<Alert color='blue' variant='light' title='Cel zakończenia'>
+									<Text size='sm'>{testCase.agent_goal.terminal_goal}</Text>
+									<Text size='xs' mt='xs'>
+										Wymagane dowody przed naprawą:{' '}
+										{testCase.agent_goal.required_evidence_fact_keys.join(
+											', ',
+										) || 'brak'}
+										· wymagane działania główne:{' '}
+										{testCase.agent_goal.min_primary_actions}–
+										{testCase.agent_goal.max_primary_actions}
+									</Text>
+								</Alert>
+							)}
+							<div>
+								<Text size='xs' fw={700} tt='uppercase' c='dimmed' mb={6}>
+									Założenia case’u
+								</Text>
+								<Stack gap='xs'>
+									{testCase.assumptions.map((assumption) => (
+										<Paper key={assumption.key} withBorder p='sm' radius='md'>
+											<Group justify='space-between' align='flex-start'>
+												<Text size='sm' fw={600}>
+													{assumption.statement}
+												</Text>
+												<Badge variant='light'>
+													s. {assumption.source_page}
+												</Badge>
+											</Group>
+											<Text size='xs' c='dimmed' mt={4}>
+												{assumption.key} · {assumption.source_locator}
+											</Text>
+										</Paper>
+									))}
+								</Stack>
+							</div>
+							<div>
+								<Text size='xs' fw={700} tt='uppercase' c='dimmed' mb={6}>
+									Warunki oceny
+								</Text>
+								<SimpleGrid cols={{ base: 1, lg: 3 }} spacing='sm'>
+									<CriteriaList
+										title='Wymagane fakty'
+										items={testCase.required_facts}
+										color='green'
+									/>
+									<CriteriaList
+										title='Wymagane zachowanie'
+										items={testCase.required_behaviors}
+										color='blue'
+									/>
+									<CriteriaList
+										title='Niedozwolone twierdzenia'
+										items={testCase.forbidden_claims}
+										color='red'
+									/>
+								</SimpleGrid>
+							</div>
+						</Stack>
 					)}
 				</Stack>
 			</Collapse>
@@ -1203,6 +1984,7 @@ function CasesSection() {
 	const { data, isLoading } = useBenchmarkCases()
 	const [selectedMode, setSelectedMode] = useState<'standard' | 'agent'>('standard')
 	const [evaluationEnabled, setEvaluationEnabled] = useState(true)
+	const [agentJudgeEnabled, setAgentJudgeEnabled] = useState(false)
 	const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null)
 	const [runIds, setRunIds] = useState<Record<string, string>>({})
 	const modeCases = data?.cases.filter((testCase) => testCase.mode === selectedMode) ?? []
@@ -1250,6 +2032,17 @@ function CasesSection() {
 								description='Wyłącz, aby pominąć ocenę odpowiedzi i chunków przez judge.'
 							/>
 						)}
+						{selectedMode === 'agent' && (
+							<Switch
+								mt='sm'
+								checked={agentJudgeEnabled}
+								onChange={(event) =>
+									setAgentJudgeEnabled(event.currentTarget.checked)
+								}
+								label='Uruchom Judge na końcu'
+								description='Domyślnie wyłączony. Włącz, aby po Final Answer ocenić odpowiedź i chunki.'
+							/>
+						)}
 					</div>
 
 					<Text size='xs' fw={700} tt='uppercase' c='dimmed'>
@@ -1273,7 +2066,7 @@ function CasesSection() {
 							testCase={selectedCase}
 							runId={runIds[selectedCase.id] ?? null}
 							evaluationEnabled={
-								selectedMode === 'standard' ? evaluationEnabled : false
+								selectedMode === 'standard' ? evaluationEnabled : agentJudgeEnabled
 							}
 							onRunStarted={handleRunStarted}
 						/>

@@ -11,7 +11,12 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import photo_context
+from .agent import diagnostic_extractor
+from .agent import gap_finder
+from .agent import diagnostic_state as diagnostic_state_service
+from .agent import next_best_step as agent_next_best_step
 from .agent import retrieval as agent_retrieval_service
+from .agent.models import CaseContext
 from .retrieval import RetrievedChunk, retrieve_for_queries
 from .common import (
     diagnostic_plan_cache_key,
@@ -45,6 +50,7 @@ async def stream_message(
     retrieval_queries: list[str] | None = None,
     preprocessing_debug: dict[str, Any] | None = None,
     agent_retrieval: bool = False,
+    agent_case_context: CaseContext | None = None,
 ) -> StreamingResponse:
     diagnostic_enabled = route_resolver is not None
     started_at = time.perf_counter()
@@ -157,6 +163,7 @@ async def stream_message(
             retrieval_trace=retrieval_trace,
         )
 
+    fresh_chunks: list[RetrievedChunk]
     if standard_completion_answer:
         is_continuation = False
         fresh_chunks = []
@@ -180,6 +187,7 @@ async def stream_message(
         is_continuation = might_continue
         fresh_chunks = await retrieve_fresh_chunks()
 
+    retrieved_chunks: list[RetrievedChunk]
     if is_continuation and latest_system_message and latest_system_message.chunks:
         retrieved_chunks = [
             {
@@ -194,6 +202,37 @@ async def stream_message(
         retrieved_chunks = fresh_chunks
     retrieved_at = time.perf_counter()
 
+    extraction: diagnostic_extractor.DiagnosticExtraction | None = None
+    evidence_gate: diagnostic_extractor.ExtractedEvidenceGateResult | None = None
+    diagnostic_state: diagnostic_state_service.DiagnosticState | None = None
+    extraction_finished_at = retrieved_at
+    evidence_gate_finished_at = retrieved_at
+    diagnostic_state_finished_at = retrieved_at
+    gap_finder_finished_at = retrieved_at
+    if agent_retrieval:
+        if agent_case_context is None:
+            raise ValueError("agent_case_context is required for agent retrieval")
+        extraction = await diagnostic_extractor.extract_diagnostic_evidence(
+            agent_case_context,
+            retrieved_chunks,
+            settings,
+        )
+        extraction_finished_at = time.perf_counter()
+        evidence_gate = diagnostic_extractor.evaluate_extracted_evidence(
+            extraction, retrieved_chunks
+        )
+        evidence_gate_finished_at = time.perf_counter()
+        diagnostic_state = diagnostic_state_service.prepare_diagnostic_state(
+            agent_case_context, extraction, evidence_gate
+        )
+        diagnostic_state_finished_at = time.perf_counter()
+        diagnostic_state = gap_finder.enrich_with_gaps(diagnostic_state)
+        gap_finder_finished_at = time.perf_counter()
+        accepted_source_ids = set(evidence_gate.accepted_source_chunk_ids)
+        retrieved_chunks = [
+            chunk for chunk in retrieved_chunks if chunk["id"] in accepted_source_ids
+        ]
+
     if not retrieval_trace:
         retrieval_trace = {
             "reranker_enabled": False,
@@ -203,6 +242,17 @@ async def stream_message(
         }
 
     context_chunks = [chunk["content"] for chunk in retrieved_chunks]
+
+    agent_next_step_decision: agent_next_best_step.AgentNextStepDecision | None = None
+    if diagnostic_state is not None:
+        agent_next_step_decision = await agent_next_best_step.evaluate_next_step(
+            diagnostic_state, settings
+        )
+    agent_step_answer = (
+        agent_next_best_step.technician_response(agent_next_step_decision)
+        if agent_next_step_decision is not None
+        else None
+    )
 
     diagnostic_plan: next_best_step.DiagnosticPlan | None = None
     if diagnostic_route == router.MessageRoute.start_diagnostic:
@@ -306,6 +356,7 @@ async def stream_message(
                                 "attachment_id": chunk["attachment_id"],
                                 "preview": chunk["content"][:1000],
                                 "metadata": chunk.get("extra_metadata") or {},
+                                "reranker_score": chunk.get("reranker_score"),
                             }
                             for chunk in retrieval_trace.get("before_reranker", [])
                         ],
@@ -315,8 +366,22 @@ async def stream_message(
                                 "attachment_id": chunk["attachment_id"],
                                 "preview": chunk["content"][:1000],
                                 "metadata": chunk.get("extra_metadata") or {},
+                                "reranker_score": chunk.get("reranker_score"),
                             }
                             for chunk in retrieval_trace.get("after_reranker", [])
+                        ],
+                        "initial_evidence_gate": retrieval_trace.get(
+                            "initial_evidence_gate"
+                        ),
+                        "after_evidence_gate": [
+                            {
+                                "id": chunk["id"],
+                                "attachment_id": chunk["attachment_id"],
+                                "preview": chunk["content"][:1000],
+                                "metadata": chunk.get("extra_metadata") or {},
+                                "reranker_score": chunk.get("reranker_score"),
+                            }
+                            for chunk in retrieval_trace.get("after_evidence_gate", [])
                         ],
                         "chunks": [
                             {
@@ -330,19 +395,103 @@ async def stream_message(
                     },
                 },
             )
+            if extraction is not None and evidence_gate is not None:
+                yield sse(
+                    "debug",
+                    {
+                        "step": "diagnostic_extractor",
+                        "label": "Diagnostic Extractor",
+                        "duration_ms": round(
+                            (extraction_finished_at - retrieved_at) * 1000
+                        ),
+                        "start_ms": round((retrieved_at - started_at) * 1000),
+                        "end_ms": round((extraction_finished_at - started_at) * 1000),
+                        "data": extraction.model_dump(mode="json"),
+                    },
+                )
+                yield sse(
+                    "debug",
+                    {
+                        "step": "evidence_gate",
+                        "label": "Evidence Gate",
+                        "duration_ms": round(
+                            (evidence_gate_finished_at - extraction_finished_at) * 1000
+                        ),
+                        "start_ms": round((extraction_finished_at - started_at) * 1000),
+                        "end_ms": round(
+                            (evidence_gate_finished_at - started_at) * 1000
+                        ),
+                        "data": evidence_gate.model_dump(mode="json"),
+                    },
+                )
+            if diagnostic_state is not None:
+                yield sse(
+                    "debug",
+                    {
+                        "step": "diagnostic_state",
+                        "label": "Diagnostic State",
+                        "duration_ms": round(
+                            (diagnostic_state_finished_at - evidence_gate_finished_at)
+                            * 1000
+                        ),
+                        "start_ms": round(
+                            (evidence_gate_finished_at - started_at) * 1000
+                        ),
+                        "end_ms": round(
+                            (diagnostic_state_finished_at - started_at) * 1000
+                        ),
+                        "data": diagnostic_state.model_dump(mode="json"),
+                    },
+                )
+                yield sse(
+                    "debug",
+                    {
+                        "step": "gap_finder",
+                        "label": "Gap Finder",
+                        "duration_ms": round(
+                            (gap_finder_finished_at - diagnostic_state_finished_at)
+                            * 1000
+                        ),
+                        "start_ms": round(
+                            (diagnostic_state_finished_at - started_at) * 1000
+                        ),
+                        "end_ms": round((gap_finder_finished_at - started_at) * 1000),
+                        "data": {
+                            "status": diagnostic_state.status,
+                            "gaps": [
+                                gap.model_dump(mode="json")
+                                for gap in diagnostic_state.gaps
+                            ],
+                            "rule_states": [
+                                rule_state.model_dump(mode="json")
+                                for rule_state in diagnostic_state.rule_states
+                            ],
+                        },
+                    },
+                )
             yield sse(
                 "debug",
                 {
                     "step": "plan",
-                    "label": "Next Best Step",
-                    "duration_ms": round((planned_at - retrieved_at) * 1000),
-                    "start_ms": round((retrieved_at - started_at) * 1000),
+                    "label": (
+                        "Agent Next Best Step"
+                        if agent_next_step_decision is not None
+                        else "Next Best Step"
+                    ),
+                    "duration_ms": round((planned_at - gap_finder_finished_at) * 1000),
+                    "start_ms": round((gap_finder_finished_at - started_at) * 1000),
                     "end_ms": round((planned_at - started_at) * 1000),
                     "data": {
-                        "active": diagnostic_plan is not None,
+                        "active": (
+                            agent_next_step_decision.status == "selected"
+                            if agent_next_step_decision is not None
+                            else diagnostic_plan is not None
+                        ),
                         **(
-                            diagnostic_plan.model_dump(mode="json")
-                            if diagnostic_plan
+                            agent_next_step_decision.model_dump(mode="json")
+                            if agent_next_step_decision is not None
+                            else diagnostic_plan.model_dump(mode="json")
+                            if diagnostic_plan is not None
                             else {}
                         ),
                     },
@@ -356,6 +505,10 @@ async def stream_message(
             answer_parts.append(standard_completion_answer)
             first_chunk_at = time.perf_counter()
             yield sse("chunk", standard_completion_answer)
+        elif agent_step_answer:
+            answer_parts.append(agent_step_answer)
+            first_chunk_at = time.perf_counter()
+            yield sse("chunk", agent_step_answer)
         else:
             stream_limiter = streaming.ChecklistStreamLimiter()
             async for chunk in generation.stream_query(
