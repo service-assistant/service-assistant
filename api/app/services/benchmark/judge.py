@@ -73,6 +73,7 @@ async def judge_answer(
     case: BenchmarkCase,
     answer: str,
     settings: Settings,
+    agent_trajectory: dict[str, Any] | None = None,
 ) -> JudgeResult:
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     schema = {
@@ -83,13 +84,25 @@ async def judge_answer(
             "schema": JudgeResult.model_json_schema(),
         },
     }
+    is_agent_evaluation = case.agent_goal is not None
     payload = {
         "question": case.question,
-        "reference_answer": case.reference_answer,
+        # Hidden intended answers make an agent-process judge prone to confirming
+        # the target even when the trajectory still contains competing diagnoses.
+        "reference_answer": None if is_agent_evaluation else case.reference_answer,
+        "case_assumptions": (
+            []
+            if is_agent_evaluation
+            else [assumption.model_dump(mode="json") for assumption in case.assumptions]
+        ),
         "required_facts": list(enumerate(case.required_facts)),
         "required_behaviors": list(enumerate(case.required_behaviors)),
         "forbidden_claims": list(enumerate(case.forbidden_claims)),
         "assistant_answer": answer,
+        "agent_goal": (
+            case.agent_goal.model_dump(mode="json") if case.agent_goal else None
+        ),
+        "agent_trajectory": agent_trajectory,
     }
     request: dict[str, Any] = {
         "model": settings.benchmark_judge_model,
@@ -104,11 +117,20 @@ async def judge_answer(
                     "faktycznie realizuje opisane zachowanie; brak zachowania oznacza false. Dla "
                     "forbidden_claims zwróć satisfied=true, gdy odpowiedź zawiera lub "
                     "sugeruje zakazane twierdzenie. Nie uzupełniaj braków wiedzą z odpowiedzi "
-                    "referencyjnej. Evidence ma być krótkim cytatem albo opisem braku. "
+                    "referencyjnej ani z założeń case'u. W ocenie procesu agentowego te pola "
+                    "są celowo ukryte: oceniaj wyłącznie pytanie, jawne kryteria, odpowiedź "
+                    "i trajektorię. Evidence ma być krótkim cytatem albo opisem braku. "
                     "Dla faktu normalizacji kodu uznaj kryterium za spełnione, gdy użytkownik "
                     "podaje kod bez separatora, a odpowiedź bezpośrednio opisuje odpowiadający "
                     "mu kod ze separatorem. Odpowiedź nie musi powtarzać surowego zapisu ani "
                     "mówić wprost, że oba zapisy są równoważne. "
+                    "Jeżeli agent_trajectory jest dostępne, oceniaj kryteria procesu na "
+                    "podstawie całej uporządkowanej trajektorii, a nie tylko końcowej "
+                    "odpowiedzi. Nie zaliczaj diagnozy ani naprawy jako opartej na "
+                    "dowodach, jeśli wymagany wynik sprawdzenia nie pojawił się wcześniej "
+                    "w simulation_steps. agent_goal.terminal_goal opisuje rezultat, do "
+                    "którego ma prowadzić jedna główna instrukcja naprawcza; lista wielu "
+                    "konkurencyjnych napraw nie spełnia tego celu. "
                     "Zachowaj wszystkie indeksy i ich kolejność."
                 ),
             },

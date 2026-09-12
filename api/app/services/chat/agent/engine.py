@@ -12,14 +12,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .case_understanding import understand_case
 from .models import CaseContext, MachineContext, RetrievalQueryPlan
 
+MAX_RETRIEVAL_QUERIES = 4
+
 
 def _retrieval_queries(
     case_context: CaseContext, query_plan: RetrievalQueryPlan
 ) -> list[str]:
     candidates = [
         case_context.symptom.search_phrase,
-        *query_plan.base_queries,
-        *query_plan.contextual_queries,
+        *query_plan.base_queries[:2],
+        *query_plan.contextual_queries[:1],
     ]
     queries: list[str] = []
     seen: set[str] = set()
@@ -29,6 +31,8 @@ def _retrieval_queries(
         if query and key not in seen:
             queries.append(query)
             seen.add(key)
+            if len(queries) == MAX_RETRIEVAL_QUERIES:
+                break
     return queries
 
 
@@ -92,6 +96,7 @@ async def stream_message(
         debug,
         retrieval_queries=queries,
         agent_retrieval=True,
+        agent_case_context=case_context,
         preprocessing_debug={
             "step": "case_understanding",
             "label": "Case Context i Query Rewrite",

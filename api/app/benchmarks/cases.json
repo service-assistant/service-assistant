@@ -1,5 +1,5 @@
 {
-  "version": "1.1",
+  "version": "1.6",
   "cases": [
     {
       "id": "fault_2002_without_colon",
@@ -174,11 +174,11 @@
       }
     },
     {
-      "id": "click_2_creep_colloquial_controls",
-      "title": "Click-2-Creep opisany potocznym językiem",
+      "id": "click_2_creep_colloquial_controls_standard",
+      "title": "Click-2-Creep opisany potocznym językiem — standard",
       "category": "indirect_symptom",
-      "question": "Przy postawionej pionowo rączce dwa razy szybko trąciłem motylek jazdy. Teraz paleciak bardzo wolno jedzie, chociaż przy takim ustawieniu rączki zwykle hamuje. Co włączyłem i jak wrócić do normalnego działania?",
-      "mode": "agent",
+      "question": "Przy pionowo ustawionej rączce paleciak bardzo wolno jedzie, chociaż zwykle w tym położeniu hamuje. Co powinienem sprawdzić i jak przywrócić normalne działanie?",
+      "mode": "standard",
       "expected_route": "standard_query",
       "canonical_fault_code": null,
       "reference_answer": "Została włączona funkcja Click-2-Creep. Umożliwia ona jazdę z obniżoną prędkością oraz podnoszenie lub opuszczanie wideł nawet wtedy, gdy ramię sterujące jest maksymalnie podniesione albo opuszczone. Przy jej aktywacji na wyświetlaczu pojawia się komunikat SLO. Aby ją wyłączyć, ponownie dwukrotnie szybko naciśnij i puść dźwignię jazdy albo użyj wyłącznika bezpieczeństwa przy cofaniu. Funkcja wyłącza się również samoczynnie, jeśli nie jest używana przez 10 sekund.",
@@ -201,10 +201,412 @@
         "W trybie Click-2-Creep wózek może poruszać się z normalną, nieograniczoną prędkością przy podniesionym ramieniu sterującym.",
         "Do wyłączenia funkcji konieczne jest wyłączenie zasilania wózka."
       ],
+      "assumptions": [
+        {
+          "key": "click_2_creep_feature_available",
+          "statement": "Wózek benchmarkowy jest wyposażony w opisaną w podręczniku funkcję Click-2-Creep.",
+          "source_locator": "rozdziały 6.11 i 7.6.3 „Funkcja Click-2-Creep”",
+          "source_page": 48
+        },
+        {
+          "key": "activation_sequence_completed",
+          "statement": "Potoczne dwukrotne trącenie motylka oznacza dwukrotne szybkie naciśnięcie i puszczenie dźwigni jazdy przy ramieniu w najwyższym położeniu.",
+          "source_locator": "rozdział 7.6.3, krok 1 aktywacji Click-2-Creep",
+          "source_page": 48
+        },
+        {
+          "key": "click_2_creep_still_active",
+          "statement": "W chwili rozpoczęcia benchmarku funkcja pozostaje aktywna, więc zastosowanie mają udokumentowane sposoby jej wyłączenia.",
+          "source_locator": "rozdział 7.6.3, krok 2 i automatyczne wyłączenie po 10 sekundach",
+          "source_page": 49
+        }
+      ],
       "source": {
         "filename": "LPE200, LPE220, LPE250 - podręcznik operatora PL.pdf",
         "locator": "rozdziały 6.11 i 7.6.3 „Funkcja Click-2-Creep”",
         "page": null
+      }
+    },
+    {
+      "id": "click_2_creep_colloquial_controls",
+      "title": "Click-2-Creep: diagnoza przed naprawą",
+      "category": "diagnostic_resolution",
+      "question": "Przy pionowo ustawionej rączce paleciak bardzo wolno jedzie, chociaż zwykle w tym położeniu hamuje. Co powinienem sprawdzić i jak przywrócić normalne działanie?",
+      "mode": "agent",
+      "expected_route": "standard_query",
+      "canonical_fault_code": null,
+      "reference_answer": "Najpierw sprawdź komunikat na wyświetlaczu. Po potwierdzeniu komunikatu SLO rozpoznaj aktywną funkcję Click-2-Creep i podaj jedną główną instrukcję przywracającą normalne działanie: ponownie dwukrotnie szybko naciśnij i puść dźwignię jazdy.",
+      "required_facts": [
+        "Końcowa odpowiedź podaje jedną udokumentowaną instrukcję, która wyłącza Click-2-Creep i przywraca normalne działanie: ponowne dwukrotne szybkie naciśnięcie i puszczenie dźwigni jazdy."
+      ],
+      "required_behaviors": [
+        "Przed podaniem naprawy agent prosi o sprawdzenie komunikatu na wyświetlaczu i otrzymuje odpowiedź SLO w trajektorii benchmarku.",
+        "Agent opiera rozpoznanie Click-2-Creep na potwierdzonym komunikacie SLO oraz objawie wolnej jazdy przy podniesionym ramieniu.",
+        "Końcowa odpowiedź przedstawia dokładnie jedną główną instrukcję naprawczą zamiast łączyć działania z konkurencyjnych hipotez."
+      ],
+      "forbidden_claims": [
+        "Opisane zachowanie oznacza awarię sterownika albo hamulca wymagającą naprawy.",
+        "Funkcję należy wyłączyć przez odłączenie lub obejście hamulca albo urządzenia bezpieczeństwa.",
+        "Końcowa odpowiedź zaleca równolegle nacisnąć opcjonalny przycisk wolnej jazdy, zwolnić dźwignię przeciwnego kierunku albo skontaktować się z serwisem jako dodatkowe naprawy tego samego rozpoznania.",
+        "Agent podaje instrukcję wyłączenia Click-2-Creep zanim otrzyma wymagany wynik sprawdzenia wyświetlacza."
+      ],
+      "assumptions": [
+        {
+          "key": "click_2_creep_feature_available",
+          "statement": "Wózek benchmarkowy jest wyposażony w opisaną w podręczniku funkcję Click-2-Creep.",
+          "source_locator": "rozdziały 6.11 i 7.6.3 „Funkcja Click-2-Creep”",
+          "source_page": 48
+        },
+        {
+          "key": "display_is_diagnostic_evidence",
+          "statement": "Komunikat SLO na wyświetlaczu jest udokumentowanym, możliwym do zaobserwowania sygnałem aktywacji Click-2-Creep.",
+          "source_locator": "rozdział 7.6.3, krok 1 aktywacji Click-2-Creep",
+          "source_page": 48
+        },
+        {
+          "key": "click_2_creep_still_active",
+          "statement": "W chwili rozpoczęcia benchmarku funkcja pozostaje aktywna, więc zastosowanie mają udokumentowane sposoby jej wyłączenia.",
+          "source_locator": "rozdział 7.6.3, krok 2 i automatyczne wyłączenie po 10 sekundach",
+          "source_page": 49
+        }
+      ],
+      "simulation_facts": {
+        "control_arm_position": {
+          "value": "raised_braked",
+          "technician_reply": "Ramię sterujące jest ustawione pionowo, w najwyższym położeniu.",
+          "aliases": ["tiller_arm_position", "steering_arm_position"]
+        },
+        "travel_control_double_tapped": {
+          "value": true,
+          "technician_reply": "Dwukrotnie szybko nacisnąłem i puściłem dźwignię jazdy.",
+          "aliases": ["travel_lever_double_pressed", "travel_control_activated_twice"]
+        },
+        "travel_control_lever_opposite_direction": {
+          "value": false,
+          "technician_reply": "Nie wychylałem dźwigni jazdy w przeciwnym kierunku.",
+          "aliases": ["travel_control_opposite_direction", "travel_lever_opposite_direction"]
+        },
+        "low_speed_button_option_fitted": {
+          "value": false,
+          "technician_reply": "Wózek nie ma opcjonalnego przycisku wolnej jazdy.",
+          "aliases": [
+            "low_speed_button_fitted",
+            "creep_speed_button_option_fitted",
+            "click_2_creep_option_fitted"
+          ]
+        },
+        "low_speed_button_pressed_once": {
+          "value": false,
+          "technician_reply": "Nie naciskałem przycisku wolnej jazdy.",
+          "aliases": ["low_speed_button_activated_once", "creep_speed_button_pressed_once"]
+        },
+        "travel_control_lever_released": {
+          "value": true,
+          "technician_reply": "Po puszczeniu dźwignia jazdy wróciła do położenia neutralnego.",
+          "aliases": [
+            "travel_control_released",
+            "travel_lever_released",
+            "travel_control_neutral",
+            "travel_control_lever_neutral"
+          ]
+        },
+        "shock_sensor_stopped_truck": {
+          "value": false,
+          "technician_reply": "Czujnik zderzeniowy nie zatrzymał wózka.",
+          "aliases": [
+            "shock_sensor_stop",
+            "shock_sensor_active",
+            "impact_sensor_stopped_truck",
+            "collision_sensor_stopped_truck"
+          ]
+        },
+        "click_2_creep_active": {
+          "value": true,
+          "technician_reply": "Funkcja Click-2-Creep jest aktywna.",
+          "aliases": ["creep_mode_active", "slow_drive_mode_active"]
+        },
+        "display_message": {
+          "value": "SLO",
+          "technician_reply": "Na wyświetlaczu widzę komunikat SLO.",
+          "aliases": ["displayed_message", "display_code"]
+        },
+        "normal_operation_restored": {
+          "value": false,
+          "technician_reply": "Normalne działanie nie zostało jeszcze przywrócone.",
+          "aliases": ["normal_drive_restored", "click_2_creep_deactivated"]
+        }
+      },
+      "agent_goal": {
+        "required_evidence_fact_keys": ["display_message"],
+        "terminal_goal": "Podaj jedną udokumentowaną instrukcję wyłączającą Click-2-Creep, która ma przywrócić normalne działanie wózka.",
+        "min_primary_actions": 1,
+        "max_primary_actions": 1
+      },
+      "source": {
+        "filename": "LPE200, LPE220, LPE250 - podręcznik operatora PL.pdf",
+        "locator": "rozdziały 6.11 i 7.6.3 „Funkcja Click-2-Creep”",
+        "page": null
+      }
+    },
+    {
+      "id": "click_2_creep_without_slo_counterfactual",
+      "title": "Wolna jazda bez potwierdzenia Click-2-Creep",
+      "category": "diagnostic_resolution_counterfactual",
+      "question": "Przy pionowo ustawionej rączce paleciak bardzo wolno jedzie, chociaż zwykle w tym położeniu hamuje. Co powinienem sprawdzić i jak przywrócić normalne działanie?",
+      "mode": "agent",
+      "expected_route": "standard_query",
+      "canonical_fault_code": null,
+      "reference_answer": "Najpierw sprawdź komunikat na wyświetlaczu. Jeżeli technik potwierdzi, że komunikatu SLO nie ma, nie przedstawiaj Click-2-Creep jako potwierdzonej przyczyny i nie podawaj instrukcji jego wyłączenia jako naprawy. Kontynuuj diagnostykę na podstawie rzeczywistych objawów i komunikatów.",
+      "required_facts": [
+        "Końcowa odpowiedź informuje, że brak komunikatu SLO nie potwierdza Click-2-Creep i nie przedstawia jego wyłączenia jako potwierdzonej naprawy."
+      ],
+      "required_behaviors": [
+        "Przed rozstrzygnięciem agent prosi o sprawdzenie komunikatu na wyświetlaczu i wykorzystuje odpowiedź o braku SLO.",
+        "Agent nie zamienia początkowego podobieństwa objawów w pewną diagnozę po uzyskaniu sprzecznego wyniku sprawdzenia."
+      ],
+      "forbidden_claims": [
+        "Brak komunikatu SLO potwierdza aktywną funkcję Click-2-Creep.",
+        "Agent zaleca dwukrotne użycie dźwigni jazdy jako potwierdzoną naprawę mimo braku SLO."
+      ],
+      "assumptions": [
+        {
+          "key": "click_2_creep_feature_available",
+          "statement": "Wózek benchmarkowy może być wyposażony w funkcję Click-2-Creep, ale podobny objaw sam jej nie potwierdza.",
+          "source_locator": "rozdziały 6.11 i 7.6.3 „Funkcja Click-2-Creep”",
+          "source_page": 48
+        },
+        {
+          "key": "display_is_diagnostic_evidence",
+          "statement": "Dokumentacja wiąże komunikat SLO z aktywacją Click-2-Creep, dlatego jego brak jest kontrdowodem dla tej hipotezy.",
+          "source_locator": "rozdział 7.6.3, krok 1 aktywacji Click-2-Creep",
+          "source_page": 48
+        }
+      ],
+      "simulation_facts": {
+        "display_message": {
+          "value": "BRAK",
+          "technician_reply": "Na wyświetlaczu nie ma komunikatu SLO.",
+          "aliases": ["displayed_message", "display_code"]
+        },
+        "travel_control_double_tapped": {
+          "value": false,
+          "technician_reply": "Nie naciskałem szybko dwa razy dźwigni jazdy.",
+          "aliases": ["travel_lever_double_pressed", "travel_control_activated_twice"]
+        },
+        "travel_control_lever_opposite_direction": {
+          "value": false,
+          "technician_reply": "Nie wychylałem dźwigni jazdy w przeciwnym kierunku.",
+          "aliases": ["travel_control_opposite_direction", "travel_lever_opposite_direction"]
+        },
+        "low_speed_button_option_fitted": {
+          "value": false,
+          "technician_reply": "Wózek nie ma opcjonalnego przycisku wolnej jazdy.",
+          "aliases": [
+            "low_speed_button_fitted",
+            "creep_speed_button_option_fitted",
+            "click_2_creep_option_fitted"
+          ]
+        },
+        "low_speed_button_pressed_once": {
+          "value": false,
+          "technician_reply": "Nie naciskałem przycisku wolnej jazdy.",
+          "aliases": ["low_speed_button_activated_once", "creep_speed_button_pressed_once"]
+        },
+        "shock_sensor_stopped_truck": {
+          "value": false,
+          "technician_reply": "Czujnik zderzeniowy nie zatrzymał wózka.",
+          "aliases": [
+            "shock_sensor_stop",
+            "shock_sensor_active",
+            "impact_sensor_stopped_truck",
+            "collision_sensor_stopped_truck"
+          ]
+        },
+        "click_2_creep_active": {
+          "value": false,
+          "technician_reply": "Funkcja Click-2-Creep nie jest aktywna.",
+          "aliases": ["creep_mode_active", "slow_drive_mode_active"]
+        }
+      },
+      "agent_goal": {
+        "required_evidence_fact_keys": ["display_message"],
+        "terminal_goal": "Po stwierdzeniu braku SLO nie podawaj instrukcji wyłączenia Click-2-Creep jako naprawy i pozostaw nierozstrzygniętą diagnozę do dalszego sprawdzenia.",
+        "min_primary_actions": 0,
+        "max_primary_actions": 0
+      },
+      "source": {
+        "filename": "LPE200, LPE220, LPE250 - podręcznik operatora PL.pdf",
+        "locator": "rozdziały 6.11 i 7.6.3 „Funkcja Click-2-Creep”",
+        "page": null
+      }
+    },
+    {
+      "id": "platform_sensor_creep_after_break",
+      "title": "Prędkość pełzania po obciążeniu platformy podczas przerwy",
+      "category": "indirect_symptom",
+      "question": "Po 10-minutowej przerwie paleciak zaczął się wlec. Przez ten czas na składanym stopniu, na którym normalnie stoję, leżała skrzynka. Jak przywrócić normalną jazdę?",
+      "mode": "agent",
+      "expected_route": "standard_query",
+      "canonical_fault_code": "2:282",
+      "reference_answer": "Opis pasuje do sytuacji oznaczonej kodem 2:282: czujnik platformy był uruchomiony przez ponad 5 minut, gdy wózek nie był używany, dlatego wózek porusza się z prędkością pełzania. Aby przywrócić normalne działanie, podnieś i opuść platformę. Jeżeli ograniczenie nie ustąpi albo pojawi się kod błędu, nie używaj dalej wózka i skontaktuj się z technikiem serwisowym.",
+      "required_facts": [
+        "Opis pasuje do sytuacji związanej z czujnikiem platformy, oznaczonej w dokumentacji kodem 2:282.",
+        "Czujnik platformy pozostawał uruchomiony przez ponad 5 minut, gdy wózek nie był używany.",
+        "W tej sytuacji wózek porusza się z prędkością pełzania.",
+        "Aby przywrócić normalne działanie, należy podnieść i opuścić platformę."
+      ],
+      "required_behaviors": [
+        "Odpowiedź łączy potoczne określenie składanego stopnia, na którym stoi operator, z platformą operatora i jej czujnikiem.",
+        "Odpowiedź podaje działanie naprawcze wynikające z wpisu 2:282 zamiast wymagać podania kodu błędu przed udzieleniem użytecznej odpowiedzi."
+      ],
+      "forbidden_claims": [
+        "Najbardziej prawdopodobną przyczyną jest przegrzanie wózka, silnika albo układu kierowniczego.",
+        "Opis wskazuje na kod 5:135 lub 5:326.",
+        "Aby przywrócić normalną jazdę, należy zaczekać, aż wózek lub układ kierowniczy ostygnie.",
+        "Dokumentacja nie określa wpływu przedmiotu pozostawionego na platformie ani sposobu przywrócenia normalnej jazdy.",
+        "Bez odczytania kodu błędu nie można podać żadnego działania."
+      ],
+      "assumptions": [
+        {
+          "key": "platform_sensor_condition_persisted",
+          "statement": "Czujnik platformy pozostawał uruchomiony przez około 10 minut, gdy wózek nie był używany, czyli dłużej niż udokumentowany próg 5 minut.",
+          "source_locator": "rozdział 10.1.1, kod 2:282",
+          "source_page": 70
+        },
+        {
+          "key": "fault_2_282_applies",
+          "statement": "Prędkość pełzania w tym scenariuszu jest skutkiem warunku opisanego kodem 2:282.",
+          "source_locator": "rozdział 10.1.1, opis kodu 2:282",
+          "source_page": 70
+        },
+        {
+          "key": "platform_cycle_is_recovery_action",
+          "statement": "Podniesienie i opuszczenie platformy jest udokumentowanym działaniem przywracającym normalne działanie wózka dla kodu 2:282.",
+          "source_locator": "rozdział 10.1.1, działanie dla kodu 2:282",
+          "source_page": 70
+        }
+      ],
+      "simulation_facts": {
+        "operator_platform_loaded": {
+          "value": true,
+          "technician_reply": "Podczas przerwy na platformie operatora leżała skrzynka.",
+          "aliases": ["platform_loaded", "weight_on_operator_platform"]
+        },
+        "platform_sensor_active": {
+          "value": true,
+          "technician_reply": "Czujnik platformy pozostawał aktywny podczas przerwy.",
+          "aliases": ["operator_platform_sensor_active", "platform_switch_active"]
+        },
+        "platform_sensor_active_duration_minutes": {
+          "value": 10,
+          "unit": "min",
+          "technician_reply": "Czujnik platformy był aktywny przez około 10 minut.",
+          "aliases": ["platform_active_duration_minutes", "platform_activation_duration"]
+        },
+        "truck_in_use": {
+          "value": false,
+          "technician_reply": "W tym czasie wózek nie był używany.",
+          "aliases": ["vehicle_in_use", "machine_in_use"]
+        },
+        "display_fault_code": {
+          "value": "2:282",
+          "technician_reply": "Na wyświetlaczu widzę kod 2:282.",
+          "aliases": ["fault_code", "displayed_fault_code"]
+        },
+        "normal_travel_restored": {
+          "value": true,
+          "technician_reply": "Po podniesieniu i opuszczeniu platformy wózek znowu jedzie normalnie.",
+          "aliases": ["normal_drive_restored", "creep_speed_cleared"]
+        }
+      },
+      "source": {
+        "filename": "LPE200, LPE220, LPE250 - podręcznik operatora PL.pdf",
+        "locator": "rozdział 10.1.1 „Lista kodów błędów”, wpis 2:282",
+        "page": 70
+      }
+    },
+    {
+      "id": "charger_plug_left_outside_sensor_holder",
+      "title": "Brak uruchomienia po pozostawieniu przewodu poza uchwytem",
+      "category": "indirect_symptom",
+      "question": "Po karmieniu paleciaka prądem rzuciłem jego ogon na obudowę zamiast wsunąć go w uchwyt. Teraz maszyna nie chce się obudzić. Co przeoczyłem?",
+      "mode": "agent",
+      "expected_route": "standard_query",
+      "canonical_fault_code": null,
+      "reference_answer": "Opis pasuje do blokady występującej po ładowaniu akumulatora, gdy wtyczka ładowarki nie została umieszczona we wsporniku czujnika. W takiej sytuacji wyświetlany jest komunikat Plug i wózka nie można uruchomić. Umieść wtyczkę ładowarki we wsporniku czujnika. Funkcja jest dostępna tylko na wybranych rynkach; jeżeli wózek nadal się nie uruchamia albo nie wyświetla komunikatu Plug, sprawdź dokładny komunikat na wyświetlaczu i skontaktuj się z technikiem serwisowym.",
+      "required_facts": [
+        "Potoczne karmienie prądem oznacza wcześniejsze ładowanie akumulatora, a ogon oznacza przewód lub wtyczkę ładowarki.",
+        "Po ładowaniu wtyczka ładowarki musi zostać umieszczona we wsporniku czujnika.",
+        "Jeżeli wtyczka nie znajduje się we wsporniku czujnika, wyświetlany jest komunikat Plug i wózka nie można uruchomić.",
+        "Należy umieścić wtyczkę ładowarki we wsporniku czujnika."
+      ],
+      "required_behaviors": [
+        "Odpowiedź wykorzystuje szczegół o pozostawieniu końcówki przewodu poza uchwytem i nie pomija go na rzecz ogólnej diagnozy braku uruchomienia.",
+        "Odpowiedź zaznacza, że opisana funkcja jest dostępna tylko na wybranych rynkach albo warunkuje rozpoznanie obecnością komunikatu Plug."
+      ],
+      "forbidden_claims": [
+        "Brak uruchomienia jednoznacznie oznacza rozładowany lub uszkodzony akumulator.",
+        "Należy wymienić akumulator albo ładowarkę bez sprawdzenia położenia wtyczki.",
+        "Przewód pozostawiony poza uchwytem nie może mieć związku z blokadą uruchomienia.",
+        "Należy obejść, odłączyć lub zablokować czujnik wspornika wtyczki.",
+        "Komunikat Plug oznacza uszkodzenie układu hydraulicznego."
+      ],
+      "assumptions": [
+        {
+          "key": "plug_sensor_feature_available",
+          "statement": "Wózek benchmarkowy ma dostępny na wybranych rynkach wspornik z czujnikiem wtyczki ładowarki.",
+          "source_locator": "rozdział 6.3, komunikat Plug i uwaga o dostępności rynkowej",
+          "source_page": 28
+        },
+        {
+          "key": "charger_plug_not_stored_after_charging",
+          "statement": "Po zakończeniu ładowania wtyczka nie została umieszczona we wsporniku czujnika.",
+          "source_locator": "rozdział 6.3, warunek wyświetlenia komunikatu Plug",
+          "source_page": 28
+        },
+        {
+          "key": "plug_interlock_blocks_start",
+          "statement": "W tym scenariuszu wyświetlany jest komunikat Plug i blokada uniemożliwia uruchomienie wózka do czasu umieszczenia wtyczki we wsporniku.",
+          "source_locator": "rozdział 6.3, opis komunikatu Plug",
+          "source_page": 28
+        }
+      ],
+      "simulation_facts": {
+        "charging_completed": {
+          "value": true,
+          "technician_reply": "Problem pojawił się po zakończeniu ładowania.",
+          "aliases": ["battery_charging_completed", "after_charging"]
+        },
+        "charger_plug_in_sensor_holder": {
+          "value": false,
+          "technician_reply": "Wtyczka ładowarki leży na obudowie i nie jest wsunięta do wspornika czujnika.",
+          "aliases": ["charger_plug_in_sensor_bracket", "charger_plug_stored"]
+        },
+        "display_message": {
+          "value": "Plug",
+          "technician_reply": "Na wyświetlaczu widzę komunikat Plug.",
+          "aliases": ["displayed_message", "display_code"]
+        },
+        "truck_starts": {
+          "value": false,
+          "technician_reply": "Wózka nie można uruchomić.",
+          "aliases": ["vehicle_starts", "machine_starts"]
+        },
+        "charger_plug_sensor_feature_available": {
+          "value": true,
+          "technician_reply": "Ten wózek ma wspornik z czujnikiem wtyczki ładowarki.",
+          "aliases": ["plug_holder_sensor_available", "charger_plug_sensor_present"]
+        },
+        "truck_starts_after_plug_stored": {
+          "value": true,
+          "technician_reply": "Po umieszczeniu wtyczki we wsporniku czujnika wózek uruchamia się prawidłowo.",
+          "aliases": ["vehicle_starts_after_plug_stored", "normal_start_restored"]
+        }
+      },
+      "source": {
+        "filename": "LPE200, LPE220, LPE250 - podręcznik operatora PL.pdf",
+        "locator": "rozdział 6.3 „Wyświetlacz”, opis komunikatu Plug",
+        "page": 28
       }
     },
     {

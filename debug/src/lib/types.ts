@@ -120,6 +120,27 @@ export interface BenchmarkSource {
 	page: number | null
 }
 
+export interface BenchmarkSimulationFact {
+	value: string | number | boolean
+	unit: string | null
+	technician_reply: string
+	aliases: string[]
+}
+
+export interface BenchmarkCaseAssumption {
+	key: string
+	statement: string
+	source_locator: string
+	source_page: number
+}
+
+export interface BenchmarkAgentGoal {
+	required_evidence_fact_keys: string[]
+	terminal_goal: string
+	min_primary_actions: number
+	max_primary_actions: number
+}
+
 export interface BenchmarkCase {
 	id: string
 	title: string
@@ -135,6 +156,9 @@ export interface BenchmarkCase {
 	source: BenchmarkSource
 	evaluation_mode: 'llm' | 'source_image'
 	minimum_source_images: number
+	assumptions: BenchmarkCaseAssumption[]
+	simulation_facts: Record<string, BenchmarkSimulationFact>
+	agent_goal?: BenchmarkAgentGoal | null
 }
 
 export interface BenchmarkCaseListRead {

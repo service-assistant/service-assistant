@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+FactValue = str | float | bool
+
 
 class AgentModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -15,13 +17,20 @@ class MachineContext(AgentModel):
 
 
 class Symptom(AgentModel):
-    raw: str = Field(min_length=1)
     search_phrase: str = Field(min_length=1)
+    fact_key: str = Field(default="reported_symptom", pattern=r"^[a-z][a-z0-9_]*$")
+    fact_value: FactValue | None = None
+    unit: str | None = None
 
 
 class Observation(AgentModel):
-    type: str = Field(min_length=1)
-    value: str = Field(min_length=1)
+    key: str = Field(
+        min_length=1,
+        pattern=r"^[a-z][a-z0-9_]*$",
+        description="Stable snake_case key naming one atomic observed fact.",
+    )
+    value: FactValue
+    unit: str | None = None
     certainty: Literal["certain", "uncertain"]
 
 
@@ -35,8 +44,16 @@ class CaseContext(ExtractedCaseContext):
 
 
 class RetrievalQueryPlan(AgentModel):
-    base_queries: list[str] = Field(min_length=1, max_length=3)
-    contextual_queries: list[str] = Field(default_factory=list, max_length=3)
+    base_queries: list[str] = Field(
+        min_length=1,
+        max_length=2,
+        description="One or two short technical retrieval queries in English.",
+    )
+    contextual_queries: list[str] = Field(
+        default_factory=list,
+        max_length=1,
+        description="Zero or one short contextual retrieval query in English.",
+    )
 
 
 class CaseUnderstandingResult(AgentModel):

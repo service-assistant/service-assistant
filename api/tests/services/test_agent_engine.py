@@ -2,13 +2,32 @@ from types import SimpleNamespace
 
 from app.models import ChatThread
 from app.schemas import ChatMode, MessageCreate
-from app.services.chat.agent.engine import stream_message
+from app.services.chat.agent.engine import _retrieval_queries, stream_message
 from app.services.chat.agent.models import (
+    CaseContext,
     CaseUnderstandingResult,
     ExtractedCaseContext,
+    MachineContext,
     RetrievalQueryPlan,
     Symptom,
 )
+
+
+def test_should_deduplicate_retrieval_queries_case_insensitively():
+    case_context = CaseContext(
+        machine=MachineContext(device_id=123, name="Test machine"),
+        symptom=Symptom(search_phrase="Mast lift failure"),
+    )
+    query_plan = RetrievalQueryPlan(
+        base_queries=[" mast LIFT failure ", "lift function not operating"],
+        contextual_queries=["hydraulic pump operates while mast does not lift"],
+    )
+
+    assert _retrieval_queries(case_context, query_plan) == [
+        "Mast lift failure",
+        "lift function not operating",
+        "hydraulic pump operates while mast does not lift",
+    ]
 
 
 async def test_should_build_machine_context_and_run_expanded_retrieval(
@@ -31,14 +50,13 @@ async def test_should_build_machine_context_and_run_expanded_retrieval(
         return_value=CaseUnderstandingResult(
             case_context=ExtractedCaseContext(
                 symptom=Symptom(
-                    raw="widły nie podnoszą",
                     search_phrase="forklift forks do not raise",
                 )
             ),
             query_plan=RetrievalQueryPlan(
                 base_queries=[
                     "lift function not operating",
-                    "forklift forks do not raise",
+                    "mast lift failure",
                 ],
                 contextual_queries=["Toyota 8FBE25 mast does not lift"],
             ),
@@ -75,5 +93,15 @@ async def test_should_build_machine_context_and_run_expanded_retrieval(
     assert pipeline.call_args.kwargs["retrieval_queries"] == [
         "forklift forks do not raise",
         "lift function not operating",
+        "mast lift failure",
         "Toyota 8FBE25 mast does not lift",
     ]
+    assert pipeline.call_args.kwargs["agent_case_context"] == CaseContext(
+        machine=MachineContext(
+            device_id=123,
+            name="Toyota 8FBE25",
+            model_serial_code="8FBE25",
+            nameplate_data={"manufacturer": "Toyota"},
+        ),
+        symptom=Symptom(search_phrase="forklift forks do not raise"),
+    )

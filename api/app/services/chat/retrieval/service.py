@@ -71,6 +71,13 @@ async def _fetch_device_chunks(
     ]
 
 
+async def fetch_device_chunks(
+    session: AsyncSession, device_id: int
+) -> list[RetrievedChunk]:
+    """Fetch the reusable lexical-search corpus for one device."""
+    return await _fetch_device_chunks(session, device_id)
+
+
 async def get_semantic_chunks(
     session: AsyncSession,
     embedded_vector: list[float],
@@ -250,6 +257,9 @@ async def retrieve_context_chunks(
     diagnostic_mode_enabled: bool = False,
     retrieval_trace: dict[str, Any] | None = None,
     reranking_enabled_override: bool | None = None,
+    translation_enabled: bool = True,
+    prefetched_chunks: list[RetrievedChunk] | None = None,
+    precomputed_embedding: list[float] | None = None,
 ) -> list[RetrievedChunk]:
     retrieval_started_at = time.perf_counter()
     timeline: list[dict[str, Any]] = []
@@ -281,6 +291,9 @@ async def retrieve_context_chunks(
     bm25_limit = RERANKED_BM25_LIMIT if reranking_enabled else BM25_LIMIT
 
     async def embed_with_timing() -> list[float]:
+        if precomputed_embedding is not None:
+            return precomputed_embedding
+
         started_at = time.perf_counter()
         try:
             return await embed_question(question, settings)
@@ -288,6 +301,9 @@ async def retrieve_context_chunks(
             record_timing("embedding", "Embedding zapytania", started_at)
 
     async def translate_with_timing() -> tuple[str, int]:
+        if not translation_enabled:
+            return question, 0
+
         started_at = time.perf_counter()
         try:
             translated = await translate_query(
@@ -303,6 +319,9 @@ async def retrieve_context_chunks(
             raise
 
     async def fetch_with_timing() -> list[RetrievedChunk]:
+        if prefetched_chunks is not None:
+            return prefetched_chunks
+
         started_at = time.perf_counter()
         try:
             return await _fetch_device_chunks(session, device_id)
